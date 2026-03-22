@@ -17,11 +17,16 @@ const sendSms = httpsCallable<{ to: string[]; message: string }, { sent: number;
   functions, 'sendSms'
 );
 
+const sendEmailFn = httpsCallable<{ to: string[]; subject: string; message: string }, { sent: number; failed: number; errors: string[] }>(
+  functions, 'sendEmail'
+);
+
 export function MessagingPage() {
   const allTeams = useTeamStore(s => s.teams);
   const players = usePlayerStore(s => s.players);
   const profile = useAuthStore(s => s.profile);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [channel, setChannel] = useState<Channel>(FEATURE_SMS ? 'sms' : 'email');
   const [sendState, setSendState] = useState<SendState>('idle');
@@ -72,6 +77,7 @@ export function MessagingPage() {
     setChannel(ch);
     setSendState('idle');
     setSendResult(null);
+    setSubject('');
     setSelectedIds(prev => {
       const eligible = new Set(playersForChannel(ch).map(p => p.id));
       return new Set([...prev].filter(id => eligible.has(id)));
@@ -92,10 +98,28 @@ export function MessagingPage() {
     ),
   ];
 
-  const mailtoUri = `mailto:${emailAddresses.join(',')}${message.trim() ? `?body=${encodeURIComponent(message.trim())}` : ''}`;
   const canSend = channel === 'sms'
     ? phones.length > 0 && message.trim().length > 0
-    : emailAddresses.length > 0;
+    : emailAddresses.length > 0 && subject.trim().length > 0 && message.trim().length > 0;
+
+  async function handleSendEmail() {
+    if (!canSend || sendState === 'sending') return;
+    setSendState('sending');
+    setSendResult(null);
+    try {
+      const result = await sendEmailFn({ to: emailAddresses, subject: subject.trim(), message: message.trim() });
+      setSendResult(result.data);
+      setSendState(result.data.failed === 0 ? 'success' : 'error');
+      if (result.data.failed === 0) {
+        setSubject('');
+        setMessage('');
+        setSelectedIds(new Set());
+      }
+    } catch (e: unknown) {
+      setSendResult({ sent: 0, failed: emailAddresses.length, errors: [(e as Error).message] });
+      setSendState('error');
+    }
+  }
 
   async function handleSendSms() {
     if (!canSend || sendState === 'sending') return;
@@ -230,6 +254,18 @@ export function MessagingPage() {
               )}
             </div>
 
+            {channel === 'email' && (
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Subject</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g. Practice cancelled Saturday"
+                  value={subject}
+                  onChange={e => { setSubject(e.target.value); if (sendState !== 'idle') setSendState('idle'); }}
+                />
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1">Message</label>
               <textarea
@@ -275,15 +311,14 @@ export function MessagingPage() {
                   <MessageSquare size={15} />
                   {sendState === 'sending' ? 'Sending…' : `Send SMS${phones.length > 0 ? ` to ${phones.length}` : ''}`}
                 </Button>
-              ) : canSend ? (
-                <a href={mailtoUri} className="block">
-                  <Button className="w-full">
-                    <Mail size={15} /> Open in Email App
-                  </Button>
-                </a>
               ) : (
-                <Button className="w-full" disabled>
-                  <Mail size={15} /> Select recipients to send
+                <Button
+                  className="w-full"
+                  disabled={!canSend || sendState === 'sending'}
+                  onClick={handleSendEmail}
+                >
+                  <Mail size={15} />
+                  {sendState === 'sending' ? 'Sending…' : `Send Email${emailAddresses.length > 0 ? ` to ${emailAddresses.length}` : ''}`}
                 </Button>
               )}
             </div>

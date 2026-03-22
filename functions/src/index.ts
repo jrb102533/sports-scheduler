@@ -77,6 +77,83 @@ export const sendSms = onCall<SendSmsData, Promise<SendSmsResult>>(
   }
 );
 
+// ─── Email messaging (callable) ──────────────────────────────────────────────
+
+interface SendEmailData {
+  to: string[];
+  subject: string;
+  message: string;
+}
+
+interface SendEmailResult {
+  sent: number;
+  failed: number;
+  errors: string[];
+}
+
+function createTransporter() {
+  return nodemailer.createTransport({
+    host: smtpHost.value(),
+    port: parseInt(smtpPort.value(), 10),
+    secure: parseInt(smtpPort.value(), 10) === 465,
+    auth: { user: smtpUser.value(), pass: smtpPass.value() },
+  });
+}
+
+export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
+  { secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom] },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Must be logged in to send messages.');
+    }
+
+    const callerDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+    const callerRole = callerDoc.data()?.role;
+    if (!['admin', 'coach'].includes(callerRole)) {
+      throw new HttpsError('permission-denied', 'Only admins and coaches can send email.');
+    }
+
+    const { to, subject, message } = request.data;
+    if (!to?.length) throw new HttpsError('invalid-argument', 'No recipients provided.');
+    if (!subject?.trim()) throw new HttpsError('invalid-argument', 'Subject cannot be empty.');
+    if (!message?.trim()) throw new HttpsError('invalid-argument', 'Message cannot be empty.');
+    if (to.length > 100) throw new HttpsError('invalid-argument', 'Maximum 100 recipients per message.');
+
+    const transporter = createTransporter();
+
+    const results = await Promise.allSettled(
+      to.map((address: string) =>
+        transporter.sendMail({
+          from: emailFrom.value(),
+          to: address,
+          subject: subject.trim(),
+          text: message.trim(),
+          html: `
+            <div style="font-family:sans-serif;max-width:520px;margin:auto">
+              <p style="color:#374151;white-space:pre-wrap">${message.trim()}</p>
+              <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
+              <p style="color:#9ca3af;font-size:12px">Sent via Sports Scheduler</p>
+            </div>
+          `,
+        })
+      )
+    );
+
+    const errors: string[] = [];
+    results.forEach((result, i) => {
+      if (result.status === 'rejected') {
+        errors.push(`${to[i]}: ${(result.reason as Error)?.message ?? 'Unknown error'}`);
+      }
+    });
+
+    return {
+      sent: results.filter(r => r.status === 'fulfilled').length,
+      failed: errors.length,
+      errors,
+    };
+  }
+);
+
 // ─── Email notifications ─────────────────────────────────────────────────────
 // Triggered whenever a new notification doc is written to users/{uid}/notifications/{notifId}.
 // Looks up the user's email and sends the notification via SMTP.
@@ -95,15 +172,7 @@ export const onNotificationCreated = onDocumentCreated(
     const userEmail = userDoc.data()?.email as string | undefined;
     if (!userEmail) return;
 
-    const transporter = nodemailer.createTransport({
-      host: smtpHost.value(),
-      port: parseInt(smtpPort.value(), 10),
-      secure: parseInt(smtpPort.value(), 10) === 465,
-      auth: {
-        user: smtpUser.value(),
-        pass: smtpPass.value(),
-      },
-    });
+    const transporter = createTransporter();
 
     await transporter.sendMail({
       from: emailFrom.value(),
