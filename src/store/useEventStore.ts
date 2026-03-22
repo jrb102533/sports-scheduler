@@ -1,50 +1,58 @@
 import { create } from 'zustand';
+import {
+  collection, onSnapshot, doc, setDoc, deleteDoc, query, orderBy,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import type { ScheduledEvent, GameResult } from '@/types';
-import { getItem, setItem } from '@/lib/localStorage';
-import { STORAGE_KEYS } from '@/constants';
 
 interface EventStore {
   events: ScheduledEvent[];
-  addEvent: (event: ScheduledEvent) => void;
-  updateEvent: (event: ScheduledEvent) => void;
-  deleteEvent: (id: string) => void;
-  recordResult: (id: string, result: GameResult) => void;
-  bulkAddEvents: (events: ScheduledEvent[]) => void;
+  loading: boolean;
+  subscribe: () => () => void;
+  addEvent: (event: ScheduledEvent) => Promise<void>;
+  updateEvent: (event: ScheduledEvent) => Promise<void>;
+  deleteEvent: (id: string) => Promise<void>;
+  recordResult: (id: string, result: GameResult) => Promise<void>;
+  bulkAddEvents: (events: ScheduledEvent[]) => Promise<void>;
 }
 
 export const useEventStore = create<EventStore>((set, get) => ({
-  events: getItem<ScheduledEvent[]>(STORAGE_KEYS.EVENTS) ?? [],
+  events: [],
+  loading: true,
 
-  addEvent: (event) => {
-    const events = [...get().events, event];
-    set({ events });
-    setItem(STORAGE_KEYS.EVENTS, events);
+  subscribe: () => {
+    const q = query(collection(db, 'events'), orderBy('date'));
+    const unsub = onSnapshot(q, (snap) => {
+      const events = snap.docs.map(d => ({ ...d.data(), id: d.id }) as ScheduledEvent);
+      set({ events, loading: false });
+    }, () => set({ loading: false }));
+    return unsub;
   },
 
-  updateEvent: (event) => {
-    const events = get().events.map(e => e.id === event.id ? event : e);
-    set({ events });
-    setItem(STORAGE_KEYS.EVENTS, events);
+  addEvent: async (event) => {
+    await setDoc(doc(db, 'events', event.id), event);
   },
 
-  deleteEvent: (id) => {
-    const events = get().events.filter(e => e.id !== id);
-    set({ events });
-    setItem(STORAGE_KEYS.EVENTS, events);
+  updateEvent: async (event) => {
+    await setDoc(doc(db, 'events', event.id), event);
   },
 
-  recordResult: (id, result) => {
-    const now = new Date().toISOString();
-    const events = get().events.map(e =>
-      e.id === id ? { ...e, result, status: 'completed' as const, updatedAt: now } : e
-    );
-    set({ events });
-    setItem(STORAGE_KEYS.EVENTS, events);
+  deleteEvent: async (id) => {
+    await deleteDoc(doc(db, 'events', id));
   },
 
-  bulkAddEvents: (newEvents) => {
-    const events = [...get().events, ...newEvents];
-    set({ events });
-    setItem(STORAGE_KEYS.EVENTS, events);
+  recordResult: async (id, result) => {
+    const event = get().events.find(e => e.id === id);
+    if (!event) return;
+    await setDoc(doc(db, 'events', id), {
+      ...event,
+      result,
+      status: 'completed',
+      updatedAt: new Date().toISOString(),
+    });
+  },
+
+  bulkAddEvents: async (newEvents) => {
+    await Promise.all(newEvents.map(e => setDoc(doc(db, 'events', e.id), e)));
   },
 }));

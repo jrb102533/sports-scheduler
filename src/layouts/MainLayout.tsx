@@ -1,9 +1,16 @@
+import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { NotificationPanel } from '@/components/layout/NotificationPanel';
 import { useNotificationTrigger } from '@/hooks/useNotificationTrigger';
 import { useAttendanceNotification } from '@/hooks/useAttendanceNotification';
+import { useAuthStore } from '@/store/useAuthStore';
+import { useTeamStore } from '@/store/useTeamStore';
+import { usePlayerStore } from '@/store/usePlayerStore';
+import { useEventStore } from '@/store/useEventStore';
+import { useNotificationStore } from '@/store/useNotificationStore';
+import { useSettingsStore } from '@/store/useSettingsStore';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -14,13 +21,37 @@ const PAGE_TITLES: Record<string, string> = {
   '/notifications': 'Notifications',
   '/messaging': 'Messaging',
   '/settings': 'Settings',
+  '/profile': 'My Profile',
+  '/users': 'Manage Users',
 };
 
 export function MainLayout() {
   useNotificationTrigger();
   useAttendanceNotification();
+
+  const { user } = useAuthStore();
+  const subscribeTeams = useTeamStore(s => s.subscribe);
+  const subscribePlayers = usePlayerStore(s => s.subscribe);
+  const subscribeEvents = useEventStore(s => s.subscribe);
+  const subscribeNotifications = useNotificationStore(s => s.subscribe);
+  const subscribeSettings = useSettingsStore(s => s.subscribe);
+
+  // Subscribe all Firestore collections when user is authenticated
+  useEffect(() => {
+    if (!user) return;
+    const unsubs = [
+      subscribeTeams(),
+      subscribePlayers(),
+      subscribeEvents(),
+      subscribeNotifications(user.uid),
+      subscribeSettings(user.uid),
+    ];
+    return () => unsubs.forEach(u => u());
+  }, [user, subscribeTeams, subscribePlayers, subscribeEvents, subscribeNotifications, subscribeSettings]);
+
   const location = useLocation();
-  const title = PAGE_TITLES[location.pathname] ?? (location.pathname.startsWith('/teams/') ? 'Team Details' : 'Sports Scheduler');
+  const title = PAGE_TITLES[location.pathname]
+    ?? (location.pathname.startsWith('/teams/') ? 'Team Details' : 'Sports Scheduler');
 
   return (
     <div className="flex w-full min-h-screen">

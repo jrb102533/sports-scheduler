@@ -1,8 +1,9 @@
-import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Calendar, CalendarDays, Users, Trophy, Bell, MessageSquare, Settings } from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Calendar, CalendarDays, Users, Trophy, Bell, MessageSquare, Settings, LogOut, Shield, UserCog } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { useAuthStore, hasRole } from '@/store/useAuthStore';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -15,9 +16,22 @@ const navItems = [
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
+const adminNavItems = [
+  { to: '/users', label: 'Manage Users', icon: UserCog, end: undefined },
+];
+
+const roleColors: Record<string, string> = {
+  admin: 'text-purple-300',
+  coach: 'text-blue-300',
+  player: 'text-green-300',
+  parent: 'text-orange-300',
+};
+
 export function Sidebar() {
   const unread = useNotificationStore(s => s.notifications.filter(n => !n.isRead).length);
   const kidsMode = useSettingsStore(s => s.settings.kidsSportsMode);
+  const { profile, logout } = useAuthStore();
+  const navigate = useNavigate();
 
   return (
     <aside className="w-60 min-h-screen bg-gray-900 flex flex-col flex-shrink-0">
@@ -32,8 +46,9 @@ export function Sidebar() {
           </div>
         </div>
       </div>
+
       <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {navItems.map(({ to, label, icon: Icon, end }) => (
+        {[...navItems, ...(hasRole(profile, 'admin') ? adminNavItems : [])].map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
@@ -55,6 +70,32 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
+
+      {/* User section */}
+      {profile && (
+        <div className="border-t border-gray-700 px-3 py-3">
+          <button
+            onClick={() => navigate('/profile')}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-800 transition-colors text-left"
+          >
+            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+              {profile.displayName.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white text-sm font-medium truncate">{profile.displayName}</p>
+              <p className={clsx('text-xs flex items-center gap-1', roleColors[profile.role] ?? 'text-gray-400')}>
+                <Shield size={10} /> {profile.role.charAt(0).toUpperCase() + profile.role.slice(1)}
+              </p>
+            </div>
+          </button>
+          <button
+            onClick={logout}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-gray-800 transition-colors text-sm mt-0.5"
+          >
+            <LogOut size={16} /> Sign Out
+          </button>
+        </div>
+      )}
     </aside>
   );
 }

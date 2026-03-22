@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, CalendarDays, Trophy, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { RoleGuard } from '@/components/auth/RoleGuard';
 import { EventCard } from '@/components/events/EventCard';
 import { EventForm } from '@/components/events/EventForm';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
@@ -33,6 +34,13 @@ export function Dashboard() {
     .slice(0, 3);
 
   const isEmpty = teams.length === 0 && events.length === 0;
+  const [seeding, setSeeding] = useState(false);
+
+  async function handleSeed() {
+    setSeeding(true);
+    await seedDemoData();
+    setSeeding(false);
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -42,8 +50,12 @@ export function Dashboard() {
           <h2 className="text-lg font-bold text-gray-900 mb-1">Welcome to Sports Scheduler</h2>
           <p className="text-sm text-gray-600 mb-4">Get started by loading demo data or creating your first team.</p>
           <div className="flex justify-center gap-3">
-            <Button variant="secondary" onClick={() => seedDemoData()}>Load Demo Data</Button>
-            <Button onClick={() => navigate('/teams')}><Users size={15} /> Create Team</Button>
+            <RoleGuard roles={['admin']}>
+              <Button variant="secondary" onClick={handleSeed} disabled={seeding}>
+                {seeding ? 'Loading…' : 'Load Demo Data'}
+              </Button>
+              <Button onClick={() => navigate('/teams')}><Users size={15} /> Create Team</Button>
+            </RoleGuard>
           </div>
         </Card>
       )}
@@ -67,7 +79,9 @@ export function Dashboard() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-900 flex items-center gap-2"><CalendarDays size={16} className="text-blue-500" /> Upcoming Events</h2>
-            <Button variant="ghost" size="sm" onClick={() => setFormOpen(true)}><Plus size={14} /> Add</Button>
+            <RoleGuard roles={['admin', 'coach']}>
+              <Button variant="ghost" size="sm" onClick={() => setFormOpen(true)}><Plus size={14} /> Add</Button>
+            </RoleGuard>
           </div>
           {upcoming.length === 0 ? (
             <Card className="p-6 text-center text-sm text-gray-400">No upcoming events</Card>

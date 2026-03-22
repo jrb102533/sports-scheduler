@@ -4,6 +4,7 @@ import { TeamCard } from '@/components/teams/TeamCard';
 import { TeamForm } from '@/components/teams/TeamForm';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
+import { RoleGuard } from '@/components/auth/RoleGuard';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useNavigate } from 'react-router-dom';
@@ -18,9 +19,11 @@ export function TeamsPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <p className="text-sm text-gray-500">{teams.length} {teams.length === 1 ? 'team' : 'teams'}</p>
-        <Button onClick={() => setFormOpen(true)}>
-          <Plus size={16} /> New Team
-        </Button>
+        <RoleGuard roles={['admin']}>
+          <Button onClick={() => setFormOpen(true)}>
+            <Plus size={16} /> New Team
+          </Button>
+        </RoleGuard>
       </div>
 
       {teams.length === 0 ? (
@@ -28,7 +31,11 @@ export function TeamsPage() {
           icon={<Users size={40} />}
           title="No teams yet"
           description="Create your first team to start managing rosters and scheduling events."
-          action={<Button onClick={() => setFormOpen(true)}><Plus size={16} /> Create Team</Button>}
+          action={
+            <RoleGuard roles={['admin']}>
+              <Button onClick={() => setFormOpen(true)}><Plus size={16} /> Create Team</Button>
+            </RoleGuard>
+          }
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

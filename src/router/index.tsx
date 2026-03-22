@@ -1,5 +1,6 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { MainLayout } from '@/layouts/MainLayout';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { Dashboard } from '@/pages/Dashboard';
 import { CalendarPage } from '@/pages/CalendarPage';
 import { EventsPage } from '@/pages/EventsPage';
@@ -9,11 +10,24 @@ import { StandingsPage } from '@/pages/StandingsPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { MessagingPage } from '@/pages/MessagingPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { ProfilePage } from '@/pages/ProfilePage';
+import { LoginPage } from '@/pages/LoginPage';
+import { SignupPage } from '@/pages/SignupPage';
+import { UsersPage } from '@/pages/UsersPage';
 
 export const router = createBrowserRouter([
+  // Public auth routes
+  { path: '/login', element: <LoginPage /> },
+  { path: '/signup', element: <SignupPage /> },
+
+  // Protected app routes
   {
     path: '/',
-    element: <MainLayout />,
+    element: (
+      <ProtectedRoute>
+        <MainLayout />
+      </ProtectedRoute>
+    ),
     children: [
       { index: true, element: <Dashboard /> },
       { path: 'calendar', element: <CalendarPage /> },
@@ -24,6 +38,11 @@ export const router = createBrowserRouter([
       { path: 'notifications', element: <NotificationsPage /> },
       { path: 'messaging', element: <MessagingPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'profile', element: <ProfilePage /> },
+      { path: 'users', element: <UsersPage /> },
     ],
   },
+
+  // Catch-all
+  { path: '*', element: <Navigate to="/" replace /> },
 ]);

@@ -4,3 +4,4 @@ export type { EventType, EventStatus, AttendanceStatus, GameResult, SnackVolunte
 export type { TeamStandingRow, StandingsFilter } from './standings';
 export type { NotificationType, AppNotification } from './notification';
 export type { AppSettings } from './settings';
+export type { UserRole, UserProfile } from './auth';

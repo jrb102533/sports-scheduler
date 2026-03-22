@@ -6,6 +6,7 @@ import { EventDetailPanel } from '@/components/events/EventDetailPanel';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { RoleGuard } from '@/components/auth/RoleGuard';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { CalendarDays } from 'lucide-react';
@@ -51,9 +52,11 @@ export function EventsPage() {
           <Select options={typeOptions} value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="w-36" />
           <Select options={statusOptions} value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-36" />
         </div>
-        <Button onClick={() => setFormOpen(true)}>
-          <Plus size={16} /> New Event
-        </Button>
+        <RoleGuard roles={['admin', 'coach']}>
+          <Button onClick={() => setFormOpen(true)}>
+            <Plus size={16} /> New Event
+          </Button>
+        </RoleGuard>
       </div>
 
       {filtered.length === 0 ? (

@@ -10,6 +10,8 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { RoleGuard } from '@/components/auth/RoleGuard';
+import { useAuthStore, canEdit } from '@/store/useAuthStore';
 import { SPORT_TYPE_LABELS, AGE_GROUP_LABELS } from '@/constants';
 
 export function TeamDetailPage() {
@@ -20,6 +22,8 @@ export function TeamDetailPage() {
   const players = usePlayerStore(s => s.players);
   const { deletePlayersForTeam } = usePlayerStore();
   const kidsMode = useSettingsStore(s => s.settings.kidsSportsMode);
+  const profile = useAuthStore(s => s.profile);
+  const userCanEdit = canEdit(profile, id);
   const [tab, setTab] = useState<'roster' | 'attendance' | 'info'>('roster');
   const [editOpen, setEditOpen] = useState(false);
   const [addPlayerOpen, setAddPlayerOpen] = useState(false);
@@ -54,8 +58,8 @@ export function TeamDetailPage() {
             {kidsMode && team.ageGroup && <span className="ml-2 text-blue-500">· {AGE_GROUP_LABELS[team.ageGroup]}</span>}
           </p>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}><Edit size={14} /> Edit</Button>
-        <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}><Trash2 size={14} /></Button>
+        {userCanEdit && <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}><Edit size={14} /> Edit</Button>}
+        <RoleGuard roles={['admin']}><Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}><Trash2 size={14} /></Button></RoleGuard>
       </div>
 
       <div className="flex gap-1 mb-4 border-b border-gray-200">
@@ -77,7 +81,7 @@ export function TeamDetailPage() {
         <div className="bg-white rounded-xl border border-gray-200">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <h3 className="font-medium text-gray-800">Players</h3>
-            <Button size="sm" onClick={() => setAddPlayerOpen(true)}><Plus size={14} /> Add Player</Button>
+            {userCanEdit && <Button size="sm" onClick={() => setAddPlayerOpen(true)}><Plus size={14} /> Add Player</Button>}
           </div>
           <RosterTable players={teamPlayers} teamId={teamId} />
         </div>

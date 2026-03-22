@@ -1,7 +1,7 @@
 import { create } from 'zustand';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
 import type { AppSettings } from '@/types';
-import { getItem, setItem } from '@/lib/localStorage';
-import { STORAGE_KEYS } from '@/constants';
 
 const DEFAULT_SETTINGS: AppSettings = {
   kidsSportsMode: false,
@@ -10,14 +10,27 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 interface SettingsStore {
   settings: AppSettings;
-  updateSettings: (patch: Partial<AppSettings>) => void;
+  subscribe: (uid: string) => () => void;
+  updateSettings: (patch: Partial<AppSettings>) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
-  settings: getItem<AppSettings>(STORAGE_KEYS.SETTINGS) ?? DEFAULT_SETTINGS,
-  updateSettings: (patch) => {
+  settings: DEFAULT_SETTINGS,
+
+  subscribe: (uid: string) => {
+    const unsub = onSnapshot(doc(db, 'users', uid, 'config', 'settings'), (snap) => {
+      if (snap.exists()) {
+        set({ settings: snap.data() as AppSettings });
+      }
+    });
+    return unsub;
+  },
+
+  updateSettings: async (patch) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
     const settings = { ...get().settings, ...patch };
     set({ settings });
-    setItem(STORAGE_KEYS.SETTINGS, settings);
+    await setDoc(doc(db, 'users', uid, 'config', 'settings'), settings);
   },
 }));

@@ -4,13 +4,17 @@ import { useNotificationStore } from '@/store/useNotificationStore';
 import { getItem, setItem } from '@/lib/localStorage';
 import { STORAGE_KEYS } from '@/constants';
 import { parseISO, isAfter, isBefore, addDays } from 'date-fns';
+import { useAuthStore } from '@/store/useAuthStore';
 
 export function useNotificationTrigger() {
   const events = useEventStore(s => s.events);
   const addNotification = useNotificationStore(s => s.addNotification);
+  const uid = useAuthStore(s => s.user?.uid);
 
   useEffect(() => {
-    const notified = getItem<string[]>(STORAGE_KEYS.NOTIFIED_EVENTS) ?? [];
+    if (!uid) return;
+    const key = `${STORAGE_KEYS.NOTIFIED_EVENTS}_${uid}`;
+    const notified = getItem<string[]>(key) ?? [];
     const now = new Date();
     const cutoff = addDays(now, 1);
 
@@ -34,6 +38,6 @@ export function useNotificationTrigger() {
       });
     }
 
-    setItem(STORAGE_KEYS.NOTIFIED_EVENTS, [...notified, ...upcomingEvents.map(e => e.id)]);
-  }, [events, addNotification]);
+    setItem(key, [...notified, ...upcomingEvents.map(e => e.id)]);
+  }, [events, addNotification, uid]);
 }

@@ -1,45 +1,67 @@
 import { create } from 'zustand';
+import {
+  collection, onSnapshot, doc, setDoc, query, orderBy, writeBatch,
+} from 'firebase/firestore';
+import { auth } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import type { AppNotification } from '@/types';
-import { getItem, setItem } from '@/lib/localStorage';
-import { STORAGE_KEYS } from '@/constants';
 
 interface NotificationStore {
   notifications: AppNotification[];
   panelOpen: boolean;
-  addNotification: (n: AppNotification) => void;
-  markRead: (id: string) => void;
-  markAllRead: () => void;
-  clearAll: () => void;
+  subscribe: (uid: string) => () => void;
+  addNotification: (n: AppNotification) => Promise<void>;
+  markRead: (id: string) => Promise<void>;
+  markAllRead: () => Promise<void>;
+  clearAll: () => Promise<void>;
   setPanelOpen: (open: boolean) => void;
 }
 
 export const useNotificationStore = create<NotificationStore>((set, get) => ({
-  notifications: getItem<AppNotification[]>(STORAGE_KEYS.NOTIFICATIONS) ?? [],
+  notifications: [],
   panelOpen: false,
 
-  addNotification: (n) => {
-    const notifications = [n, ...get().notifications];
-    set({ notifications });
-    setItem(STORAGE_KEYS.NOTIFICATIONS, notifications);
+  subscribe: (uid: string) => {
+    const q = query(collection(db, 'users', uid, 'notifications'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      const notifications = snap.docs.map(d => ({ ...d.data(), id: d.id }) as AppNotification);
+      set({ notifications });
+    });
+    return unsub;
   },
 
-  markRead: (id) => {
-    const notifications = get().notifications.map(n =>
-      n.id === id ? { ...n, isRead: true } : n
-    );
-    set({ notifications });
-    setItem(STORAGE_KEYS.NOTIFICATIONS, notifications);
+  addNotification: async (n) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    await setDoc(doc(db, 'users', uid, 'notifications', n.id), n);
   },
 
-  markAllRead: () => {
-    const notifications = get().notifications.map(n => ({ ...n, isRead: true }));
-    set({ notifications });
-    setItem(STORAGE_KEYS.NOTIFICATIONS, notifications);
+  markRead: async (id) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const n = get().notifications.find(x => x.id === id);
+    if (!n) return;
+    await setDoc(doc(db, 'users', uid, 'notifications', id), { ...n, isRead: true });
   },
 
-  clearAll: () => {
-    set({ notifications: [] });
-    setItem(STORAGE_KEYS.NOTIFICATIONS, []);
+  markAllRead: async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const batch = writeBatch(db);
+    get().notifications.filter(n => !n.isRead).forEach(n => {
+      batch.set(doc(db, 'users', uid, 'notifications', n.id), { ...n, isRead: true });
+    });
+    await batch.commit();
+  },
+
+  clearAll: async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const batch = writeBatch(db);
+    get().notifications.forEach(n => {
+      batch.delete(doc(db, 'users', uid, 'notifications', n.id));
+    });
+    await batch.commit();
   },
 
   setPanelOpen: (open) => set({ panelOpen: open }),

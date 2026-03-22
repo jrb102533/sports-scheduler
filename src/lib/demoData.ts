@@ -3,15 +3,15 @@ import { usePlayerStore } from '@/store/usePlayerStore';
 import { useEventStore } from '@/store/useEventStore';
 import type { Team, Player, ScheduledEvent } from '@/types';
 
-export function seedDemoData() {
+export async function seedDemoData() {
   const now = new Date().toISOString();
   const today = new Date();
 
   const t1: Team = { id: crypto.randomUUID(), name: 'City Hawks', sportType: 'soccer', color: '#3b82f6', homeVenue: 'City Park Field 1', coachName: 'Alex Morgan', coachEmail: 'alex@cityhawks.com', createdAt: now, updatedAt: now };
   const t2: Team = { id: crypto.randomUUID(), name: 'River Lions', sportType: 'soccer', color: '#ef4444', homeVenue: 'Riverside Stadium', coachName: 'Sam Chen', createdAt: now, updatedAt: now };
 
-  useTeamStore.getState().addTeam(t1);
-  useTeamStore.getState().addTeam(t2);
+  await useTeamStore.getState().addTeam(t1);
+  await useTeamStore.getState().addTeam(t2);
 
   const makePlayers = (teamId: string, names: [string, string][], startJersey: number): Player[] =>
     names.map(([first, last], i) => ({
@@ -22,7 +22,8 @@ export function seedDemoData() {
 
   const hawks = makePlayers(t1.id, [['Jordan', 'Smith'], ['Taylor', 'Lee'], ['Casey', 'Brown'], ['Morgan', 'Davis'], ['Riley', 'Wilson']], 1);
   const lions = makePlayers(t2.id, [['Jamie', 'Garcia'], ['Quinn', 'Martinez'], ['Avery', 'Thomas'], ['Cameron', 'Anderson'], ['Drew', 'Jackson']], 10);
-  [...hawks, ...lions].forEach(p => usePlayerStore.getState().addPlayer(p));
+
+  await Promise.all([...hawks, ...lions].map(p => usePlayerStore.getState().addPlayer(p)));
 
   const d = (offset: number) => {
     const date = new Date(today);
@@ -39,8 +40,5 @@ export function seedDemoData() {
     { id: crypto.randomUUID(), title: 'Spring Tournament', type: 'tournament', status: 'scheduled', date: d(10), startTime: '08:00', location: 'Sports Complex', teamIds: [t1.id, t2.id], isRecurring: false, createdAt: now, updatedAt: now },
   ];
 
-  events.forEach(e => useEventStore.getState().addEvent(e));
-
-  // Force page refresh to show data
-  window.location.reload();
+  await useEventStore.getState().bulkAddEvents(events);
 }
