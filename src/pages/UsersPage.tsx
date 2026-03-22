@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { initializeApp, deleteApp, getApps } from 'firebase/app';
+import { initializeApp, deleteApp } from 'firebase/app';
 import {
   getAuth,
   createUserWithEmailAndPassword,
