@@ -7,6 +7,7 @@ import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { functions } from '@/lib/firebase';
+import { FEATURE_SMS } from '@/lib/features';
 import type { Player, Team } from '@/types';
 
 type Channel = 'sms' | 'email';
@@ -22,7 +23,7 @@ export function MessagingPage() {
   const profile = useAuthStore(s => s.profile);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState('');
-  const [channel, setChannel] = useState<Channel>('sms');
+  const [channel, setChannel] = useState<Channel>(FEATURE_SMS ? 'sms' : 'email');
   const [sendState, setSendState] = useState<SendState>('idle');
   const [sendResult, setSendResult] = useState<{ sent: number; failed: number; errors: string[] } | null>(null);
 
@@ -116,21 +117,23 @@ export function MessagingPage() {
 
   return (
     <div className="p-6">
-      {/* Channel tabs */}
-      <div className="flex gap-1 mb-6 border-b border-gray-200">
-        <button
-          onClick={() => switchChannel('sms')}
-          className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${channel === 'sms' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}
-        >
-          <MessageSquare size={14} /> SMS
-        </button>
-        <button
-          onClick={() => switchChannel('email')}
-          className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${channel === 'email' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}
-        >
-          <Mail size={14} /> Email
-        </button>
-      </div>
+      {/* Channel tabs — SMS only shown when FEATURE_SMS is enabled */}
+      {FEATURE_SMS && (
+        <div className="flex gap-1 mb-6 border-b border-gray-200">
+          <button
+            onClick={() => switchChannel('sms')}
+            className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${channel === 'sms' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}
+          >
+            <MessageSquare size={14} /> SMS
+          </button>
+          <button
+            onClick={() => switchChannel('email')}
+            className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${channel === 'email' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}
+          >
+            <Mail size={14} /> Email
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recipient Selection */}
