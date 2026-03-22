@@ -39,9 +39,13 @@ export function StandingsPage() {
 
   return (
     <div className="p-6">
+      <div className="flex items-center gap-2 mb-6">
+        <Trophy size={20} className="text-amber-500" />
+        <h1 className="text-xl font-bold text-gray-900">Standings</h1>
+      </div>
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <p className="text-xs text-gray-400 mt-0.5">Points: Win = 3, Draw = 1, Loss = 0. Based on completed games/matches.</p>
+        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+          <p className="text-xs text-gray-400">Win = 3 pts · Draw = 1 pt · Loss = 0 pts · Based on completed games and matches</p>
         </div>
         <StandingsTable />
       </div>

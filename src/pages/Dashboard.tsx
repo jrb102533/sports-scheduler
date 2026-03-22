@@ -11,7 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
-import { isUpcoming } from '@/lib/dateUtils';
+import { isUpcoming, formatDate, formatTime } from '@/lib/dateUtils';
 import type { ScheduledEvent } from '@/types';
 import { seedDemoData } from '@/lib/demoData';
 
@@ -110,6 +110,24 @@ export function Dashboard() {
           <div className="text-sm text-gray-500 mt-0.5">Players</div>
         </Card>
       </div>
+
+      {upcoming.length > 0 && (
+        <div
+          className="rounded-xl px-5 py-4 flex items-center gap-4 cursor-pointer"
+          style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #4f46e5 100%)' }}
+          onClick={() => setSelected(upcoming[0])}
+        >
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(255,255,255,0.15)' }}>
+            <CalendarDays size={20} className="text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-blue-200 text-xs font-semibold uppercase tracking-wide mb-0.5">Next Up</p>
+            <p className="font-semibold text-white truncate">{upcoming[0].title}</p>
+            <p className="text-blue-200 text-sm">{formatDate(upcoming[0].date)} at {formatTime(upcoming[0].startTime)}{upcoming[0].location ? ` · ${upcoming[0].location}` : ''}</p>
+          </div>
+          <span className="text-blue-200 text-xs flex-shrink-0">Tap to view</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div>

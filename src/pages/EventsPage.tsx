@@ -26,6 +26,9 @@ export function EventsPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [teamFilter, setTeamFilter] = useState('');
+
+  const teamOptions = [{ value: '', label: 'All Teams' }, ...teams.map(t => ({ value: t.id, label: t.name }))];
 
   const filtered = events
     .filter(e => {
@@ -33,16 +36,17 @@ export function EventsPage() {
       return (
         (!q || e.title.toLowerCase().includes(q) || e.location?.toLowerCase().includes(q)) &&
         (!typeFilter || e.type === typeFilter) &&
-        (!statusFilter || e.status === statusFilter)
+        (!statusFilter || e.status === statusFilter) &&
+        (!teamFilter || e.teamIds.includes(teamFilter))
       );
     })
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3 flex-1 max-w-xl">
-          <div className="relative flex-1">
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-2 flex-1 flex-wrap">
+          <div className="relative flex-1 min-w-40">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -51,6 +55,9 @@ export function EventsPage() {
               onChange={e => setSearch(e.target.value)}
             />
           </div>
+          {teams.length > 0 && (
+            <Select options={teamOptions} value={teamFilter} onChange={e => setTeamFilter(e.target.value)} className="w-36" />
+          )}
           <Select options={typeOptions} value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="w-36" />
           <Select options={statusOptions} value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-36" />
         </div>
