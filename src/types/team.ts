@@ -2,6 +2,8 @@ export type SportType =
   | 'soccer' | 'basketball' | 'baseball' | 'softball'
   | 'volleyball' | 'football' | 'hockey' | 'tennis' | 'other';
 
+export type AgeGroup = 'U6' | 'U8' | 'U10' | 'U12' | 'U14' | 'U16' | 'U18' | 'adult';
+
 export interface Team {
   id: string;
   name: string;
@@ -12,6 +14,7 @@ export interface Team {
   coachName?: string;
   coachEmail?: string;
   coachPhone?: string;
+  ageGroup?: AgeGroup;
   createdAt: string;
   updatedAt: string;
 }

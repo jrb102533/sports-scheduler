@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { EventStatusBadge } from './EventStatusBadge';
 import { EventForm } from './EventForm';
+import { SnackVolunteerForm } from './SnackVolunteerForm';
+import { AttendanceTracker } from '@/components/attendance/AttendanceTracker';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
@@ -29,7 +31,8 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
 
   const currentEvent = event;
   const homeTeam = teams.find(t => t.id === currentEvent.homeTeamId);
-  const awayTeam = teams.find(t => t.id === event.awayTeamId);
+  const awayTeam = teams.find(t => t.id === currentEvent.awayTeamId);
+  const isGameOrMatch = event.type === 'game' || event.type === 'match';
 
   function handleRecordResult() {
     const h = parseInt(homeScore);
@@ -96,19 +99,29 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
               <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">{event.notes}</div>
             )}
 
+            {/* Snack Volunteer — games and matches only */}
+            {isGameOrMatch && event.status !== 'cancelled' && (
+              <SnackVolunteerForm event={currentEvent} />
+            )}
+
             {/* Record Result */}
-            {(event.type === 'game' || event.type === 'match') && event.status !== 'cancelled' && event.status !== 'completed' && (
+            {isGameOrMatch && event.status !== 'cancelled' && event.status !== 'completed' && (
               <div className="border border-gray-200 rounded-xl p-4 space-y-3">
                 <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                  <CheckCircle size={14} className="text-green-500" /> Record Result
+                  <CheckCircle size={14} className="text-green-500" /> Record Score
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
                   <Input label={homeTeam?.name ?? 'Home'} type="number" min="0" value={homeScore} onChange={e => setHomeScore(e.target.value)} placeholder="0" />
                   <Input label={awayTeam?.name ?? 'Away'} type="number" min="0" value={awayScore} onChange={e => setAwayScore(e.target.value)} placeholder="0" />
                 </div>
                 <Input label="Notes (optional)" value={resultNotes} onChange={e => setResultNotes(e.target.value)} />
-                <Button size="sm" onClick={handleRecordResult} disabled={!homeScore || !awayScore}>Save Result</Button>
+                <Button size="sm" onClick={handleRecordResult} disabled={!homeScore || !awayScore}>Save Score</Button>
               </div>
+            )}
+
+            {/* Attendance */}
+            {event.status !== 'cancelled' && (
+              <AttendanceTracker event={currentEvent} />
             )}
           </div>
 

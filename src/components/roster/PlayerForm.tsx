@@ -24,6 +24,8 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
   const [position, setPosition] = useState(editPlayer?.position ?? '');
   const [status, setStatus] = useState<PlayerStatus>(editPlayer?.status ?? 'active');
   const [email, setEmail] = useState(editPlayer?.email ?? '');
+  const [parentName, setParentName] = useState(editPlayer?.parentContact?.parentName ?? '');
+  const [parentPhone, setParentPhone] = useState(editPlayer?.parentContact?.parentPhone ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   function validate() {
@@ -38,10 +40,13 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
     if (!validate()) return;
     const now = new Date().toISOString();
     const num = jerseyNumber ? parseInt(jerseyNumber) : undefined;
+    const parentContact = parentName.trim() || parentPhone.trim()
+      ? { parentName: parentName.trim(), parentPhone: parentPhone.trim() }
+      : undefined;
     if (editPlayer) {
-      updatePlayer({ ...editPlayer, firstName: firstName.trim(), lastName: lastName.trim(), jerseyNumber: num, position: position.trim() || undefined, status, email: email.trim() || undefined, updatedAt: now });
+      updatePlayer({ ...editPlayer, firstName: firstName.trim(), lastName: lastName.trim(), jerseyNumber: num, position: position.trim() || undefined, status, email: email.trim() || undefined, parentContact, updatedAt: now });
     } else {
-      addPlayer({ id: crypto.randomUUID(), teamId, firstName: firstName.trim(), lastName: lastName.trim(), jerseyNumber: num, position: position.trim() || undefined, status, email: email.trim() || undefined, createdAt: now, updatedAt: now });
+      addPlayer({ id: crypto.randomUUID(), teamId, firstName: firstName.trim(), lastName: lastName.trim(), jerseyNumber: num, position: position.trim() || undefined, status, email: email.trim() || undefined, parentContact, createdAt: now, updatedAt: now });
     }
     onClose();
   }
@@ -58,7 +63,16 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
           <Input label="Position" value={position} onChange={e => setPosition(e.target.value)} placeholder="e.g. Forward" />
         </div>
         <Select label="Status" value={status} onChange={e => setStatus(e.target.value as PlayerStatus)} options={statusOptions} />
-        <Input label="Email (optional)" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+        <Input label="Player Email (optional)" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+
+        <div className="border-t border-gray-100 pt-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Parent / Guardian Contact</p>
+          <div className="space-y-3">
+            <Input label="Parent Name" value={parentName} onChange={e => setParentName(e.target.value)} placeholder="e.g. Jane Smith" />
+            <Input label="Parent Phone" type="tel" value={parentPhone} onChange={e => setParentPhone(e.target.value)} placeholder="e.g. 555-123-4567" />
+          </div>
+        </div>
+
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button onClick={handleSubmit}>{editPlayer ? 'Save Changes' : 'Add Player'}</Button>

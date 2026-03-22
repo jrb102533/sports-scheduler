@@ -1,4 +1,4 @@
-import type { SportType } from '@/types';
+import type { SportType, AgeGroup } from '@/types';
 
 export const STORAGE_KEYS = {
   TEAMS: 'sportsScheduler_teams',
@@ -6,6 +6,8 @@ export const STORAGE_KEYS = {
   EVENTS: 'sportsScheduler_events',
   NOTIFICATIONS: 'sportsScheduler_notifications',
   NOTIFIED_EVENTS: 'sportsScheduler_notifiedEvents',
+  SETTINGS: 'sportsScheduler_settings',
+  ATTENDANCE_NOTIFIED: 'sportsScheduler_notifiedAttendance',
 } as const;
 
 export const SPORT_TYPE_LABELS: Record<SportType, string> = {
@@ -24,6 +26,19 @@ export const SPORT_TYPES: SportType[] = [
   'soccer', 'basketball', 'baseball', 'softball',
   'volleyball', 'football', 'hockey', 'tennis', 'other',
 ];
+
+export const AGE_GROUPS: AgeGroup[] = ['U6', 'U8', 'U10', 'U12', 'U14', 'U16', 'U18', 'adult'];
+
+export const AGE_GROUP_LABELS: Record<AgeGroup, string> = {
+  U6: 'Under 6',
+  U8: 'Under 8',
+  U10: 'Under 10',
+  U12: 'Under 12',
+  U14: 'Under 14',
+  U16: 'Under 16',
+  U18: 'Under 18',
+  adult: 'Adult',
+};
 
 export const EVENT_TYPE_LABELS = {
   game: 'Game',

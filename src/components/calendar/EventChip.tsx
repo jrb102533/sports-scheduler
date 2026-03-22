@@ -1,3 +1,4 @@
+import { Cookie } from 'lucide-react';
 import type { ScheduledEvent, Team } from '@/types';
 
 interface EventChipProps {
@@ -13,11 +14,12 @@ export function EventChip({ event, teams, onClick }: EventChipProps) {
   return (
     <div
       onClick={e => { e.stopPropagation(); onClick?.(); }}
-      className="text-xs px-1.5 py-0.5 rounded font-medium truncate cursor-pointer hover:opacity-80 text-white"
+      className="text-xs px-1.5 py-0.5 rounded font-medium truncate cursor-pointer hover:opacity-80 text-white flex items-center gap-1"
       style={{ backgroundColor: color }}
       title={event.title}
     >
-      {event.startTime.slice(0, 5)} {event.title}
+      <span className="truncate">{event.startTime.slice(0, 5)} {event.title}</span>
+      {event.snackVolunteer && <Cookie size={10} className="flex-shrink-0 opacity-90" />}
     </div>
   );
 }

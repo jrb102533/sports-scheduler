@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Calendar, CalendarDays, Users, Trophy, Bell } from 'lucide-react';
+import { LayoutDashboard, Calendar, CalendarDays, Users, Trophy, Bell, MessageSquare, Settings } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNotificationStore } from '@/store/useNotificationStore';
+import { useSettingsStore } from '@/store/useSettingsStore';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -10,10 +11,13 @@ const navItems = [
   { to: '/teams', label: 'Teams', icon: Users },
   { to: '/standings', label: 'Standings', icon: Trophy },
   { to: '/notifications', label: 'Notifications', icon: Bell },
+  { to: '/messaging', label: 'Messaging', icon: MessageSquare },
+  { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export function Sidebar() {
   const unread = useNotificationStore(s => s.notifications.filter(n => !n.isRead).length);
+  const kidsMode = useSettingsStore(s => s.settings.kidsSportsMode);
 
   return (
     <aside className="w-60 min-h-screen bg-gray-900 flex flex-col flex-shrink-0">
@@ -22,7 +26,10 @@ export function Sidebar() {
           <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
             <Trophy size={16} className="text-white" />
           </div>
-          <span className="text-white font-bold text-sm">Sports Scheduler</span>
+          <div>
+            <span className="text-white font-bold text-sm block">Sports Scheduler</span>
+            {kidsMode && <span className="text-blue-300 text-xs">Kids Mode</span>}
+          </div>
         </div>
       </div>
       <nav className="flex-1 px-3 py-4 space-y-0.5">

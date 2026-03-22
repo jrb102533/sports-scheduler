@@ -3,6 +3,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { NotificationPanel } from '@/components/layout/NotificationPanel';
 import { useNotificationTrigger } from '@/hooks/useNotificationTrigger';
+import { useAttendanceNotification } from '@/hooks/useAttendanceNotification';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -11,10 +12,13 @@ const PAGE_TITLES: Record<string, string> = {
   '/teams': 'Teams',
   '/standings': 'Standings',
   '/notifications': 'Notifications',
+  '/messaging': 'Messaging',
+  '/settings': 'Settings',
 };
 
 export function MainLayout() {
   useNotificationTrigger();
+  useAttendanceNotification();
   const location = useLocation();
   const title = PAGE_TITLES[location.pathname] ?? (location.pathname.startsWith('/teams/') ? 'Team Details' : 'Sports Scheduler');
 

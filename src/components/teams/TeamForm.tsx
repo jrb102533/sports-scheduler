@@ -4,8 +4,9 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useTeamStore } from '@/store/useTeamStore';
-import { SPORT_TYPES, SPORT_TYPE_LABELS, TEAM_COLORS } from '@/constants';
-import type { Team, SportType } from '@/types';
+import { useSettingsStore } from '@/store/useSettingsStore';
+import { SPORT_TYPES, SPORT_TYPE_LABELS, TEAM_COLORS, AGE_GROUPS, AGE_GROUP_LABELS } from '@/constants';
+import type { Team, SportType, AgeGroup } from '@/types';
 
 interface TeamFormProps {
   open: boolean;
@@ -14,15 +15,18 @@ interface TeamFormProps {
 }
 
 const sportOptions = SPORT_TYPES.map(s => ({ value: s, label: SPORT_TYPE_LABELS[s] }));
+const ageGroupOptions = AGE_GROUPS.map(g => ({ value: g, label: AGE_GROUP_LABELS[g] }));
 
 export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const { addTeam, updateTeam } = useTeamStore();
+  const kidsMode = useSettingsStore(s => s.settings.kidsSportsMode);
   const [name, setName] = useState(editTeam?.name ?? '');
   const [sportType, setSportType] = useState<SportType>(editTeam?.sportType ?? 'soccer');
   const [color, setColor] = useState(editTeam?.color ?? TEAM_COLORS[0]);
   const [homeVenue, setHomeVenue] = useState(editTeam?.homeVenue ?? '');
   const [coachName, setCoachName] = useState(editTeam?.coachName ?? '');
   const [coachEmail, setCoachEmail] = useState(editTeam?.coachEmail ?? '');
+  const [ageGroup, setAgeGroup] = useState<AgeGroup | ''>(editTeam?.ageGroup ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   function validate() {
@@ -35,10 +39,20 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   function handleSubmit() {
     if (!validate()) return;
     const now = new Date().toISOString();
+    const base = {
+      name: name.trim(),
+      sportType,
+      color,
+      homeVenue: homeVenue.trim() || undefined,
+      coachName: coachName.trim() || undefined,
+      coachEmail: coachEmail.trim() || undefined,
+      ageGroup: ageGroup || undefined,
+      updatedAt: now,
+    };
     if (editTeam) {
-      updateTeam({ ...editTeam, name: name.trim(), sportType, color, homeVenue: homeVenue.trim() || undefined, coachName: coachName.trim() || undefined, coachEmail: coachEmail.trim() || undefined, updatedAt: now });
+      updateTeam({ ...editTeam, ...base });
     } else {
-      addTeam({ id: crypto.randomUUID(), name: name.trim(), sportType, color, homeVenue: homeVenue.trim() || undefined, coachName: coachName.trim() || undefined, coachEmail: coachEmail.trim() || undefined, createdAt: now, updatedAt: now });
+      addTeam({ id: crypto.randomUUID(), ...base, createdAt: now });
     }
     onClose();
   }
@@ -48,6 +62,9 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
       <div className="space-y-4">
         <Input label="Team Name" value={name} onChange={e => setName(e.target.value)} error={errors.name} placeholder="e.g. City Hawks" />
         <Select label="Sport" value={sportType} onChange={e => setSportType(e.target.value as SportType)} options={sportOptions} />
+        {kidsMode && (
+          <Select label="Age Group" value={ageGroup} onChange={e => setAgeGroup(e.target.value as AgeGroup)} options={ageGroupOptions} placeholder="Select age group" />
+        )}
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-gray-700">Team Color</label>
           <div className="flex gap-2 flex-wrap">
@@ -59,7 +76,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
           </div>
         </div>
         <Input label="Home Venue (optional)" value={homeVenue} onChange={e => setHomeVenue(e.target.value)} placeholder="e.g. City Park" />
-        <Input label="Coach Name (optional)" value={coachName} onChange={e => setCoachName(e.target.value)} />
+        <Input label={kidsMode ? 'Head Coach' : 'Coach Name (optional)'} value={coachName} onChange={e => setCoachName(e.target.value)} />
         <Input label="Coach Email (optional)" type="email" value={coachEmail} onChange={e => setCoachEmail(e.target.value)} />
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>

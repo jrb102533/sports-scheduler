@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit, Trash2, Plus, Users, Info } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { TeamForm } from '@/components/teams/TeamForm';
 import { PlayerForm } from '@/components/roster/PlayerForm';
 import { RosterTable } from '@/components/roster/RosterTable';
+import { PlayerAttendanceHistory } from '@/components/attendance/PlayerAttendanceHistory';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
-import { SPORT_TYPE_LABELS } from '@/constants';
+import { useSettingsStore } from '@/store/useSettingsStore';
+import { SPORT_TYPE_LABELS, AGE_GROUP_LABELS } from '@/constants';
 
 export function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -17,7 +19,8 @@ export function TeamDetailPage() {
   const { deleteTeam } = useTeamStore();
   const players = usePlayerStore(s => s.players);
   const { deletePlayersForTeam } = usePlayerStore();
-  const [tab, setTab] = useState<'info' | 'roster'>('roster');
+  const kidsMode = useSettingsStore(s => s.settings.kidsSportsMode);
+  const [tab, setTab] = useState<'roster' | 'attendance' | 'info'>('roster');
   const [editOpen, setEditOpen] = useState(false);
   const [addPlayerOpen, setAddPlayerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -46,19 +49,28 @@ export function TeamDetailPage() {
         </div>
         <div className="flex-1">
           <h2 className="text-xl font-bold text-gray-900">{team.name}</h2>
-          <p className="text-sm text-gray-500">{SPORT_TYPE_LABELS[team.sportType]}</p>
+          <p className="text-sm text-gray-500">
+            {SPORT_TYPE_LABELS[team.sportType]}
+            {kidsMode && team.ageGroup && <span className="ml-2 text-blue-500">· {AGE_GROUP_LABELS[team.ageGroup]}</span>}
+          </p>
         </div>
         <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}><Edit size={14} /> Edit</Button>
         <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}><Trash2 size={14} /></Button>
       </div>
 
       <div className="flex gap-1 mb-4 border-b border-gray-200">
-        {(['roster', 'info'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium capitalize transition-colors ${tab === t ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>
-            {t === 'roster' ? <span className="flex items-center gap-1.5"><Users size={14} /> Roster ({teamPlayers.length})</span> : <span className="flex items-center gap-1.5"><Info size={14} /> Info</span>}
-          </button>
-        ))}
+        <button onClick={() => setTab('roster')}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${tab === 'roster' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>
+          <span className="flex items-center gap-1.5"><Users size={14} /> Roster ({teamPlayers.length})</span>
+        </button>
+        <button onClick={() => setTab('attendance')}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${tab === 'attendance' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>
+          <span className="flex items-center gap-1.5"><ClipboardList size={14} /> Attendance</span>
+        </button>
+        <button onClick={() => setTab('info')}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${tab === 'info' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>
+          <span className="flex items-center gap-1.5"><Info size={14} /> Info</span>
+        </button>
       </div>
 
       {tab === 'roster' && (
@@ -67,12 +79,23 @@ export function TeamDetailPage() {
             <h3 className="font-medium text-gray-800">Players</h3>
             <Button size="sm" onClick={() => setAddPlayerOpen(true)}><Plus size={14} /> Add Player</Button>
           </div>
-          <RosterTable players={teamPlayers} teamId={team.id} />
+          <RosterTable players={teamPlayers} teamId={teamId} />
+        </div>
+      )}
+
+      {tab === 'attendance' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h3 className="font-medium text-gray-800">Attendance History</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Last 8 events with attendance recorded</p>
+          </div>
+          <PlayerAttendanceHistory teamId={teamId} />
         </div>
       )}
 
       {tab === 'info' && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3 text-sm">
+          {kidsMode && team.ageGroup && <div><span className="font-medium text-gray-700">Age Group:</span> <span className="text-gray-600 ml-2">{AGE_GROUP_LABELS[team.ageGroup]}</span></div>}
           {team.homeVenue && <div><span className="font-medium text-gray-700">Home Venue:</span> <span className="text-gray-600 ml-2">{team.homeVenue}</span></div>}
           {team.coachName && <div><span className="font-medium text-gray-700">Coach:</span> <span className="text-gray-600 ml-2">{team.coachName}</span></div>}
           {team.coachEmail && <div><span className="font-medium text-gray-700">Email:</span> <span className="text-gray-600 ml-2">{team.coachEmail}</span></div>}
@@ -81,7 +104,7 @@ export function TeamDetailPage() {
       )}
 
       <TeamForm open={editOpen} onClose={() => setEditOpen(false)} editTeam={team} />
-      <PlayerForm open={addPlayerOpen} onClose={() => setAddPlayerOpen(false)} teamId={team.id} />
+      <PlayerForm open={addPlayerOpen} onClose={() => setAddPlayerOpen(false)} teamId={teamId} />
       <ConfirmDialog
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}

@@ -1,5 +1,10 @@
 export type PlayerStatus = 'active' | 'injured' | 'inactive';
 
+export interface ParentContact {
+  parentName: string;
+  parentPhone: string;
+}
+
 export interface Player {
   id: string;
   teamId: string;
@@ -12,6 +17,7 @@ export interface Player {
   phone?: string;
   status: PlayerStatus;
   notes?: string;
+  parentContact?: ParentContact;
   createdAt: string;
   updatedAt: string;
 }

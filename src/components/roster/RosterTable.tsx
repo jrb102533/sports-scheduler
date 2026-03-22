@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Edit, Trash2 } from 'lucide-react';
+import { Edit, Trash2, Phone } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -38,6 +38,7 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Position</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Parent</th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
@@ -49,6 +50,20 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
                 <td className="px-4 py-3 text-gray-600">{player.position ?? '—'}</td>
                 <td className="px-4 py-3">
                   <Badge className={statusColors[player.status]}>{PLAYER_STATUS_LABELS[player.status]}</Badge>
+                </td>
+                <td className="px-4 py-3 text-gray-600">
+                  {player.parentContact?.parentName ? (
+                    <div>
+                      <div className="text-xs text-gray-700">{player.parentContact.parentName}</div>
+                      {player.parentContact.parentPhone && (
+                        <a href={`sms:${player.parentContact.parentPhone}`} className="text-xs text-blue-500 hover:underline flex items-center gap-0.5">
+                          <Phone size={10} /> {player.parentContact.parentPhone}
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-gray-300 text-xs">—</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex justify-end gap-1">
@@ -65,7 +80,7 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
       <ConfirmDialog
         open={!!deletePlayer_}
         onClose={() => setDeletePlayer(null)}
-        onConfirm={() => deletePlayer_  && deletePlayer(deletePlayer_.id)}
+        onConfirm={() => deletePlayer_ && deletePlayer(deletePlayer_.id)}
         title="Remove Player"
         message={`Remove ${deletePlayer_?.firstName} ${deletePlayer_?.lastName} from the roster?`}
         confirmLabel="Remove"
