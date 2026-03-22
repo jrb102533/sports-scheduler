@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, CalendarDays, Trophy, Users } from 'lucide-react';
+import { Plus, CalendarDays, Trophy, Users, Activity } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { EventCard } from '@/components/events/EventCard';
@@ -45,32 +45,68 @@ export function Dashboard() {
   return (
     <div className="p-6 space-y-6">
       {isEmpty && (
-        <Card className="p-6 text-center bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
-          <Trophy size={32} className="text-blue-400 mx-auto mb-3" />
-          <h2 className="text-lg font-bold text-gray-900 mb-1">Welcome to Sports Scheduler</h2>
-          <p className="text-sm text-gray-600 mb-4">Get started by loading demo data or creating your first team.</p>
-          <div className="flex justify-center gap-3">
+        <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #1e1b4b 100%)' }}>
+          <div className="px-8 py-8 flex items-center gap-6">
+            <div className="flex-shrink-0 w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.12)' }}>
+              <Trophy size={32} className="text-amber-300" />
+            </div>
+            <div className="flex-1">
+              <h2 className="text-xl font-bold text-white mb-1">Welcome to Sports Scheduler</h2>
+              <p className="text-blue-200 text-sm">Get started by loading demo data or creating your first team.</p>
+            </div>
             <RoleGuard roles={['admin']}>
-              <Button variant="secondary" onClick={handleSeed} disabled={seeding}>
-                {seeding ? 'Loading…' : 'Load Demo Data'}
-              </Button>
-              <Button onClick={() => navigate('/teams')}><Users size={15} /> Create Team</Button>
+              <div className="flex gap-3 flex-shrink-0">
+                <button
+                  onClick={handleSeed}
+                  disabled={seeding}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white border border-white/20 hover:bg-white/10 transition-colors disabled:opacity-50"
+                >
+                  {seeding ? 'Loading…' : 'Load Demo Data'}
+                </button>
+                <button
+                  onClick={() => navigate('/teams')}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-500 hover:bg-blue-400 text-white transition-colors flex items-center gap-2"
+                >
+                  <Users size={15} /> Create Team
+                </button>
+              </div>
             </RoleGuard>
           </div>
-        </Card>
+        </div>
       )}
 
       <div className="grid grid-cols-3 gap-4">
-        <Card className="p-4 text-center cursor-pointer" onClick={() => navigate('/events')}>
-          <div className="text-2xl font-bold text-blue-600">{events.length}</div>
+        <Card
+          className="p-4 cursor-pointer group"
+          onClick={() => navigate('/events')}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
+              <CalendarDays size={18} />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-gray-900">{events.length}</div>
           <div className="text-sm text-gray-500 mt-0.5">Total Events</div>
         </Card>
-        <Card className="p-4 text-center cursor-pointer" onClick={() => navigate('/teams')}>
-          <div className="text-2xl font-bold text-purple-600">{teams.length}</div>
+        <Card
+          className="p-4 cursor-pointer group"
+          onClick={() => navigate('/teams')}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-purple-50 text-purple-600 group-hover:bg-purple-100 transition-colors">
+              <Users size={18} />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-gray-900">{teams.length}</div>
           <div className="text-sm text-gray-500 mt-0.5">Teams</div>
         </Card>
-        <Card className="p-4 text-center">
-          <div className="text-2xl font-bold text-green-600">{players.length}</div>
+        <Card className="p-4 group">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-emerald-50 text-emerald-600 group-hover:bg-emerald-100 transition-colors">
+              <Activity size={18} />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-gray-900">{players.length}</div>
           <div className="text-sm text-gray-500 mt-0.5">Players</div>
         </Card>
       </div>

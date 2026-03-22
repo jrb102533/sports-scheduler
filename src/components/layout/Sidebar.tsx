@@ -35,14 +35,20 @@ export function Sidebar() {
 
   return (
     <aside className="w-60 min-h-screen bg-gray-900 flex flex-col flex-shrink-0">
-      <div className="px-5 py-5 border-b border-gray-700">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-            <Trophy size={16} className="text-white" />
+      <div className="px-4 py-5 border-b border-gray-700/60">
+        <div className="flex items-center gap-3">
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)' }}
+          >
+            <Trophy size={18} className="text-white" />
           </div>
-          <div>
-            <span className="text-white font-bold text-sm block">Sports Scheduler</span>
-            {kidsMode && <span className="text-blue-300 text-xs">Kids Mode</span>}
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-1">
+              <span className="text-white font-bold text-sm tracking-tight">Sports</span>
+              <span className="text-blue-300 font-medium text-sm tracking-tight">Scheduler</span>
+            </div>
+            {kidsMode && <span className="text-blue-400 text-xs font-medium">Kids Mode</span>}
           </div>
         </div>
       </div>

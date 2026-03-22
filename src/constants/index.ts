@@ -70,6 +70,14 @@ export const PLAYER_STATUS_LABELS = {
   inactive: 'Inactive',
 } as const;
 
+export const EVENT_TYPE_COLORS: Record<string, string> = {
+  game: '#2563eb',
+  match: '#2563eb',
+  practice: '#059669',
+  tournament: '#7c3aed',
+  other: '#6b7280',
+};
+
 export const TEAM_COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e',
   '#14b8a6', '#3b82f6', '#8b5cf6', '#ec4899',
