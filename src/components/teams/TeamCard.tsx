@@ -1,4 +1,4 @@
-import { Users } from 'lucide-react';
+import { Users, Crown } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { SPORT_TYPE_LABELS } from '@/constants';
 import type { Team } from '@/types';
@@ -26,6 +26,9 @@ export function TeamCard({ team, playerCount, onClick }: TeamCardProps) {
         <Users size={14} className="text-gray-400" />
         {playerCount} {playerCount === 1 ? 'player' : 'players'}
       </div>
+      <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+        <Crown size={10} className="text-amber-400" /> {team.ownerName}
+      </p>
       {team.coachName && (
         <p className="text-xs text-gray-500 mt-1">Coach: {team.coachName}</p>
       )}

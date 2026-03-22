@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList, UserCheck } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList, UserCheck, Crown } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { TeamForm } from '@/components/teams/TeamForm';
 import { PlayerForm } from '@/components/roster/PlayerForm';
@@ -152,11 +152,16 @@ export function TeamDetailPage() {
 
       {tab === 'info' && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3 text-sm">
+          <div className="flex items-center gap-1.5">
+            <span className="font-medium text-gray-700">Owner:</span>
+            <span className="text-gray-600 ml-2 flex items-center gap-1">
+              <Crown size={12} className="text-amber-400" /> {team.ownerName}
+            </span>
+          </div>
           {kidsMode && team.ageGroup && <div><span className="font-medium text-gray-700">Age Group:</span> <span className="text-gray-600 ml-2">{AGE_GROUP_LABELS[team.ageGroup]}</span></div>}
           {team.homeVenue && <div><span className="font-medium text-gray-700">Home Venue:</span> <span className="text-gray-600 ml-2">{team.homeVenue}</span></div>}
           {team.coachName && <div><span className="font-medium text-gray-700">Coach:</span> <span className="text-gray-600 ml-2">{team.coachName}</span></div>}
           {team.coachEmail && <div><span className="font-medium text-gray-700">Email:</span> <span className="text-gray-600 ml-2">{team.coachEmail}</span></div>}
-          {!team.homeVenue && !team.coachName && <p className="text-gray-400">No additional info. Edit the team to add details.</p>}
         </div>
       )}
 

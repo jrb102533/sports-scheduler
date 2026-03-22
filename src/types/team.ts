@@ -16,6 +16,7 @@ export interface Team {
   coachPhone?: string;
   ageGroup?: AgeGroup;
   createdBy: string;
+  ownerName: string;
   coachId?: string;
   createdAt: string;
   updatedAt: string;

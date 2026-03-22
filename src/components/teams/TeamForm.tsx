@@ -74,7 +74,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
     if (editTeam) {
       updateTeam({ ...editTeam, ...base });
     } else {
-      addTeam({ id: crypto.randomUUID(), ...base, createdBy: user!.uid, createdAt: now });
+      addTeam({ id: crypto.randomUUID(), ...base, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now });
     }
     onClose();
   }

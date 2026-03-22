@@ -7,8 +7,8 @@ export async function seedDemoData() {
   const now = new Date().toISOString();
   const today = new Date();
 
-  const t1: Team = { id: crypto.randomUUID(), name: 'City Hawks', sportType: 'soccer', color: '#3b82f6', homeVenue: 'City Park Field 1', coachName: 'Alex Morgan', coachEmail: 'alex@cityhawks.com', createdBy: 'demo', createdAt: now, updatedAt: now };
-  const t2: Team = { id: crypto.randomUUID(), name: 'River Lions', sportType: 'soccer', color: '#ef4444', homeVenue: 'Riverside Stadium', coachName: 'Sam Chen', createdBy: 'demo', createdAt: now, updatedAt: now };
+  const t1: Team = { id: crypto.randomUUID(), name: 'City Hawks', sportType: 'soccer', color: '#3b82f6', homeVenue: 'City Park Field 1', coachName: 'Alex Morgan', coachEmail: 'alex@cityhawks.com', createdBy: 'demo', ownerName: 'Demo Admin', createdAt: now, updatedAt: now };
+  const t2: Team = { id: crypto.randomUUID(), name: 'River Lions', sportType: 'soccer', color: '#ef4444', homeVenue: 'Riverside Stadium', coachName: 'Sam Chen', createdBy: 'demo', ownerName: 'Demo Admin', createdAt: now, updatedAt: now };
 
   await useTeamStore.getState().addTeam(t1);
   await useTeamStore.getState().addTeam(t2);
