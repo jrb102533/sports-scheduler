@@ -19,6 +19,7 @@ export interface Player {
   status: PlayerStatus;
   notes?: string;
   parentContact?: ParentContact;
+  parentContact2?: ParentContact;
   createdAt: string;
   updatedAt: string;
 }

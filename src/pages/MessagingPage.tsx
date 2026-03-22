@@ -44,8 +44,8 @@ export function MessagingPage() {
     players.filter(p =>
       teams.some(t => t.id === p.teamId) &&
       (ch === 'sms'
-        ? !!p.parentContact?.parentPhone
-        : !!(p.email || p.parentContact?.parentEmail))
+        ? !!(p.parentContact?.parentPhone || p.parentContact2?.parentPhone)
+        : !!(p.email || p.parentContact?.parentEmail || p.parentContact2?.parentEmail))
     );
 
   const eligiblePlayers = playersForChannel(channel);
@@ -85,14 +85,18 @@ export function MessagingPage() {
 
   const selectedPlayers: Player[] = players.filter(p => selectedIds.has(p.id));
 
-  const phones = selectedPlayers
-    .map(p => p.parentContact?.parentPhone)
-    .filter(Boolean) as string[];
+  const phones = [
+    ...new Set(
+      selectedPlayers.flatMap(p =>
+        [p.parentContact?.parentPhone, p.parentContact2?.parentPhone].filter(Boolean) as string[]
+      )
+    ),
+  ];
 
   const emailAddresses = [
     ...new Set(
       selectedPlayers.flatMap(p =>
-        [p.email, p.parentContact?.parentEmail].filter(Boolean) as string[]
+        [p.email, p.parentContact?.parentEmail, p.parentContact2?.parentEmail].filter(Boolean) as string[]
       )
     ),
   ];
@@ -207,12 +211,13 @@ export function MessagingPage() {
                             <p className="text-sm text-gray-900">{player.firstName} {player.lastName}</p>
                             {channel === 'sms' ? (
                               <p className="text-xs text-gray-500 flex items-center gap-1">
-                                <Phone size={10} /> {player.parentContact?.parentName} · {player.parentContact?.parentPhone}
+                                <Phone size={10} />
+                                {[player.parentContact?.parentPhone, player.parentContact2?.parentPhone].filter(Boolean).join(' · ')}
                               </p>
                             ) : (
                               <p className="text-xs text-gray-500 flex items-center gap-1 truncate">
                                 <Mail size={10} />
-                                {[player.email, player.parentContact?.parentEmail].filter(Boolean).join(', ')}
+                                {[player.email, player.parentContact?.parentEmail, player.parentContact2?.parentEmail].filter(Boolean).join(', ')}
                               </p>
                             )}
                           </div>

@@ -8,7 +8,7 @@ import { usePlayerStore } from '@/store/usePlayerStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { functions } from '@/lib/firebase';
 import { PLAYER_STATUS_LABELS } from '@/constants';
-import type { Player, PlayerStatus } from '@/types';
+import type { Player, PlayerStatus, ParentContact } from '@/types';
 
 interface PlayerFormProps {
   open: boolean;
@@ -23,6 +23,31 @@ const sendInviteFn = httpsCallable<{
   to: string; playerName: string; teamName: string; playerId: string; teamId: string;
 }>(functions, 'sendInvite');
 
+function ParentFields({
+  label,
+  name, setName,
+  phone, setPhone,
+  email, setEmail,
+  emailError,
+}: {
+  label: string;
+  name: string; setName: (v: string) => void;
+  phone: string; setPhone: (v: string) => void;
+  email: string; setEmail: (v: string) => void;
+  emailError?: string;
+}) {
+  return (
+    <div className="border-t border-gray-100 pt-3">
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{label}</p>
+      <div className="space-y-3">
+        <Input label="Name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Jane Smith" />
+        <Input label="Phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 555-123-4567" />
+        <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="e.g. jane@example.com" error={emailError} />
+      </div>
+    </div>
+  );
+}
+
 export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProps) {
   const { addPlayer, updatePlayer } = usePlayerStore();
   const team = useTeamStore(s => s.teams.find(t => t.id === teamId));
@@ -33,9 +58,15 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
   const [position, setPosition] = useState(editPlayer?.position ?? '');
   const [status, setStatus] = useState<PlayerStatus>(editPlayer?.status ?? 'active');
   const [email, setEmail] = useState(editPlayer?.email ?? '');
-  const [parentName, setParentName] = useState(editPlayer?.parentContact?.parentName ?? '');
-  const [parentPhone, setParentPhone] = useState(editPlayer?.parentContact?.parentPhone ?? '');
-  const [parentEmail, setParentEmail] = useState(editPlayer?.parentContact?.parentEmail ?? '');
+
+  const [p1Name, setP1Name] = useState(editPlayer?.parentContact?.parentName ?? '');
+  const [p1Phone, setP1Phone] = useState(editPlayer?.parentContact?.parentPhone ?? '');
+  const [p1Email, setP1Email] = useState(editPlayer?.parentContact?.parentEmail ?? '');
+
+  const [p2Name, setP2Name] = useState(editPlayer?.parentContact2?.parentName ?? '');
+  const [p2Phone, setP2Phone] = useState(editPlayer?.parentContact2?.parentPhone ?? '');
+  const [p2Email, setP2Email] = useState(editPlayer?.parentContact2?.parentEmail ?? '');
+
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
@@ -43,11 +74,20 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
     const e: Record<string, string> = {};
     if (!firstName.trim()) e.firstName = 'First name is required';
     if (!lastName.trim()) e.lastName = 'Last name is required';
-    if (!editPlayer && !email.trim() && !parentEmail.trim()) {
-      e.email = 'A player or parent email is required to send an invite';
+    if (!editPlayer && !email.trim() && !p1Email.trim() && !p2Email.trim()) {
+      e.contactEmail = 'At least one email (player or parent) is required to send an invite';
     }
     setErrors(e);
     return Object.keys(e).length === 0;
+  }
+
+  function buildParentContact(name: string, phone: string, pEmail: string): ParentContact | undefined {
+    if (!name.trim() && !phone.trim() && !pEmail.trim()) return undefined;
+    return {
+      parentName: name.trim(),
+      parentPhone: phone.trim(),
+      ...(pEmail.trim() ? { parentEmail: pEmail.trim() } : {}),
+    };
   }
 
   async function handleSubmit() {
@@ -55,14 +95,16 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
     setSaving(true);
     const now = new Date().toISOString();
     const num = jerseyNumber ? parseInt(jerseyNumber) : undefined;
-    const parentContact = parentName.trim() || parentPhone.trim() || parentEmail.trim()
-      ? { parentName: parentName.trim(), parentPhone: parentPhone.trim(), ...(parentEmail.trim() ? { parentEmail: parentEmail.trim() } : {}) }
-      : undefined;
+
+    const parentContact = buildParentContact(p1Name, p1Phone, p1Email);
+    const parentContact2 = buildParentContact(p2Name, p2Phone, p2Email);
+
     const optionals = {
       ...(num !== undefined ? { jerseyNumber: num } : {}),
       ...(position.trim() ? { position: position.trim() } : {}),
       ...(email.trim() ? { email: email.trim() } : {}),
       ...(parentContact ? { parentContact } : {}),
+      ...(parentContact2 ? { parentContact2 } : {}),
     };
 
     if (editPlayer) {
@@ -71,19 +113,15 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
       const playerId = crypto.randomUUID();
       addPlayer({ id: playerId, teamId, firstName: firstName.trim(), lastName: lastName.trim(), status, createdAt: now, updatedAt: now, ...optionals });
 
-      const contactEmail = email.trim() || parentEmail.trim();
-      if (contactEmail && team) {
-        try {
-          await sendInviteFn({
-            to: contactEmail,
-            playerName: `${firstName.trim()} ${lastName.trim()}`,
-            teamName: team.name,
-            playerId,
-            teamId,
-          });
-        } catch (err) {
-          // Non-fatal: player was added, invite email failed silently
-          console.error('Invite send failed:', err);
+      if (team) {
+        const playerName = `${firstName.trim()} ${lastName.trim()}`;
+        const inviteEmails = [email.trim(), p1Email.trim(), p2Email.trim()].filter(Boolean);
+        for (const to of inviteEmails) {
+          try {
+            await sendInviteFn({ to, playerName, teamName: team.name, playerId, teamId });
+          } catch (err) {
+            console.error('Invite send failed:', err);
+          }
         }
       }
     }
@@ -105,32 +143,34 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
         </div>
         <Select label="Status" value={status} onChange={e => setStatus(e.target.value as PlayerStatus)} options={statusOptions} />
         <Input
-          label={editPlayer ? 'Player Email' : 'Player Email *'}
+          label={editPlayer ? 'Player Email' : 'Player Email'}
           type="email"
           value={email}
           onChange={e => setEmail(e.target.value)}
-          error={errors.email}
           placeholder="player@example.com"
         />
 
-        <div className="border-t border-gray-100 pt-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Parent / Guardian Contact</p>
-          <div className="space-y-3">
-            <Input label="Parent Name" value={parentName} onChange={e => setParentName(e.target.value)} placeholder="e.g. Jane Smith" />
-            <Input label="Parent Phone" type="tel" value={parentPhone} onChange={e => setParentPhone(e.target.value)} placeholder="e.g. 555-123-4567" />
-            <Input
-              label={editPlayer ? 'Parent Email' : 'Parent Email *'}
-              type="email"
-              value={parentEmail}
-              onChange={e => setParentEmail(e.target.value)}
-              placeholder="e.g. jane@example.com"
-            />
-          </div>
-        </div>
+        <ParentFields
+          label="Parent / Guardian 1"
+          name={p1Name} setName={setP1Name}
+          phone={p1Phone} setPhone={setP1Phone}
+          email={p1Email} setEmail={setP1Email}
+        />
+
+        <ParentFields
+          label="Parent / Guardian 2 (optional)"
+          name={p2Name} setName={setP2Name}
+          phone={p2Phone} setPhone={setP2Phone}
+          email={p2Email} setEmail={setP2Email}
+        />
+
+        {errors.contactEmail && (
+          <p className="text-xs text-red-600">{errors.contactEmail}</p>
+        )}
 
         {!editPlayer && (
           <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2">
-            * An invite email will be sent to the player or parent email so they can join the team.
+            An invite email will be sent to all provided email addresses so they can join the team.
           </p>
         )}
 
