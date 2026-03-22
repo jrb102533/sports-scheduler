@@ -8,7 +8,7 @@ import {
   updateProfile,
   type User,
 } from 'firebase/auth';
-import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, getDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { UserRole, UserProfile, Team } from '@/types';
 
@@ -46,9 +46,23 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
       set({ user, loading: false });
 
-      profileUnsub = onSnapshot(doc(db, 'users', user.uid), (snap) => {
-        if (snap.exists()) {
-          set({ profile: snap.data() as UserProfile });
+      profileUnsub = onSnapshot(doc(db, 'users', user.uid), async (snap) => {
+        if (!snap.exists()) return;
+        const profile = snap.data() as UserProfile;
+        set({ profile });
+
+        // Auto-link: if no team/player yet, check if an invite exists for this email
+        if (!profile.teamId && !profile.playerId && user.email) {
+          const inviteSnap = await getDoc(doc(db, 'invites', user.email.toLowerCase()));
+          if (inviteSnap.exists()) {
+            const invite = inviteSnap.data();
+            await setDoc(doc(db, 'users', user.uid), {
+              ...profile,
+              teamId: invite.teamId,
+              playerId: invite.playerId,
+            });
+            await deleteDoc(doc(db, 'invites', user.email.toLowerCase()));
+          }
         }
       });
     });

@@ -2,16 +2,13 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
-import * as twilio from 'twilio';
 import * as nodemailer from 'nodemailer';
 
 admin.initializeApp();
 
 // ─── Secrets ────────────────────────────────────────────────────────────────
 
-const twilioAccountSid = defineSecret('TWILIO_ACCOUNT_SID');
-const twilioAuthToken = defineSecret('TWILIO_AUTH_TOKEN');
-const twilioFromNumber = defineSecret('TWILIO_FROM_NUMBER');
+// Twilio secrets defined here when SMS is re-enabled (TD-002)
 
 const smtpHost = defineSecret('SMTP_HOST');
 const smtpPort = defineSecret('SMTP_PORT');
@@ -19,77 +16,7 @@ const smtpUser = defineSecret('SMTP_USER');
 const smtpPass = defineSecret('SMTP_PASS');
 const emailFrom = defineSecret('EMAIL_FROM');
 
-// ─── SMS (feature-flagged off in app; kept here for when it's enabled) ──────
-
-interface SendSmsData {
-  to: string[];
-  message: string;
-}
-
-interface SendSmsResult {
-  sent: number;
-  failed: number;
-  errors: string[];
-}
-
-export const sendSms = onCall<SendSmsData, Promise<SendSmsResult>>(
-  { secrets: [twilioAccountSid, twilioAuthToken, twilioFromNumber] },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Must be logged in to send messages.');
-    }
-
-    const callerDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
-    const callerRole = callerDoc.data()?.role;
-    if (!['admin', 'coach'].includes(callerRole)) {
-      throw new HttpsError('permission-denied', 'Only admins and coaches can send SMS.');
-    }
-
-    const { to, message } = request.data;
-    if (!to?.length) throw new HttpsError('invalid-argument', 'No recipients provided.');
-    if (!message?.trim()) throw new HttpsError('invalid-argument', 'Message cannot be empty.');
-    if (to.length > 100) throw new HttpsError('invalid-argument', 'Maximum 100 recipients per message.');
-
-    const client = twilio.default(twilioAccountSid.value(), twilioAuthToken.value());
-
-    const results = await Promise.allSettled(
-      to.map((phone: string) =>
-        client.messages.create({
-          to: phone,
-          from: twilioFromNumber.value(),
-          body: message.trim(),
-        })
-      )
-    );
-
-    const errors: string[] = [];
-    results.forEach((result, i) => {
-      if (result.status === 'rejected') {
-        errors.push(`${to[i]}: ${result.reason?.message ?? 'Unknown error'}`);
-      }
-    });
-
-    return {
-      sent: results.filter(r => r.status === 'fulfilled').length,
-      failed: errors.length,
-      errors,
-    };
-  }
-);
-
-// ─── Email messaging (callable) ──────────────────────────────────────────────
-
-interface SendEmailData {
-  to: string[];
-  subject: string;
-  message: string;
-}
-
-interface SendEmailResult {
-  sent: number;
-  failed: number;
-  errors: string[];
-}
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function createTransporter() {
   return nodemailer.createTransport({
@@ -100,27 +27,36 @@ function createTransporter() {
   });
 }
 
+async function assertAdminOrCoach(uid: string) {
+  const doc = await admin.firestore().doc(`users/${uid}`).get();
+  const role = doc.data()?.role;
+  if (!['admin', 'coach'].includes(role)) {
+    throw new HttpsError('permission-denied', 'Only admins and coaches can perform this action.');
+  }
+}
+
+// ─── SMS (TD-002 — disabled until Twilio account is set up) ──────────────────
+// Uncomment and restore Twilio secrets above to re-enable.
+// export const sendSms = ...
+
+// ─── Email messaging (callable) ───────────────────────────────────────────────
+
+interface SendEmailData { to: string[]; subject: string; message: string; }
+interface SendEmailResult { sent: number; failed: number; errors: string[]; }
+
 export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
   { secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom] },
   async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Must be logged in to send messages.');
-    }
-
-    const callerDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
-    const callerRole = callerDoc.data()?.role;
-    if (!['admin', 'coach'].includes(callerRole)) {
-      throw new HttpsError('permission-denied', 'Only admins and coaches can send email.');
-    }
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+    await assertAdminOrCoach(request.auth.uid);
 
     const { to, subject, message } = request.data;
     if (!to?.length) throw new HttpsError('invalid-argument', 'No recipients provided.');
     if (!subject?.trim()) throw new HttpsError('invalid-argument', 'Subject cannot be empty.');
     if (!message?.trim()) throw new HttpsError('invalid-argument', 'Message cannot be empty.');
-    if (to.length > 100) throw new HttpsError('invalid-argument', 'Maximum 100 recipients per message.');
+    if (to.length > 100) throw new HttpsError('invalid-argument', 'Maximum 100 recipients.');
 
     const transporter = createTransporter();
-
     const results = await Promise.allSettled(
       to.map((address: string) =>
         transporter.sendMail({
@@ -130,7 +66,7 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
           text: message.trim(),
           html: `
             <div style="font-family:sans-serif;max-width:520px;margin:auto">
-              <p style="color:#374151;white-space:pre-wrap">${message.trim()}</p>
+              <p style="color:#374151;white-space:pre-wrap">${message.trim().replace(/</g, '&lt;')}</p>
               <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
               <p style="color:#9ca3af;font-size:12px">Sent via Sports Scheduler</p>
             </div>
@@ -146,17 +82,72 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
       }
     });
 
-    return {
-      sent: results.filter(r => r.status === 'fulfilled').length,
-      failed: errors.length,
-      errors,
-    };
+    return { sent: results.filter(r => r.status === 'fulfilled').length, failed: errors.length, errors };
   }
 );
 
-// ─── Email notifications ─────────────────────────────────────────────────────
-// Triggered whenever a new notification doc is written to users/{uid}/notifications/{notifId}.
-// Looks up the user's email and sends the notification via SMTP.
+// ─── Player invite ─────────────────────────────────────────────────────────────
+// Stores an invite record and sends a welcome email. The client checks
+// invites/{email} on signup/login to auto-link the player record.
+
+interface SendInviteData {
+  to: string;
+  playerName: string;
+  teamName: string;
+  playerId: string;
+  teamId: string;
+}
+
+export const sendInvite = onCall<SendInviteData>(
+  { secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+    await assertAdminOrCoach(request.auth.uid);
+
+    const { to, playerName, teamName, playerId, teamId } = request.data;
+    if (!to?.trim()) throw new HttpsError('invalid-argument', 'Email address is required.');
+
+    const appUrl = 'https://first-whistle-e76f4.web.app';
+
+    // Store invite so auto-link can find it on signup/login
+    await admin.firestore().doc(`invites/${to.toLowerCase().trim()}`).set({
+      playerId,
+      teamId,
+      playerName,
+      teamName,
+      invitedAt: new Date().toISOString(),
+    });
+
+    const transporter = createTransporter();
+    await transporter.sendMail({
+      from: emailFrom.value(),
+      to: to.trim(),
+      subject: `You've been added to ${teamName} on Sports Scheduler`,
+      text: `Hi ${playerName},\n\nYou've been added to ${teamName} on Sports Scheduler.\n\nSign up or log in to view your schedule, track attendance, and stay connected with your team:\n${appUrl}\n\nSee you on the field!`,
+      html: `
+        <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
+          <div style="background:linear-gradient(135deg,#1d4ed8,#4f46e5);border-radius:12px;padding:24px;margin-bottom:24px;text-align:center">
+            <h1 style="color:white;margin:0;font-size:22px">Sports Scheduler</h1>
+          </div>
+          <h2 style="color:#111827">Hi ${playerName},</h2>
+          <p style="color:#374151">You've been added to <strong>${teamName}</strong> on Sports Scheduler.</p>
+          <p style="color:#374151">Sign up or log in to view your schedule, track attendance, and stay connected with your team.</p>
+          <div style="text-align:center;margin:32px 0">
+            <a href="${appUrl}" style="background:#2563eb;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
+              View My Team
+            </a>
+          </div>
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
+          <p style="color:#9ca3af;font-size:12px;text-align:center">
+            You received this because a coach added you to their roster on Sports Scheduler.
+          </p>
+        </div>
+      `,
+    });
+  }
+);
+
+// ─── Email notifications (Firestore trigger) ──────────────────────────────────
 
 export const onNotificationCreated = onDocumentCreated(
   {
@@ -173,14 +164,13 @@ export const onNotificationCreated = onDocumentCreated(
     if (!userEmail) return;
 
     const transporter = createTransporter();
-
     await transporter.sendMail({
       from: emailFrom.value(),
       to: userEmail,
       subject: notif.title,
       text: notif.message,
       html: `
-        <div style="font-family:sans-serif;max-width:480px;margin:auto">
+        <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px">
           <h2 style="color:#1d4ed8">${notif.title}</h2>
           <p style="color:#374151">${notif.message}</p>
           <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>

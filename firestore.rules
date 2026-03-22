@@ -61,5 +61,11 @@ service cloud.firestore {
       allow create, delete: if isAdmin() || isCoach();
       allow update: if isAdmin() || isCoach();
     }
+
+    // Invite records — written by Cloud Function (admin SDK), read by invitee only
+    match /invites/{email} {
+      allow read: if request.auth != null && request.auth.token.email == email;
+      allow write: if false;
+    }
   }
 }

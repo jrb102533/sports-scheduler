@@ -10,8 +10,6 @@ import { functions } from '@/lib/firebase';
 import { FEATURE_SMS } from '@/lib/features';
 import type { Player, Team } from '@/types';
 
-// TODO (Tech Debt): Replace mailto: with sendEmail Cloud Function once Firebase
-// project is upgraded to Blaze plan. See TECH_DEBT.md.
 
 type Channel = 'sms' | 'email';
 type SendState = 'idle' | 'sending' | 'success' | 'error';
@@ -20,8 +18,7 @@ const sendSms = httpsCallable<{ to: string[]; message: string }, { sent: number;
   functions, 'sendSms'
 );
 
-// TD-001: swap mailto: for this callable once Blaze plan is enabled
-// const sendEmailFn = httpsCallable<{ to: string[]; subject: string; message: string }, { sent: number; failed: number; errors: string[] }>(functions, 'sendEmail');
+const sendEmailFn = httpsCallable<{ to: string[]; subject: string; message: string }, { sent: number; failed: number; errors: string[] }>(functions, 'sendEmail');
 
 export function MessagingPage() {
   const allTeams = useTeamStore(s => s.teams);
@@ -100,13 +97,28 @@ export function MessagingPage() {
     ),
   ];
 
-  const mailtoUri = emailAddresses.length > 0
-    ? `mailto:${emailAddresses.join(',')}?subject=${encodeURIComponent(subject.trim())}&body=${encodeURIComponent(message.trim())}`
-    : '';
-
   const canSend = channel === 'sms'
     ? phones.length > 0 && message.trim().length > 0
     : emailAddresses.length > 0 && subject.trim().length > 0 && message.trim().length > 0;
+
+  async function handleSendEmail() {
+    if (!canSend || sendState === 'sending') return;
+    setSendState('sending');
+    setSendResult(null);
+    try {
+      const result = await sendEmailFn({ to: emailAddresses, subject: subject.trim(), message: message.trim() });
+      setSendResult(result.data);
+      setSendState(result.data.failed === 0 ? 'success' : 'error');
+      if (result.data.failed === 0) {
+        setMessage('');
+        setSubject('');
+        setSelectedIds(new Set());
+      }
+    } catch (e: unknown) {
+      setSendResult({ sent: 0, failed: emailAddresses.length, errors: [(e as Error).message] });
+      setSendState('error');
+    }
+  }
 
   async function handleSendSms() {
     if (!canSend || sendState === 'sending') return;
@@ -267,8 +279,8 @@ export function MessagingPage() {
               )}
             </div>
 
-            {/* SMS send result feedback */}
-            {channel === 'sms' && sendResult && (
+            {/* Send result feedback */}
+            {sendResult && (
               <div className={`flex items-start gap-2 text-sm rounded-lg px-3 py-2 ${sendState === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                 {sendState === 'success'
                   ? <CheckCircle size={16} className="mt-0.5 shrink-0" />
@@ -298,15 +310,14 @@ export function MessagingPage() {
                   <MessageSquare size={15} />
                   {sendState === 'sending' ? 'Sending…' : `Send SMS${phones.length > 0 ? ` to ${phones.length}` : ''}`}
                 </Button>
-              ) : canSend ? (
-                <a href={mailtoUri} className="block">
-                  <Button className="w-full">
-                    <Mail size={15} /> Open Email to {emailAddresses.length} recipient{emailAddresses.length !== 1 ? 's' : ''}
-                  </Button>
-                </a>
               ) : (
-                <Button className="w-full" disabled>
-                  <Mail size={15} /> Select recipients to send
+                <Button
+                  className="w-full"
+                  disabled={!canSend || sendState === 'sending'}
+                  onClick={handleSendEmail}
+                >
+                  <Mail size={15} />
+                  {sendState === 'sending' ? 'Sending…' : canSend ? `Send Email to ${emailAddresses.length} recipient${emailAddresses.length !== 1 ? 's' : ''}` : 'Select recipients to send'}
                 </Button>
               )}
             </div>

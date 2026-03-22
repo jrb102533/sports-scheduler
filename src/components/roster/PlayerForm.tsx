@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { httpsCallable } from 'firebase/functions';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { usePlayerStore } from '@/store/usePlayerStore';
+import { useTeamStore } from '@/store/useTeamStore';
+import { functions } from '@/lib/firebase';
 import { PLAYER_STATUS_LABELS } from '@/constants';
 import type { Player, PlayerStatus } from '@/types';
 
@@ -16,8 +19,14 @@ interface PlayerFormProps {
 
 const statusOptions = Object.entries(PLAYER_STATUS_LABELS).map(([value, label]) => ({ value, label }));
 
+const sendInviteFn = httpsCallable<{
+  to: string; playerName: string; teamName: string; playerId: string; teamId: string;
+}>(functions, 'sendInvite');
+
 export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProps) {
   const { addPlayer, updatePlayer } = usePlayerStore();
+  const team = useTeamStore(s => s.teams.find(t => t.id === teamId));
+
   const [firstName, setFirstName] = useState(editPlayer?.firstName ?? '');
   const [lastName, setLastName] = useState(editPlayer?.lastName ?? '');
   const [jerseyNumber, setJerseyNumber] = useState(editPlayer?.jerseyNumber?.toString() ?? '');
@@ -28,17 +37,22 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
   const [parentPhone, setParentPhone] = useState(editPlayer?.parentContact?.parentPhone ?? '');
   const [parentEmail, setParentEmail] = useState(editPlayer?.parentContact?.parentEmail ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
   function validate() {
     const e: Record<string, string> = {};
     if (!firstName.trim()) e.firstName = 'First name is required';
     if (!lastName.trim()) e.lastName = 'Last name is required';
+    if (!editPlayer && !email.trim() && !parentEmail.trim()) {
+      e.email = 'A player or parent email is required to send an invite';
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!validate()) return;
+    setSaving(true);
     const now = new Date().toISOString();
     const num = jerseyNumber ? parseInt(jerseyNumber) : undefined;
     const parentContact = parentName.trim() || parentPhone.trim() || parentEmail.trim()
@@ -54,8 +68,27 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
     if (editPlayer) {
       updatePlayer({ ...editPlayer, firstName: firstName.trim(), lastName: lastName.trim(), status, updatedAt: now, ...optionals });
     } else {
-      addPlayer({ id: crypto.randomUUID(), teamId, firstName: firstName.trim(), lastName: lastName.trim(), status, createdAt: now, updatedAt: now, ...optionals });
+      const playerId = crypto.randomUUID();
+      addPlayer({ id: playerId, teamId, firstName: firstName.trim(), lastName: lastName.trim(), status, createdAt: now, updatedAt: now, ...optionals });
+
+      const contactEmail = email.trim() || parentEmail.trim();
+      if (contactEmail && team) {
+        try {
+          await sendInviteFn({
+            to: contactEmail,
+            playerName: `${firstName.trim()} ${lastName.trim()}`,
+            teamName: team.name,
+            playerId,
+            teamId,
+          });
+        } catch (err) {
+          // Non-fatal: player was added, invite email failed silently
+          console.error('Invite send failed:', err);
+        }
+      }
     }
+
+    setSaving(false);
     onClose();
   }
 
@@ -71,20 +104,39 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
           <Input label="Position" value={position} onChange={e => setPosition(e.target.value)} placeholder="e.g. Forward" />
         </div>
         <Select label="Status" value={status} onChange={e => setStatus(e.target.value as PlayerStatus)} options={statusOptions} />
-        <Input label="Player Email (optional)" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+        <Input
+          label={editPlayer ? 'Player Email' : 'Player Email *'}
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          error={errors.email}
+          placeholder="player@example.com"
+        />
 
         <div className="border-t border-gray-100 pt-3">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Parent / Guardian Contact</p>
           <div className="space-y-3">
             <Input label="Parent Name" value={parentName} onChange={e => setParentName(e.target.value)} placeholder="e.g. Jane Smith" />
             <Input label="Parent Phone" type="tel" value={parentPhone} onChange={e => setParentPhone(e.target.value)} placeholder="e.g. 555-123-4567" />
-            <Input label="Parent Email" type="email" value={parentEmail} onChange={e => setParentEmail(e.target.value)} placeholder="e.g. jane@example.com" />
+            <Input
+              label={editPlayer ? 'Parent Email' : 'Parent Email *'}
+              type="email"
+              value={parentEmail}
+              onChange={e => setParentEmail(e.target.value)}
+              placeholder="e.g. jane@example.com"
+            />
           </div>
         </div>
 
+        {!editPlayer && (
+          <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2">
+            * An invite email will be sent to the player or parent email so they can join the team.
+          </p>
+        )}
+
         <div className="flex justify-end gap-3 pt-2">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit}>{editPlayer ? 'Save Changes' : 'Add Player'}</Button>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={saving}>{saving ? 'Saving…' : editPlayer ? 'Save Changes' : 'Add Player'}</Button>
         </div>
       </div>
     </Modal>
