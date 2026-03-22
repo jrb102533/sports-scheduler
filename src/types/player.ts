@@ -3,6 +3,7 @@ export type PlayerStatus = 'active' | 'injured' | 'inactive';
 export interface ParentContact {
   parentName: string;
   parentPhone: string;
+  parentEmail?: string;
 }
 
 export interface Player {

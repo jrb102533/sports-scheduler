@@ -48,39 +48,18 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     const now = new Date().toISOString();
     const teamIds = [...new Set([homeTeamId, awayTeamId].filter(Boolean))];
 
+    const optionals = {
+      ...(endTime ? { endTime } : {}),
+      ...(location.trim() ? { location: location.trim() } : {}),
+      ...(homeTeamId ? { homeTeamId } : {}),
+      ...(awayTeamId ? { awayTeamId } : {}),
+      ...(notes.trim() ? { notes: notes.trim() } : {}),
+    };
+
     if (editEvent) {
-      updateEvent({
-        ...editEvent,
-        title: title.trim(),
-        type,
-        date,
-        startTime,
-        endTime: endTime || undefined,
-        location: location.trim() || undefined,
-        homeTeamId: homeTeamId || undefined,
-        awayTeamId: awayTeamId || undefined,
-        teamIds,
-        notes: notes.trim() || undefined,
-        updatedAt: now,
-      });
+      updateEvent({ ...editEvent, title: title.trim(), type, date, startTime, teamIds, updatedAt: now, ...optionals });
     } else {
-      addEvent({
-        id: crypto.randomUUID(),
-        title: title.trim(),
-        type,
-        status: 'scheduled' as EventStatus,
-        date,
-        startTime,
-        endTime: endTime || undefined,
-        location: location.trim() || undefined,
-        homeTeamId: homeTeamId || undefined,
-        awayTeamId: awayTeamId || undefined,
-        teamIds,
-        notes: notes.trim() || undefined,
-        isRecurring: false,
-        createdAt: now,
-        updatedAt: now,
-      });
+      addEvent({ id: crypto.randomUUID(), title: title.trim(), type, status: 'scheduled' as EventStatus, date, startTime, teamIds, isRecurring: false, createdAt: now, updatedAt: now, ...optionals });
     }
     onClose();
   }

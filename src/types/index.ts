@@ -5,3 +5,4 @@ export type { TeamStandingRow, StandingsFilter } from './standings';
 export type { NotificationType, AppNotification } from './notification';
 export type { AppSettings } from './settings';
 export type { UserRole, UserProfile } from './auth';
+export type { JoinRequest } from './joinRequest';

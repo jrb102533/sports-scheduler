@@ -4,12 +4,13 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  sendEmailVerification,
   updateProfile,
   type User,
 } from 'firebase/auth';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import type { UserRole, UserProfile } from '@/types';
+import type { UserRole, UserProfile, Team } from '@/types';
 
 interface AuthStore {
   user: User | null;
@@ -68,10 +69,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         email,
         displayName,
         role,
-        teamId,
         createdAt: new Date().toISOString(),
+        ...(teamId ? { teamId } : {}),
       };
       await setDoc(doc(db, 'users', user.uid), profile);
+      await sendEmailVerification(user);
     } catch (e: unknown) {
       set({ error: (e as Error).message });
       throw e;
@@ -111,11 +113,11 @@ export function hasRole(profile: UserProfile | null, ...roles: UserRole[]): bool
   return roles.includes(profile.role);
 }
 
-export function canEdit(profile: UserProfile | null, teamId?: string): boolean {
+export function canEdit(profile: UserProfile | null, team?: Team | null): boolean {
   if (!profile) return false;
   if (profile.role === 'admin') return true;
-  if (profile.role === 'coach') return !teamId || profile.teamId === teamId;
-  return false;
+  if (!team) return false;
+  return team.createdBy === profile.uid || team.coachId === profile.uid;
 }
 
 export function isReadOnly(profile: UserProfile | null): boolean {

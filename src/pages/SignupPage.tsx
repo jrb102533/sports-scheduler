@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { MailCheck } from 'lucide-react';
 import { AuthLayout } from '@/layouts/AuthLayout';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useAuthStore } from '@/store/useAuthStore';
-import { useTeamStore } from '@/store/useTeamStore';
 import type { UserRole } from '@/types';
 
 const roleOptions = [
@@ -23,20 +23,16 @@ const roleDescriptions: Record<UserRole, string> = {
 };
 
 export function SignupPage() {
-  const { signup, error, clearError } = useAuthStore();
-  const teams = useTeamStore(s => s.teams);
+  const { signup, logout, error, clearError } = useAuthStore();
   const navigate = useNavigate();
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [role, setRole] = useState<UserRole>('coach');
-  const [teamId, setTeamId] = useState('');
   const [loading, setLoading] = useState(false);
   const [validationError, setValidationError] = useState('');
-
-  const teamOptions = teams.map(t => ({ value: t.id, label: t.name }));
-  const needsTeam = role === 'coach' || role === 'player' || role === 'parent';
+  const [verificationSent, setVerificationSent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,8 +45,9 @@ export function SignupPage() {
 
     setLoading(true);
     try {
-      await signup(email, password, displayName.trim(), role, teamId || undefined);
-      navigate('/');
+      await signup(email, password, displayName.trim(), role);
+      await logout();
+      setVerificationSent(true);
     } catch {
       // error set in store
     } finally {
@@ -59,6 +56,25 @@ export function SignupPage() {
   }
 
   const displayedError = validationError || error;
+
+  if (verificationSent) {
+    return (
+      <AuthLayout title="Check your email" subtitle="One more step">
+        <div className="text-center space-y-4">
+          <div className="flex justify-center">
+            <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center">
+              <MailCheck size={32} className="text-blue-600" />
+            </div>
+          </div>
+          <p className="text-sm text-gray-600">
+            We sent a verification link to <span className="font-medium text-gray-900">{email}</span>.
+            Click the link in that email, then sign in below.
+          </p>
+          <Button className="w-full" onClick={() => navigate('/login')}>Go to Sign In</Button>
+        </div>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout title="Create account" subtitle="Join Sports Scheduler">
@@ -72,15 +88,6 @@ export function SignupPage() {
           <Select label="Role" value={role} onChange={e => setRole(e.target.value as UserRole)} options={roleOptions} />
           {role && (
             <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">{roleDescriptions[role]}</p>
-          )}
-          {needsTeam && teamOptions.length > 0 && (
-            <Select
-              label={role === 'coach' ? 'Team to Manage' : 'Your Team'}
-              value={teamId}
-              onChange={e => setTeamId(e.target.value)}
-              options={teamOptions}
-              placeholder="Select a team"
-            />
           )}
         </div>
 

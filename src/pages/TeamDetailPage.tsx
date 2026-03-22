@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { TeamForm } from '@/components/teams/TeamForm';
 import { PlayerForm } from '@/components/roster/PlayerForm';
@@ -13,6 +13,9 @@ import { useSettingsStore } from '@/store/useSettingsStore';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { useAuthStore, canEdit } from '@/store/useAuthStore';
 import { SPORT_TYPE_LABELS, AGE_GROUP_LABELS } from '@/constants';
+import { collection, getDocs, doc, setDoc, updateDoc, query, where } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import type { JoinRequest } from '@/types';
 
 export function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -23,13 +26,34 @@ export function TeamDetailPage() {
   const { deletePlayersForTeam } = usePlayerStore();
   const kidsMode = useSettingsStore(s => s.settings.kidsSportsMode);
   const profile = useAuthStore(s => s.profile);
-  const userCanEdit = canEdit(profile, id);
-  const [tab, setTab] = useState<'roster' | 'attendance' | 'info'>('roster');
+  const team = teams.find(t => t.id === id);
+  const userCanEdit = canEdit(profile, team ?? null);
+  const [tab, setTab] = useState<'roster' | 'attendance' | 'info' | 'requests'>('roster');
   const [editOpen, setEditOpen] = useState(false);
   const [addPlayerOpen, setAddPlayerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const team = teams.find(t => t.id === id);
+  // Join requests state
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [processingUids, setProcessingUids] = useState<Set<string>>(new Set());
+
+  const canSeeRequests = profile && team && (
+    profile.role === 'admin' ||
+    team.createdBy === profile.uid ||
+    team.coachId === profile.uid
+  );
+
+  useEffect(() => {
+    if (tab !== 'requests' || !team || !canSeeRequests) return;
+    setRequestsLoading(true);
+    getDocs(query(collection(db, 'teams', team.id, 'joinRequests'), where('status', '==', 'pending')))
+      .then(snap => {
+        setJoinRequests(snap.docs.map(d => d.data() as JoinRequest));
+      })
+      .finally(() => setRequestsLoading(false));
+  }, [tab, team?.id, canSeeRequests]);
+
   if (!team) return <div className="p-6 text-gray-500">Team not found.</div>;
 
   const teamId = team.id;
@@ -39,6 +63,29 @@ export function TeamDetailPage() {
     deletePlayersForTeam(teamId);
     deleteTeam(teamId);
     navigate('/teams');
+  }
+
+  async function handleApprove(request: JoinRequest) {
+    setProcessingUids(prev => new Set(prev).add(request.uid));
+    try {
+      // Update user's teamId
+      await setDoc(doc(db, 'users', request.uid), { teamId: teamId }, { merge: true });
+      // Update request status
+      await updateDoc(doc(db, 'teams', teamId, 'joinRequests', request.uid), { status: 'approved' });
+      setJoinRequests(prev => prev.filter(r => r.uid !== request.uid));
+    } finally {
+      setProcessingUids(prev => { const s = new Set(prev); s.delete(request.uid); return s; });
+    }
+  }
+
+  async function handleReject(request: JoinRequest) {
+    setProcessingUids(prev => new Set(prev).add(request.uid));
+    try {
+      await updateDoc(doc(db, 'teams', teamId, 'joinRequests', request.uid), { status: 'rejected' });
+      setJoinRequests(prev => prev.filter(r => r.uid !== request.uid));
+    } finally {
+      setProcessingUids(prev => { const s = new Set(prev); s.delete(request.uid); return s; });
+    }
   }
 
   return (
@@ -75,6 +122,12 @@ export function TeamDetailPage() {
           className={`px-4 py-2 text-sm font-medium transition-colors ${tab === 'info' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>
           <span className="flex items-center gap-1.5"><Info size={14} /> Info</span>
         </button>
+        {canSeeRequests && (
+          <button onClick={() => setTab('requests')}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${tab === 'requests' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>
+            <span className="flex items-center gap-1.5"><UserCheck size={14} /> Requests</span>
+          </button>
+        )}
       </div>
 
       {tab === 'roster' && (
@@ -104,6 +157,51 @@ export function TeamDetailPage() {
           {team.coachName && <div><span className="font-medium text-gray-700">Coach:</span> <span className="text-gray-600 ml-2">{team.coachName}</span></div>}
           {team.coachEmail && <div><span className="font-medium text-gray-700">Email:</span> <span className="text-gray-600 ml-2">{team.coachEmail}</span></div>}
           {!team.homeVenue && !team.coachName && <p className="text-gray-400">No additional info. Edit the team to add details.</p>}
+        </div>
+      )}
+
+      {tab === 'requests' && canSeeRequests && (
+        <div className="bg-white rounded-xl border border-gray-200">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h3 className="font-medium text-gray-800">Join Requests</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Pending requests to join this team</p>
+          </div>
+          {requestsLoading ? (
+            <div className="p-6 text-center text-sm text-gray-400">Loading requests…</div>
+          ) : joinRequests.length === 0 ? (
+            <div className="p-6 text-center text-sm text-gray-400">No pending join requests.</div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {joinRequests.map(req => {
+                const isProcessing = processingUids.has(req.uid);
+                return (
+                  <div key={req.uid} className="flex items-center justify-between px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{req.displayName}</p>
+                      <p className="text-xs text-gray-500">{req.email}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={isProcessing}
+                        onClick={() => handleReject(req)}
+                      >
+                        Reject
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={isProcessing}
+                        onClick={() => handleApprove(req)}
+                      >
+                        Approve
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
