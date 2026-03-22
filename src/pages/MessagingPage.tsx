@@ -1,13 +1,20 @@
 import { useState } from 'react';
-import { MessageSquare, Phone, Users, AlertCircle, Mail } from 'lucide-react';
+import { MessageSquare, Phone, Users, AlertCircle, Mail, CheckCircle, XCircle } from 'lucide-react';
+import { httpsCallable } from 'firebase/functions';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { functions } from '@/lib/firebase';
 import type { Player, Team } from '@/types';
 
 type Channel = 'sms' | 'email';
+type SendState = 'idle' | 'sending' | 'success' | 'error';
+
+const sendSms = httpsCallable<{ to: string[]; message: string }, { sent: number; failed: number; errors: string[] }>(
+  functions, 'sendSms'
+);
 
 export function MessagingPage() {
   const allTeams = useTeamStore(s => s.teams);
@@ -16,8 +23,9 @@ export function MessagingPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState('');
   const [channel, setChannel] = useState<Channel>('sms');
+  const [sendState, setSendState] = useState<SendState>('idle');
+  const [sendResult, setSendResult] = useState<{ sent: number; failed: number; errors: string[] } | null>(null);
 
-  // Filter teams to only the user's accessible teams (same logic as TeamsPage)
   const isAdmin = profile?.role === 'admin';
   const teams: Team[] = isAdmin
     ? allTeams
@@ -27,8 +35,6 @@ export function MessagingPage() {
         t.id === profile?.teamId
       );
 
-  // For SMS: players with a parent phone
-  // For Email: players with at least one email (player or parent)
   const playersForChannel = (ch: Channel) =>
     players.filter(p =>
       teams.some(t => t.id === p.teamId) &&
@@ -61,9 +67,10 @@ export function MessagingPage() {
     });
   }
 
-  // When switching channels, clear selections that aren't eligible
   function switchChannel(ch: Channel) {
     setChannel(ch);
+    setSendState('idle');
+    setSendResult(null);
     setSelectedIds(prev => {
       const eligible = new Set(playersForChannel(ch).map(p => p.id));
       return new Set([...prev].filter(id => eligible.has(id)));
@@ -72,22 +79,40 @@ export function MessagingPage() {
 
   const selectedPlayers: Player[] = players.filter(p => selectedIds.has(p.id));
 
-  // SMS
   const phones = selectedPlayers
     .map(p => p.parentContact?.parentPhone)
-    .filter(Boolean)
-    .join(',');
-  const smsUri = `sms:${phones}${message.trim() ? `?body=${encodeURIComponent(message.trim())}` : ''}`;
+    .filter(Boolean) as string[];
 
-  // Email
   const emailAddresses = [
     ...new Set(
-      selectedPlayers.flatMap(p => [p.email, p.parentContact?.parentEmail].filter(Boolean) as string[])
+      selectedPlayers.flatMap(p =>
+        [p.email, p.parentContact?.parentEmail].filter(Boolean) as string[]
+      )
     ),
   ];
-  const mailtoUri = `mailto:${emailAddresses.join(',')}${message.trim() ? `?body=${encodeURIComponent(message.trim())}` : ''}`;
 
-  const canSend = channel === 'sms' ? selectedPlayers.length > 0 && !!phones : emailAddresses.length > 0;
+  const mailtoUri = `mailto:${emailAddresses.join(',')}${message.trim() ? `?body=${encodeURIComponent(message.trim())}` : ''}`;
+  const canSend = channel === 'sms'
+    ? phones.length > 0 && message.trim().length > 0
+    : emailAddresses.length > 0;
+
+  async function handleSendSms() {
+    if (!canSend || sendState === 'sending') return;
+    setSendState('sending');
+    setSendResult(null);
+    try {
+      const result = await sendSms({ to: phones, message: message.trim() });
+      setSendResult(result.data);
+      setSendState(result.data.failed === 0 ? 'success' : 'error');
+      if (result.data.failed === 0) {
+        setMessage('');
+        setSelectedIds(new Set());
+      }
+    } catch (e: unknown) {
+      setSendResult({ sent: 0, failed: phones.length, errors: [(e as Error).message] });
+      setSendState('error');
+    }
+  }
 
   return (
     <div className="p-6">
@@ -120,8 +145,8 @@ export function MessagingPage() {
               <p className="text-sm font-medium text-gray-600">No contacts yet</p>
               <p className="text-xs text-gray-400 mt-1">
                 {channel === 'sms'
-                  ? 'Add parent phone numbers to players in their roster to enable SMS messaging.'
-                  : 'Add player or parent email addresses to players in their roster to enable email messaging.'}
+                  ? 'Add parent phone numbers to players in their roster to enable SMS.'
+                  : 'Add player or parent email addresses to enable email messaging.'}
               </p>
             </Card>
           ) : (
@@ -188,7 +213,7 @@ export function MessagingPage() {
                 {selectedPlayers.length === 0
                   ? 'No recipients selected'
                   : channel === 'sms'
-                    ? `${selectedPlayers.length} recipient${selectedPlayers.length !== 1 ? 's' : ''} selected`
+                    ? `${phones.length} recipient${phones.length !== 1 ? 's' : ''} selected`
                     : `${emailAddresses.length} email address${emailAddresses.length !== 1 ? 'es' : ''} (${selectedPlayers.length} player${selectedPlayers.length !== 1 ? 's' : ''})`}
               </p>
               {selectedPlayers.length > 0 && (
@@ -209,32 +234,55 @@ export function MessagingPage() {
                 rows={6}
                 placeholder="Type your message here..."
                 value={message}
-                onChange={e => setMessage(e.target.value)}
+                onChange={e => { setMessage(e.target.value); if (sendState !== 'idle') setSendState('idle'); }}
               />
-              <p className="text-xs text-gray-400 mt-1 text-right">{message.length} chars</p>
+              {channel === 'sms' && (
+                <p className="text-xs text-gray-400 mt-1 text-right">{message.length}/160 chars</p>
+              )}
             </div>
 
+            {/* Send result feedback */}
+            {sendResult && (
+              <div className={`flex items-start gap-2 text-sm rounded-lg px-3 py-2 ${sendState === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                {sendState === 'success'
+                  ? <CheckCircle size={16} className="mt-0.5 shrink-0" />
+                  : <XCircle size={16} className="mt-0.5 shrink-0" />}
+                <div>
+                  <p className="font-medium">
+                    {sendState === 'success'
+                      ? `Sent to ${sendResult.sent} recipient${sendResult.sent !== 1 ? 's' : ''}`
+                      : `${sendResult.sent} sent, ${sendResult.failed} failed`}
+                  </p>
+                  {sendResult.errors.length > 0 && (
+                    <ul className="mt-1 text-xs space-y-0.5">
+                      {sendResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
-              {canSend ? (
-                <a href={channel === 'sms' ? smsUri : mailtoUri} className="block">
-                  <Button className="w-full" disabled={!canSend}>
-                    {channel === 'sms'
-                      ? <><MessageSquare size={15} /> Open in Messages App</>
-                      : <><Mail size={15} /> Open in Email App</>}
+              {channel === 'sms' ? (
+                <Button
+                  className="w-full"
+                  disabled={!canSend || sendState === 'sending'}
+                  onClick={handleSendSms}
+                >
+                  <MessageSquare size={15} />
+                  {sendState === 'sending' ? 'Sending…' : `Send SMS${phones.length > 0 ? ` to ${phones.length}` : ''}`}
+                </Button>
+              ) : canSend ? (
+                <a href={mailtoUri} className="block">
+                  <Button className="w-full">
+                    <Mail size={15} /> Open in Email App
                   </Button>
                 </a>
               ) : (
                 <Button className="w-full" disabled>
-                  {channel === 'sms'
-                    ? <><MessageSquare size={15} /> Select recipients to send</>
-                    : <><Mail size={15} /> Select recipients to send</>}
+                  <Mail size={15} /> Select recipients to send
                 </Button>
               )}
-              <p className="text-xs text-gray-400 text-center">
-                {channel === 'sms'
-                  ? "Opens your device's native SMS app. No account required."
-                  : "Opens your default email client. No account required."}
-              </p>
             </div>
           </Card>
         </div>
