@@ -11,17 +11,27 @@ import { Card } from '@/components/ui/Card';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
+import { useAuthStore, getAccessibleTeamIds } from '@/store/useAuthStore';
 import { isUpcoming, formatDate, formatTime } from '@/lib/dateUtils';
 import type { ScheduledEvent } from '@/types';
 import { seedDemoData } from '@/lib/demoData';
 
 export function Dashboard() {
-  const events = useEventStore(s => s.events);
-  const teams = useTeamStore(s => s.teams);
-  const players = usePlayerStore(s => s.players);
+  const allEvents = useEventStore(s => s.events);
+  const allTeams = useTeamStore(s => s.teams);
+  const allPlayers = usePlayerStore(s => s.players);
+  const profile = useAuthStore(s => s.profile);
   const navigate = useNavigate();
   const [formOpen, setFormOpen] = useState(false);
   const [selected, setSelected] = useState<ScheduledEvent | null>(null);
+
+  const accessibleTeamIds = getAccessibleTeamIds(profile, allTeams);
+  // null = admin sees all; otherwise filter to accessible teams
+  const teams = accessibleTeamIds === null ? allTeams : allTeams.filter(t => accessibleTeamIds.includes(t.id));
+  const players = accessibleTeamIds === null ? allPlayers : allPlayers.filter(p => accessibleTeamIds.includes(p.teamId));
+  const events = accessibleTeamIds === null
+    ? allEvents
+    : allEvents.filter(e => e.teamIds.some(id => accessibleTeamIds.includes(id)));
 
   const upcoming = events
     .filter(e => isUpcoming(e) && e.status !== 'cancelled')
@@ -133,7 +143,7 @@ export function Dashboard() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-900 flex items-center gap-2"><CalendarDays size={16} className="text-blue-500" /> Upcoming Events</h2>
-            <RoleGuard roles={['admin', 'coach']}>
+            <RoleGuard roles={['admin', 'league_manager', 'coach']}>
               <Button variant="ghost" size="sm" onClick={() => setFormOpen(true)}><Plus size={14} /> Add</Button>
             </RoleGuard>
           </div>

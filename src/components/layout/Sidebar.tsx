@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Calendar, CalendarDays, Users, Trophy, Bell, MessageSquare, Settings, LogOut, Shield, UserCog } from 'lucide-react';
+import { LayoutDashboard, Calendar, CalendarDays, Users, Trophy, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
@@ -20,8 +20,13 @@ const adminNavItems = [
   { to: '/users', label: 'Manage Users', icon: UserCog, end: undefined },
 ];
 
+const leagueNavItems = [
+  { to: '/leagues', label: 'Leagues', icon: Layers, end: undefined },
+];
+
 const roleColors: Record<string, string> = {
   admin: 'text-purple-300',
+  league_manager: 'text-indigo-300',
   coach: 'text-blue-300',
   player: 'text-green-300',
   parent: 'text-orange-300',
@@ -54,7 +59,11 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {[...navItems, ...(hasRole(profile, 'admin') ? adminNavItems : [])].map(({ to, label, icon: Icon, end }) => (
+        {[
+          ...navItems,
+          ...(hasRole(profile, 'admin', 'league_manager') ? leagueNavItems : []),
+          ...(hasRole(profile, 'admin') ? adminNavItems : []),
+        ].map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}

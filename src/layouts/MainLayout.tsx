@@ -11,6 +11,7 @@ import { usePlayerStore } from '@/store/usePlayerStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { useLeagueStore } from '@/store/useLeagueStore';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -23,6 +24,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/settings': 'Settings',
   '/profile': 'My Profile',
   '/users': 'Manage Users',
+  '/leagues': 'Leagues',
 };
 
 export function MainLayout() {
@@ -35,6 +37,7 @@ export function MainLayout() {
   const subscribeEvents = useEventStore(s => s.subscribe);
   const subscribeNotifications = useNotificationStore(s => s.subscribe);
   const subscribeSettings = useSettingsStore(s => s.subscribe);
+  const subscribeLeagues = useLeagueStore(s => s.subscribe);
 
   // Subscribe all Firestore collections when user is authenticated
   useEffect(() => {
@@ -45,9 +48,10 @@ export function MainLayout() {
       subscribeEvents(),
       subscribeNotifications(user.uid),
       subscribeSettings(user.uid),
+      subscribeLeagues(),
     ];
     return () => unsubs.forEach(u => u());
-  }, [user, subscribeTeams, subscribePlayers, subscribeEvents, subscribeNotifications, subscribeSettings]);
+  }, [user, subscribeTeams, subscribePlayers, subscribeEvents, subscribeNotifications, subscribeSettings, subscribeLeagues]);
 
   const location = useLocation();
   const title = PAGE_TITLES[location.pathname]

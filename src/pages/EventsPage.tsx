@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
+import { useAuthStore, getAccessibleTeamIds } from '@/store/useAuthStore';
 import { CalendarDays } from 'lucide-react';
 import type { ScheduledEvent } from '@/types';
 import { EVENT_TYPE_LABELS, EVENT_STATUS_LABELS } from '@/constants';
@@ -18,8 +19,15 @@ const typeOptions = [{ value: '', label: 'All Types' }, ...Object.entries(EVENT_
 const statusOptions = [{ value: '', label: 'All Statuses' }, ...Object.entries(EVENT_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))];
 
 export function EventsPage() {
-  const events = useEventStore(s => s.events);
-  const teams = useTeamStore(s => s.teams);
+  const allEvents = useEventStore(s => s.events);
+  const allTeams = useTeamStore(s => s.teams);
+  const profile = useAuthStore(s => s.profile);
+
+  const accessibleTeamIds = getAccessibleTeamIds(profile, allTeams);
+  const teams = accessibleTeamIds === null ? allTeams : allTeams.filter(t => accessibleTeamIds.includes(t.id));
+  const events = accessibleTeamIds === null
+    ? allEvents
+    : allEvents.filter(e => e.teamIds.some(id => accessibleTeamIds.includes(id)));
   const [formOpen, setFormOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [selected, setSelected] = useState<ScheduledEvent | null>(null);
@@ -61,7 +69,7 @@ export function EventsPage() {
           <Select options={typeOptions} value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="w-36" />
           <Select options={statusOptions} value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-36" />
         </div>
-        <RoleGuard roles={['admin', 'coach']}>
+        <RoleGuard roles={['admin', 'league_manager', 'coach']}>
           <Button variant="secondary" onClick={() => setImportOpen(true)}>
             <Upload size={16} /> Import
           </Button>

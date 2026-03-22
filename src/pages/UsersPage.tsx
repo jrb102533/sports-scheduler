@@ -17,11 +17,13 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useTeamStore } from '@/store/useTeamStore';
+import { useLeagueStore } from '@/store/useLeagueStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import type { UserProfile, UserRole } from '@/types';
 
 const roleOptions = [
   { value: 'admin', label: 'Admin' },
+  { value: 'league_manager', label: 'League Manager' },
   { value: 'coach', label: 'Coach' },
   { value: 'player', label: 'Player' },
   { value: 'parent', label: 'Parent' },
@@ -29,6 +31,7 @@ const roleOptions = [
 
 const roleColors: Record<UserRole, string> = {
   admin: 'bg-purple-100 text-purple-700',
+  league_manager: 'bg-indigo-100 text-indigo-700',
   coach: 'bg-blue-100 text-blue-700',
   player: 'bg-green-100 text-green-700',
   parent: 'bg-orange-100 text-orange-700',
@@ -42,9 +45,11 @@ export function UsersPage() {
   const [editingNameUid, setEditingNameUid] = useState<string | null>(null);
   const [editingNameValue, setEditingNameValue] = useState('');
   const teams = useTeamStore(s => s.teams);
+  const leagues = useLeagueStore(s => s.leagues);
   const currentUid = useAuthStore(s => s.user?.uid);
 
   const teamSelectOptions = [{ value: '', label: 'No team' }, ...teams.map(t => ({ value: t.id, label: t.name }))];
+  const leagueSelectOptions = [{ value: '', label: 'No league' }, ...leagues.map(l => ({ value: l.id, label: l.name }))];
 
   useEffect(() => {
     getDocs(collection(db, 'users')).then(snap => {
@@ -99,6 +104,7 @@ export function UsersPage() {
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">User</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Role</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Team</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">League</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-16"></th>
             </tr>
           </thead>
@@ -159,6 +165,18 @@ export function UsersPage() {
                         value={user.teamId ?? ''}
                         onChange={e => updateUser(user.uid, { teamId: e.target.value || undefined })}
                         options={teamSelectOptions}
+                        className="w-40 text-xs"
+                      />
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {isSelf ? (
+                      <span className="text-gray-600 text-sm">{leagues.find(l => l.id === user.leagueId)?.name ?? '—'}</span>
+                    ) : (
+                      <Select
+                        value={user.leagueId ?? ''}
+                        onChange={e => updateUser(user.uid, { leagueId: e.target.value || undefined })}
+                        options={leagueSelectOptions}
                         className="w-40 text-xs"
                       />
                     )}
@@ -259,7 +277,7 @@ function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
         <Input label="Full Name" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Jane Smith" required />
         <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required />
         <Input label="Temporary Password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" required />
-        <Select label="Role" value={role} onChange={e => setRole(e.target.value as UserRole)} options={roleOptions} />
+        <Select label="Role" value={role} onChange={e => setRole(e.target.value as UserRole)} options={roleOptions.filter(o => o.value !== 'admin')} />
         {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
         <p className="text-xs text-gray-400">A verification email will be sent to the user. You can assign their team from the users table.</p>
         <div className="flex justify-end gap-3 pt-2">

@@ -18,6 +18,7 @@ export interface Team {
   createdBy: string;
   ownerName: string;
   coachId?: string;
+  leagueId?: string;   // optional: id of the league this team belongs to
   createdAt: string;
   updatedAt: string;
 }

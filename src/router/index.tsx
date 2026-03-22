@@ -14,6 +14,7 @@ import { ProfilePage } from '@/pages/ProfilePage';
 import { LoginPage } from '@/pages/LoginPage';
 import { SignupPage } from '@/pages/SignupPage';
 import { UsersPage } from '@/pages/UsersPage';
+import { LeaguesPage } from '@/pages/LeaguesPage';
 
 export const router = createBrowserRouter([
   // Public auth routes
@@ -40,6 +41,7 @@ export const router = createBrowserRouter([
       { path: 'settings', element: <SettingsPage /> },
       { path: 'profile', element: <ProfilePage /> },
       { path: 'users', element: <UsersPage /> },
+      { path: 'leagues', element: <LeaguesPage /> },
     ],
   },
 

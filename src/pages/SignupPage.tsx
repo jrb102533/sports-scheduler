@@ -17,6 +17,7 @@ const roleOptions = [
 
 const roleDescriptions: Record<UserRole, string> = {
   admin: 'Full access to create and manage all teams, events, and users.',
+  league_manager: 'Manage schedules and results for teams in your league.',
   coach: 'Manage your assigned team\'s roster, events, and attendance.',
   player: 'View your team\'s schedule and your own profile.',
   parent: 'View your child\'s team schedule and attendance.',

@@ -22,7 +22,7 @@ interface AuthStore {
   signup: (email: string, password: string, displayName: string, role: UserRole, teamId?: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (patch: Partial<Pick<UserProfile, 'displayName' | 'avatarUrl' | 'teamId' | 'playerId'>>) => Promise<void>;
+  updateProfile: (patch: Partial<Pick<UserProfile, 'displayName' | 'avatarUrl' | 'teamId' | 'playerId' | 'leagueId'>>) => Promise<void>;
   clearError: () => void;
 }
 
@@ -131,9 +131,31 @@ export function canEdit(profile: UserProfile | null, team?: Team | null): boolea
   if (!profile) return false;
   if (profile.role === 'admin') return true;
   if (!team) return false;
-  return team.createdBy === profile.uid || team.coachId === profile.uid;
+  if (team.createdBy === profile.uid || team.coachId === profile.uid) return true;
+  if (profile.role === 'league_manager' && profile.leagueId && team.leagueId === profile.leagueId) return true;
+  return false;
 }
 
 export function isReadOnly(profile: UserProfile | null): boolean {
   return profile?.role === 'player' || profile?.role === 'parent';
+}
+
+/**
+ * Returns the set of team IDs the user is allowed to see.
+ * Returns null for admins (meaning all teams).
+ */
+export function getAccessibleTeamIds(profile: UserProfile | null, allTeams: Team[]): string[] | null {
+  if (!profile) return [];
+  if (profile.role === 'admin') return null;
+  if (profile.role === 'league_manager') {
+    if (!profile.leagueId) return [];
+    return allTeams.filter(t => t.leagueId === profile.leagueId).map(t => t.id);
+  }
+  if (profile.role === 'coach') {
+    return allTeams
+      .filter(t => t.createdBy === profile.uid || t.coachId === profile.uid)
+      .map(t => t.id);
+  }
+  // player / parent
+  return profile.teamId ? [profile.teamId] : [];
 }
