@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { X, MapPin, Clock, Edit, Trash2, CheckCircle } from 'lucide-react';
+import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Badge } from '@/components/ui/Badge';
 import { EventStatusBadge } from './EventStatusBadge';
 import { EventForm } from './EventForm';
 import { SnackVolunteerForm } from './SnackVolunteerForm';
 import { AttendanceTracker } from '@/components/attendance/AttendanceTracker';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Modal } from '@/components/ui/Modal';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { formatDate, formatTime } from '@/lib/dateUtils';
@@ -19,10 +21,11 @@ interface EventDetailPanelProps {
 }
 
 export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
-  const { deleteEvent, recordResult, updateEvent } = useEventStore();
+  const { deleteEvent, recordResult, updateEvent, deleteEventsByGroupId } = useEventStore();
   const teams = useTeamStore(s => s.teams);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteSeriesOpen, setDeleteSeriesOpen] = useState(false);
   const [homeScore, setHomeScore] = useState('');
   const [awayScore, setAwayScore] = useState('');
   const [resultNotes, setResultNotes] = useState('');
@@ -33,6 +36,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const homeTeam = teams.find(t => t.id === currentEvent.homeTeamId);
   const awayTeam = teams.find(t => t.id === currentEvent.awayTeamId);
   const isGameOrMatch = event.type === 'game' || event.type === 'match';
+  const isRecurringEvent = event.isRecurring && !!event.recurringGroupId;
 
   function handleRecordResult() {
     const h = parseInt(homeScore);
@@ -48,14 +52,34 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
     updateEvent({ ...currentEvent, status: 'cancelled' as const, updatedAt: new Date().toISOString() });
   }
 
+  function handleDeleteThis() {
+    deleteEvent(currentEvent.id);
+    onClose();
+  }
+
+  function handleDeleteSeries() {
+    if (currentEvent.recurringGroupId) {
+      deleteEventsByGroupId(currentEvent.recurringGroupId);
+    }
+    onClose();
+  }
+
   return (
     <>
       <div className="fixed inset-0 z-40 flex justify-end">
         <div className="absolute inset-0 bg-black/30" onClick={onClose} />
         <div className="relative w-96 bg-white h-full shadow-xl flex flex-col overflow-y-auto">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-            <h2 className="font-semibold text-gray-900 truncate">{event.title}</h2>
-            <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 text-gray-500">
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="font-semibold text-gray-900 truncate">{event.title}</h2>
+              {isRecurringEvent && (
+                <Badge className="bg-purple-100 text-purple-700 shrink-0">
+                  <RefreshCw size={10} className="mr-1" />
+                  Recurring
+                </Badge>
+              )}
+            </div>
+            <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 text-gray-500 shrink-0 ml-2">
               <X size={16} />
             </button>
           </div>
@@ -132,7 +156,12 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
             {event.status !== 'cancelled' && (
               <Button variant="ghost" size="sm" onClick={handleCancel}>Cancel Event</Button>
             )}
-            <Button variant="danger" size="sm" className="ml-auto" onClick={() => setConfirmDelete(true)}>
+            <Button
+              variant="danger"
+              size="sm"
+              className="ml-auto"
+              onClick={() => isRecurringEvent ? setDeleteSeriesOpen(true) : setConfirmDelete(true)}
+            >
               <Trash2 size={14} /> Delete
             </Button>
           </div>
@@ -140,6 +169,8 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
       </div>
 
       <EventForm open={editOpen} onClose={() => setEditOpen(false)} editEvent={event} />
+
+      {/* Single event delete confirm */}
       <ConfirmDialog
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
@@ -147,6 +178,24 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
         title="Delete Event"
         message={`Are you sure you want to delete "${event.title}"? This cannot be undone.`}
       />
+
+      {/* Recurring delete choice dialog */}
+      <Modal open={deleteSeriesOpen} onClose={() => setDeleteSeriesOpen(false)} title="Delete Recurring Event" size="sm">
+        <p className="text-sm text-gray-600 mb-4">
+          This is a recurring event. Would you like to delete just this event, or all events in this series?
+        </p>
+        <div className="flex flex-col gap-2">
+          <Button variant="secondary" onClick={() => { setDeleteSeriesOpen(false); handleDeleteThis(); }}>
+            Delete This Event Only
+          </Button>
+          <Button variant="danger" onClick={() => { setDeleteSeriesOpen(false); handleDeleteSeries(); }}>
+            Delete All in Series
+          </Button>
+          <Button variant="ghost" onClick={() => setDeleteSeriesOpen(false)}>
+            Cancel
+          </Button>
+        </div>
+      </Modal>
     </>
   );
 }

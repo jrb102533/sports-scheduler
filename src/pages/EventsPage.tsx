@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, Upload } from 'lucide-react';
 import { EventCard } from '@/components/events/EventCard';
 import { EventForm } from '@/components/events/EventForm';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
+import { ImportEventsModal } from '@/components/events/ImportEventsModal';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -20,6 +21,7 @@ export function EventsPage() {
   const events = useEventStore(s => s.events);
   const teams = useTeamStore(s => s.teams);
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [selected, setSelected] = useState<ScheduledEvent | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -53,6 +55,9 @@ export function EventsPage() {
           <Select options={statusOptions} value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-36" />
         </div>
         <RoleGuard roles={['admin', 'coach']}>
+          <Button variant="secondary" onClick={() => setImportOpen(true)}>
+            <Upload size={16} /> Import
+          </Button>
           <Button onClick={() => setFormOpen(true)}>
             <Plus size={16} /> New Event
           </Button>
@@ -75,6 +80,7 @@ export function EventsPage() {
       )}
 
       <EventForm open={formOpen} onClose={() => setFormOpen(false)} />
+      <ImportEventsModal open={importOpen} onClose={() => setImportOpen(false)} />
       <EventDetailPanel event={selected} onClose={() => setSelected(null)} />
     </div>
   );

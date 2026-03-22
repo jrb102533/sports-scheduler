@@ -1,6 +1,7 @@
 export type EventType = 'game' | 'match' | 'practice' | 'tournament' | 'other';
 export type EventStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'postponed';
 export type AttendanceStatus = 'present' | 'absent' | 'excused';
+export type RecurrenceFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly';
 
 export interface GameResult {
   homeScore: number;
@@ -34,6 +35,8 @@ export interface ScheduledEvent {
   notes?: string;
   isRecurring: boolean;
   recurringGroupId?: string;
+  recurrence?: RecurrenceFrequency;
+  recurrenceEnd?: string;
   snackVolunteer?: SnackVolunteer;
   attendance?: AttendanceRecord[];
   attendanceRecorded?: boolean;

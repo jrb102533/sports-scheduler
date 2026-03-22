@@ -3,6 +3,7 @@ import {
   collection, onSnapshot, doc, setDoc, deleteDoc, query, orderBy,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { todayISO } from '@/lib/dateUtils';
 import type { ScheduledEvent, GameResult } from '@/types';
 
 interface EventStore {
@@ -14,6 +15,8 @@ interface EventStore {
   deleteEvent: (id: string) => Promise<void>;
   recordResult: (id: string, result: GameResult) => Promise<void>;
   bulkAddEvents: (events: ScheduledEvent[]) => Promise<void>;
+  deleteEventsByGroupId: (groupId: string) => Promise<void>;
+  updateEventsByGroupId: (groupId: string, patch: Partial<ScheduledEvent>) => Promise<void>;
 }
 
 export const useEventStore = create<EventStore>((set, get) => ({
@@ -54,5 +57,16 @@ export const useEventStore = create<EventStore>((set, get) => ({
 
   bulkAddEvents: async (newEvents) => {
     await Promise.all(newEvents.map(e => setDoc(doc(db, 'events', e.id), e)));
+  },
+
+  deleteEventsByGroupId: async (groupId) => {
+    const matching = get().events.filter(e => e.recurringGroupId === groupId);
+    await Promise.all(matching.map(e => deleteDoc(doc(db, 'events', e.id))));
+  },
+
+  updateEventsByGroupId: async (groupId, patch) => {
+    const today = todayISO();
+    const matching = get().events.filter(e => e.recurringGroupId === groupId && e.date >= today);
+    await Promise.all(matching.map(e => setDoc(doc(db, 'events', e.id), { ...e, ...patch })));
   },
 }));

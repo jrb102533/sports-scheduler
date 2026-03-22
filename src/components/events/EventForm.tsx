@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { addDays, addWeeks, addMonths, parseISO, format, isAfter } from 'date-fns';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -7,7 +8,7 @@ import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { todayISO } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS } from '@/constants';
-import type { ScheduledEvent, EventType, EventStatus } from '@/types';
+import type { ScheduledEvent, EventType, EventStatus, RecurrenceFrequency } from '@/types';
 
 interface EventFormProps {
   open: boolean;
@@ -18,8 +19,47 @@ interface EventFormProps {
 
 const typeOptions = Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => ({ value, label }));
 
+const frequencyOptions: { value: RecurrenceFrequency; label: string }[] = [
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'biweekly', label: 'Biweekly' },
+  { value: 'monthly', label: 'Monthly' },
+];
+
+function generateOccurrences(startDate: string, endDate: string, frequency: RecurrenceFrequency): string[] {
+  const start = parseISO(startDate);
+  const end = parseISO(endDate);
+  const dates: string[] = [];
+  let current = start;
+
+  while (!isAfter(current, end)) {
+    dates.push(format(current, 'yyyy-MM-dd'));
+    switch (frequency) {
+      case 'daily':
+        current = addDays(current, 1);
+        break;
+      case 'weekly':
+        current = addWeeks(current, 1);
+        break;
+      case 'biweekly':
+        current = addWeeks(current, 2);
+        break;
+      case 'monthly':
+        current = addMonths(current, 1);
+        break;
+    }
+  }
+
+  return dates;
+}
+
+function formatPreviewDate(isoDate: string): string {
+  return format(parseISO(isoDate), 'MMM d');
+}
+
 export function EventForm({ open, onClose, initial, editEvent }: EventFormProps) {
-  const { addEvent, updateEvent } = useEventStore();
+  const { addEvent, bulkAddEvents } = useEventStore();
+  const updateEvent = useEventStore(s => s.updateEvent);
   const teams = useTeamStore(s => s.teams);
   const teamOptions = teams.map(t => ({ value: t.id, label: t.name }));
 
@@ -34,11 +74,25 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const [notes, setNotes] = useState(editEvent?.notes ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Recurrence state (create only)
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [frequency, setFrequency] = useState<RecurrenceFrequency>('weekly');
+  const [recurrenceEnd, setRecurrenceEnd] = useState('');
+
+  const occurrenceCount = useMemo(() => {
+    if (!isRecurring || !date || !recurrenceEnd || recurrenceEnd <= date) return 0;
+    return generateOccurrences(date, recurrenceEnd, frequency).length;
+  }, [isRecurring, date, recurrenceEnd, frequency]);
+
   function validate() {
     const e: Record<string, string> = {};
     if (!title.trim()) e.title = 'Title is required';
     if (!date) e.date = 'Date is required';
     if (!startTime) e.startTime = 'Start time is required';
+    if (!editEvent && isRecurring) {
+      if (!recurrenceEnd) e.recurrenceEnd = 'End date is required for recurring events';
+      else if (recurrenceEnd <= date) e.recurrenceEnd = 'End date must be after start date';
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -58,6 +112,26 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
 
     if (editEvent) {
       updateEvent({ ...editEvent, title: title.trim(), type, date, startTime, teamIds, updatedAt: now, ...optionals });
+    } else if (isRecurring && recurrenceEnd) {
+      const groupId = crypto.randomUUID();
+      const occurrences = generateOccurrences(date, recurrenceEnd, frequency);
+      const events: ScheduledEvent[] = occurrences.map(occDate => ({
+        id: crypto.randomUUID(),
+        title: title.trim(),
+        type,
+        status: 'scheduled' as EventStatus,
+        date: occDate,
+        startTime,
+        teamIds,
+        isRecurring: true,
+        recurringGroupId: groupId,
+        recurrence: frequency,
+        recurrenceEnd,
+        createdAt: now,
+        updatedAt: now,
+        ...optionals,
+      }));
+      bulkAddEvents(events);
     } else {
       addEvent({ id: crypto.randomUUID(), title: title.trim(), type, status: 'scheduled' as EventStatus, date, startTime, teamIds, isRecurring: false, createdAt: now, updatedAt: now, ...optionals });
     }
@@ -91,6 +165,47 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
             placeholder="Any additional details..."
           />
         </div>
+
+        {/* Recurrence section — create only */}
+        {!editEvent && (
+          <div className="border border-gray-200 rounded-lg p-3 space-y-3">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isRecurring}
+                onChange={e => setIsRecurring(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-sm font-medium text-gray-700">Repeats</span>
+            </label>
+
+            {isRecurring && (
+              <div className="space-y-3 pl-6">
+                <div className="grid grid-cols-2 gap-3">
+                  <Select
+                    label="Frequency"
+                    value={frequency}
+                    onChange={e => setFrequency(e.target.value as RecurrenceFrequency)}
+                    options={frequencyOptions}
+                  />
+                  <Input
+                    label="End Date"
+                    type="date"
+                    value={recurrenceEnd}
+                    onChange={e => setRecurrenceEnd(e.target.value)}
+                    error={errors.recurrenceEnd}
+                  />
+                </div>
+                {occurrenceCount > 0 && (
+                  <p className="text-xs text-blue-600 bg-blue-50 rounded px-2 py-1.5">
+                    Creates {occurrenceCount} {frequency} event{occurrenceCount !== 1 ? 's' : ''} from {formatPreviewDate(date)} to {formatPreviewDate(recurrenceEnd)}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button onClick={handleSubmit}>{editEvent ? 'Save Changes' : 'Create Event'}</Button>
