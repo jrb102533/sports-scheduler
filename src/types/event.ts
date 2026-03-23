@@ -30,6 +30,8 @@ export interface ScheduledEvent {
   location?: string;
   homeTeamId?: string;
   awayTeamId?: string;
+  opponentId?: string;
+  opponentName?: string;
   teamIds: string[];
   result?: GameResult;
   notes?: string;

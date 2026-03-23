@@ -6,6 +6,7 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
+import { useOpponentStore } from '@/store/useOpponentStore';
 import { todayISO } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent, EventType, EventStatus, RecurrenceFrequency } from '@/types';
@@ -57,11 +58,14 @@ function formatPreviewDate(isoDate: string): string {
   return format(parseISO(isoDate), 'MMM d');
 }
 
+const GAME_TYPES = new Set<EventType>(['game', 'match', 'tournament']);
+
 export function EventForm({ open, onClose, initial, editEvent }: EventFormProps) {
   const { addEvent, bulkAddEvents } = useEventStore();
   const updateEvent = useEventStore(s => s.updateEvent);
   const teams = useTeamStore(s => s.teams);
   const teamOptions = teams.map(t => ({ value: t.id, label: t.name }));
+  const { opponents, addOpponent } = useOpponentStore();
 
   const [title, setTitle] = useState(editEvent?.title ?? '');
   const [type, setType] = useState<EventType>(editEvent?.type ?? initial?.type ?? 'game');
@@ -71,6 +75,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const [location, setLocation] = useState(editEvent?.location ?? '');
   const [homeTeamId, setHomeTeamId] = useState(editEvent?.homeTeamId ?? '');
   const [awayTeamId, setAwayTeamId] = useState(editEvent?.awayTeamId ?? '');
+  const [opponentName, setOpponentName] = useState(editEvent?.opponentName ?? '');
   const [notes, setNotes] = useState(editEvent?.notes ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -97,16 +102,36 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     return Object.keys(e).length === 0;
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!validate()) return;
     const now = new Date().toISOString();
     const teamIds = [...new Set([homeTeamId, awayTeamId].filter(Boolean))];
+
+    // Resolve opponent — create a new record if the name isn't already saved
+    const contextTeamId = homeTeamId || awayTeamId;
+    let resolvedOpponentId: string | undefined;
+    let resolvedOpponentName: string | undefined;
+    const trimmedOpponent = opponentName.trim();
+    if (GAME_TYPES.has(type) && trimmedOpponent) {
+      const existing = opponents.find(
+        o => o.teamId === contextTeamId && o.name.toLowerCase() === trimmedOpponent.toLowerCase()
+      );
+      if (existing) {
+        resolvedOpponentId = existing.id;
+      } else if (contextTeamId) {
+        resolvedOpponentId = crypto.randomUUID();
+        await addOpponent({ id: resolvedOpponentId, name: trimmedOpponent, teamId: contextTeamId, createdAt: now });
+      }
+      resolvedOpponentName = trimmedOpponent;
+    }
 
     const optionals = {
       ...(endTime ? { endTime } : {}),
       ...(location.trim() ? { location: location.trim() } : {}),
       ...(homeTeamId ? { homeTeamId } : {}),
       ...(awayTeamId ? { awayTeamId } : {}),
+      ...(resolvedOpponentId ? { opponentId: resolvedOpponentId } : {}),
+      ...(resolvedOpponentName ? { opponentName: resolvedOpponentName } : {}),
       ...(notes.trim() ? { notes: notes.trim() } : {}),
     };
 
@@ -153,6 +178,26 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           <div className="grid grid-cols-2 gap-3">
             <Select label="Home Team" value={homeTeamId} onChange={e => setHomeTeamId(e.target.value)} options={teamOptions} placeholder="Select team" />
             <Select label="Away Team" value={awayTeamId} onChange={e => setAwayTeamId(e.target.value)} options={teamOptions} placeholder="Select team" />
+          </div>
+        )}
+        {GAME_TYPES.has(type) && (
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700">Opponent (optional)</label>
+            <input
+              list="opponent-suggestions"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Type or select a past opponent…"
+              value={opponentName}
+              onChange={e => setOpponentName(e.target.value)}
+            />
+            <datalist id="opponent-suggestions">
+              {opponents
+                .filter(o => !homeTeamId || o.teamId === homeTeamId || o.teamId === awayTeamId)
+                .map(o => <option key={o.id} value={o.name} />)}
+            </datalist>
+            {opponentName.trim() && !opponents.some(o => o.name.toLowerCase() === opponentName.trim().toLowerCase()) && (
+              <p className="text-xs text-green-600">New opponent — will be saved for future events</p>
+            )}
           </div>
         )}
         <div className="flex flex-col gap-1">
@@ -208,7 +253,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
 
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit}>{editEvent ? 'Save Changes' : 'Create Event'}</Button>
+          <Button onClick={() => void handleSubmit()}>{editEvent ? 'Save Changes' : 'Create Event'}</Button>
         </div>
       </div>
     </Modal>

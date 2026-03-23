@@ -35,7 +35,7 @@ export function EventCard({ event, teams, onClick }: EventCardProps) {
               </div>
               <h3 className="font-semibold text-gray-900 truncate">{event.title}</h3>
 
-              {(homeTeam || awayTeam) && (
+              {(homeTeam || awayTeam || event.opponentName) && (
                 <div className="flex items-center gap-1.5 mt-1">
                   {homeTeam && (
                     <span className="flex items-center gap-1 text-sm text-gray-700">
@@ -43,13 +43,15 @@ export function EventCard({ event, teams, onClick }: EventCardProps) {
                       {homeTeam.name}
                     </span>
                   )}
-                  {homeTeam && awayTeam && <span className="text-xs text-gray-400">vs</span>}
-                  {awayTeam && (
+                  {homeTeam && (awayTeam || event.opponentName) && <span className="text-xs text-gray-400">vs</span>}
+                  {awayTeam ? (
                     <span className="flex items-center gap-1 text-sm text-gray-700">
                       <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: awayTeam.color }} />
                       {awayTeam.name}
                     </span>
-                  )}
+                  ) : event.opponentName ? (
+                    <span className="text-sm text-gray-700">{event.opponentName}</span>
+                  ) : null}
                 </div>
               )}
 

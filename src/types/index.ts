@@ -7,3 +7,4 @@ export type { NotificationType, AppNotification } from './notification';
 export type { AppSettings } from './settings';
 export type { UserRole, UserProfile } from './auth';
 export type { JoinRequest } from './joinRequest';
+export type { Opponent } from './opponent';

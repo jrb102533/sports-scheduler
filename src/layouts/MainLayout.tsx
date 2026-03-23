@@ -12,6 +12,7 @@ import { useEventStore } from '@/store/useEventStore';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
+import { useOpponentStore } from '@/store/useOpponentStore';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -38,6 +39,7 @@ export function MainLayout() {
   const subscribeNotifications = useNotificationStore(s => s.subscribe);
   const subscribeSettings = useSettingsStore(s => s.subscribe);
   const subscribeLeagues = useLeagueStore(s => s.subscribe);
+  const subscribeOpponents = useOpponentStore(s => s.subscribe);
 
   // Subscribe all Firestore collections when user is authenticated
   useEffect(() => {
@@ -49,9 +51,10 @@ export function MainLayout() {
       subscribeNotifications(user.uid),
       subscribeSettings(user.uid),
       subscribeLeagues(),
+      subscribeOpponents(),
     ];
     return () => unsubs.forEach(u => u());
-  }, [user, subscribeTeams, subscribePlayers, subscribeEvents, subscribeNotifications, subscribeSettings, subscribeLeagues]);
+  }, [user, subscribeTeams, subscribePlayers, subscribeEvents, subscribeNotifications, subscribeSettings, subscribeLeagues, subscribeOpponents]);
 
   const location = useLocation();
   const title = PAGE_TITLES[location.pathname]

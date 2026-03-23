@@ -90,12 +90,16 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
               <EventStatusBadge status={event.status} />
             </div>
 
-            {(homeTeam || awayTeam) && (
+            {(homeTeam || awayTeam || event.opponentName) && (
               <div className="bg-gray-50 rounded-xl p-4 text-center">
                 <div className="flex items-center justify-center gap-4 text-sm font-semibold text-gray-700">
                   <div style={{ color: homeTeam?.color }}>{homeTeam?.name ?? '—'}</div>
                   <span className="text-gray-400 text-xs">vs</span>
-                  <div style={{ color: awayTeam?.color }}>{awayTeam?.name ?? '—'}</div>
+                  {awayTeam ? (
+                    <div style={{ color: awayTeam.color }}>{awayTeam.name}</div>
+                  ) : (
+                    <div className="text-gray-700">{event.opponentName ?? '—'}</div>
+                  )}
                 </div>
                 {event.result && (
                   <div className="text-2xl font-bold text-gray-900 mt-2">
@@ -136,7 +140,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
                   <Input label={homeTeam?.name ?? 'Home'} type="number" min="0" value={homeScore} onChange={e => setHomeScore(e.target.value)} placeholder="0" />
-                  <Input label={awayTeam?.name ?? 'Away'} type="number" min="0" value={awayScore} onChange={e => setAwayScore(e.target.value)} placeholder="0" />
+                  <Input label={awayTeam?.name ?? event.opponentName ?? 'Away'} type="number" min="0" value={awayScore} onChange={e => setAwayScore(e.target.value)} placeholder="0" />
                 </div>
                 <Input label="Notes (optional)" value={resultNotes} onChange={e => setResultNotes(e.target.value)} />
                 <Button size="sm" onClick={handleRecordResult} disabled={!homeScore || !awayScore}>Save Score</Button>
