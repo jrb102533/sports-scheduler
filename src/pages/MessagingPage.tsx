@@ -77,10 +77,6 @@ export function MessagingPage() {
     setSendState('idle');
     setSendResult(null);
     setSubject('');
-    setSelectedIds(prev => {
-      const eligible = new Set(playersForChannel(ch).map(p => p.id));
-      return new Set([...prev].filter(id => eligible.has(id)));
-    });
   }
 
   const selectedPlayers: Player[] = players.filter(p => selectedIds.has(p.id));
