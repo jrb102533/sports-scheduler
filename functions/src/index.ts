@@ -1,10 +1,14 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
 import * as nodemailer from 'nodemailer';
 
 admin.initializeApp();
+
+const APP_URL = 'https://first-whistle-e76f4.web.app';
+const FUNCTIONS_BASE = 'https://us-central1-first-whistle-e76f4.cloudfunctions.net';
 
 // ─── Secrets ────────────────────────────────────────────────────────────────
 
@@ -111,8 +115,6 @@ export const sendInvite = onCall<SendInviteData>(
     const { to, playerName, teamName, playerId, teamId } = request.data;
     if (!to?.trim()) throw new HttpsError('invalid-argument', 'Email address is required.');
 
-    const appUrl = 'https://first-whistle-e76f4.web.app';
-
     // Store invite so auto-link can find it on signup/login
     await admin.firestore().doc(`invites/${to.toLowerCase().trim()}`).set({
       playerId,
@@ -127,7 +129,7 @@ export const sendInvite = onCall<SendInviteData>(
       from: emailFrom.value(),
       to: to.trim(),
       subject: `You've been added to ${teamName} on First Whistle`,
-      text: `Hi ${playerName},\n\nYou've been added to ${teamName} on First Whistle.\n\nSign up or log in to view your schedule, track attendance, and stay connected with your team:\n${appUrl}\n\nSee you on the field!`,
+      text: `Hi ${playerName},\n\nYou've been added to ${teamName} on First Whistle.\n\nSign up or log in to view your schedule, track attendance, and stay connected with your team:\n${APP_URL}\n\nSee you on the field!`,
       html: `
         <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
           <div style="background:linear-gradient(135deg,#15803d,#0d9488);border-radius:12px;padding:24px;margin-bottom:24px;text-align:center">
@@ -138,7 +140,7 @@ export const sendInvite = onCall<SendInviteData>(
           <p style="color:#374151">You've been added to <strong>${teamName}</strong> on First Whistle.</p>
           <p style="color:#374151">Sign up or log in to view your schedule, track attendance, and stay connected with your team.</p>
           <div style="text-align:center;margin:32px 0">
-            <a href="${appUrl}" style="background:#15803d;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
+            <a href="${APP_URL}" style="background:#15803d;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
               View My Team
             </a>
           </div>
@@ -185,5 +187,250 @@ export const onNotificationCreated = onDocumentCreated(
         </div>
       `,
     });
+  }
+);
+
+// ─── Scheduled: event reminders (daily 8 AM UTC) ─────────────────────────────
+// Sends a 24-hour reminder to every player on teams with an event tomorrow.
+
+export const sendEventReminders = onSchedule(
+  {
+    schedule: '0 8 * * *',
+    timeZone: 'UTC',
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+  },
+  async () => {
+    const tomorrow = new Date();
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().slice(0, 10); // YYYY-MM-DD
+
+    const eventsSnap = await admin.firestore()
+      .collection('events')
+      .where('date', '==', tomorrowStr)
+      .get();
+
+    if (eventsSnap.empty) {
+      console.log('sendEventReminders: no events tomorrow');
+      return;
+    }
+
+    const transporter = createTransporter();
+    let totalSent = 0;
+
+    for (const eventDoc of eventsSnap.docs) {
+      const ev = eventDoc.data();
+      const teamIds: string[] = ev.teamIds ?? [];
+      if (!teamIds.length) continue;
+
+      const playersSnap = await admin.firestore()
+        .collection('players')
+        .where('teamId', 'in', teamIds.slice(0, 10))
+        .get();
+
+      const recipients: { name: string; address: string }[] = [];
+      for (const p of playersSnap.docs) {
+        const d = p.data();
+        const name = `${d.firstName ?? ''} ${d.lastName ?? ''}`.trim() || 'Player';
+        const addrs: string[] = [
+          d.email,
+          d.parentContact?.parentEmail,
+          d.parentContact2?.parentEmail,
+        ].filter((e: unknown): e is string => typeof e === 'string' && e.trim().length > 0);
+        addrs.forEach(address => recipients.push({ name, address }));
+      }
+
+      if (!recipients.length) continue;
+
+      const title: string = ev.title ?? 'Event';
+      const date: string = ev.date ?? '';
+      const time: string = ev.startTime ?? '';
+      const location: string = ev.location ?? '';
+
+      let teamName = '';
+      if (teamIds[0]) {
+        const teamDoc = await admin.firestore().doc(`teams/${teamIds[0]}`).get();
+        teamName = teamDoc.data()?.name ?? '';
+      }
+
+      const results = await Promise.allSettled(
+        recipients.map(({ name, address }) =>
+          transporter.sendMail({
+            from: emailFrom.value(),
+            to: `${name} <${address}>`,
+            subject: `First Whistle Reminder: ${title} is tomorrow`,
+            text: [
+              `Hi ${name},`,
+              '',
+              `This is a reminder that ${title} is scheduled for tomorrow.`,
+              `Date: ${date}`,
+              `Time: ${time}`,
+              location ? `Location: ${location}` : '',
+              teamName ? `Team: ${teamName}` : '',
+              '',
+              `View your schedule: ${APP_URL}`,
+              '',
+              '---',
+              'Sent via First Whistle',
+            ].filter(Boolean).join('\n'),
+            html: `
+              <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
+                <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
+                  <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
+                  ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${teamName}</p>` : ''}
+                </div>
+                <p style="color:#111827;font-size:15px;font-weight:600;margin:0 0 4px">Hi ${name},</p>
+                <p style="color:#374151;margin:0 0 20px">This is a reminder that <strong>${title}</strong> is scheduled for tomorrow.</p>
+                <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:24px">
+                  <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${title}</td></tr>
+                  <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${date}</td></tr>
+                  <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${time}</td></tr>
+                  ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${location}</td></tr>` : ''}
+                  ${teamName ? `<tr><td style="padding:4px 8px 4px 0">Team</td><td style="color:#111827">${teamName}</td></tr>` : ''}
+                </table>
+                <div style="text-align:center;margin-bottom:24px">
+                  <a href="${APP_URL}" style="background:#1B3A6B;color:white;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;display:inline-block">View Schedule</a>
+                </div>
+                <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
+                <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
+              </div>
+            `,
+          })
+        )
+      );
+
+      totalSent += results.filter(r => r.status === 'fulfilled').length;
+    }
+
+    console.log(`sendEventReminders: sent ${totalSent} reminder(s) for ${eventsSnap.size} event(s) on ${tomorrowStr}`);
+  }
+);
+
+// ─── Scheduled: RSVP follow-ups (daily 10 AM UTC) ────────────────────────────
+// Sends RSVP prompts to players who haven't responded to tomorrow's events.
+
+export const sendRsvpFollowups = onSchedule(
+  {
+    schedule: '0 10 * * *',
+    timeZone: 'UTC',
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+  },
+  async () => {
+    const tomorrow = new Date();
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+
+    const eventsSnap = await admin.firestore()
+      .collection('events')
+      .where('date', '==', tomorrowStr)
+      .get();
+
+    if (eventsSnap.empty) {
+      console.log('sendRsvpFollowups: no events tomorrow');
+      return;
+    }
+
+    const transporter = createTransporter();
+    let totalSent = 0;
+
+    for (const eventDoc of eventsSnap.docs) {
+      const ev = eventDoc.data();
+      const eventId = eventDoc.id;
+      const teamIds: string[] = ev.teamIds ?? [];
+      if (!teamIds.length) continue;
+
+      const existingRsvps: { playerId: string }[] = ev.rsvps ?? [];
+      const respondedIds = new Set(existingRsvps.map(r => r.playerId));
+
+      const playersSnap = await admin.firestore()
+        .collection('players')
+        .where('teamId', 'in', teamIds.slice(0, 10))
+        .get();
+
+      const title: string = ev.title ?? 'Event';
+      const date: string = ev.date ?? '';
+      const time: string = ev.startTime ?? '';
+      const location: string = ev.location ?? '';
+
+      let teamName = '';
+      if (teamIds[0]) {
+        const teamDoc = await admin.firestore().doc(`teams/${teamIds[0]}`).get();
+        teamName = teamDoc.data()?.name ?? '';
+      }
+
+      const btnStyle = (bg: string) =>
+        `display:inline-block;padding:10px 22px;border-radius:8px;background:${bg};color:white;text-decoration:none;font-weight:600;font-size:14px;margin:0 6px`;
+
+      const results = await Promise.allSettled(
+        playersSnap.docs
+          .filter(p => !respondedIds.has(p.id))
+          .flatMap(p => {
+            const d = p.data();
+            const playerId = p.id;
+            const name = `${d.firstName ?? ''} ${d.lastName ?? ''}`.trim() || 'Player';
+            const firstName = name.split(' ')[0];
+            const addrs: string[] = [
+              d.email,
+              d.parentContact?.parentEmail,
+              d.parentContact2?.parentEmail,
+            ].filter((e: unknown): e is string => typeof e === 'string' && e.trim().length > 0);
+
+            const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(playerId)}&n=${encodeURIComponent(name)}`;
+            const yesUrl = `${base}&r=yes`;
+            const noUrl  = `${base}&r=no`;
+            const maybeUrl = `${base}&r=maybe`;
+
+            return addrs.map(address =>
+              transporter.sendMail({
+                from: emailFrom.value(),
+                to: `${name} <${address}>`,
+                subject: `First Whistle: Don't forget to RSVP – ${title}`,
+                text: [
+                  `Hi ${name},`,
+                  '',
+                  `You haven't responded yet to tomorrow's event.`,
+                  `Event: ${title}`,
+                  `Date: ${date}`,
+                  `Time: ${time}`,
+                  location ? `Location: ${location}` : '',
+                  '',
+                  `Yes: ${yesUrl}`,
+                  `Maybe: ${maybeUrl}`,
+                  `No: ${noUrl}`,
+                  '',
+                  '---',
+                  'Sent via First Whistle',
+                ].filter(Boolean).join('\n'),
+                html: `
+                  <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
+                    <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
+                      <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
+                      ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${teamName}</p>` : ''}
+                    </div>
+                    <p style="color:#111827;font-size:15px;font-weight:600;margin:0 0 4px">Hi ${firstName},</p>
+                    <p style="color:#374151;margin:0 0 20px">You haven't responded yet to tomorrow's event. Will you be there?</p>
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:20px">
+                      <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${title}</td></tr>
+                      <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${date}</td></tr>
+                      <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${time}</td></tr>
+                      ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${location}</td></tr>` : ''}
+                    </table>
+                    <div style="text-align:center;margin-bottom:24px">
+                      <a href="${yesUrl}" style="${btnStyle('#15803d')}">Yes, I'll be there</a>
+                      <a href="${maybeUrl}" style="${btnStyle('#d97706')}">Maybe</a>
+                      <a href="${noUrl}" style="${btnStyle('#dc2626')}">Can't make it</a>
+                    </div>
+                    <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
+                    <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
+                  </div>
+                `,
+              })
+            );
+          })
+      );
+
+      totalSent += results.filter(r => r.status === 'fulfilled').length;
+    }
+
+    console.log(`sendRsvpFollowups: sent ${totalSent} follow-up(s) for events on ${tomorrowStr}`);
   }
 );
