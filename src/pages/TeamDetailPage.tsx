@@ -29,7 +29,7 @@ export function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const teams = useTeamStore(s => s.teams);
-  const { deleteTeam } = useTeamStore();
+  const { softDeleteTeam, hardDeleteTeam } = useTeamStore();
   const players = usePlayerStore(s => s.players);
   const { deletePlayersForTeam } = usePlayerStore();
   const allEvents = useEventStore(s => s.events);
@@ -48,6 +48,7 @@ export function TeamDetailPage() {
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmHardDelete, setConfirmHardDelete] = useState(false);
 
   // Join requests state
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
@@ -76,9 +77,19 @@ export function TeamDetailPage() {
     .filter(e => e.teamIds.includes(teamId))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
-  function handleDeleteTeam() {
-    deletePlayersForTeam(teamId);
-    deleteTeam(teamId);
+  const isAdmin = profile?.role === 'admin';
+  const isOwner = !isAdmin && (
+    team?.createdBy === profile?.uid || team?.coachId === profile?.uid
+  );
+
+  async function handleSoftDelete() {
+    await softDeleteTeam(teamId);
+    navigate('/teams');
+  }
+
+  async function handleHardDelete() {
+    await deletePlayersForTeam(teamId);
+    await hardDeleteTeam(teamId);
     navigate('/teams');
   }
 
@@ -138,7 +149,16 @@ export function TeamDetailPage() {
           </p>
         </div>
         {userCanEdit && <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}><Edit size={14} /> Edit</Button>}
-        <RoleGuard roles={['admin']}><Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}><Trash2 size={14} /></Button></RoleGuard>
+        {isOwner && (
+          <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>
+            <Trash2 size={14} /> Delete
+          </Button>
+        )}
+        {isAdmin && (
+          <Button variant="danger" size="sm" onClick={() => setConfirmHardDelete(true)}>
+            <Trash2 size={14} /> Delete
+          </Button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -286,12 +306,23 @@ export function TeamDetailPage() {
         initial={{ homeTeamId: teamId, teamIds: [teamId] }}
       />
       <EventDetailPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      {/* Owner soft-delete */}
       <ConfirmDialog
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
-        onConfirm={handleDeleteTeam}
+        onConfirm={() => void handleSoftDelete()}
         title="Delete Team"
-        message={`Delete "${team.name}" and all its players? This cannot be undone.`}
+        message={`"${team.name}" will be hidden and can be restored by an admin if needed. Players will not be affected.`}
+        confirmLabel="Delete Team"
+      />
+      {/* Admin hard-delete */}
+      <ConfirmDialog
+        open={confirmHardDelete}
+        onClose={() => setConfirmHardDelete(false)}
+        onConfirm={() => void handleHardDelete()}
+        title="Permanently Delete Team"
+        message={`Permanently delete "${team.name}" and all its players? This cannot be undone.`}
+        confirmLabel="Permanently Delete"
       />
     </div>
   );

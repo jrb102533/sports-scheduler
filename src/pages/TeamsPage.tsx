@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, Users, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Users, ChevronDown, ChevronRight, RotateCcw, Trash2 } from 'lucide-react';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TeamCard } from '@/components/teams/TeamCard';
 import { TeamForm } from '@/components/teams/TeamForm';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -15,11 +16,15 @@ import type { User } from 'firebase/auth';
 
 export function TeamsPage() {
   const teams = useTeamStore(s => s.teams);
+  const deletedTeams = useTeamStore(s => s.deletedTeams);
+  const { restoreTeam, hardDeleteTeam } = useTeamStore();
   const players = usePlayerStore(s => s.players);
   const profile = useAuthStore(s => s.profile);
   const user = useAuthStore(s => s.user);
   const [formOpen, setFormOpen] = useState(false);
   const [findTeamOpen, setFindTeamOpen] = useState(false);
+  const [deletedOpen, setDeletedOpen] = useState(false);
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<Team | null>(null);
   // Map of teamId -> 'pending' | 'approved' | 'rejected' | null
   const [requestStatuses, setRequestStatuses] = useState<Record<string, string | null>>({});
   const [requestingIds, setRequestingIds] = useState<Set<string>>(new Set());
@@ -148,7 +153,54 @@ export function TeamsPage() {
         </>
       )}
 
+      {/* Deleted teams — admin only */}
+      {isAdmin && deletedTeams.length > 0 && (
+        <div className="mt-8">
+          <button
+            onClick={() => setDeletedOpen(o => !o)}
+            className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-600 transition-colors mb-3"
+          >
+            {deletedOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+            Deleted Teams ({deletedTeams.length})
+          </button>
+          {deletedOpen && (
+            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+              {deletedTeams.map(team => (
+                <div key={team.id} className="flex items-center gap-3 px-4 py-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold flex-shrink-0 opacity-50" style={{ backgroundColor: team.color }}>
+                    {team.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-500">{team.name}</p>
+                    {team.deletedAt && (
+                      <p className="text-xs text-gray-400">Deleted {new Date(team.deletedAt).toLocaleDateString()}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <Button size="sm" variant="secondary" onClick={() => void restoreTeam(team.id)}>
+                      <RotateCcw size={13} /> Restore
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => setHardDeleteTarget(team)}>
+                      <Trash2 size={13} />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <TeamForm open={formOpen} onClose={() => setFormOpen(false)} />
+
+      <ConfirmDialog
+        open={!!hardDeleteTarget}
+        onClose={() => setHardDeleteTarget(null)}
+        onConfirm={() => hardDeleteTarget && void hardDeleteTeam(hardDeleteTarget.id)}
+        title="Permanently Delete Team"
+        message={`Permanently delete "${hardDeleteTarget?.name}"? This cannot be undone.`}
+        confirmLabel="Permanently Delete"
+      />
     </div>
   );
 }

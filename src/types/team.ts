@@ -19,6 +19,8 @@ export interface Team {
   ownerName: string;
   coachId?: string;
   leagueId?: string;   // optional: id of the league this team belongs to
+  isDeleted?: boolean;
+  deletedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
