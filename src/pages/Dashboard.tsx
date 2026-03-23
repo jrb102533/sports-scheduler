@@ -55,13 +55,13 @@ export function Dashboard() {
   return (
     <div className="p-6 space-y-6">
       {isEmpty && (
-        <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #1e1b4b 100%)' }}>
+        <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, #14532d 0%, #134e4a 100%)' }}>
           <div className="px-8 py-8 flex items-center gap-6">
             <div className="flex-shrink-0 w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.12)' }}>
               <Trophy size={32} className="text-amber-300" />
             </div>
             <div className="flex-1">
-              <h2 className="text-xl font-bold text-white mb-1">Welcome to Sports Scheduler</h2>
+              <h2 className="text-xl font-bold text-white mb-1">Welcome to First Whistle</h2>
               <p className="text-blue-200 text-sm">Get started by loading demo data or creating your first team.</p>
             </div>
             <RoleGuard roles={['admin']}>

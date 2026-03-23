@@ -55,7 +55,7 @@ export function MainLayout() {
 
   const location = useLocation();
   const title = PAGE_TITLES[location.pathname]
-    ?? (location.pathname.startsWith('/teams/') ? 'Team Details' : 'Sports Scheduler');
+    ?? (location.pathname.startsWith('/teams/') ? 'Team Details' : 'First Whistle');
 
   return (
     <div className="flex w-full min-h-screen">

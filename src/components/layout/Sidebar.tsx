@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Calendar, CalendarDays, Users, Trophy, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers } from 'lucide-react';
+import { WhistleLogo } from '@/components/ui/WhistleLogo';
 import { clsx } from 'clsx';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
@@ -42,18 +43,13 @@ export function Sidebar() {
     <aside className="w-60 min-h-screen bg-gray-900 flex flex-col flex-shrink-0">
       <div className="px-4 py-5 border-b border-gray-700/60">
         <div className="flex items-center gap-3">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)' }}
-          >
-            <Trophy size={18} className="text-white" />
-          </div>
+          <WhistleLogo size={36} />
           <div className="min-w-0">
             <div className="flex items-baseline gap-1">
-              <span className="text-white font-bold text-sm tracking-tight">Sports</span>
-              <span className="text-blue-300 font-medium text-sm tracking-tight">Scheduler</span>
+              <span className="text-white font-bold text-sm tracking-tight">First</span>
+              <span className="text-green-400 font-medium text-sm tracking-tight">Whistle</span>
             </div>
-            {kidsMode && <span className="text-blue-400 text-xs font-medium">Kids Mode</span>}
+            {kidsMode && <span className="text-green-400 text-xs font-medium">Kids Mode</span>}
           </div>
         </div>
       </div>

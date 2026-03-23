@@ -70,7 +70,7 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
             <div style="font-family:sans-serif;max-width:520px;margin:auto">
               <p style="color:#374151;white-space:pre-wrap">${message.trim().replace(/</g, '&lt;')}</p>
               <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-              <p style="color:#9ca3af;font-size:12px">Sent via Sports Scheduler</p>
+              <p style="color:#9ca3af;font-size:12px">Sent via First Whistle</p>
             </div>
           `,
         })
@@ -126,24 +126,25 @@ export const sendInvite = onCall<SendInviteData>(
     await transporter.sendMail({
       from: emailFrom.value(),
       to: to.trim(),
-      subject: `You've been added to ${teamName} on Sports Scheduler`,
-      text: `Hi ${playerName},\n\nYou've been added to ${teamName} on Sports Scheduler.\n\nSign up or log in to view your schedule, track attendance, and stay connected with your team:\n${appUrl}\n\nSee you on the field!`,
+      subject: `You've been added to ${teamName} on First Whistle`,
+      text: `Hi ${playerName},\n\nYou've been added to ${teamName} on First Whistle.\n\nSign up or log in to view your schedule, track attendance, and stay connected with your team:\n${appUrl}\n\nSee you on the field!`,
       html: `
         <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
-          <div style="background:linear-gradient(135deg,#1d4ed8,#4f46e5);border-radius:12px;padding:24px;margin-bottom:24px;text-align:center">
-            <h1 style="color:white;margin:0;font-size:22px">Sports Scheduler</h1>
+          <div style="background:linear-gradient(135deg,#15803d,#0d9488);border-radius:12px;padding:24px;margin-bottom:24px;text-align:center">
+            <h1 style="color:white;margin:0;font-size:22px">First Whistle</h1>
+            <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px">Game day starts here.</p>
           </div>
           <h2 style="color:#111827">Hi ${playerName},</h2>
-          <p style="color:#374151">You've been added to <strong>${teamName}</strong> on Sports Scheduler.</p>
+          <p style="color:#374151">You've been added to <strong>${teamName}</strong> on First Whistle.</p>
           <p style="color:#374151">Sign up or log in to view your schedule, track attendance, and stay connected with your team.</p>
           <div style="text-align:center;margin:32px 0">
-            <a href="${appUrl}" style="background:#2563eb;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
+            <a href="${appUrl}" style="background:#15803d;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
               View My Team
             </a>
           </div>
           <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
           <p style="color:#9ca3af;font-size:12px;text-align:center">
-            You received this because a coach added you to their roster on Sports Scheduler.
+            You received this because a coach added you to their roster on First Whistle.
           </p>
         </div>
       `,
@@ -179,7 +180,7 @@ export const onNotificationCreated = onDocumentCreated(
           <p style="color:#374151">${notif.message}</p>
           <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
           <p style="color:#9ca3af;font-size:12px">
-            You received this because you have notifications enabled in Sports Scheduler.
+            You received this because you have notifications enabled in First Whistle.
           </p>
         </div>
       `,

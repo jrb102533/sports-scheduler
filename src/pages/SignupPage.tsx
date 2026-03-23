@@ -78,7 +78,7 @@ export function SignupPage() {
   }
 
   return (
-    <AuthLayout title="Create account" subtitle="Join Sports Scheduler">
+    <AuthLayout title="Create account" subtitle="Join First Whistle">
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input label="Full Name" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Jane Smith" required />
         <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required />

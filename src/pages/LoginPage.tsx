@@ -27,7 +27,7 @@ export function LoginPage() {
   }
 
   return (
-    <AuthLayout title="Welcome back" subtitle="Sign in to Sports Scheduler">
+    <AuthLayout title="Welcome back" subtitle="Sign in to your account">
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
           label="Email"
