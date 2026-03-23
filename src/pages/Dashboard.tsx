@@ -76,25 +76,24 @@ export function Dashboard() {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
 
       {isEmpty && (
         <RoleGuard roles={['admin']}>
           <div className="flex gap-3">
-            <button
+            <Button
+              variant="secondary"
               onClick={handleSeed}
               disabled={seeding}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
             >
               {seeding ? 'Loading…' : 'Load Demo Data'}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
               onClick={() => navigate('/teams')}
-              className="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 text-white transition-colors"
-              style={{ background: '#1B3A6B' }}
             >
               <Users size={15} /> Create Team
-            </button>
+            </Button>
           </div>
         </RoleGuard>
       )}

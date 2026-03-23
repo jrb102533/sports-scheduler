@@ -56,6 +56,28 @@ Items deferred for later. Each entry includes context and what "done" looks like
 
 ---
 
+## TD-005 — Stray backslash/whitespace artifact (`\ `) in UI (origin unresolved)
+
+**Symptom:** Users see stray `\ ` (backslash + space) characters in the rendered UI.
+
+**Investigation (2026-03-23):** Searched all `.tsx` and `.ts` files under `src/` for:
+- Literal backslash-space bytes (`\\ ` and `\<space>` via grep/Perl regex)
+- Template literals or string concatenations producing backslash output
+- `.filter(Boolean).join(...)` calls that could render `\n` as text (found in `MessagingPage.tsx`, `ComposeMessageModal.tsx`, `LeagueDetailPage.tsx` — all use safe separators like ` · ` or `, `, not `\n`)
+- Dynamic text rendering in `EventCard`, `EventDetailPanel`, `AttendanceTracker`, `EventChip`
+- `dateUtils.ts` formatting functions
+
+No source-code cause was found. The artifact may originate from **data stored in Firestore** (e.g. an event title, location, or notes field containing a literal backslash), or from a browser extension / copy-paste artefact in demo data (`src/lib/demoData.ts`).
+
+**Next steps to resolve:**
+1. Check `src/lib/demoData.ts` for any string values containing `\ `
+2. Inspect Firestore documents directly for backslash characters in `title`, `location`, `notes`, `ownerName`, `coachName` fields
+3. If found in demoData, sanitize the string; if from Firestore, add an input sanitization step in the relevant form `onSubmit` handler
+
+**Files investigated:** `src/components/events/EventCard.tsx`, `src/components/events/EventDetailPanel.tsx`, `src/components/attendance/AttendanceTracker.tsx`, `src/pages/MessagingPage.tsx`, `src/components/messaging/ComposeMessageModal.tsx`, `src/pages/LeagueDetailPage.tsx`, `src/lib/dateUtils.ts`
+
+---
+
 ## TD-004 — Lazy-load xlsx (SheetJS) to reduce bundle size and hosting bandwidth
 
 **Current state:** The `xlsx` library (~800 kB unminified) is bundled into the main JS chunk, inflating it to 1.1 MB (352 kB gzipped). On Spark plan, Firebase Hosting allows 360 MB/day transfer — large bundles reduce headroom.
