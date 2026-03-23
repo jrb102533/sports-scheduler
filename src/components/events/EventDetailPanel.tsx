@@ -29,6 +29,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const [homeScore, setHomeScore] = useState('');
   const [awayScore, setAwayScore] = useState('');
   const [resultNotes, setResultNotes] = useState('');
+  const [scoreSaveState, setScoreSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
 
   if (!event) return null;
 
@@ -42,10 +43,17 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
     const h = parseInt(homeScore);
     const a = parseInt(awayScore);
     if (isNaN(h) || isNaN(a)) return;
-    recordResult(currentEvent.id, { homeScore: h, awayScore: a, notes: resultNotes || undefined });
-    setHomeScore('');
-    setAwayScore('');
-    setResultNotes('');
+    try {
+      recordResult(currentEvent.id, { homeScore: h, awayScore: a, notes: resultNotes || undefined });
+      setHomeScore('');
+      setAwayScore('');
+      setResultNotes('');
+      setScoreSaveState('saved');
+      setTimeout(() => setScoreSaveState('idle'), 2000);
+    } catch {
+      setScoreSaveState('error');
+      setTimeout(() => setScoreSaveState('idle'), 3000);
+    }
   }
 
   function handleCancel() {
@@ -79,7 +87,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
                 </Badge>
               )}
             </div>
-            <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 text-gray-500 shrink-0 ml-2">
+            <button onClick={onClose} aria-label="Close" className="p-1 rounded hover:bg-gray-100 text-gray-500 shrink-0 ml-2">
               <X size={16} />
             </button>
           </div>
@@ -143,7 +151,12 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
                   <Input label={awayTeam?.name ?? event.opponentName ?? 'Away'} type="number" min="0" value={awayScore} onChange={e => setAwayScore(e.target.value)} placeholder="0" />
                 </div>
                 <Input label="Notes (optional)" value={resultNotes} onChange={e => setResultNotes(e.target.value)} />
-                <Button size="sm" onClick={handleRecordResult} disabled={!homeScore || !awayScore}>Save Score</Button>
+                <Button size="sm" onClick={handleRecordResult} disabled={!homeScore || !awayScore}>
+                  {scoreSaveState === 'saved' ? 'Saved!' : scoreSaveState === 'error' ? 'Error saving' : 'Save Score'}
+                </Button>
+                {scoreSaveState === 'error' && (
+                  <p className="text-xs text-red-600 mt-1">Failed to save score. Please try again.</p>
+                )}
               </div>
             )}
 
