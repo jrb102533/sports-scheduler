@@ -85,7 +85,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
                 </Badge>
               )}
             </div>
-            <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 text-gray-500 shrink-0 ml-2">
+            <button onClick={onClose} aria-label="Close" className="p-1 rounded hover:bg-gray-100 text-gray-500 shrink-0 ml-2">
               <X size={16} />
             </button>
           </div>
