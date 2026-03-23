@@ -82,7 +82,7 @@ export function TeamsPage() {
   const hasMyTeams = myTeams.length > 0;
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="flex items-center justify-between mb-6">
         <p className="text-sm text-gray-500">
           {isAdmin

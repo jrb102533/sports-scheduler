@@ -143,7 +143,7 @@ export function MessagingPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       {/* Channel tabs — SMS only shown when FEATURE_SMS is enabled */}
       {FEATURE_SMS && (
         <div className="flex gap-1 mb-6 border-b border-gray-200">
@@ -170,7 +170,7 @@ export function MessagingPage() {
           </h2>
 
           {eligiblePlayers.length === 0 ? (
-            <Card className="p-6 text-center">
+            <Card className="p-4 sm:p-6 text-center">
               <AlertCircle size={28} className="text-gray-300 mx-auto mb-2" />
               <p className="text-sm font-medium text-gray-600">No contacts yet</p>
               <p className="text-xs text-gray-400 mt-1">

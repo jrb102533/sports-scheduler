@@ -31,16 +31,16 @@ export function StandingsTable({ teamIds }: { teamIds?: string[] } = {}) {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-200 bg-gray-50/60">
-            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-10"></th>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Team</th>
-            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">GP</th>
-            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">W</th>
-            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">L</th>
-            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">T</th>
-            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">PF</th>
-            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">PA</th>
-            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Diff</th>
-            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-800 uppercase">Pts</th>
+            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-10"></th>
+            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Team</th>
+            <th className="px-2 py-3 text-center text-xs font-semibold text-gray-500 uppercase">GP</th>
+            <th className="px-2 py-3 text-center text-xs font-semibold text-gray-500 uppercase">W</th>
+            <th className="px-2 py-3 text-center text-xs font-semibold text-gray-500 uppercase">L</th>
+            <th className="hidden sm:table-cell px-2 py-3 text-center text-xs font-semibold text-gray-500 uppercase">T</th>
+            <th className="hidden md:table-cell px-2 py-3 text-center text-xs font-semibold text-gray-500 uppercase">PF</th>
+            <th className="hidden md:table-cell px-2 py-3 text-center text-xs font-semibold text-gray-500 uppercase">PA</th>
+            <th className="hidden sm:table-cell px-2 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Diff</th>
+            <th className="px-2 py-3 text-center text-xs font-semibold text-gray-800 uppercase">Pts</th>
           </tr>
         </thead>
         <tbody>
@@ -52,25 +52,25 @@ export function StandingsTable({ teamIds }: { teamIds?: string[] } = {}) {
                 i === 0 && 'bg-amber-50/40'
               )}
             >
-              <td className="px-4 py-3">
+              <td className="px-3 py-3">
                 <div className="flex items-center justify-center">
                   <RankBadge rank={i + 1} />
                 </div>
               </td>
-              <td className="px-4 py-3">
+              <td className="px-3 py-3">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: row.teamColor }} />
-                  <span className={clsx('font-medium text-gray-900', i === 0 && 'font-semibold')}>{row.teamName}</span>
+                  <span className={clsx('font-medium text-gray-900 text-sm', i === 0 && 'font-semibold')}>{row.teamName}</span>
                 </div>
               </td>
-              <td className="px-4 py-3 text-center text-gray-600">{row.gamesPlayed}</td>
-              <td className="px-4 py-3 text-center text-green-600 font-medium">{row.wins}</td>
-              <td className="px-4 py-3 text-center text-red-500 font-medium">{row.losses}</td>
-              <td className="px-4 py-3 text-center text-gray-500">{row.ties}</td>
-              <td className="px-4 py-3 text-center text-gray-600">{row.pointsFor}</td>
-              <td className="px-4 py-3 text-center text-gray-600">{row.pointsAgainst}</td>
-              <td className="px-4 py-3 text-center text-gray-600">{row.pointsDiff > 0 ? `+${row.pointsDiff}` : row.pointsDiff}</td>
-              <td className="px-4 py-3 text-center font-bold text-gray-900">{row.points}</td>
+              <td className="px-2 py-3 text-center text-gray-600 text-sm">{row.gamesPlayed}</td>
+              <td className="px-2 py-3 text-center text-green-600 font-medium text-sm">{row.wins}</td>
+              <td className="px-2 py-3 text-center text-red-500 font-medium text-sm">{row.losses}</td>
+              <td className="hidden sm:table-cell px-2 py-3 text-center text-gray-500 text-sm">{row.ties}</td>
+              <td className="hidden md:table-cell px-2 py-3 text-center text-gray-600 text-sm">{row.pointsFor}</td>
+              <td className="hidden md:table-cell px-2 py-3 text-center text-gray-600 text-sm">{row.pointsAgainst}</td>
+              <td className="hidden sm:table-cell px-2 py-3 text-center text-gray-600 text-sm">{row.pointsDiff > 0 ? `+${row.pointsDiff}` : row.pointsDiff}</td>
+              <td className="px-2 py-3 text-center font-bold text-gray-900 text-sm">{row.points}</td>
             </tr>
           ))}
         </tbody>

@@ -11,7 +11,7 @@ export function NotificationPanel() {
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={() => setPanelOpen(false)} />
-      <div className="relative w-80 bg-white h-full shadow-xl flex flex-col">
+      <div className="relative w-full sm:w-80 bg-white h-full shadow-xl flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
           <h2 className="font-semibold text-gray-900">Notifications</h2>
           <button onClick={() => setPanelOpen(false)} className="p-1 rounded hover:bg-gray-100 text-gray-500">

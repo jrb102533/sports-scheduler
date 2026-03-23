@@ -34,8 +34,8 @@ export function ProfilePage() {
   if (!profile) return null;
 
   return (
-    <div className="p-6 max-w-xl space-y-6">
-      <Card className="p-6 space-y-4">
+    <div className="p-4 sm:p-6 max-w-xl space-y-6">
+      <Card className="p-4 sm:p-6 space-y-4">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xl">
             {profile.displayName.charAt(0).toUpperCase()}
@@ -58,7 +58,7 @@ export function ProfilePage() {
         </div>
       </Card>
 
-      <Card className="p-6 space-y-4">
+      <Card className="p-4 sm:p-6 space-y-4">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2"><User size={16} /> Edit Profile</h3>
         <Input label="Display Name" value={displayName} onChange={e => setDisplayName(e.target.value)} />
         <Input label="Email" value={profile.email} disabled className="opacity-60 cursor-not-allowed" />
@@ -69,7 +69,7 @@ export function ProfilePage() {
         </div>
       </Card>
 
-      <Card className="p-6">
+      <Card className="p-4 sm:p-6">
         <h3 className="font-semibold text-gray-900 mb-3">Account</h3>
         <Button variant="danger" onClick={logout}>Sign Out</Button>
       </Card>

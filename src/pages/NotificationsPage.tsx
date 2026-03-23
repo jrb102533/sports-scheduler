@@ -10,7 +10,7 @@ export function NotificationsPage() {
   const unread = notifications.filter(n => !n.isRead).length;
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           {unread > 0 && <Badge className="bg-red-100 text-red-700">{unread} unread</Badge>}

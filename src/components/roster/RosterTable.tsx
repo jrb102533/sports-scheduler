@@ -34,24 +34,24 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">#</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Position</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Parent</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Actions</th>
+              <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">#</th>
+              <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th>
+              <th className="hidden sm:table-cell px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Position</th>
+              <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
+              <th className="hidden md:table-cell px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Parent</th>
+              <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody>
             {players.sort((a, b) => (a.jerseyNumber ?? 999) - (b.jerseyNumber ?? 999)).map(player => (
               <tr key={player.id} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="px-4 py-3 text-gray-500">{player.jerseyNumber ?? '—'}</td>
-                <td className="px-4 py-3 font-medium text-gray-900">{player.firstName} {player.lastName}</td>
-                <td className="px-4 py-3 text-gray-600">{player.position ?? '—'}</td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-3 text-gray-500 text-sm">{player.jerseyNumber ?? '—'}</td>
+                <td className="px-3 py-3 font-medium text-gray-900 text-sm">{player.firstName} {player.lastName}</td>
+                <td className="hidden sm:table-cell px-3 py-3 text-gray-600 text-sm">{player.position ?? '—'}</td>
+                <td className="px-3 py-3">
                   <Badge className={statusColors[player.status]}>{PLAYER_STATUS_LABELS[player.status]}</Badge>
                 </td>
-                <td className="px-4 py-3 text-gray-600">
+                <td className="hidden md:table-cell px-3 py-3 text-gray-600">
                   {player.parentContact?.parentName ? (
                     <div>
                       <div className="text-xs text-gray-700">{player.parentContact.parentName}</div>
@@ -65,7 +65,7 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
                     <span className="text-gray-300 text-xs">—</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-3 py-3 text-right">
                   <div className="flex justify-end gap-1">
                     <Button variant="ghost" size="sm" onClick={() => setEditPlayer(player)}><Edit size={13} /></Button>
                     <Button variant="ghost" size="sm" onClick={() => setDeletePlayer(player)}><Trash2 size={13} className="text-red-500" /></Button>

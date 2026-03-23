@@ -68,7 +68,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
     <>
       <div className="fixed inset-0 z-40 flex justify-end">
         <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-        <div className="relative w-96 bg-white h-full shadow-xl flex flex-col overflow-y-auto">
+        <div className="relative w-full sm:w-96 bg-white h-full shadow-xl flex flex-col overflow-y-auto">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
             <div className="flex items-center gap-2 min-w-0">
               <h2 className="font-semibold text-gray-900 truncate">{event.title}</h2>

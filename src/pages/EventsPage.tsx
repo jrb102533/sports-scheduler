@@ -51,10 +51,10 @@ export function EventsPage() {
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between gap-3 mb-6">
-        <div className="flex items-center gap-2 flex-1 flex-wrap">
-          <div className="relative flex-1 min-w-40">
+    <div className="p-4 sm:p-6">
+      <div className="flex flex-col gap-3 mb-6">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -63,20 +63,22 @@ export function EventsPage() {
               onChange={e => setSearch(e.target.value)}
             />
           </div>
-          {teams.length > 0 && (
-            <Select options={teamOptions} value={teamFilter} onChange={e => setTeamFilter(e.target.value)} className="w-36" />
-          )}
-          <Select options={typeOptions} value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="w-36" />
-          <Select options={statusOptions} value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-36" />
+          <RoleGuard roles={['admin', 'league_manager', 'coach']}>
+            <Button variant="secondary" size="sm" onClick={() => setImportOpen(true)} className="hidden sm:inline-flex">
+              <Upload size={16} /> Import
+            </Button>
+            <Button size="sm" onClick={() => setFormOpen(true)}>
+              <Plus size={16} /> <span className="hidden sm:inline">New Event</span>
+            </Button>
+          </RoleGuard>
         </div>
-        <RoleGuard roles={['admin', 'league_manager', 'coach']}>
-          <Button variant="secondary" onClick={() => setImportOpen(true)}>
-            <Upload size={16} /> Import
-          </Button>
-          <Button onClick={() => setFormOpen(true)}>
-            <Plus size={16} /> New Event
-          </Button>
-        </RoleGuard>
+        <div className="flex gap-2 flex-wrap">
+          {teams.length > 0 && (
+            <Select options={teamOptions} value={teamFilter} onChange={e => setTeamFilter(e.target.value)} className="flex-1 min-w-32" />
+          )}
+          <Select options={typeOptions} value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="flex-1 min-w-28" />
+          <Select options={statusOptions} value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="flex-1 min-w-28" />
+        </div>
       </div>
 
       {filtered.length === 0 ? (

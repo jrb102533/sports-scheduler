@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
@@ -30,6 +30,7 @@ export function MainLayout() {
   useNotificationTrigger();
   useAttendanceNotification();
 
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user } = useAuthStore();
   const subscribeTeams = useTeamStore(s => s.subscribe);
   const subscribePlayers = usePlayerStore(s => s.subscribe);
@@ -62,9 +63,9 @@ export function MainLayout() {
 
   return (
     <div className="flex w-full min-h-screen">
-      <Sidebar />
+      <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0">
-        <TopBar title={title} />
+        <TopBar title={title} onMenuClick={() => setSidebarOpen(true)} />
         <main className="flex-1 overflow-y-auto">
           <Outlet />
         </main>

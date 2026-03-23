@@ -44,7 +44,7 @@ export function LeagueDetailPage() {
   const isAdmin = profile?.role === 'admin';
   const canManage = isAdmin || (profile?.role === 'league_manager' && profile?.leagueId === id);
 
-  if (!league) return <div className="p-6 text-gray-500">League not found.</div>;
+  if (!league) return <div className="p-4 sm:p-6 text-gray-500">League not found.</div>;
 
   async function handleDelete() {
     await Promise.all(leagueTeams.map(t => updateTeam({ ...t, leagueId: undefined })));
@@ -75,7 +75,7 @@ export function LeagueDetailPage() {
   ];
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <button onClick={() => navigate('/leagues')} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-4">
         <ArrowLeft size={14} /> Back to Leagues
       </button>

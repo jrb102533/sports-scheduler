@@ -1,10 +1,15 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers, X } from 'lucide-react';
 import { WhistleLogo } from '@/components/ui/WhistleLogo';
 import { clsx } from 'clsx';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useAuthStore, hasRole } from '@/store/useAuthStore';
+
+interface SidebarProps {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+}
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -31,14 +36,20 @@ const roleColors: Record<string, string> = {
   parent: 'text-orange-300',
 };
 
-export function Sidebar() {
+function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   const unread = useNotificationStore(s => s.notifications.filter(n => !n.isRead).length);
   const kidsMode = useSettingsStore(s => s.settings.kidsSportsMode);
   const { user, profile, logout } = useAuthStore();
   const navigate = useNavigate();
 
+  const allNavItems = [
+    ...navItems,
+    ...(hasRole(profile, 'admin', 'league_manager') ? leagueNavItems : []),
+    ...(hasRole(profile, 'admin') ? adminNavItems : []),
+  ];
+
   return (
-    <aside className="w-60 min-h-screen bg-gray-900 flex flex-col flex-shrink-0">
+    <>
       <div className="px-4 py-5 border-b border-gray-700/60">
         <div className="flex items-center gap-3">
           <WhistleLogo size={36} />
@@ -53,15 +64,12 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {[
-          ...navItems,
-          ...(hasRole(profile, 'admin', 'league_manager') ? leagueNavItems : []),
-          ...(hasRole(profile, 'admin') ? adminNavItems : []),
-        ].map(({ to, label, icon: Icon, end }) => (
+        {allNavItems.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
+            onClick={onNavClick}
             className={({ isActive }) => clsx(
               'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors relative',
               isActive
@@ -80,12 +88,11 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* User section — always show logout when authenticated */}
       {user && (
         <div className="border-t border-gray-700 px-3 py-3">
           {profile ? (
             <button
-              onClick={() => navigate('/profile')}
+              onClick={() => { navigate('/profile'); onNavClick?.(); }}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-800 transition-colors text-left"
             >
               <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
@@ -109,6 +116,33 @@ export function Sidebar() {
           </button>
         </div>
       )}
-    </aside>
+    </>
+  );
+}
+
+export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
+  return (
+    <>
+      {/* Desktop sidebar — always visible */}
+      <aside className="hidden lg:flex w-60 min-h-screen bg-gray-900 flex-col flex-shrink-0">
+        <SidebarContent />
+      </aside>
+
+      {/* Mobile drawer overlay */}
+      {mobileOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex">
+          <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+          <aside className="relative w-72 bg-gray-900 flex flex-col h-full overflow-y-auto">
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 p-1.5 rounded-lg bg-gray-800 text-gray-400 hover:text-white"
+            >
+              <X size={18} />
+            </button>
+            <SidebarContent onNavClick={onClose} />
+          </aside>
+        </div>
+      )}
+    </>
   );
 }

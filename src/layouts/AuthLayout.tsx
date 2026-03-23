@@ -46,7 +46,7 @@ export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-1">{title}</h2>
           {subtitle && <p className="text-gray-500 text-sm mb-6">{subtitle}</p>}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 sm:p-8">
             {children}
           </div>
         </div>

@@ -69,7 +69,7 @@ export function TeamDetailPage() {
       .finally(() => setRequestsLoading(false));
   }, [tab, team?.id, canSeeRequests]);
 
-  if (!team) return <div className="p-6 text-gray-500">Team not found.</div>;
+  if (!team) return <div className="p-4 sm:p-6 text-gray-500">Team not found.</div>;
 
   const teamId = team.id;
   const teamPlayers = players.filter(p => p.teamId === teamId);
@@ -124,7 +124,7 @@ export function TeamDetailPage() {
   ];
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <button onClick={() => navigate('/teams')} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-4">
         <ArrowLeft size={14} /> Back to Teams
       </button>
@@ -273,9 +273,9 @@ export function TeamDetailPage() {
             <p className="text-xs text-gray-500 mt-0.5">Pending requests to join this team</p>
           </div>
           {requestsLoading ? (
-            <div className="p-6 text-center text-sm text-gray-400">Loading requests…</div>
+            <div className="p-4 sm:p-6 text-center text-sm text-gray-400">Loading requests…</div>
           ) : joinRequests.length === 0 ? (
-            <div className="p-6 text-center text-sm text-gray-400">No pending join requests.</div>
+            <div className="p-4 sm:p-6 text-center text-sm text-gray-400">No pending join requests.</div>
           ) : (
             <div className="divide-y divide-gray-100">
               {joinRequests.map(req => {

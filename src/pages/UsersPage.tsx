@@ -85,10 +85,10 @@ export function UsersPage() {
     setEditingNameUid(null);
   }
 
-  if (loading) return <div className="p-6 text-sm text-gray-400">Loading users…</div>;
+  if (loading) return <div className="p-4 sm:p-6 text-sm text-gray-400">Loading users…</div>;
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <Users size={18} className="text-gray-500" />

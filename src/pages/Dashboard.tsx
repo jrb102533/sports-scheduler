@@ -53,29 +53,29 @@ export function Dashboard() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {isEmpty && (
         <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, #14532d 0%, #134e4a 100%)' }}>
-          <div className="px-8 py-8 flex items-center gap-6">
-            <div className="flex-shrink-0 w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.12)' }}>
-              <Trophy size={32} className="text-amber-300" />
+          <div className="px-5 py-6 sm:px-8 sm:py-8 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
+            <div className="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.12)' }}>
+              <Trophy size={28} className="text-amber-300" />
             </div>
             <div className="flex-1">
-              <h2 className="text-xl font-bold text-white mb-1">Welcome to First Whistle</h2>
+              <h2 className="text-lg sm:text-xl font-bold text-white mb-1">Welcome to First Whistle</h2>
               <p className="text-blue-200 text-sm">Get started by loading demo data or creating your first team.</p>
             </div>
             <RoleGuard roles={['admin']}>
-              <div className="flex gap-3 flex-shrink-0">
+              <div className="flex gap-3 flex-shrink-0 w-full sm:w-auto">
                 <button
                   onClick={handleSeed}
                   disabled={seeding}
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-white border border-white/20 hover:bg-white/10 transition-colors disabled:opacity-50"
+                  className="flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-medium text-white border border-white/20 hover:bg-white/10 transition-colors disabled:opacity-50"
                 >
                   {seeding ? 'Loading…' : 'Load Demo Data'}
                 </button>
                 <button
                   onClick={() => navigate('/teams')}
-                  className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-500 hover:bg-blue-400 text-white transition-colors flex items-center gap-2"
+                  className="flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-medium bg-blue-500 hover:bg-blue-400 text-white transition-colors flex items-center justify-center gap-2"
                 >
                   <Users size={15} /> Create Team
                 </button>
