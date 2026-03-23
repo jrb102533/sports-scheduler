@@ -30,8 +30,9 @@ function createTransporter() {
 async function assertAdminOrCoach(uid: string) {
   const doc = await admin.firestore().doc(`users/${uid}`).get();
   const role = doc.data()?.role;
-  if (!['admin', 'coach'].includes(role)) {
-    throw new HttpsError('permission-denied', 'Only admins and coaches can perform this action.');
+  console.log(`assertAdminOrCoach: uid=${uid}, role=${role}`);
+  if (!['admin', 'coach', 'league_manager'].includes(role)) {
+    throw new HttpsError('permission-denied', 'Only admins, coaches, and league managers can perform this action.');
   }
 }
 
@@ -56,6 +57,7 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
     if (!message?.trim()) throw new HttpsError('invalid-argument', 'Message cannot be empty.');
     if (to.length > 100) throw new HttpsError('invalid-argument', 'Maximum 100 recipients.');
 
+    console.log(`sendEmail: sending to ${to.length} recipient(s), subject="${subject.trim()}"`);
     const transporter = createTransporter();
     const results = await Promise.allSettled(
       to.map((address: string) =>
@@ -82,7 +84,9 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
       }
     });
 
-    return { sent: results.filter(r => r.status === 'fulfilled').length, failed: errors.length, errors };
+    const sent = results.filter(r => r.status === 'fulfilled').length;
+    console.log(`sendEmail: sent=${sent}, failed=${errors.length}`, errors.length ? errors : '');
+    return { sent, failed: errors.length, errors };
   }
 );
 

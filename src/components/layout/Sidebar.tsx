@@ -35,7 +35,7 @@ const roleColors: Record<string, string> = {
 export function Sidebar() {
   const unread = useNotificationStore(s => s.notifications.filter(n => !n.isRead).length);
   const kidsMode = useSettingsStore(s => s.settings.kidsSportsMode);
-  const { profile, logout } = useAuthStore();
+  const { user, profile, logout } = useAuthStore();
   const navigate = useNavigate();
 
   return (
@@ -86,23 +86,27 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* User section */}
-      {profile && (
+      {/* User section — always show logout when authenticated */}
+      {user && (
         <div className="border-t border-gray-700 px-3 py-3">
-          <button
-            onClick={() => navigate('/profile')}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-800 transition-colors text-left"
-          >
-            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-              {profile.displayName.charAt(0).toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-medium truncate">{profile.displayName}</p>
-              <p className={clsx('text-xs flex items-center gap-1', roleColors[profile.role] ?? 'text-gray-400')}>
-                <Shield size={10} /> {profile.role.charAt(0).toUpperCase() + profile.role.slice(1)}
-              </p>
-            </div>
-          </button>
+          {profile ? (
+            <button
+              onClick={() => navigate('/profile')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-800 transition-colors text-left"
+            >
+              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                {profile.displayName.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm font-medium truncate">{profile.displayName}</p>
+                <p className={clsx('text-xs flex items-center gap-1', roleColors[profile.role] ?? 'text-gray-400')}>
+                  <Shield size={10} /> {profile.role.replace('_', ' ')}
+                </p>
+              </div>
+            </button>
+          ) : (
+            <div className="px-3 py-2.5 text-xs text-gray-500">Loading profile…</div>
+          )}
           <button
             onClick={logout}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-gray-800 transition-colors text-sm mt-0.5"

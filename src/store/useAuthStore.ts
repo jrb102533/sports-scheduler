@@ -46,25 +46,46 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
       set({ user, loading: false });
 
-      profileUnsub = onSnapshot(doc(db, 'users', user.uid), async (snap) => {
-        if (!snap.exists()) return;
-        const profile = snap.data() as UserProfile;
-        set({ profile });
-
-        // Auto-link: if no team/player yet, check if an invite exists for this email
-        if (!profile.teamId && !profile.playerId && user.email) {
-          const inviteSnap = await getDoc(doc(db, 'invites', user.email.toLowerCase()));
-          if (inviteSnap.exists()) {
-            const invite = inviteSnap.data();
+      profileUnsub = onSnapshot(
+        doc(db, 'users', user.uid),
+        async (snap) => {
+          if (!snap.exists()) {
+            // Profile document missing — create a minimal one so the app is usable
             await setDoc(doc(db, 'users', user.uid), {
-              ...profile,
-              teamId: invite.teamId,
-              playerId: invite.playerId,
+              uid: user.uid,
+              email: user.email ?? '',
+              displayName: user.displayName ?? user.email?.split('@')[0] ?? 'User',
+              role: 'coach',
+              createdAt: new Date().toISOString(),
             });
-            await deleteDoc(doc(db, 'invites', user.email.toLowerCase()));
+            return; // onSnapshot will fire again with the new document
           }
+          const profile = snap.data() as UserProfile;
+          set({ profile });
+
+          // Auto-link: if no team/player yet, check if an invite exists for this email
+          if (!profile.teamId && !profile.playerId && user.email) {
+            try {
+              const inviteSnap = await getDoc(doc(db, 'invites', user.email.toLowerCase()));
+              if (inviteSnap.exists()) {
+                const invite = inviteSnap.data();
+                await setDoc(doc(db, 'users', user.uid), {
+                  ...profile,
+                  teamId: invite.teamId,
+                  playerId: invite.playerId,
+                });
+                await deleteDoc(doc(db, 'invites', user.email.toLowerCase()));
+              }
+            } catch {
+              // Invite check is best-effort; ignore errors
+            }
+          }
+        },
+        (err) => {
+          console.error('Profile snapshot error:', err);
+          set({ loading: false });
         }
-      });
+      );
     });
 
     return () => {
