@@ -37,14 +37,14 @@ export function TeamCard({ team, playerCount, onClick }: TeamCardProps) {
             <Users size={12} className="text-gray-400" />
             {playerCount} {playerCount === 1 ? 'player' : 'players'}
           </span>
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1 text-sm">
             <Crown size={10} className="text-amber-400" />
             {team.ownerName}
           </span>
         </div>
 
         {team.coachName && (
-          <p className="text-xs text-gray-400 mt-1.5 pl-0.5">Coach: {team.coachName}</p>
+          <p className="text-sm text-gray-400 mt-1.5 pl-0.5">Coach: {team.coachName}</p>
         )}
       </div>
     </Card>

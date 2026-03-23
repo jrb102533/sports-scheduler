@@ -124,7 +124,7 @@ export function TeamsPage() {
 
       {(isAdmin || hasMyTeams) && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             {myTeams.map(team => (
               <TeamCard
                 key={team.id}
@@ -155,7 +155,7 @@ export function TeamsPage() {
 
       {/* Deleted teams — admin only */}
       {isAdmin && deletedTeams.length > 0 && (
-        <div className="mt-8">
+        <div className="mt-6">
           <button
             onClick={() => setDeletedOpen(o => !o)}
             className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-600 transition-colors mb-3"
