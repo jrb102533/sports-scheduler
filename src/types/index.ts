@@ -1,7 +1,7 @@
 export type { SportType, AgeGroup, Team } from './team';
 export type { League } from './league';
 export type { PlayerStatus, ParentContact, Player } from './player';
-export type { EventType, EventStatus, AttendanceStatus, RecurrenceFrequency, GameResult, SnackVolunteer, AttendanceRecord, ScheduledEvent } from './event';
+export type { EventType, EventStatus, AttendanceStatus, RecurrenceFrequency, GameResult, SnackVolunteer, SnackSignup, EventRsvp, AttendanceRecord, ScheduledEvent } from './event';
 export type { TeamStandingRow, StandingsFilter } from './standings';
 export type { NotificationType, AppNotification } from './notification';
 export type { AppSettings } from './settings';

@@ -14,6 +14,21 @@ export interface SnackVolunteer {
   bringing: string;
 }
 
+export interface SnackSignup {
+  id: string;
+  name: string;
+  bringing: string;
+  signedUpAt: string;
+}
+
+export interface EventRsvp {
+  playerId: string;
+  name: string;
+  email: string;
+  response: 'yes' | 'no' | 'maybe';
+  respondedAt: string;
+}
+
 export interface AttendanceRecord {
   playerId: string;
   status: AttendanceStatus;
@@ -40,6 +55,9 @@ export interface ScheduledEvent {
   recurrence?: RecurrenceFrequency;
   recurrenceEnd?: string;
   snackVolunteer?: SnackVolunteer;
+  snackItem?: string;
+  snackSignups?: SnackSignup[];
+  rsvps?: EventRsvp[];
   attendance?: AttendanceRecord[];
   attendanceRecorded?: boolean;
   createdAt: string;

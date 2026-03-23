@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useOpponentStore } from '@/store/useOpponentStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import { todayISO } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent, EventType, EventStatus, RecurrenceFrequency } from '@/types';
@@ -32,25 +33,15 @@ function generateOccurrences(startDate: string, endDate: string, frequency: Recu
   const end = parseISO(endDate);
   const dates: string[] = [];
   let current = start;
-
   while (!isAfter(current, end)) {
     dates.push(format(current, 'yyyy-MM-dd'));
     switch (frequency) {
-      case 'daily':
-        current = addDays(current, 1);
-        break;
-      case 'weekly':
-        current = addWeeks(current, 1);
-        break;
-      case 'biweekly':
-        current = addWeeks(current, 2);
-        break;
-      case 'monthly':
-        current = addMonths(current, 1);
-        break;
+      case 'daily': current = addDays(current, 1); break;
+      case 'weekly': current = addWeeks(current, 1); break;
+      case 'biweekly': current = addWeeks(current, 2); break;
+      case 'monthly': current = addMonths(current, 1); break;
     }
   }
-
   return dates;
 }
 
@@ -63,9 +54,20 @@ const GAME_TYPES = new Set<EventType>(['game', 'match', 'tournament']);
 export function EventForm({ open, onClose, initial, editEvent }: EventFormProps) {
   const { addEvent, bulkAddEvents } = useEventStore();
   const updateEvent = useEventStore(s => s.updateEvent);
-  const teams = useTeamStore(s => s.teams);
-  const teamOptions = teams.map(t => ({ value: t.id, label: t.name }));
+  const allTeams = useTeamStore(s => s.teams);
   const { opponents, addOpponent } = useOpponentStore();
+  const profile = useAuthStore(s => s.profile);
+  const user = useAuthStore(s => s.user);
+
+  // Teams the user can schedule for
+  const myTeams = useMemo(() => {
+    if (profile?.role === 'admin' || profile?.role === 'league_manager') return allTeams;
+    return allTeams.filter(t => t.createdBy === user?.uid || t.coachId === user?.uid);
+  }, [allTeams, profile, user]);
+
+  // If a team is pre-set from the page context (e.g. TeamDetailPage), lock it
+  const lockedTeamId = initial?.homeTeamId ?? '';
+  const lockedTeam = lockedTeamId ? allTeams.find(t => t.id === lockedTeamId) : null;
 
   const [title, setTitle] = useState(editEvent?.title ?? '');
   const [type, setType] = useState<EventType>(editEvent?.type ?? initial?.type ?? 'game');
@@ -73,13 +75,22 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const [startTime, setStartTime] = useState(editEvent?.startTime ?? '09:00');
   const [endTime, setEndTime] = useState(editEvent?.endTime ?? '');
   const [location, setLocation] = useState(editEvent?.location ?? '');
-  const [homeTeamId, setHomeTeamId] = useState(editEvent?.homeTeamId ?? initial?.homeTeamId ?? '');
-  const [awayTeamId, setAwayTeamId] = useState(editEvent?.awayTeamId ?? initial?.awayTeamId ?? '');
-  const [opponentName, setOpponentName] = useState(editEvent?.opponentName ?? '');
   const [notes, setNotes] = useState(editEvent?.notes ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Recurrence state (create only)
+  // Team + home/away
+  const [selectedTeamId, setSelectedTeamId] = useState(
+    lockedTeamId || editEvent?.homeTeamId || editEvent?.awayTeamId || myTeams[0]?.id || ''
+  );
+  const [isHome, setIsHome] = useState(
+    editEvent ? !!editEvent.homeTeamId : true
+  );
+
+  // Opponent
+  const [opponentName, setOpponentName] = useState(editEvent?.opponentName ?? '');
+  const [snackItem, setSnackItem] = useState(editEvent?.snackItem ?? '');
+
+  // Recurrence
   const [isRecurring, setIsRecurring] = useState(false);
   const [frequency, setFrequency] = useState<RecurrenceFrequency>('weekly');
   const [recurrenceEnd, setRecurrenceEnd] = useState('');
@@ -89,11 +100,15 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     return generateOccurrences(date, recurrenceEnd, frequency).length;
   }, [isRecurring, date, recurrenceEnd, frequency]);
 
+  const effectiveHomeTeamId = isHome ? selectedTeamId : '';
+  const effectiveAwayTeamId = isHome ? '' : selectedTeamId;
+  const contextTeamId = selectedTeamId;
+
   function validate() {
     const e: Record<string, string> = {};
-    if (!title.trim()) e.title = 'Title is required';
     if (!date) e.date = 'Date is required';
     if (!startTime) e.startTime = 'Start time is required';
+    if (!selectedTeamId) e.team = 'Team is required';
     if (!editEvent && isRecurring) {
       if (!recurrenceEnd) e.recurrenceEnd = 'End date is required for recurring events';
       else if (recurrenceEnd <= date) e.recurrenceEnd = 'End date must be after start date';
@@ -105,10 +120,10 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   async function handleSubmit() {
     if (!validate()) return;
     const now = new Date().toISOString();
-    const teamIds = [...new Set([homeTeamId, awayTeamId].filter(Boolean))];
+    const teamIds = [selectedTeamId].filter(Boolean);
+    const resolvedTitle = title.trim() || EVENT_TYPE_LABELS[type];
 
-    // Resolve opponent — create a new record if the name isn't already saved
-    const contextTeamId = homeTeamId || awayTeamId;
+    // Resolve opponent
     let resolvedOpponentId: string | undefined;
     let resolvedOpponentName: string | undefined;
     const trimmedOpponent = opponentName.trim();
@@ -128,21 +143,22 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     const optionals = {
       ...(endTime ? { endTime } : {}),
       ...(location.trim() ? { location: location.trim() } : {}),
-      ...(homeTeamId ? { homeTeamId } : {}),
-      ...(awayTeamId ? { awayTeamId } : {}),
+      ...(effectiveHomeTeamId ? { homeTeamId: effectiveHomeTeamId } : {}),
+      ...(effectiveAwayTeamId ? { awayTeamId: effectiveAwayTeamId } : {}),
       ...(resolvedOpponentId ? { opponentId: resolvedOpponentId } : {}),
       ...(resolvedOpponentName ? { opponentName: resolvedOpponentName } : {}),
       ...(notes.trim() ? { notes: notes.trim() } : {}),
+      ...(snackItem.trim() ? { snackItem: snackItem.trim() } : {}),
     };
 
     if (editEvent) {
-      updateEvent({ ...editEvent, title: title.trim(), type, date, startTime, teamIds, updatedAt: now, ...optionals });
+      updateEvent({ ...editEvent, title: resolvedTitle, type, date, startTime, teamIds, updatedAt: now, ...optionals });
     } else if (isRecurring && recurrenceEnd) {
       const groupId = crypto.randomUUID();
       const occurrences = generateOccurrences(date, recurrenceEnd, frequency);
       const events: ScheduledEvent[] = occurrences.map(occDate => ({
         id: crypto.randomUUID(),
-        title: title.trim(),
+        title: resolvedTitle,
         type,
         status: 'scheduled' as EventStatus,
         date: occDate,
@@ -158,10 +174,13 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
       }));
       bulkAddEvents(events);
     } else {
-      addEvent({ id: crypto.randomUUID(), title: title.trim(), type, status: 'scheduled' as EventStatus, date, startTime, teamIds, isRecurring: false, createdAt: now, updatedAt: now, ...optionals });
+      addEvent({ id: crypto.randomUUID(), title: resolvedTitle, type, status: 'scheduled' as EventStatus, date, startTime, teamIds, isRecurring: false, createdAt: now, updatedAt: now, ...optionals });
     }
     onClose();
   }
+
+  const myTeamOptions = myTeams.map(t => ({ value: t.id, label: t.name }));
+  const selectedTeam = allTeams.find(t => t.id === selectedTeamId);
 
   return (
     <Modal open={open} onClose={onClose} title={editEvent ? 'Edit Event' : 'New Event'} size="md">
@@ -174,15 +193,57 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
         </div>
         <Input label="End Time (optional)" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
         <Input label="Location (optional)" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. City Park Field 1" />
-        {teamOptions.length > 0 && (
-          <div className="grid grid-cols-2 gap-3">
-            <Select label="Home Team" value={homeTeamId} onChange={e => setHomeTeamId(e.target.value)} options={teamOptions} placeholder="Select team" />
-            <Select label="Away Team" value={awayTeamId} onChange={e => setAwayTeamId(e.target.value)} options={teamOptions} placeholder="Select team" />
-          </div>
-        )}
-        {GAME_TYPES.has(type) && (
+
+        {/* Team + Home/Away */}
+        <div className="space-y-2">
+          {lockedTeam ? (
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: lockedTeam.color }} />
+              <span className="text-sm font-medium text-gray-800">{lockedTeam.name}</span>
+            </div>
+          ) : (
+            <Select
+              label="Team"
+              value={selectedTeamId}
+              onChange={e => setSelectedTeamId(e.target.value)}
+              options={myTeamOptions}
+              placeholder="Select team"
+              error={errors.team}
+            />
+          )}
+
+          {/* Home / Away toggle */}
+          {selectedTeamId && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 mr-1">{selectedTeam?.name ?? lockedTeam?.name} is playing:</span>
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm font-medium">
+                <button
+                  type="button"
+                  onClick={() => setIsHome(true)}
+                  className="px-4 py-1.5 transition-colors"
+                  style={isHome ? { backgroundColor: '#1B3A6B', color: 'white' } : { color: '#6b7280' }}
+                >
+                  Home
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsHome(false)}
+                  className="px-4 py-1.5 border-l border-gray-200 transition-colors"
+                  style={!isHome ? { backgroundColor: '#1B3A6B', color: 'white' } : { color: '#6b7280' }}
+                >
+                  Away
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Opponent */}
+        {GAME_TYPES.has(type) && selectedTeamId && (
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700">Opponent (optional)</label>
+            <label className="text-sm font-medium text-gray-700">
+              {isHome ? 'Away Team / Opponent' : 'Home Team / Opponent'} <span className="font-normal text-gray-400">(optional)</span>
+            </label>
             <input
               list="opponent-suggestions"
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -192,7 +253,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
             />
             <datalist id="opponent-suggestions">
               {opponents
-                .filter(o => !homeTeamId || o.teamId === homeTeamId || o.teamId === awayTeamId)
+                .filter(o => o.teamId === contextTeamId)
                 .map(o => <option key={o.id} value={o.name} />)}
             </datalist>
             {opponentName.trim() && !opponents.some(o => o.name.toLowerCase() === opponentName.trim().toLowerCase()) && (
@@ -200,6 +261,18 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
             )}
           </div>
         )}
+
+        {/* Snack request — admin/coach/owner */}
+        {(profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach' ||
+          (selectedTeamId && allTeams.find(t => t.id === selectedTeamId)?.createdBy === user?.uid)) && (
+          <Input
+            label="Snack Request (optional)"
+            value={snackItem}
+            onChange={e => setSnackItem(e.target.value)}
+            placeholder="e.g. Orange slices and juice boxes"
+          />
+        )}
+
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-gray-700">Notes (optional)</label>
           <textarea
@@ -211,7 +284,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           />
         </div>
 
-        {/* Recurrence section — create only */}
+        {/* Recurrence — create only */}
         {!editEvent && (
           <div className="border border-gray-200 rounded-lg p-3 space-y-3">
             <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -223,23 +296,11 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
               />
               <span className="text-sm font-medium text-gray-700">Repeats</span>
             </label>
-
             {isRecurring && (
               <div className="space-y-3 pl-6">
                 <div className="grid grid-cols-2 gap-3">
-                  <Select
-                    label="Frequency"
-                    value={frequency}
-                    onChange={e => setFrequency(e.target.value as RecurrenceFrequency)}
-                    options={frequencyOptions}
-                  />
-                  <Input
-                    label="End Date"
-                    type="date"
-                    value={recurrenceEnd}
-                    onChange={e => setRecurrenceEnd(e.target.value)}
-                    error={errors.recurrenceEnd}
-                  />
+                  <Select label="Frequency" value={frequency} onChange={e => setFrequency(e.target.value as RecurrenceFrequency)} options={frequencyOptions} />
+                  <Input label="End Date" type="date" value={recurrenceEnd} onChange={e => setRecurrenceEnd(e.target.value)} error={errors.recurrenceEnd} />
                 </div>
                 {occurrenceCount > 0 && (
                   <p className="text-xs text-blue-600 bg-blue-50 rounded px-2 py-1.5">

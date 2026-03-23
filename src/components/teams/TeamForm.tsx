@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { db, storage } from '@/lib/firebase';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -8,8 +9,13 @@ import { Button } from '@/components/ui/Button';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { FLAGS } from '@/lib/flags';
 import { SPORT_TYPES, SPORT_TYPE_LABELS, TEAM_COLORS, AGE_GROUPS, AGE_GROUP_LABELS } from '@/constants';
+import { Upload, X, Image } from 'lucide-react';
 import type { Team, SportType, AgeGroup, UserProfile } from '@/types';
+
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
 
 interface TeamFormProps {
   open: boolean;
@@ -22,7 +28,7 @@ const ageGroupOptions = AGE_GROUPS.map(g => ({ value: g, label: AGE_GROUP_LABELS
 
 export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const { addTeam, updateTeam } = useTeamStore();
-  const kidsMode = useSettingsStore(s => s.settings.kidsSportsMode);
+  const kidsMode = FLAGS.KIDS_MODE && useSettingsStore(s => s.settings.kidsSportsMode);
   const profile = useAuthStore(s => s.profile);
   const user = useAuthStore(s => s.user);
   const [name, setName] = useState(editTeam?.name ?? '');
@@ -36,9 +42,24 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const [coachUsers, setCoachUsers] = useState<UserProfile[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Logo state
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(editTeam?.logoUrl ?? null);
+  const [removeLogo, setRemoveLogo] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const isAdmin = profile?.role === 'admin';
-  const isCreator = !!editTeam && editTeam.createdBy === user?.uid;
+  const isCreator = !editTeam || editTeam.createdBy === user?.uid;
   const canAssignCoach = isAdmin || isCreator;
+
+  useEffect(() => {
+    if (!open) return;
+    // Reset logo state when form opens
+    setLogoFile(null);
+    setLogoPreview(editTeam?.logoUrl ?? null);
+    setRemoveLogo(false);
+  }, [open, editTeam?.logoUrl]);
 
   useEffect(() => {
     if (!open || !canAssignCoach) return;
@@ -50,6 +71,32 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
     });
   }, [open, canAssignCoach]);
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setErrors(prev => ({ ...prev, logo: 'File must be an image (JPEG, PNG, WebP, GIF, or SVG)' }));
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      setErrors(prev => ({ ...prev, logo: 'Image must be under 2 MB' }));
+      return;
+    }
+
+    setErrors(prev => { const e = { ...prev }; delete e.logo; return e; });
+    setLogoFile(file);
+    setRemoveLogo(false);
+    setLogoPreview(URL.createObjectURL(file));
+  }
+
+  function handleRemoveLogo() {
+    setLogoFile(null);
+    setLogoPreview(null);
+    setRemoveLogo(true);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
   function validate() {
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = 'Team name is required';
@@ -57,27 +104,74 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
     return Object.keys(e).length === 0;
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!validate()) return;
-    const now = new Date().toISOString();
-    const base = {
-      name: name.trim(),
-      sportType,
-      color,
-      updatedAt: now,
-      ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
-      ...(coachName.trim() ? { coachName: coachName.trim() } : {}),
-      ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}),
-      ...(ageGroup ? { ageGroup } : {}),
-      ...(coachId ? { coachId } : {}),
-    };
-    if (editTeam) {
-      updateTeam({ ...editTeam, ...base });
-    } else {
-      addTeam({ id: crypto.randomUUID(), ...base, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now });
+    setUploading(true);
+    try {
+      let logoUrl = editTeam?.logoUrl;
+
+      if (removeLogo && logoUrl) {
+        try { await deleteObject(ref(storage, `team-logos/${editTeam!.id}`)); } catch { /* already gone */ }
+        logoUrl = undefined;
+      }
+
+      if (logoFile) {
+        const teamId = editTeam?.id ?? crypto.randomUUID();
+        const storageRef = ref(storage, `team-logos/${teamId}`);
+        await uploadBytes(storageRef, logoFile);
+        logoUrl = await getDownloadURL(storageRef);
+
+        // If this is a new team we need to carry the id through
+        const now = new Date().toISOString();
+        const base = {
+          name: name.trim(),
+          sportType,
+          color,
+          updatedAt: now,
+          ...(logoUrl ? { logoUrl } : {}),
+          ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
+          ...(coachName.trim() ? { coachName: coachName.trim() } : {}),
+          ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}),
+          ...(ageGroup ? { ageGroup } : {}),
+          ...(coachId ? { coachId } : {}),
+        };
+        if (editTeam) {
+          await updateTeam({ ...editTeam, ...base });
+        } else {
+          await addTeam({ id: teamId, ...base, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now });
+        }
+        onClose();
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const base: Partial<Team> = {
+        name: name.trim(),
+        sportType,
+        color,
+        updatedAt: now,
+        ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
+        ...(coachName.trim() ? { coachName: coachName.trim() } : {}),
+        ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}),
+        ...(ageGroup ? { ageGroup } : {}),
+        ...(coachId ? { coachId } : {}),
+      };
+      if (logoUrl) base.logoUrl = logoUrl;
+      else delete base.logoUrl;
+
+      if (editTeam) {
+        const updated = { ...editTeam, ...base };
+        if (!logoUrl) delete updated.logoUrl;
+        await updateTeam(updated);
+      } else {
+        await addTeam({ id: crypto.randomUUID(), ...base as Omit<Team, 'id' | 'createdBy' | 'ownerName' | 'createdAt'>, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now });
+      }
+      onClose();
+    } finally {
+      setUploading(false);
     }
-    onClose();
   }
+
 
   return (
     <Modal open={open} onClose={onClose} title={editTeam ? 'Edit Team' : 'New Team'}>
@@ -97,6 +191,49 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
             ))}
           </div>
         </div>
+
+        {/* Logo upload */}
+        <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-gray-700">Team Logo <span className="text-gray-400 font-normal">(optional, max 2 MB)</span></label>
+            {logoPreview ? (
+              <div className="flex items-center gap-3">
+                <img src={logoPreview} alt="Team logo" className="w-16 h-16 rounded-xl object-contain border border-gray-200 bg-gray-50" />
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                  >
+                    <Upload size={12} /> Replace
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRemoveLogo}
+                    className="text-xs text-red-500 hover:underline flex items-center gap-1"
+                  >
+                    <X size={12} /> Remove
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 px-3 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 hover:border-blue-300 hover:text-blue-500 transition-colors w-full"
+              >
+                <Image size={16} /> Upload logo image
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ALLOWED_TYPES.join(',')}
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            {errors.logo && <p className="text-xs text-red-500">{errors.logo}</p>}
+          </div>
+
         <Input label="Home Venue (optional)" value={homeVenue} onChange={e => setHomeVenue(e.target.value)} placeholder="e.g. City Park" />
         <Input label={kidsMode ? 'Head Coach' : 'Coach Name (optional)'} value={coachName} onChange={e => setCoachName(e.target.value)} />
         <Input label="Coach Email (optional)" type="email" value={coachEmail} onChange={e => setCoachEmail(e.target.value)} />
@@ -114,7 +251,9 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         )}
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit}>{editTeam ? 'Save Changes' : 'Create Team'}</Button>
+          <Button onClick={() => void handleSubmit()} disabled={uploading}>
+            {uploading ? 'Saving…' : editTeam ? 'Save Changes' : 'Create Team'}
+          </Button>
         </div>
       </div>
     </Modal>

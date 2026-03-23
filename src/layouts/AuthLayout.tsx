@@ -1,5 +1,3 @@
-import { WhistleLogo } from '@/components/ui/WhistleLogo';
-
 interface AuthLayoutProps {
   children: React.ReactNode;
   title: string;
@@ -12,24 +10,20 @@ export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
       {/* Left panel — brand */}
       <div
         className="hidden lg:flex flex-col justify-between w-96 flex-shrink-0 p-10 text-white"
-        style={{ background: 'linear-gradient(160deg, #14532d 0%, #134e4a 60%, #0f3460 100%)' }}
+        style={{ background: 'linear-gradient(160deg, #1B3A6B 0%, #0f2a52 60%, #0a1f3d 100%)' }}
       >
-        <div className="flex items-center gap-3">
-          <WhistleLogo size={40} />
-          <div>
-            <span className="font-bold text-lg tracking-tight">First</span>
-            <span className="font-medium text-lg tracking-tight text-green-300 ml-1">Whistle</span>
-          </div>
-        </div>
         <div>
           <p className="text-4xl font-bold leading-tight mb-4">
             Game day<br/>starts here.
           </p>
-          <p className="text-green-200 text-sm leading-relaxed">
+          <p className="text-blue-200 text-sm leading-relaxed">
             Schedule games, track rosters, manage leagues — everything your team needs in one place.
           </p>
         </div>
-        <div className="flex gap-6 text-xs text-green-300 opacity-70">
+        <div className="bg-white rounded-2xl px-4 py-3">
+          <img src="/logo.png" alt="First Whistle" className="w-full h-auto object-contain" />
+        </div>
+        <div className="flex gap-6 text-xs text-blue-300 opacity-70">
           <span>Schedules</span>
           <span>Rosters</span>
           <span>Standings</span>
@@ -40,9 +34,8 @@ export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
       {/* Right panel — form */}
       <div className="flex-1 flex items-center justify-center p-6 bg-gray-50">
         <div className="w-full max-w-sm">
-          <div className="text-center mb-8 lg:hidden">
-            <WhistleLogo size={48} />
-            <h1 className="text-xl font-bold text-gray-900 mt-3">First Whistle</h1>
+          <div className="mb-8 lg:hidden">
+            <img src="/logo.png" alt="First Whistle" className="w-full max-w-xs mx-auto h-auto object-contain" />
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-1">{title}</h2>
           {subtitle && <p className="text-gray-500 text-sm mb-6">{subtitle}</p>}
