@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Calendar, CalendarDays, Users, Trophy, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers } from 'lucide-react';
 import { WhistleLogo } from '@/components/ui/WhistleLogo';
 import { clsx } from 'clsx';
 import { useNotificationStore } from '@/store/useNotificationStore';
@@ -9,9 +9,7 @@ import { useAuthStore, hasRole } from '@/store/useAuthStore';
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/calendar', label: 'Calendar', icon: Calendar },
-  { to: '/events', label: 'Events', icon: CalendarDays },
   { to: '/teams', label: 'Teams', icon: Users },
-  { to: '/standings', label: 'Standings', icon: Trophy },
   { to: '/notifications', label: 'Notifications', icon: Bell },
   { to: '/messaging', label: 'Messaging', icon: MessageSquare },
   { to: '/settings', label: 'Settings', icon: Settings },

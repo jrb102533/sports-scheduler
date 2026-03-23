@@ -16,9 +16,10 @@ function RankBadge({ rank }: { rank: number }) {
   return <span className="text-gray-400 text-xs w-6 text-center">{rank}</span>;
 }
 
-export function StandingsTable() {
-  const teams = useTeamStore(s => s.teams);
+export function StandingsTable({ teamIds }: { teamIds?: string[] } = {}) {
+  const allTeams = useTeamStore(s => s.teams);
   const events = useEventStore(s => s.events);
+  const teams = teamIds ? allTeams.filter(t => teamIds.includes(t.id)) : allTeams;
   const rows = computeStandings(events, teams);
 
   if (rows.length === 0) {

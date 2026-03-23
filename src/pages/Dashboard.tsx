@@ -86,10 +86,7 @@ export function Dashboard() {
       )}
 
       <div className="grid grid-cols-3 gap-4">
-        <Card
-          className="p-4 cursor-pointer group"
-          onClick={() => navigate('/events')}
-        >
+        <Card className="p-4 group">
           <div className="flex items-center justify-between mb-3">
             <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
               <CalendarDays size={18} />
@@ -159,7 +156,6 @@ export function Dashboard() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Trophy size={16} className="text-yellow-500" /> Standings</h2>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/standings')}>View All</Button>
           </div>
           <Card className="overflow-hidden">
             <StandingsTable />

@@ -73,8 +73,8 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const [startTime, setStartTime] = useState(editEvent?.startTime ?? '09:00');
   const [endTime, setEndTime] = useState(editEvent?.endTime ?? '');
   const [location, setLocation] = useState(editEvent?.location ?? '');
-  const [homeTeamId, setHomeTeamId] = useState(editEvent?.homeTeamId ?? '');
-  const [awayTeamId, setAwayTeamId] = useState(editEvent?.awayTeamId ?? '');
+  const [homeTeamId, setHomeTeamId] = useState(editEvent?.homeTeamId ?? initial?.homeTeamId ?? '');
+  const [awayTeamId, setAwayTeamId] = useState(editEvent?.awayTeamId ?? initial?.awayTeamId ?? '');
   const [opponentName, setOpponentName] = useState(editEvent?.opponentName ?? '');
   const [notes, setNotes] = useState(editEvent?.notes ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});

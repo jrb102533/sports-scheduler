@@ -17,9 +17,7 @@ import { useOpponentStore } from '@/store/useOpponentStore';
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
   '/calendar': 'Calendar',
-  '/events': 'Events',
   '/teams': 'Teams',
-  '/standings': 'Standings',
   '/notifications': 'Notifications',
   '/messaging': 'Messaging',
   '/settings': 'Settings',
@@ -58,7 +56,9 @@ export function MainLayout() {
 
   const location = useLocation();
   const title = PAGE_TITLES[location.pathname]
-    ?? (location.pathname.startsWith('/teams/') ? 'Team Details' : 'First Whistle');
+    ?? (location.pathname.startsWith('/teams/') ? 'Team Details'
+      : location.pathname.startsWith('/leagues/') ? 'League'
+      : 'First Whistle');
 
   return (
     <div className="flex w-full min-h-screen">
