@@ -1,10 +1,10 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers, X } from 'lucide-react';
-import { WhistleLogo } from '@/components/ui/WhistleLogo';
 import { clsx } from 'clsx';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useAuthStore, hasRole } from '@/store/useAuthStore';
+import { FLAGS } from '@/lib/flags';
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -12,7 +12,7 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/', label: 'Home', icon: LayoutDashboard, end: true },
   { to: '/calendar', label: 'Calendar', icon: Calendar },
   { to: '/teams', label: 'Teams', icon: Users },
   { to: '/notifications', label: 'Notifications', icon: Bell },
@@ -38,7 +38,7 @@ const roleColors: Record<string, string> = {
 
 function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   const unread = useNotificationStore(s => s.notifications.filter(n => !n.isRead).length);
-  const kidsMode = useSettingsStore(s => s.settings.kidsSportsMode);
+  const kidsMode = FLAGS.KIDS_MODE && useSettingsStore(s => s.settings.kidsSportsMode);
   const { user, profile, logout } = useAuthStore();
   const navigate = useNavigate();
 
@@ -50,17 +50,11 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
 
   return (
     <>
-      <div className="px-4 py-5 border-b border-gray-700/60">
-        <div className="flex items-center gap-3">
-          <WhistleLogo size={36} />
-          <div className="min-w-0">
-            <div className="flex items-baseline gap-1">
-              <span className="text-white font-bold text-sm tracking-tight">First</span>
-              <span className="text-green-400 font-medium text-sm tracking-tight">Whistle</span>
-            </div>
-            {kidsMode && <span className="text-green-400 text-xs font-medium">Kids Mode</span>}
-          </div>
+      <div className="px-3 pt-4 pb-3 border-b border-white/10">
+        <div className="bg-white rounded-xl px-3 py-2" style={{ overflow: 'hidden' }}>
+          <img src="/logo.png" alt="First Whistle" className="w-full h-auto object-contain" style={{ transform: 'scale(1.2)', transformOrigin: 'center', borderRadius: '10px' }} />
         </div>
+        {kidsMode && <span className="text-xs font-medium mt-1.5 block" style={{ color: '#f97316' }}>Kids Mode</span>}
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-0.5">
@@ -73,9 +67,10 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
             className={({ isActive }) => clsx(
               'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors relative',
               isActive
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                ? 'text-white'
+                : 'text-blue-200 hover:text-white hover:bg-white/10'
             )}
+            style={({ isActive }) => isActive ? { backgroundColor: '#f97316' } : {}}
           >
             <Icon size={18} />
             {label}
@@ -89,13 +84,13 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
       </nav>
 
       {user && (
-        <div className="border-t border-gray-700 px-3 py-3">
+        <div className="border-t border-white/10 px-3 py-3">
           {profile ? (
             <button
               onClick={() => { navigate('/profile'); onNavClick?.(); }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-800 transition-colors text-left"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/10 transition-colors text-left"
             >
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0" style={{ backgroundColor: '#f97316' }}>
                 {profile.displayName.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
@@ -110,7 +105,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
           )}
           <button
             onClick={logout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-gray-800 transition-colors text-sm mt-0.5"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-blue-300 hover:text-red-400 hover:bg-white/10 transition-colors text-sm mt-0.5"
           >
             <LogOut size={16} /> Sign Out
           </button>
@@ -124,7 +119,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   return (
     <>
       {/* Desktop sidebar — always visible */}
-      <aside className="hidden lg:flex w-60 min-h-screen bg-gray-900 flex-col flex-shrink-0">
+      <aside className="hidden lg:flex w-60 min-h-screen bg-[#1B3A6B] flex-col flex-shrink-0">
         <SidebarContent />
       </aside>
 
@@ -132,7 +127,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-          <aside className="relative w-72 bg-gray-900 flex flex-col h-full overflow-y-auto">
+          <aside className="relative w-72 bg-[#1B3A6B] flex flex-col h-full overflow-y-auto">
             <button
               onClick={onClose}
               className="absolute top-4 right-4 p-1.5 rounded-lg bg-gray-800 text-gray-400 hover:text-white"

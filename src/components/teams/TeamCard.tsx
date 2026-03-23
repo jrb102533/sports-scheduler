@@ -18,10 +18,13 @@ export function TeamCard({ team, playerCount, onClick }: TeamCardProps) {
       <div className="p-4">
         <div className="flex items-center gap-3 mb-3">
           <div
-            className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ backgroundColor: team.color + '22', color: team.color }}
+            className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden"
+            style={team.logoUrl ? {} : { backgroundColor: team.color + '22', color: team.color }}
           >
-            <SportIcon sport={team.sportType} size={22} />
+            {team.logoUrl
+              ? <img src={team.logoUrl} alt={team.name} className="w-full h-full object-contain" />
+              : <SportIcon sport={team.sportType} size={22} />
+            }
           </div>
           <div className="min-w-0">
             <h3 className="font-semibold text-gray-900 truncate">{team.name}</h3>

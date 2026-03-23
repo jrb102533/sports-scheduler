@@ -1,16 +1,18 @@
 import { useState } from 'react';
-import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw } from 'lucide-react';
+import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { EventStatusBadge } from './EventStatusBadge';
 import { EventForm } from './EventForm';
 import { SnackVolunteerForm } from './SnackVolunteerForm';
+import { RsvpInviteModal } from './RsvpInviteModal';
 import { AttendanceTracker } from '@/components/attendance/AttendanceTracker';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import { formatDate, formatTime } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent } from '@/types';
@@ -23,12 +25,16 @@ interface EventDetailPanelProps {
 export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const { deleteEvent, recordResult, updateEvent, deleteEventsByGroupId } = useEventStore();
   const teams = useTeamStore(s => s.teams);
+  const profile = useAuthStore(s => s.profile);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteSeriesOpen, setDeleteSeriesOpen] = useState(false);
+  const [rsvpOpen, setRsvpOpen] = useState(false);
   const [homeScore, setHomeScore] = useState('');
   const [awayScore, setAwayScore] = useState('');
   const [resultNotes, setResultNotes] = useState('');
+
+  const canManage = profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach';
 
   if (!event) return null;
 
@@ -127,8 +133,8 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
               <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">{event.notes}</div>
             )}
 
-            {/* Snack Volunteer — games and matches only */}
-            {isGameOrMatch && event.status !== 'cancelled' && (
+            {/* Snack Volunteer */}
+            {event.status !== 'cancelled' && (
               <SnackVolunteerForm event={currentEvent} />
             )}
 
@@ -147,6 +153,28 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
               </div>
             )}
 
+            {/* RSVP Summary */}
+            {event.rsvps && event.rsvps.length > 0 && (
+              <div className="border border-gray-200 rounded-xl p-4 space-y-2">
+                <h3 className="text-sm font-semibold text-gray-800">RSVP Responses</h3>
+                <div className="flex gap-3 text-xs font-medium">
+                  <span className="text-green-600">{event.rsvps.filter(r => r.response === 'yes').length} Yes</span>
+                  <span className="text-red-500">{event.rsvps.filter(r => r.response === 'no').length} No</span>
+                  <span className="text-yellow-600">{event.rsvps.filter(r => r.response === 'maybe').length} Maybe</span>
+                </div>
+                <ul className="space-y-0.5 text-xs text-gray-600 max-h-28 overflow-y-auto">
+                  {event.rsvps.map(r => (
+                    <li key={r.playerId} className="flex justify-between gap-2">
+                      <span className="truncate">{r.name}</span>
+                      <span className={r.response === 'yes' ? 'text-green-600' : r.response === 'no' ? 'text-red-500' : 'text-yellow-600'}>
+                        {r.response === 'yes' ? 'Yes' : r.response === 'no' ? 'No' : 'Maybe'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* Attendance */}
             {event.status !== 'cancelled' && (
               <AttendanceTracker event={currentEvent} />
@@ -157,6 +185,11 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
             <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
               <Edit size={14} /> Edit
             </Button>
+            {canManage && event.status !== 'cancelled' && (
+              <Button variant="secondary" size="sm" onClick={() => setRsvpOpen(true)}>
+                <Send size={14} /> Send RSVP
+              </Button>
+            )}
             {event.status !== 'cancelled' && (
               <Button variant="ghost" size="sm" onClick={handleCancel}>Cancel Event</Button>
             )}
@@ -173,6 +206,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
       </div>
 
       <EventForm open={editOpen} onClose={() => setEditOpen(false)} editEvent={event} />
+      {rsvpOpen && <RsvpInviteModal open={rsvpOpen} onClose={() => setRsvpOpen(false)} event={event} />}
 
       {/* Single event delete confirm */}
       <ConfirmDialog

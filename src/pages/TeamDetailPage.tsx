@@ -16,6 +16,7 @@ import { usePlayerStore } from '@/store/usePlayerStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { FLAGS } from '@/lib/flags';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { useAuthStore, canEdit } from '@/store/useAuthStore';
 import { SPORT_TYPE_LABELS, AGE_GROUP_LABELS } from '@/constants';
@@ -34,7 +35,7 @@ export function TeamDetailPage() {
   const { deletePlayersForTeam } = usePlayerStore();
   const allEvents = useEventStore(s => s.events);
   const leagues = useLeagueStore(s => s.leagues);
-  const kidsMode = useSettingsStore(s => s.settings.kidsSportsMode);
+  const kidsMode = FLAGS.KIDS_MODE && useSettingsStore(s => s.settings.kidsSportsMode);
   const profile = useAuthStore(s => s.profile);
 
   const team = teams.find(t => t.id === id);
@@ -130,8 +131,12 @@ export function TeamDetailPage() {
       </button>
 
       <div className="flex items-center gap-4 mb-6">
-        <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: team.color }}>
-          {team.name.charAt(0).toUpperCase()}
+        <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg overflow-hidden flex-shrink-0"
+          style={team.logoUrl ? { backgroundColor: '#f3f4f6' } : { backgroundColor: team.color }}>
+          {team.logoUrl
+            ? <img src={team.logoUrl} alt={team.name} className="w-full h-full object-contain" />
+            : team.name.charAt(0).toUpperCase()
+          }
         </div>
         <div className="flex-1">
           <h2 className="text-xl font-bold text-gray-900">{team.name}</h2>
