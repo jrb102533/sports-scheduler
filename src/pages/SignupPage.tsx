@@ -88,7 +88,7 @@ export function SignupPage() {
         <div className="border-t border-gray-100 pt-4 space-y-3">
           <Select label="Role" value={role} onChange={e => setRole(e.target.value as UserRole)} options={roleOptions} />
           {role && (
-            <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">{roleDescriptions[role]}</p>
+            <p className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">{roleDescriptions[role]}</p>
           )}
         </div>
 

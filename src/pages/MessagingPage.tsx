@@ -3,6 +3,8 @@ import { MessageSquare, Phone, Users, AlertCircle, Mail, CheckCircle, XCircle } 
 import { httpsCallable } from 'firebase/functions';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -167,7 +169,7 @@ export function MessagingPage() {
 
           {eligiblePlayers.length === 0 ? (
             <Card className="p-4 sm:p-6 text-center">
-              <AlertCircle size={28} className="text-gray-300 mx-auto mb-2" />
+              <AlertCircle size={28} className="text-gray-400 mx-auto mb-2" />
               <p className="text-sm font-medium text-gray-600">No contacts yet</p>
               <p className="text-xs text-gray-400 mt-1">
                 {channel === 'sms'
@@ -255,24 +257,21 @@ export function MessagingPage() {
             </div>
 
             {channel === 'email' && (
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Subject</label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. Practice cancelled Saturday"
-                  value={subject}
-                  onChange={e => { setSubject(e.target.value); if (sendState !== 'idle') setSendState('idle'); }}
-                />
-              </div>
+              <Input
+                label="Subject"
+                type="text"
+                placeholder="e.g. Practice cancelled Saturday"
+                value={subject}
+                onChange={e => { setSubject(e.target.value); if (sendState !== 'idle') setSendState('idle'); }}
+              />
             )}
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Message</label>
-              <textarea
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              <Textarea
+                label="Message"
                 rows={6}
                 placeholder="Type your message here..."
                 value={message}
+                className="resize-none"
                 onChange={e => { setMessage(e.target.value); if (sendState !== 'idle') setSendState('idle'); }}
               />
               {channel === 'sms' && (
