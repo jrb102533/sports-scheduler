@@ -1,10 +1,13 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers, X } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers, X, CalendarClock } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useAuthStore, hasRole } from '@/store/useAuthStore';
+import { useEventStore } from '@/store/useEventStore';
 import { FLAGS } from '@/lib/flags';
+import { todayISO, formatTime } from '@/lib/dateUtils';
+import { format, parseISO, isToday, isTomorrow } from 'date-fns';
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -41,6 +44,19 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   const kidsMode = FLAGS.KIDS_MODE && useSettingsStore(s => s.settings.kidsSportsMode);
   const { user, profile, logout } = useAuthStore();
   const navigate = useNavigate();
+  const allEvents = useEventStore(s => s.events);
+
+  const today = todayISO();
+  const nextEvent = allEvents
+    .filter(e => e.status === 'scheduled' && e.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))[0] ?? null;
+
+  function formatEventDay(dateStr: string): string {
+    const d = parseISO(dateStr);
+    if (isToday(d)) return 'Today';
+    if (isTomorrow(d)) return 'Tomorrow';
+    return format(d, 'EEE, MMM d');
+  }
 
   const allNavItems = [
     ...navItems,
@@ -82,6 +98,19 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
           </NavLink>
         ))}
       </nav>
+
+      {nextEvent && (
+        <div className="mx-3 mb-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <CalendarClock size={12} className="text-blue-300 flex-shrink-0" />
+            <span className="text-[11px] font-semibold text-blue-300 uppercase tracking-wide">Next Up</span>
+          </div>
+          <p className="text-white text-sm font-medium truncate leading-snug">{nextEvent.title}</p>
+          <p className="text-blue-300/80 text-xs mt-0.5">
+            {formatEventDay(nextEvent.date)} · {formatTime(nextEvent.startTime)}
+          </p>
+        </div>
+      )}
 
       {user && (
         <div className="border-t border-white/10 px-3 py-3">

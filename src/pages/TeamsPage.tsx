@@ -9,7 +9,7 @@ import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useNavigate } from 'react-router-dom';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Team, Player, UserProfile } from '@/types';
 import type { User } from 'firebase/auth';
@@ -31,6 +31,10 @@ export function TeamsPage() {
   const navigate = useNavigate();
 
   const isAdmin = profile?.role === 'admin';
+  const isCoachOrAdmin = isAdmin || profile?.role === 'coach' || profile?.role === 'league_manager';
+
+  // Pending join request counts per team — only loaded for coaches/admins
+  const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
 
   // Determine the user's own teams
   const myTeams: Team[] = isAdmin
@@ -61,6 +65,22 @@ export function TeamsPage() {
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, isAdmin, teams.length]);
+
+  // Load pending join request counts for coaches/admins
+  useEffect(() => {
+    if (!isCoachOrAdmin || myTeams.length === 0) return;
+    Promise.all(
+      myTeams.map(async t => {
+        const snap = await getDocs(query(collection(db, 'teams', t.id, 'joinRequests'), where('status', '==', 'pending')));
+        return { teamId: t.id, count: snap.size };
+      })
+    ).then(results => {
+      const map: Record<string, number> = {};
+      results.forEach(r => { map[r.teamId] = r.count; });
+      setPendingCounts(map);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCoachOrAdmin, myTeams.length]);
 
   async function requestToJoin(team: Team) {
     if (!user || !profile) return;
@@ -130,6 +150,7 @@ export function TeamsPage() {
                 key={team.id}
                 team={team}
                 playerCount={players.filter(p => p.teamId === team.id).length}
+                pendingRequestCount={isCoachOrAdmin ? (pendingCounts[team.id] ?? 0) : undefined}
                 onClick={() => navigate(`/teams/${team.id}`)}
               />
             ))}
