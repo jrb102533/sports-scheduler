@@ -766,7 +766,9 @@ export const onEventCancelled = onDocumentUpdated(
 
     const eventId = event.params.eventId;
     const isCancellation = before.status !== 'cancelled' && after.status === 'cancelled';
+    const gameTypes = ['game', 'match', 'tournament'];
     const isResultSet = !before.result && after.result &&
+      gameTypes.includes(after.type) &&
       (after.result.homeScore !== undefined || after.result.awayScore !== undefined);
 
     if (!isCancellation && !isResultSet) return;
@@ -818,32 +820,34 @@ export const onEventCancelled = onDocumentUpdated(
 
     // ── Item 1: Event cancellation ───────────────────────────────────────────
     if (isCancellation) {
+      try {
       const eventTitle: string = after.title ?? 'Event';
       const eventDate: string = after.date ?? '';
       const eventTime: string = after.startTime ?? '';
 
       // Send cancellation emails + in-app notifications to all players
-      const emails: { name: string; address: string }[] = [];
+      const emails: { name: string; address: string; firstName: string }[] = [];
       for (const p of playersSnap.docs) {
         const d = p.data();
         const name: string = `${d.firstName ?? ''} ${d.lastName ?? ''}`.trim() || 'Player';
+        const firstName: string = d.firstName ?? name.split(' ')[0];
         const addrs: string[] = [
           d.email,
           d.parentContact?.parentEmail,
           d.parentContact2?.parentEmail,
         ].filter((e: any): e is string => typeof e === 'string' && e.trim().length > 0);
-        addrs.forEach(address => emails.push({ name, address }));
+        addrs.forEach(address => emails.push({ name, address, firstName }));
       }
 
       const transporter = createTransporter();
 
-      await Promise.allSettled(emails.map(({ name, address }) =>
+      await Promise.allSettled(emails.map(({ name, address, firstName }) =>
         transporter.sendMail({
           from: emailFrom.value(),
           to: `${name} <${address}>`,
           subject: `First Whistle: ${eventTitle} has been cancelled`,
           text: [
-            `Hi ${name},`,
+            `Hi ${firstName},`,
             '',
             `${eventTitle} scheduled for ${eventDate} at ${eventTime} has been cancelled.`,
             '',
@@ -855,7 +859,7 @@ export const onEventCancelled = onDocumentUpdated(
               <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
                 <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
               </div>
-              <p style="color:#111827;font-size:15px">Hi ${name},</p>
+              <p style="color:#111827;font-size:15px">Hi ${firstName},</p>
               <p style="color:#374151"><strong>${eventTitle}</strong> scheduled for ${eventDate} at ${eventTime} has been cancelled.</p>
               <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
               <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
@@ -889,10 +893,14 @@ export const onEventCancelled = onDocumentUpdated(
       await batch.commit();
 
       console.log(`onEventCancelled: sent ${emails.length} cancellation email(s) and ${notifCount} in-app notification(s) for "${eventTitle}"`);
+      } catch (err) {
+        console.error('onEventCancelled: cancellation block failed', err);
+      }
     }
 
     // ── Item 2: Game result broadcast ────────────────────────────────────────
     if (isResultSet) {
+      try {
       const eventTitle: string = after.title ?? 'Event';
       const result = after.result;
       const homeScore: number | string = result.homeScore ?? 0;
@@ -939,6 +947,9 @@ export const onEventCancelled = onDocumentUpdated(
       await batch.commit();
 
       console.log(`onEventCancelled/onResultSet: sent ${notifCount} result notification(s) for "${eventTitle}" — ${resultSummary}`);
+      } catch (err) {
+        console.error('onEventCancelled: result broadcast block failed', err);
+      }
     }
   }
 );

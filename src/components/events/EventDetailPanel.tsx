@@ -40,6 +40,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const [scoreSaveState, setScoreSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
 
   const canManage = profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach';
+  const isReadOnly = profile?.role === 'player' || profile?.role === 'parent';
 
   if (!event) return null;
 
@@ -201,30 +202,32 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
             )}
           </div>
 
-          <div className="px-5 py-4 border-t border-gray-200 flex gap-2 flex-wrap">
-            <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
-              <Edit size={14} /> Edit
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setDuplicateOpen(true)}>
-              <Copy size={14} /> Duplicate
-            </Button>
-            {canManage && event.status !== 'cancelled' && (
-              <Button variant="secondary" size="sm" onClick={() => setRsvpOpen(true)}>
-                <Send size={14} /> Send RSVP
+          {!isReadOnly && (
+            <div className="px-5 py-4 border-t border-gray-200 flex gap-2 flex-wrap">
+              <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
+                <Edit size={14} /> Edit
               </Button>
-            )}
-            {event.status !== 'cancelled' && (
-              <Button variant="ghost" size="sm" onClick={() => setConfirmCancel(true)}>Cancel Event</Button>
-            )}
-            <Button
-              variant="danger"
-              size="sm"
-              className="ml-auto"
-              onClick={() => isRecurringEvent ? setDeleteSeriesOpen(true) : setConfirmDelete(true)}
-            >
-              <Trash2 size={14} /> Delete
-            </Button>
-          </div>
+              <Button variant="secondary" size="sm" onClick={() => setDuplicateOpen(true)}>
+                <Copy size={14} /> Duplicate
+              </Button>
+              {canManage && event.status !== 'cancelled' && (
+                <Button variant="secondary" size="sm" onClick={() => setRsvpOpen(true)}>
+                  <Send size={14} /> Send RSVP
+                </Button>
+              )}
+              {event.status !== 'cancelled' && (
+                <Button variant="ghost" size="sm" onClick={() => setConfirmCancel(true)}>Cancel Event</Button>
+              )}
+              <Button
+                variant="danger"
+                size="sm"
+                className="ml-auto"
+                onClick={() => isRecurringEvent ? setDeleteSeriesOpen(true) : setConfirmDelete(true)}
+              >
+                <Trash2 size={14} /> Delete
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 

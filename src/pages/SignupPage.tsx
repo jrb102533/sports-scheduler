@@ -54,6 +54,12 @@ export function SignupPage() {
     setAdditionalRoles(prev => prev.map((r, i) => i === index ? { role: newRole } : r));
   }
 
+  function handlePrimaryRoleChange(newRole: UserRole) {
+    setRole(newRole);
+    // Remove any additional role that now duplicates the new primary
+    setAdditionalRoles(prev => prev.filter(r => r.role !== newRole));
+  }
+
   function removeAdditionalRole(index: number) {
     setAdditionalRoles(prev => prev.filter((_, i) => i !== index));
   }
@@ -122,7 +128,7 @@ export function SignupPage() {
             <Select
               label="Primary Role"
               value={role}
-              onChange={e => setRole(e.target.value as UserRole)}
+              onChange={e => handlePrimaryRoleChange(e.target.value as UserRole)}
               options={roleOptions}
             />
             {role && (
