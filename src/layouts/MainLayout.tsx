@@ -72,9 +72,6 @@ export function MainLayout() {
       <div className="flex-1 flex flex-col min-w-0">
         <div style={{ background: 'linear-gradient(135deg, #1B3A6B 0%, #0f2a52 100%)' }}>
           <div className="px-4 py-3 sm:px-6 flex items-center gap-3">
-            <div className="flex-shrink-0 bg-white rounded-xl p-1" style={{ width: 44, height: 44, overflow: 'hidden' }}>
-              <img src="/logo.png" alt="First Whistle" className="w-full h-full object-contain" style={{ transform: 'scale(1.2)', transformOrigin: 'center', borderRadius: '10px' }} />
-            </div>
             <div>
               <p className="text-base font-bold text-white leading-none">First <span style={{ color: '#f97316' }}>Whistle</span></p>
               <p className="text-blue-300 text-xs mt-1 leading-snug">Schedule games · Track rosters · Manage leagues</p>
