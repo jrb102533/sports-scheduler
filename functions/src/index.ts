@@ -535,23 +535,32 @@ export const sendEventReminders = onSchedule(
 
       const sends: Promise<any>[] = [];
 
+      const btnStyle = (bg: string) =>
+        `display:inline-block;padding:10px 22px;border-radius:8px;background:${bg};color:white;text-decoration:none;font-weight:600;font-size:14px;margin:0 6px`;
+
       for (const p of playersSnap.docs) {
         const d = p.data();
         const name: string = `${d.firstName ?? ''} ${d.lastName ?? ''}`.trim() || 'Player';
+        const firstName: string = d.firstName ?? name.split(' ')[0];
         const addrs: string[] = [
           d.email,
           d.parentContact?.parentEmail,
           d.parentContact2?.parentEmail,
         ].filter((e: any): e is string => typeof e === 'string' && e.trim().length > 0);
 
+        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(evDoc.id)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}`;
+        const yesUrl = `${base}&r=yes`;
+        const noUrl = `${base}&r=no`;
+        const maybeUrl = `${base}&r=maybe`;
+
         for (const address of addrs) {
           sends.push(
             transporter.sendMail({
               from: emailFrom.value(),
               to: `${name} <${address}>`,
-              subject: `First Whistle Reminder: ${title} is tomorrow`,
+              subject: `First Whistle Reminder: ${title} is tomorrow – RSVP now`,
               text: [
-                `Hi ${name},`,
+                `Hi ${firstName},`,
                 '',
                 `This is a reminder that ${title} is tomorrow.`,
                 '',
@@ -561,7 +570,10 @@ export const sendEventReminders = onSchedule(
                 location ? `Location: ${location}` : '',
                 teamName ? `Team: ${teamName}` : '',
                 '',
-                `View your schedule: ${APP_URL}`,
+                'Will you be there?',
+                `Yes: ${yesUrl}`,
+                `Maybe: ${maybeUrl}`,
+                `Can't make it: ${noUrl}`,
                 '',
                 '---',
                 'Sent via First Whistle',
@@ -572,7 +584,7 @@ export const sendEventReminders = onSchedule(
                     <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
                     ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${teamName}</p>` : ''}
                   </div>
-                  <p style="color:#111827;font-size:15px">Hi ${name},</p>
+                  <p style="color:#111827;font-size:15px">Hi ${firstName},</p>
                   <p style="color:#374151">This is a reminder that <strong>${title}</strong> is tomorrow.</p>
                   <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:24px">
                     <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${title}</td></tr>
@@ -581,8 +593,11 @@ export const sendEventReminders = onSchedule(
                     ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${location}</td></tr>` : ''}
                     ${teamName ? `<tr><td style="padding:4px 8px 4px 0">Team</td><td style="color:#111827">${teamName}</td></tr>` : ''}
                   </table>
+                  <p style="color:#111827;font-size:15px;font-weight:600;text-align:center;margin:0 0 20px">Will you be there, ${firstName}?</p>
                   <div style="text-align:center;margin-bottom:24px">
-                    <a href="${APP_URL}" style="background:#1B3A6B;color:white;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;display:inline-block">View Schedule</a>
+                    <a href="${yesUrl}" style="${btnStyle('#15803d')}">Yes, I'll be there</a>
+                    <a href="${maybeUrl}" style="${btnStyle('#d97706')}">Maybe</a>
+                    <a href="${noUrl}" style="${btnStyle('#dc2626')}">Can't make it</a>
                   </div>
                   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
                   <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
