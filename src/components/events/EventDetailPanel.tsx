@@ -15,10 +15,8 @@ import { useTeamStore } from '@/store/useTeamStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { formatDate, formatTime } from '@/lib/dateUtils';
-import { EVENT_TYPE_LABELS, EVENT_TYPE_BADGE_CLASSES } from '@/constants';
+import { EVENT_TYPE_LABELS, EVENT_TYPE_BADGE_CLASSES, getAttendanceThreshold, isAttendanceWarningEnabled } from '@/constants';
 import type { ScheduledEvent } from '@/types';
-
-const ATTENDANCE_MINIMUM = 7;
 
 interface EventDetailPanelProps {
   event: ScheduledEvent | null;
@@ -52,6 +50,9 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const currentEvent = event;
   const homeTeam = teams.find(t => t.id === currentEvent.homeTeamId);
   const awayTeam = teams.find(t => t.id === currentEvent.awayTeamId);
+  const primaryTeam = homeTeam ?? awayTeam;
+  const threshold = getAttendanceThreshold(primaryTeam);
+  const warningsEnabled = isAttendanceWarningEnabled(primaryTeam);
   const isGameOrMatch = event.type === 'game' || event.type === 'match';
   const isRecurringEvent = event.isRecurring && !!event.recurringGroupId;
 
@@ -193,7 +194,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
               const rosterSize = teamPlayers.length;
               const noResponse = rosterSize > 0 ? Math.max(0, rosterSize - respondedCount) : null;
 
-              const isBelowMinimum = confirmed < ATTENDANCE_MINIMUM;
+              const isBelowThreshold = warningsEnabled && confirmed < threshold;
               const hasNonResponders = noResponse !== null ? noResponse > 0 : false;
 
               if (respondedCount === 0 && rosterSize === 0) return null;
@@ -205,13 +206,13 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
               }
 
               return (
-                <div className={`border rounded-xl p-4 space-y-3 ${isBelowMinimum ? 'border-amber-200 bg-amber-50/40' : 'border-gray-200'}`}>
+                <div className={`border rounded-xl p-4 space-y-3 ${isBelowThreshold ? 'border-amber-200 bg-amber-50/40' : 'border-gray-200'}`}>
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
-                      {isBelowMinimum && <AlertTriangle size={14} className="text-amber-500 shrink-0" />}
+                      {isBelowThreshold && <AlertTriangle size={14} className="text-amber-500 shrink-0" />}
                       Attendance Forecast
                     </h3>
-                    {isBelowMinimum && (
+                    {isBelowThreshold && (
                       <Badge className="bg-amber-100 text-amber-700 text-xs">Below minimum</Badge>
                     )}
                   </div>

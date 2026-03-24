@@ -15,11 +15,10 @@ import { useLeagueStore } from '@/store/useLeagueStore';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useAuthStore, getAccessibleTeamIds, getMemberships, hasRole } from '@/store/useAuthStore';
 import { isUpcoming, formatDate, formatTime, todayISO, parseISO } from '@/lib/dateUtils';
-import { SPORT_TYPE_LABELS } from '@/constants';
+import { SPORT_TYPE_LABELS, getAttendanceThreshold, isAttendanceWarningEnabled } from '@/constants';
 import type { ScheduledEvent } from '@/types';
 import { seedDemoData } from '@/lib/demoData';
 
-const LOW_CONFIRMATION_THRESHOLD = 7;
 const LOW_RSVP_RESPONSE_RATIO = 0.5;
 const SOON_HOURS = 48;
 
@@ -110,8 +109,10 @@ export function Dashboard() {
       const eventMs = parseISO(`${e.date}T${e.startTime}`).getTime();
       const hoursUntil = (eventMs - nowMs) / (1000 * 60 * 60);
       if (hoursUntil <= SOON_HOURS) {
+        const eventTeam = allTeams.find(t => e.teamIds.includes(t.id));
+        if (!isAttendanceWarningEnabled(eventTeam)) continue;
         const confirmed = (e.rsvps ?? []).filter(r => r.response === 'yes').length;
-        if (confirmed < LOW_CONFIRMATION_THRESHOLD) {
+        if (confirmed < getAttendanceThreshold(eventTeam)) {
           return { kind: 'low_confirmation', event: e, confirmed };
         }
       }
