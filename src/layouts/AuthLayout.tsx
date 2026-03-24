@@ -13,8 +13,8 @@ export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
         style={{ background: 'linear-gradient(160deg, #1B3A6B 0%, #0f2a52 60%, #0a1f3d 100%)' }}
       >
         <div>
-          <div className="bg-white rounded-2xl px-4 py-2 mb-8">
-            <img src="/logo.png" alt="First Whistle" className="w-full h-auto max-h-16 object-contain" />
+          <div className="bg-white rounded-2xl px-4 py-4 mb-8">
+            <img src="/logo.png" alt="First Whistle" className="w-full h-auto max-h-32 object-contain" />
           </div>
           <p className="text-4xl font-bold leading-tight mb-4">
             Game day<br/>starts here.
@@ -35,7 +35,7 @@ export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
       <div className="flex-1 flex items-center justify-center p-6 bg-gray-50">
         <div className="w-full max-w-sm">
           <div className="mb-8 lg:hidden">
-            <img src="/logo.png" alt="First Whistle" className="h-16 w-auto mx-auto object-contain" />
+            <img src="/logo.png" alt="First Whistle" className="h-32 w-auto mx-auto object-contain" />
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-1">{title}</h2>
           {subtitle && <p className="text-gray-500 text-sm mb-6">{subtitle}</p>}
