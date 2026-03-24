@@ -1,5 +1,6 @@
 import { ClipboardList } from 'lucide-react';
 import { clsx } from 'clsx';
+import { Button } from '@/components/ui/Button';
 import { useEventStore } from '@/store/useEventStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import type { ScheduledEvent, AttendanceStatus } from '@/types';
@@ -33,6 +34,14 @@ export function AttendanceTracker({ event }: AttendanceTrackerProps) {
   }
 
   const recorded = event.attendance?.length ?? 0;
+  const hasNoAttendance = recorded === 0;
+  const yesRsvps = (event.rsvps ?? []).filter(r => r.response === 'yes');
+  const canPrefill = hasNoAttendance && yesRsvps.length > 0;
+
+  function handlePrefillFromRsvps() {
+    const attendance = yesRsvps.map(r => ({ playerId: r.playerId, status: 'present' as AttendanceStatus }));
+    updateEvent({ ...event, attendance, attendanceRecorded: true, updatedAt: new Date().toISOString() });
+  }
 
   return (
     <div className="border border-gray-200 rounded-xl overflow-hidden">
@@ -40,7 +49,14 @@ export function AttendanceTracker({ event }: AttendanceTrackerProps) {
         <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
           <ClipboardList size={14} className="text-blue-500" /> Attendance
         </h3>
-        <span className="text-xs text-gray-500">{recorded}/{teamPlayers.length} recorded</span>
+        <div className="flex items-center gap-2">
+          {canPrefill && (
+            <Button variant="secondary" size="sm" onClick={handlePrefillFromRsvps}>
+              Pre-fill from RSVPs
+            </Button>
+          )}
+          <span className="text-xs text-gray-500">{recorded}/{teamPlayers.length} recorded</span>
+        </div>
       </div>
       <div className="divide-y divide-gray-100">
         {teamPlayers.map(player => {
