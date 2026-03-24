@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { addDays, addWeeks, addMonths, parseISO, format, isAfter } from 'date-fns';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
@@ -87,25 +87,28 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const lockedTeamId = initial?.homeTeamId ?? '';
   const lockedTeam = lockedTeamId ? allTeams.find(t => t.id === lockedTeamId) : null;
 
-  const [title, setTitle] = useState(editEvent?.title ?? '');
+  const [title, setTitle] = useState(editEvent?.title ?? initial?.title ?? '');
   const [type, setType] = useState<EventType>(editEvent?.type ?? initial?.type ?? 'game');
   const [date, setDate] = useState(editEvent?.date ?? initial?.date ?? todayISO());
-  const [startTime, setStartTime] = useState(editEvent?.startTime ?? '09:00');
-  const [endTime, setEndTime] = useState(editEvent?.endTime ?? '');
-  const [location, setLocation] = useState(editEvent?.location ?? '');
-  const [notes, setNotes] = useState(editEvent?.notes ?? '');
+  const [startTime, setStartTime] = useState(editEvent?.startTime ?? initial?.startTime ?? '09:00');
+  const [endTime, setEndTime] = useState(editEvent?.endTime ?? initial?.endTime ?? '');
+  const [location, setLocation] = useState(editEvent?.location ?? initial?.location ?? '');
+  const [notes, setNotes] = useState(editEvent?.notes ?? initial?.notes ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Team + home/away
   const [selectedTeamId, setSelectedTeamId] = useState(
-    lockedTeamId || editEvent?.homeTeamId || editEvent?.awayTeamId || myTeams[0]?.id || ''
+    lockedTeamId || editEvent?.homeTeamId || editEvent?.awayTeamId ||
+    initial?.homeTeamId || initial?.awayTeamId || myTeams[0]?.id || ''
   );
   const [isHome, setIsHome] = useState(
-    editEvent ? !!editEvent.homeTeamId : true
+    editEvent ? !!editEvent.homeTeamId : initial ? !!initial.homeTeamId : true
   );
 
   // Opponent
-  const [opponentName, setOpponentName] = useState(editEvent?.opponentName ?? '');
+  const [opponentName, setOpponentName] = useState(editEvent?.opponentName ?? initial?.opponentName ?? '');
+  const [opponentInputFocused, setOpponentInputFocused] = useState(false);
+  const opponentInputRef = useRef<HTMLInputElement>(null);
   const [snackItem, setSnackItem] = useState(editEvent?.snackItem ?? '');
 
   // Conflict warning dialog state
@@ -299,18 +302,40 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
             <label className="text-sm font-medium text-gray-700">
               {isHome ? 'Away Team / Opponent' : 'Home Team / Opponent'} <span className="font-normal text-gray-400">(optional)</span>
             </label>
-            <input
-              list="opponent-suggestions"
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Type or select a past opponent…"
-              value={opponentName}
-              onChange={e => setOpponentName(e.target.value)}
-            />
-            <datalist id="opponent-suggestions">
-              {opponents
-                .filter(o => o.teamId === contextTeamId)
-                .map(o => <option key={o.id} value={o.name} />)}
-            </datalist>
+            <div className="relative">
+              <input
+                ref={opponentInputRef}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Type or select a past opponent…"
+                value={opponentName}
+                onChange={e => setOpponentName(e.target.value)}
+                onFocus={() => setOpponentInputFocused(true)}
+                onBlur={() => setTimeout(() => setOpponentInputFocused(false), 150)}
+                autoComplete="off"
+              />
+              {opponentInputFocused && (() => {
+                const query = opponentName.trim().toLowerCase();
+                const suggestions = opponents
+                  .filter(o => o.teamId === contextTeamId)
+                  .filter(o => !query || o.name.toLowerCase().includes(query));
+                return suggestions.length > 0 ? (
+                  <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {suggestions.map(o => (
+                      <li
+                        key={o.id}
+                        className="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer"
+                        onMouseDown={() => {
+                          setOpponentName(o.name);
+                          setOpponentInputFocused(false);
+                        }}
+                      >
+                        {o.name}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null;
+              })()}
+            </div>
             {opponentName.trim() && !opponents.some(o => o.name.toLowerCase() === opponentName.trim().toLowerCase()) && (
               <p className="text-xs text-green-600">New opponent — will be saved for future events</p>
             )}

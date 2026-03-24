@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Search, Upload } from 'lucide-react';
+import { Plus, Search, Upload, X } from 'lucide-react';
 import { EventCard } from '@/components/events/EventCard';
 import { EventForm } from '@/components/events/EventForm';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
@@ -37,6 +37,15 @@ export function EventsPage() {
   const [teamFilter, setTeamFilter] = useState('');
 
   const teamOptions = [{ value: '', label: 'All Teams' }, ...teams.map(t => ({ value: t.id, label: t.name }))];
+
+  const hasActiveFilters = !!(search || typeFilter || statusFilter || teamFilter);
+
+  function clearFilters() {
+    setSearch('');
+    setTypeFilter('');
+    setStatusFilter('');
+    setTeamFilter('');
+  }
 
   const filtered = events
     .filter(e => {
@@ -78,6 +87,11 @@ export function EventsPage() {
           )}
           <Select options={typeOptions} value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="flex-1 min-w-28" />
           <Select options={statusOptions} value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="flex-1 min-w-28" />
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="shrink-0">
+              <X size={14} /> Clear Filters
+            </Button>
+          )}
         </div>
       </div>
 
