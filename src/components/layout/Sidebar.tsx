@@ -61,8 +61,13 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   }
 
   const allNavItems = [
-    ...navItems,
+    navItems[0], // Home
+    navItems[1], // Calendar
+    navItems[2], // Teams
     ...(hasRole(profile, 'admin', 'league_manager') ? leagueNavItems : []),
+    navItems[3], // Notifications
+    navItems[4], // Messaging
+    navItems[5], // Settings
     ...(hasRole(profile, 'admin') ? adminNavItems : []),
   ];
 
