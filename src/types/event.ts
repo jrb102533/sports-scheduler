@@ -41,6 +41,9 @@ export interface ScheduledEvent {
   status: EventStatus;
   date: string;
   startTime: string;
+  /** Duration in minutes. Required on new events; absent on legacy docs. */
+  duration?: number;
+  /** Computed from startTime + duration on save. Always present on new events. */
   endTime?: string;
   location?: string;
   homeTeamId?: string;
