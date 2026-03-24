@@ -15,6 +15,7 @@ export interface Team {
   coachEmail?: string;
   coachPhone?: string;
   ageGroup?: AgeGroup;
+  divisionLabel?: string;
   createdBy: string;
   ownerName: string;
   coachId?: string;
