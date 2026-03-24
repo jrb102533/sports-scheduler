@@ -11,6 +11,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { todayISO, formatTime } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent, EventType, EventStatus, RecurrenceFrequency } from '@/types';
+import { RefreshCw } from 'lucide-react';
 
 /** Convert HH:MM to total minutes for comparison. Returns -1 for unparseable input. */
 function toMinutes(t: string): number {
@@ -85,6 +86,7 @@ const GAME_TYPES = new Set<EventType>(['game', 'match', 'tournament']);
 export function EventForm({ open, onClose, initial, editEvent }: EventFormProps) {
   const { addEvent, bulkAddEvents, events } = useEventStore();
   const updateEvent = useEventStore(s => s.updateEvent);
+  const allEvents = useEventStore(s => s.events);
   const allTeams = useTeamStore(s => s.teams);
   const { opponents, addOpponent } = useOpponentStore();
   const profile = useAuthStore(s => s.profile);
@@ -129,6 +131,10 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     conflicts: ScheduledEvent[];
     proceed: () => void;
   } | null>(null);
+
+  // Edit series dialog state (shown when editing a recurring event)
+  const [editSeriesOpen, setEditSeriesOpen] = useState(false);
+  const [pendingSave, setPendingSave] = useState<(() => Promise<void>) | null>(null);
 
   // Recurrence
   const [isRecurring, setIsRecurring] = useState(false);
@@ -178,7 +184,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     return conflicts;
   }
 
-  async function doSave() {
+  async function doSave(scope: 'this' | 'future' = 'this') {
     const now = new Date().toISOString();
     const teamIds = [selectedTeamId].filter(Boolean);
     const resolvedTitle = title.trim() || EVENT_TYPE_LABELS[type];
@@ -214,7 +220,18 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     };
 
     if (editEvent) {
-      updateEvent({ ...editEvent, title: resolvedTitle, type, date, startTime, teamIds, updatedAt: now, ...optionals });
+      if (scope === 'future' && editEvent.recurringGroupId) {
+        const futureEvents = allEvents.filter(
+          e => e.recurringGroupId === editEvent.recurringGroupId && e.date >= editEvent.date
+        );
+        await Promise.all(
+          futureEvents.map(e =>
+            updateEvent({ ...e, title: resolvedTitle, startTime, teamIds, updatedAt: now, ...optionals })
+          )
+        );
+      } else {
+        updateEvent({ ...editEvent, title: resolvedTitle, type, date, startTime, teamIds, updatedAt: now, ...optionals });
+      }
     } else if (isRecurring && recurrenceEnd) {
       const groupId = crypto.randomUUID();
       const occurrences = generateOccurrences(date, recurrenceEnd, frequency);
@@ -247,11 +264,31 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
       ? generateOccurrences(date, recurrenceEnd, frequency)
       : [date];
     const conflicts = checkConflicts(datesToCheck);
+
+    const isEditingRecurring = !!(editEvent?.isRecurring && editEvent?.recurringGroupId);
+
     if (conflicts.length > 0) {
-      setConflictWarning({ conflicts, proceed: () => void doSave() });
+      setConflictWarning({
+        conflicts,
+        proceed: () => {
+          if (isEditingRecurring) {
+            setPendingSave(() => doSave);
+            setEditSeriesOpen(true);
+          } else {
+            void doSave('this');
+          }
+        },
+      });
       return;
     }
-    await doSave();
+
+    if (isEditingRecurring) {
+      setPendingSave(() => doSave);
+      setEditSeriesOpen(true);
+      return;
+    }
+
+    await doSave('this');
   }
 
   const myTeamOptions = myTeams.map(t => ({ value: t.id, label: t.name }));
@@ -451,6 +488,37 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           </div>
         </Modal>
       )}
+
+      {/* Edit recurring series choice dialog */}
+      <Modal open={editSeriesOpen} onClose={() => { setEditSeriesOpen(false); setPendingSave(null); }} title="Edit Recurring Event" size="sm">
+        <p className="text-sm text-gray-600 mb-4">
+          This is a recurring event. Would you like to edit just this event, or this and all future events in the series?
+        </p>
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setEditSeriesOpen(false);
+              void pendingSave?.('this');
+              setPendingSave(null);
+            }}
+          >
+            Edit This Event Only
+          </Button>
+          <Button
+            onClick={() => {
+              setEditSeriesOpen(false);
+              void pendingSave?.('future');
+              setPendingSave(null);
+            }}
+          >
+            <RefreshCw size={14} /> Edit This and All Future Events
+          </Button>
+          <Button variant="ghost" onClick={() => { setEditSeriesOpen(false); setPendingSave(null); }}>
+            Cancel
+          </Button>
+        </div>
+      </Modal>
     </Modal>
   );
 }
