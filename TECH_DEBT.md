@@ -4,21 +4,9 @@ Items deferred for later. Each entry includes context and what "done" looks like
 
 ---
 
-## TD-001 — In-app email sending (messaging page)
+## ~~TD-001 — In-app email sending (messaging page)~~ ✅ COMPLETE
 
-**Current state:** ✅ Code complete — `MessagingPage.tsx` already calls `sendEmailFn` (httpsCallable). Blaze plan confirmed active.
-
-**Remaining:** Set SMTP secrets and deploy functions:
-```
-firebase functions:secrets:set SMTP_HOST
-firebase functions:secrets:set SMTP_PORT
-firebase functions:secrets:set SMTP_USER
-firebase functions:secrets:set SMTP_PASS
-firebase functions:secrets:set EMAIL_FROM
-firebase deploy --only functions
-```
-
-**Files:** `src/pages/MessagingPage.tsx`, `functions/src/index.ts`
+Email messaging confirmed working in production. SMTP secrets set, functions deployed.
 
 ---
 
@@ -40,19 +28,9 @@ firebase deploy --only functions
 
 ---
 
-## TD-003 — Email notifications on new notification doc (Firestore trigger)
+## ~~TD-003 — Email notifications on new notification doc (Firestore trigger)~~ ✅ COMPLETE
 
-**Current state:** `onNotificationCreated` Cloud Function is written but not deployed. No email is sent when a notification is created in Firestore.
-
-**Desired state:** When a notification doc is written to Firestore, the function triggers and sends an HTML email via SMTP.
-
-**Blocked by:** ~~Blaze plan~~ ✅ Done. Requires SMTP secrets (same as TD-001).
-
-**To resolve:**
-1. Set SMTP secrets (same as TD-001)
-2. Deploy functions: `firebase deploy --only functions --project test`
-
-**Files:** `functions/src/index.ts`
+SMTP secrets confirmed set and functions deployed. `onNotificationCreated` is live.
 
 ---
 
