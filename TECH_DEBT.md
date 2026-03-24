@@ -10,10 +10,10 @@ Items deferred for later. Each entry includes context and what "done" looks like
 
 **Desired state:** Emails sent directly from the app via the `sendEmail` Cloud Function (already written in `functions/src/index.ts`) using SMTP/nodemailer.
 
-**Blocked by:** Firebase project needs to be upgraded to the Blaze (pay-as-you-go) plan before Cloud Functions can make outbound network calls.
+**Blocked by:** ~~Firebase Blaze plan~~ ✅ Blaze confirmed active. Requires SMTP secrets to be set.
 
 **To resolve:**
-1. Upgrade project `first-whistle-e76f4` to Blaze at https://console.firebase.google.com/project/first-whistle-e76f4/usage/details
+1. ~~Upgrade to Blaze~~ ✅ Done
 2. Set SMTP secrets: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`
 3. Deploy functions: `firebase deploy --only functions --project test`
 4. In `MessagingPage.tsx`, replace the `mailto:` anchor with a call to `sendEmailFn` (the httpsCallable is already imported and defined)
@@ -28,7 +28,7 @@ Items deferred for later. Each entry includes context and what "done" looks like
 
 **Desired state:** Coaches and admins can send SMS directly from the messaging page via the `sendSms` Cloud Function (already written) using Twilio.
 
-**Blocked by:** Same Blaze plan requirement as TD-001. Also requires a Twilio account.
+**Blocked by:** ~~Blaze plan~~ ✅ Done. Requires a Twilio account.
 
 **To resolve:**
 1. Resolve TD-001 first (Blaze upgrade)
@@ -46,10 +46,10 @@ Items deferred for later. Each entry includes context and what "done" looks like
 
 **Desired state:** When a notification doc is written to Firestore, the function triggers and sends an HTML email via SMTP.
 
-**Blocked by:** Firestore-triggered Cloud Functions require the Blaze plan (same as TD-001).
+**Blocked by:** ~~Blaze plan~~ ✅ Done. Requires SMTP secrets (same as TD-001).
 
 **To resolve:**
-1. Resolve TD-001 first (Blaze upgrade + SMTP secrets)
+1. Set SMTP secrets (same as TD-001)
 2. Deploy functions: `firebase deploy --only functions --project test`
 
 **Files:** `functions/src/index.ts`
