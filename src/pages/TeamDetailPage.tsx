@@ -55,6 +55,8 @@ export function TeamDetailPage() {
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [processingUids, setProcessingUids] = useState<Set<string>>(new Set());
+  const [pendingApprove, setPendingApprove] = useState<JoinRequest | null>(null);
+  const [pendingReject, setPendingReject] = useState<JoinRequest | null>(null);
 
   const canSeeRequests = profile && team && (
     profile.role === 'admin' ||
@@ -292,8 +294,8 @@ export function TeamDetailPage() {
                       <p className="text-xs text-gray-500">{req.email}</p>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="secondary" disabled={isProcessing} onClick={() => handleReject(req)}>Reject</Button>
-                      <Button size="sm" disabled={isProcessing} onClick={() => handleApprove(req)}>Approve</Button>
+                      <Button size="sm" variant="secondary" disabled={isProcessing} onClick={() => setPendingReject(req)}>Reject</Button>
+                      <Button size="sm" disabled={isProcessing} onClick={() => setPendingApprove(req)}>Approve</Button>
                     </div>
                   </div>
                 );
@@ -328,6 +330,24 @@ export function TeamDetailPage() {
         title="Permanently Delete Team"
         message={`Permanently delete "${team.name}" and all its players? This cannot be undone.`}
         confirmLabel="Permanently Delete"
+      />
+      {/* Approve join request */}
+      <ConfirmDialog
+        open={!!pendingApprove}
+        onClose={() => setPendingApprove(null)}
+        onConfirm={() => { if (pendingApprove) void handleApprove(pendingApprove); }}
+        title="Approve Join Request"
+        message={`Allow ${pendingApprove?.displayName ?? 'this player'} to join this team?`}
+        confirmLabel="Approve"
+      />
+      {/* Reject join request */}
+      <ConfirmDialog
+        open={!!pendingReject}
+        onClose={() => setPendingReject(null)}
+        onConfirm={() => { if (pendingReject) void handleReject(pendingReject); }}
+        title="Reject Join Request"
+        message={`Decline ${pendingReject?.displayName ?? 'this player'}'s request to join?`}
+        confirmLabel="Decline"
       />
     </div>
   );
