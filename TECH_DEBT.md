@@ -6,17 +6,17 @@ Items deferred for later. Each entry includes context and what "done" looks like
 
 ## TD-001 — In-app email sending (messaging page)
 
-**Current state:** Email messaging uses `mailto:` which opens the user's local email client.
+**Current state:** ✅ Code complete — `MessagingPage.tsx` already calls `sendEmailFn` (httpsCallable). Blaze plan confirmed active.
 
-**Desired state:** Emails sent directly from the app via the `sendEmail` Cloud Function (already written in `functions/src/index.ts`) using SMTP/nodemailer.
-
-**Blocked by:** ~~Firebase Blaze plan~~ ✅ Blaze confirmed active. Requires SMTP secrets to be set.
-
-**To resolve:**
-1. ~~Upgrade to Blaze~~ ✅ Done
-2. Set SMTP secrets: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`
-3. Deploy functions: `firebase deploy --only functions --project test`
-4. In `MessagingPage.tsx`, replace the `mailto:` anchor with a call to `sendEmailFn` (the httpsCallable is already imported and defined)
+**Remaining:** Set SMTP secrets and deploy functions:
+```
+firebase functions:secrets:set SMTP_HOST
+firebase functions:secrets:set SMTP_PORT
+firebase functions:secrets:set SMTP_USER
+firebase functions:secrets:set SMTP_PASS
+firebase functions:secrets:set EMAIL_FROM
+firebase deploy --only functions
+```
 
 **Files:** `src/pages/MessagingPage.tsx`, `functions/src/index.ts`
 
