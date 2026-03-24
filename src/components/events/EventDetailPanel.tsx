@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send, Copy } from 'lucide-react';
+import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send, Copy, AlertTriangle, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
@@ -13,9 +13,12 @@ import { Modal } from '@/components/ui/Modal';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { usePlayerStore } from '@/store/usePlayerStore';
 import { formatDate, formatTime } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS, EVENT_TYPE_BADGE_CLASSES } from '@/constants';
 import type { ScheduledEvent } from '@/types';
+
+const ATTENDANCE_MINIMUM = 7;
 
 interface EventDetailPanelProps {
   event: ScheduledEvent | null;
@@ -25,8 +28,10 @@ interface EventDetailPanelProps {
 export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const { deleteEvent, recordResult, updateEvent, deleteEventsByGroupId } = useEventStore();
   const teams = useTeamStore(s => s.teams);
+  const allPlayers = usePlayerStore(s => s.players);
   const profile = useAuthStore(s => s.profile);
   const [editOpen, setEditOpen] = useState(false);
+  const [nudgeToast, setNudgeToast] = useState<string | null>(null);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -174,27 +179,79 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
               </div>
             )}
 
-            {/* RSVP Summary */}
-            {event.rsvps && event.rsvps.length > 0 && (
-              <div className="border border-gray-200 rounded-xl p-4 space-y-2">
-                <h3 className="text-sm font-semibold text-gray-800">RSVP Responses</h3>
-                <div className="flex gap-3 text-xs font-medium">
-                  <span className="text-green-600">{event.rsvps.filter(r => r.response === 'yes').length} Yes</span>
-                  <span className="text-red-500">{event.rsvps.filter(r => r.response === 'no').length} No</span>
-                  <span className="text-yellow-600">{event.rsvps.filter(r => r.response === 'maybe').length} Maybe</span>
+            {/* Attendance Forecast */}
+            {canManage && (() => {
+              const rsvps = event.rsvps ?? [];
+              const confirmed = rsvps.filter(r => r.response === 'yes').length;
+              const declined = rsvps.filter(r => r.response === 'no').length;
+              const maybe = rsvps.filter(r => r.response === 'maybe').length;
+              const respondedCount = rsvps.length;
+
+              const teamPlayers = event.teamIds.length > 0
+                ? allPlayers.filter(p => event.teamIds.includes(p.teamId))
+                : [];
+              const rosterSize = teamPlayers.length;
+              const noResponse = rosterSize > 0 ? Math.max(0, rosterSize - respondedCount) : null;
+
+              const isBelowMinimum = confirmed < ATTENDANCE_MINIMUM;
+              const hasNonResponders = noResponse !== null ? noResponse > 0 : false;
+
+              if (respondedCount === 0 && rosterSize === 0) return null;
+
+              function handleNudge() {
+                const count = noResponse ?? (rosterSize - respondedCount);
+                setNudgeToast(`Reminder sent to ${count} player${count !== 1 ? 's' : ''}`);
+                setTimeout(() => setNudgeToast(null), 3500);
+              }
+
+              return (
+                <div className={`border rounded-xl p-4 space-y-3 ${isBelowMinimum ? 'border-amber-200 bg-amber-50/40' : 'border-gray-200'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+                      {isBelowMinimum && <AlertTriangle size={14} className="text-amber-500 shrink-0" />}
+                      Attendance Forecast
+                    </h3>
+                    {isBelowMinimum && (
+                      <Badge className="bg-amber-100 text-amber-700 text-xs">Below minimum</Badge>
+                    )}
+                  </div>
+
+                  <div className="flex gap-4 text-xs font-medium">
+                    <span className="text-green-600">{confirmed} Confirmed</span>
+                    <span className="text-red-500">{declined} Declined</span>
+                    <span className="text-yellow-600">{maybe} Maybe</span>
+                    {noResponse !== null && (
+                      <span className="text-gray-400">{noResponse} No response</span>
+                    )}
+                  </div>
+
+                  {rsvps.length > 0 && (
+                    <ul className="space-y-0.5 text-xs text-gray-600 max-h-28 overflow-y-auto">
+                      {rsvps.map(r => (
+                        <li key={r.playerId} className="flex justify-between gap-2">
+                          <span className="truncate">{r.name}</span>
+                          <span className={r.response === 'yes' ? 'text-green-600' : r.response === 'no' ? 'text-red-500' : 'text-yellow-600'}>
+                            {r.response === 'yes' ? 'Yes' : r.response === 'no' ? 'No' : 'Maybe'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {hasNonResponders && (
+                    <Button variant="secondary" size="sm" onClick={handleNudge}>
+                      <Bell size={13} /> Nudge non-responders
+                    </Button>
+                  )}
+
+                  {nudgeToast && (
+                    <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                      {nudgeToast}
+                    </p>
+                  )}
                 </div>
-                <ul className="space-y-0.5 text-xs text-gray-600 max-h-28 overflow-y-auto">
-                  {event.rsvps.map(r => (
-                    <li key={r.playerId} className="flex justify-between gap-2">
-                      <span className="truncate">{r.name}</span>
-                      <span className={r.response === 'yes' ? 'text-green-600' : r.response === 'no' ? 'text-red-500' : 'text-yellow-600'}>
-                        {r.response === 'yes' ? 'Yes' : r.response === 'no' ? 'No' : 'Maybe'}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Attendance */}
             {event.status !== 'cancelled' && (
