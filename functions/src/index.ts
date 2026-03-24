@@ -40,6 +40,75 @@ async function assertAdminOrCoach(uid: string) {
   }
 }
 
+// ─── Admin: create user with temporary password ───────────────────────────────
+
+interface CreateUserByAdminData {
+  email: string;
+  displayName: string;
+  role: string;
+  tempPassword: string;
+  teamId?: string;
+  leagueId?: string;
+}
+
+export const createUserByAdmin = onCall<CreateUserByAdminData>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+    await assertAdminOrCoach(request.auth.uid);
+
+    const { email, displayName, role, tempPassword, teamId, leagueId } = request.data;
+    if (!email?.trim()) throw new HttpsError('invalid-argument', 'Email is required.');
+    if (!displayName?.trim()) throw new HttpsError('invalid-argument', 'Display name is required.');
+    if (!tempPassword || tempPassword.length < 8) throw new HttpsError('invalid-argument', 'Temporary password must be at least 8 characters.');
+
+    let uid: string;
+    try {
+      const userRecord = await admin.auth().createUser({
+        email: email.trim(),
+        password: tempPassword,
+        displayName: displayName.trim(),
+      });
+      uid = userRecord.uid;
+    } catch (err: any) {
+      const code: string = err?.code ?? '';
+      if (code === 'auth/email-already-exists') {
+        throw new HttpsError('already-exists', 'An account with this email address already exists.');
+      }
+      if (code === 'auth/invalid-email') {
+        throw new HttpsError('invalid-argument', 'Please enter a valid email address.');
+      }
+      if (code === 'auth/weak-password') {
+        throw new HttpsError('invalid-argument', 'Temporary password is too weak. Please use at least 8 characters.');
+      }
+      throw new HttpsError('internal', err?.message ?? 'Failed to create user.');
+    }
+
+    const now = new Date().toISOString();
+    const profile: Record<string, unknown> = {
+      uid,
+      email: email.trim(),
+      displayName: displayName.trim(),
+      role,
+      mustChangePassword: true,
+      createdAt: now,
+      memberships: [
+        {
+          role,
+          isPrimary: true,
+          ...(teamId ? { teamId } : {}),
+          ...(leagueId ? { leagueId } : {}),
+        },
+      ],
+    };
+    if (teamId) profile.teamId = teamId;
+    if (leagueId) profile.leagueId = leagueId;
+
+    await admin.firestore().doc(`users/${uid}`).set(profile);
+    console.log(`createUserByAdmin: created uid=${uid}, role=${role}`);
+    return { uid };
+  }
+);
+
 // ─── SMS (TD-002 — disabled until Twilio account is set up) ──────────────────
 // Uncomment and restore Twilio secrets above to re-enable.
 // export const sendSms = ...
