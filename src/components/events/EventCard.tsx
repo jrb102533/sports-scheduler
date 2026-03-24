@@ -43,8 +43,10 @@ function RsvpIndicator({ event }: { event: ScheduledEvent; onOpenDetail?: () => 
   if (role === 'player' || role === 'parent') {
     const uid = user?.uid;
     if (!uid) return null;
+    // Prefer the Firestore player doc ID (matches email-link RSVPs); fall back to auth UID
+    const playerId = profile?.playerId ?? uid;
 
-    const myRsvp = rsvps.find(r => r.playerId === uid);
+    const myRsvp = rsvps.find(r => r.playerId === playerId);
 
     async function handleRsvp(response: 'yes' | 'no' | 'maybe', e: React.MouseEvent) {
       e.stopPropagation();
@@ -53,9 +55,9 @@ function RsvpIndicator({ event }: { event: ScheduledEvent; onOpenDetail?: () => 
       try {
         const now = new Date().toISOString();
         const existingRsvps = event.rsvps ?? [];
-        const filtered = existingRsvps.filter(r => r.playerId !== uid);
+        const filtered = existingRsvps.filter(r => r.playerId !== playerId);
         const newRsvp = {
-          playerId: uid!,
+          playerId: playerId,
           name: profile?.displayName ?? '',
           email: profile?.email ?? '',
           response,

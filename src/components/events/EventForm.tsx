@@ -12,21 +12,34 @@ import { todayISO, formatTime } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent, EventType, EventStatus, RecurrenceFrequency } from '@/types';
 
-/** Convert HH:MM to total minutes for comparison */
+/** Convert HH:MM to total minutes for comparison. Returns -1 for unparseable input. */
 function toMinutes(t: string): number {
   const [h, m] = t.split(':').map(Number);
-  return h * 60 + (m ?? 0);
+  if (isNaN(h) || isNaN(m)) return -1;
+  return h * 60 + m;
 }
 
-/** Returns true if time range A overlaps time range B. Missing endTime = point in time. */
+/** Add minutes to a HH:MM time string, wrapping at midnight. */
+function addMinutes(time: string, minutes: number): string {
+  const total = toMinutes(time) + minutes;
+  const h = Math.floor(total / 60) % 24;
+  const m = total % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+const DEFAULT_DURATION = 90;
+
+/** Returns true if time range A overlaps time range B.
+ *  Falls back to DEFAULT_DURATION minutes when endTime is absent. */
 function timesOverlap(
   aStart: string, aEnd: string | undefined,
   bStart: string, bEnd: string | undefined
 ): boolean {
   const aS = toMinutes(aStart);
-  const aE = aEnd ? toMinutes(aEnd) : aS + 1;
+  const aE = aEnd ? toMinutes(aEnd) : aS + DEFAULT_DURATION;
   const bS = toMinutes(bStart);
-  const bE = bEnd ? toMinutes(bEnd) : bS + 1;
+  const bE = bEnd ? toMinutes(bEnd) : bS + DEFAULT_DURATION;
+  if (aS < 0 || bS < 0) return false; // unparseable — skip
   return aS < bE && bS < aE;
 }
 
@@ -91,7 +104,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const [type, setType] = useState<EventType>(editEvent?.type ?? initial?.type ?? 'game');
   const [date, setDate] = useState(editEvent?.date ?? initial?.date ?? todayISO());
   const [startTime, setStartTime] = useState(editEvent?.startTime ?? initial?.startTime ?? '09:00');
-  const [endTime, setEndTime] = useState(editEvent?.endTime ?? initial?.endTime ?? '');
+  const [duration, setDuration] = useState<number>(editEvent?.duration ?? initial?.duration ?? DEFAULT_DURATION);
   const [location, setLocation] = useState(editEvent?.location ?? initial?.location ?? '');
   const [notes, setNotes] = useState(editEvent?.notes ?? initial?.notes ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -135,6 +148,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     const e: Record<string, string> = {};
     if (!date) e.date = 'Date is required';
     if (!startTime) e.startTime = 'Start time is required';
+    if (!duration || duration < 1) e.duration = 'Duration is required';
     if (!selectedTeamId) e.team = 'Team is required';
     if (!editEvent && isRecurring) {
       if (!recurrenceEnd) e.recurrenceEnd = 'End date is required for recurring events';
@@ -154,7 +168,8 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
         if (ev.date !== d) continue;
         if (ev.status === 'cancelled' || ev.status === 'postponed') continue;
         if (!ev.teamIds.includes(selectedTeamId)) continue;
-        if (timesOverlap(startTime, endTime || undefined, ev.startTime, ev.endTime)) {
+        const computedEnd = addMinutes(startTime, duration);
+        if (timesOverlap(startTime, computedEnd, ev.startTime, ev.endTime)) {
           seen.add(ev.id);
           conflicts.push(ev);
         }
@@ -167,6 +182,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     const now = new Date().toISOString();
     const teamIds = [selectedTeamId].filter(Boolean);
     const resolvedTitle = title.trim() || EVENT_TYPE_LABELS[type];
+    const computedEndTime = addMinutes(startTime, duration);
 
     // Resolve opponent
     let resolvedOpponentId: string | undefined;
@@ -186,7 +202,8 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     }
 
     const optionals = {
-      ...(endTime ? { endTime } : {}),
+      duration,
+      endTime: computedEndTime,
       ...(location.trim() ? { location: location.trim() } : {}),
       ...(effectiveHomeTeamId ? { homeTeamId: effectiveHomeTeamId } : {}),
       ...(effectiveAwayTeamId ? { awayTeamId: effectiveAwayTeamId } : {}),
@@ -249,7 +266,14 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           <Input label="Date" type="date" value={date} onChange={e => setDate(e.target.value)} error={errors.date} />
           <Input label="Start Time" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} error={errors.startTime} />
         </div>
-        <Input label="End Time (optional)" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+        <Input
+          label="Duration (minutes)"
+          type="number"
+          value={String(duration)}
+          onChange={e => setDuration(Math.max(1, parseInt(e.target.value, 10) || 0))}
+          error={errors.duration}
+          placeholder="e.g. 90"
+        />
         <Input label="Location (optional)" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. City Park Field 1" />
 
         {/* Team + Home/Away */}

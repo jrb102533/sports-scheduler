@@ -900,10 +900,12 @@ export const onEventCancelled = onDocumentUpdated(
 
       // Fetch team names for a human-readable result line
       let resultSummary = `${eventTitle}: ${homeScore}–${awayScore}`;
-      if (teamIds.length >= 2) {
+      const homeTeamId: string | undefined = after.homeTeamId;
+      const awayTeamId: string | undefined = after.awayTeamId;
+      if (homeTeamId && awayTeamId) {
         const [homeTeamDoc, awayTeamDoc] = await Promise.all([
-          admin.firestore().doc(`teams/${teamIds[0]}`).get(),
-          admin.firestore().doc(`teams/${teamIds[1]}`).get(),
+          admin.firestore().doc(`teams/${homeTeamId}`).get(),
+          admin.firestore().doc(`teams/${awayTeamId}`).get(),
         ]);
         const homeName = homeTeamDoc.data()?.name ?? 'Home';
         const awayName = awayTeamDoc.data()?.name ?? 'Away';

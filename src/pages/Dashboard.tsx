@@ -13,7 +13,7 @@ import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useNotificationStore } from '@/store/useNotificationStore';
-import { useAuthStore, getAccessibleTeamIds } from '@/store/useAuthStore';
+import { useAuthStore, getAccessibleTeamIds, getMemberships, hasRole } from '@/store/useAuthStore';
 import { isUpcoming, formatDate, formatTime } from '@/lib/dateUtils';
 import { SPORT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent } from '@/types';
@@ -51,9 +51,11 @@ export function Dashboard() {
 
   const recentMessages = notifications.slice(0, 8);
 
-  const myLeague = profile?.role === 'league_manager' && profile.leagueId
-    ? leagues.find(l => l.id === profile.leagueId)
-    : null;
+  const leagueManagerMembership = hasRole(profile, 'league_manager')
+    ? getMemberships(profile).find(m => m.role === 'league_manager' && m.leagueId)
+    : undefined;
+  const leagueId = leagueManagerMembership?.leagueId ?? profile?.leagueId;
+  const myLeague = leagueId ? leagues.find(l => l.id === leagueId) : null;
   const myLeagueTeams = myLeague ? allTeams.filter(t => t.leagueId === myLeague.id) : [];
 
   const isEmpty = teams.length === 0 && events.length === 0;
