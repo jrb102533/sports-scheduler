@@ -13,15 +13,15 @@ export function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
         style={{ background: 'linear-gradient(160deg, #1B3A6B 0%, #0f2a52 60%, #0a1f3d 100%)' }}
       >
         <div>
+          <div className="bg-white rounded-2xl px-4 py-3 mb-8 w-32">
+            <img src="/logo.png" alt="First Whistle" className="w-full h-auto object-contain" />
+          </div>
           <p className="text-4xl font-bold leading-tight mb-4">
             Game day<br/>starts here.
           </p>
           <p className="text-blue-200 text-sm leading-relaxed">
             Schedule games, track rosters, manage leagues — everything your team needs in one place.
           </p>
-        </div>
-        <div className="bg-white rounded-2xl px-4 py-3">
-          <img src="/logo.png" alt="First Whistle" className="w-full h-auto object-contain" />
         </div>
         <div className="flex gap-6 text-xs text-blue-300 opacity-70">
           <span>Schedules</span>
