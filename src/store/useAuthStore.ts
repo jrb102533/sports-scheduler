@@ -10,7 +10,7 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import type { UserRole, UserProfile, Team } from '@/types';
+import type { UserRole, UserProfile, RoleMembership, Team } from '@/types';
 
 interface AuthStore {
   user: User | null;
@@ -99,12 +99,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       const { user } = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(user, { displayName });
+      const primaryMembership: RoleMembership = {
+        role,
+        isPrimary: true,
+        ...(teamId ? { teamId } : {}),
+      };
       const profile: UserProfile = {
         uid: user.uid,
         email,
         displayName,
         role,
         createdAt: new Date().toISOString(),
+        memberships: [primaryMembership],
+        activeContext: 0,
         ...(teamId ? { teamId } : {}),
       };
       await setDoc(doc(db, 'users', user.uid), profile);
@@ -142,41 +149,82 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   clearError: () => set({ error: null }),
 }));
 
-// Role permission helpers
+// ── Membership helpers ────────────────────────────────────────────────────────
+
+/**
+ * Returns all memberships for a profile. Falls back to a synthetic single-
+ * membership derived from the legacy role/teamId/playerId/leagueId fields so
+ * that existing Firestore documents without a memberships array still work.
+ */
+export function getMemberships(profile: UserProfile | null): import('@/types').RoleMembership[] {
+  if (!profile) return [];
+  if (profile.memberships && profile.memberships.length > 0) return profile.memberships;
+  // Legacy fallback
+  return [{
+    role: profile.role,
+    isPrimary: true,
+    ...(profile.teamId ? { teamId: profile.teamId } : {}),
+    ...(profile.playerId ? { playerId: profile.playerId } : {}),
+    ...(profile.leagueId ? { leagueId: profile.leagueId } : {}),
+  }];
+}
+
+/**
+ * Returns the active membership (the one driving the current dashboard context).
+ */
+export function getActiveMembership(profile: UserProfile | null): import('@/types').RoleMembership | null {
+  const memberships = getMemberships(profile);
+  if (memberships.length === 0) return null;
+  const idx = profile?.activeContext ?? 0;
+  return memberships[idx] ?? memberships.find(m => m.isPrimary) ?? memberships[0];
+}
+
+// ── Role permission helpers ───────────────────────────────────────────────────
+
+/** Returns true if the user holds ANY of the given roles across all memberships. */
 export function hasRole(profile: UserProfile | null, ...roles: UserRole[]): boolean {
   if (!profile) return false;
-  return roles.includes(profile.role);
+  return getMemberships(profile).some(m => roles.includes(m.role));
 }
 
 export function canEdit(profile: UserProfile | null, team?: Team | null): boolean {
   if (!profile) return false;
-  if (profile.role === 'admin') return true;
+  const memberships = getMemberships(profile);
+  if (memberships.some(m => m.role === 'admin')) return true;
   if (!team) return false;
   if (team.createdBy === profile.uid || team.coachId === profile.uid) return true;
-  if (profile.role === 'league_manager' && profile.leagueId && team.leagueId === profile.leagueId) return true;
+  if (memberships.some(m =>
+    m.role === 'league_manager' && m.leagueId && team.leagueId === m.leagueId
+  )) return true;
   return false;
 }
 
+/** Returns true only if ALL memberships are read-only roles. */
 export function isReadOnly(profile: UserProfile | null): boolean {
-  return profile?.role === 'player' || profile?.role === 'parent';
+  if (!profile) return false;
+  return getMemberships(profile).every(m => m.role === 'player' || m.role === 'parent');
 }
 
 /**
- * Returns the set of team IDs the user is allowed to see.
- * Returns null for admins (meaning all teams).
+ * Returns the set of team IDs the user is allowed to see across ALL memberships.
+ * Returns null for users with any admin membership (meaning all teams).
  */
 export function getAccessibleTeamIds(profile: UserProfile | null, allTeams: Team[]): string[] | null {
   if (!profile) return [];
-  if (profile.role === 'admin') return null;
-  if (profile.role === 'league_manager') {
-    if (!profile.leagueId) return [];
-    return allTeams.filter(t => t.leagueId === profile.leagueId).map(t => t.id);
+  const memberships = getMemberships(profile);
+  if (memberships.some(m => m.role === 'admin')) return null;
+
+  const ids = new Set<string>();
+  for (const m of memberships) {
+    if (m.role === 'league_manager' && m.leagueId) {
+      allTeams.filter(t => t.leagueId === m.leagueId).forEach(t => ids.add(t.id));
+    } else if (m.role === 'coach') {
+      allTeams
+        .filter(t => t.createdBy === profile.uid || t.coachId === profile.uid)
+        .forEach(t => ids.add(t.id));
+    } else if (m.teamId) {
+      ids.add(m.teamId);
+    }
   }
-  if (profile.role === 'coach') {
-    return allTeams
-      .filter(t => t.createdBy === profile.uid || t.coachId === profile.uid)
-      .map(t => t.id);
-  }
-  // player / parent
-  return profile.teamId ? [profile.teamId] : [];
+  return [...ids];
 }
