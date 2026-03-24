@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, Shield, Star } from 'lucide-react';
+import { User, Shield, Star, Link } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { useAuthStore, getMemberships } from '@/store/useAuthStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
+import { usePlayerStore } from '@/store/usePlayerStore';
 import type { RoleMembership } from '@/types';
 
 const roleColors: Record<string, string> = {
@@ -29,6 +30,7 @@ export function ProfilePage() {
   const { profile, updateProfile, logout } = useAuthStore();
   const teams = useTeamStore(s => s.teams);
   const leagues = useLeagueStore(s => s.leagues);
+  const players = usePlayerStore(s => s.players);
   const [displayName, setDisplayName] = useState(profile?.displayName ?? '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -36,6 +38,14 @@ export function ProfilePage() {
   const team = teams.find(t => t.id === profile?.teamId);
   const memberships = getMemberships(profile ?? null);
   const activeIndex = profile?.activeContext ?? 0;
+
+  const isPlayerOrParent = profile?.role === 'player' || profile?.role === 'parent';
+  const linkedPlayer = profile?.playerId ? players.find(p => p.id === profile.playerId) : undefined;
+  const linkedTeam = linkedPlayer
+    ? teams.find(t => t.id === linkedPlayer.teamId)
+    : profile?.teamId
+    ? teams.find(t => t.id === profile.teamId)
+    : undefined;
 
   async function handleSetPrimary(index: number) {
     if (!profile) return;
@@ -134,6 +144,30 @@ export function ProfilePage() {
               );
             })}
           </ul>
+        </Card>
+      )}
+
+      {isPlayerOrParent && (
+        <Card className="p-4 sm:p-6 space-y-3">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Link size={16} /> Team Connection</h3>
+          {linkedPlayer && linkedTeam ? (
+            <p className="text-sm text-gray-700">
+              <span className="text-green-600 font-semibold">&#10003; Linked to</span>{' '}
+              <span className="font-medium">{linkedPlayer.firstName} {linkedPlayer.lastName}</span>
+              {' '}on{' '}
+              <span className="font-medium">{linkedTeam.name}</span>
+            </p>
+          ) : linkedTeam ? (
+            <p className="text-sm text-gray-700">
+              <span className="text-green-600 font-semibold">&#10003; Connected to</span>{' '}
+              <span className="font-medium">{linkedTeam.name}</span>
+            </p>
+          ) : (
+            <p className="text-sm text-gray-400">
+              Not yet linked to a team — ask your coach to send an invite to this email address:{' '}
+              <span className="font-medium text-gray-600">{profile.email}</span>
+            </p>
+          )}
         </Card>
       )}
 

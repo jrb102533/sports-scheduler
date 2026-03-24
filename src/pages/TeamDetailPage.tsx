@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList, UserCheck, Crown, CalendarDays, Trophy, ClipboardCheck, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList, UserCheck, Crown, CalendarDays, Trophy, ClipboardCheck, Copy, Check, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { TeamForm } from '@/components/teams/TeamForm';
 import { PlayerForm } from '@/components/roster/PlayerForm';
@@ -20,11 +20,26 @@ import { FLAGS } from '@/lib/flags';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { useAuthStore, canEdit } from '@/store/useAuthStore';
 import { SPORT_TYPE_LABELS, AGE_GROUP_LABELS } from '@/constants';
-import { collection, getDocs, doc, setDoc, updateDoc, query, where } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
+import { db, functions } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import type { JoinRequest, ScheduledEvent } from '@/types';
 
-type Tab = 'schedule' | 'roster' | 'attendance' | 'standings' | 'info' | 'requests';
+interface InviteDoc {
+  email: string;
+  playerId: string;
+  playerName: string;
+  teamId: string;
+  teamName: string;
+  invitedAt: string;
+  acceptedAt?: string;
+}
+
+const sendInviteFn = httpsCallable<{
+  to: string; playerName: string; teamName: string; playerId: string; teamId: string;
+}>(functions, 'sendInvite');
+
+type Tab = 'schedule' | 'roster' | 'attendance' | 'standings' | 'info' | 'requests' | 'invites';
 
 export function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -66,6 +81,12 @@ export function TeamDetailPage() {
     team.coachId === profile.uid
   );
 
+  // Invites state
+  const [invites, setInvites] = useState<InviteDoc[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [resendingEmails, setResendingEmails] = useState<Set<string>>(new Set());
+  const [revokingEmails, setRevokingEmails] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     if (tab !== 'requests' || !team || !canSeeRequests) return;
     setRequestsLoading(true);
@@ -73,6 +94,17 @@ export function TeamDetailPage() {
       .then(snap => setJoinRequests(snap.docs.map(d => d.data() as JoinRequest)))
       .finally(() => setRequestsLoading(false));
   }, [tab, team?.id, canSeeRequests]);
+
+  useEffect(() => {
+    if (tab !== 'invites' || !team || !userCanEdit) return;
+    setInvitesLoading(true);
+    getDocs(query(collection(db, 'invites'), where('teamId', '==', team.id)))
+      .then(snap => {
+        const docs = snap.docs.map(d => ({ ...(d.data() as Omit<InviteDoc, 'email'>), email: d.id }));
+        setInvites(docs);
+      })
+      .finally(() => setInvitesLoading(false));
+  }, [tab, team?.id, userCanEdit]);
 
   // Open event panel when navigating here from a notification with openEventId in state
   useEffect(() => {
@@ -132,6 +164,16 @@ export function TeamDetailPage() {
     try {
       await setDoc(doc(db, 'users', request.uid), { teamId }, { merge: true });
       await updateDoc(doc(db, 'teams', teamId, 'joinRequests', request.uid), { status: 'approved' });
+      // Write in-app notification to approved user
+      const notifId = `join-approved-${teamId}-${Date.now()}`;
+      await setDoc(doc(db, 'users', request.uid, 'notifications', notifId), {
+        id: notifId,
+        type: 'info',
+        title: 'Join request approved',
+        message: `Your request to join ${team.name} has been approved. Welcome to the team!`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
       setJoinRequests(prev => prev.filter(r => r.uid !== request.uid));
     } finally {
       setProcessingUids(prev => { const s = new Set(prev); s.delete(request.uid); return s; });
@@ -148,6 +190,31 @@ export function TeamDetailPage() {
     }
   }
 
+  async function handleResendInvite(invite: InviteDoc) {
+    setResendingEmails(prev => new Set(prev).add(invite.email));
+    try {
+      await sendInviteFn({
+        to: invite.email,
+        playerName: invite.playerName,
+        teamName: invite.teamName,
+        playerId: invite.playerId,
+        teamId: invite.teamId,
+      });
+    } finally {
+      setResendingEmails(prev => { const s = new Set(prev); s.delete(invite.email); return s; });
+    }
+  }
+
+  async function handleRevokeInvite(email: string) {
+    setRevokingEmails(prev => new Set(prev).add(email));
+    try {
+      await deleteDoc(doc(db, 'invites', email));
+      setInvites(prev => prev.filter(i => i.email !== email));
+    } finally {
+      setRevokingEmails(prev => { const s = new Set(prev); s.delete(email); return s; });
+    }
+  }
+
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'schedule', label: 'Schedule', icon: <CalendarDays size={14} /> },
     { key: 'roster', label: `Roster (${teamPlayers.length})`, icon: <Users size={14} /> },
@@ -155,6 +222,7 @@ export function TeamDetailPage() {
     { key: 'standings', label: 'Standings', icon: <Trophy size={14} /> },
     { key: 'info', label: 'Info', icon: <Info size={14} /> },
     ...(canSeeRequests ? [{ key: 'requests' as Tab, label: 'Requests', icon: <UserCheck size={14} /> }] : []),
+    ...(userCanEdit ? [{ key: 'invites' as Tab, label: 'Invites', icon: <Mail size={14} /> }] : []),
   ];
 
   return (
@@ -399,6 +467,54 @@ export function TeamDetailPage() {
                       <Button size="sm" variant="secondary" disabled={isProcessing} onClick={() => setPendingReject(req)}>Reject</Button>
                       <Button size="sm" disabled={isProcessing} onClick={() => setPendingApprove(req)}>Approve</Button>
                     </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Invites Tab */}
+      {tab === 'invites' && userCanEdit && (
+        <div className="bg-white rounded-xl border border-gray-200">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h3 className="font-medium text-gray-800">Invites</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Players invited to join this team</p>
+          </div>
+          {invitesLoading ? (
+            <div className="p-4 sm:p-6 text-center text-sm text-gray-400">Loading invites…</div>
+          ) : invites.length === 0 ? (
+            <div className="p-4 sm:p-6 text-center text-sm text-gray-400">No outstanding invites.</div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {invites.map(invite => {
+                const isResending = resendingEmails.has(invite.email);
+                const isRevoking = revokingEmails.has(invite.email);
+                const isAccepted = !!invite.acceptedAt;
+                return (
+                  <div key={invite.email} className="flex items-center justify-between px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{invite.email}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isAccepted ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                          {isAccepted ? 'Accepted' : 'Pending'}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          Sent {new Date(invite.invitedAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                    {!isAccepted && (
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="secondary" disabled={isResending || isRevoking} onClick={() => void handleResendInvite(invite)}>
+                          {isResending ? 'Sending…' : 'Resend'}
+                        </Button>
+                        <Button size="sm" variant="danger" disabled={isResending || isRevoking} onClick={() => void handleRevokeInvite(invite.email)}>
+                          {isRevoking ? 'Revoking…' : 'Revoke'}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
