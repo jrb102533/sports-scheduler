@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send } from 'lucide-react';
+import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
@@ -14,7 +14,7 @@ import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { formatDate, formatTime } from '@/lib/dateUtils';
-import { EVENT_TYPE_LABELS } from '@/constants';
+import { EVENT_TYPE_LABELS, EVENT_TYPE_BADGE_CLASSES } from '@/constants';
 import type { ScheduledEvent } from '@/types';
 
 interface EventDetailPanelProps {
@@ -27,6 +27,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const teams = useTeamStore(s => s.teams);
   const profile = useAuthStore(s => s.profile);
   const [editOpen, setEditOpen] = useState(false);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [deleteSeriesOpen, setDeleteSeriesOpen] = useState(false);
@@ -104,7 +105,9 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
 
           <div className="flex-1 px-5 py-4 space-y-4">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">{EVENT_TYPE_LABELS[event.type]}</span>
+              <span className={`text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${EVENT_TYPE_BADGE_CLASSES[event.type] ?? 'bg-gray-100 text-gray-600'}`}>
+                {EVENT_TYPE_LABELS[event.type]}
+              </span>
               <EventStatusBadge status={event.status} />
             </div>
 
@@ -202,6 +205,9 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
             <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
               <Edit size={14} /> Edit
             </Button>
+            <Button variant="secondary" size="sm" onClick={() => setDuplicateOpen(true)}>
+              <Copy size={14} /> Duplicate
+            </Button>
             {canManage && event.status !== 'cancelled' && (
               <Button variant="secondary" size="sm" onClick={() => setRsvpOpen(true)}>
                 <Send size={14} /> Send RSVP
@@ -223,6 +229,22 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
       </div>
 
       <EventForm open={editOpen} onClose={() => setEditOpen(false)} editEvent={event} />
+      <EventForm
+        open={duplicateOpen}
+        onClose={() => setDuplicateOpen(false)}
+        initial={{
+          title: event.title,
+          type: event.type,
+          date: event.date,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          location: event.location,
+          homeTeamId: event.homeTeamId,
+          awayTeamId: event.awayTeamId,
+          opponentName: event.opponentName,
+          notes: event.notes,
+        }}
+      />
       {rsvpOpen && <RsvpInviteModal open={rsvpOpen} onClose={() => setRsvpOpen(false)} event={event} />}
 
       {/* Cancel event confirm */}

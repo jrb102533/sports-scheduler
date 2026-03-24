@@ -2,7 +2,7 @@ import { MapPin, Clock } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { EventStatusBadge } from './EventStatusBadge';
 import { formatDate, formatTime } from '@/lib/dateUtils';
-import { EVENT_TYPE_LABELS, EVENT_TYPE_COLORS } from '@/constants';
+import { EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, EVENT_TYPE_BADGE_CLASSES } from '@/constants';
 import type { ScheduledEvent, Team } from '@/types';
 
 interface EventCardProps {
@@ -26,8 +26,7 @@ export function EventCard({ event, teams, onClick }: EventCardProps) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <span
-                  className="text-xs font-semibold uppercase tracking-wide"
-                  style={{ color: accentColor }}
+                  className={`text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${EVENT_TYPE_BADGE_CLASSES[event.type] ?? 'bg-gray-100 text-gray-600'}`}
                 >
                   {EVENT_TYPE_LABELS[event.type]}
                 </span>

@@ -78,6 +78,14 @@ export const EVENT_TYPE_COLORS: Record<string, string> = {
   other: '#6b7280',
 };
 
+export const EVENT_TYPE_BADGE_CLASSES: Record<string, string> = {
+  game: 'bg-red-100 text-red-700',
+  match: 'bg-red-100 text-red-700',
+  practice: 'bg-blue-100 text-blue-700',
+  tournament: 'bg-purple-100 text-purple-700',
+  other: 'bg-gray-100 text-gray-600',
+};
+
 export const TEAM_COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e',
   '#14b8a6', '#3b82f6', '#8b5cf6', '#ec4899',
