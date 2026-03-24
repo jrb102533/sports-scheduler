@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MailCheck } from 'lucide-react';
+import { MailCheck, Plus, X } from 'lucide-react';
 import { AuthLayout } from '@/layouts/AuthLayout';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useAuthStore } from '@/store/useAuthStore';
-import type { UserRole } from '@/types';
+import type { UserRole, RoleMembership } from '@/types';
 
 const roleOptions = [
   { value: 'admin', label: 'Admin — full access' },
@@ -24,6 +24,12 @@ const roleDescriptions: Record<UserRole, string> = {
   parent: 'View your child\'s team schedule and attendance.',
 };
 
+const additionalRoleOptions = roleOptions; // same list for additional roles
+
+interface AdditionalRole {
+  role: UserRole;
+}
+
 export function SignupPage() {
   const { signup, logout, error, clearError } = useAuthStore();
   const navigate = useNavigate();
@@ -32,9 +38,25 @@ export function SignupPage() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [role, setRole] = useState<UserRole>('coach');
+  const [additionalRoles, setAdditionalRoles] = useState<AdditionalRole[]>([]);
   const [loading, setLoading] = useState(false);
   const [validationError, setValidationError] = useState('');
   const [verificationSent, setVerificationSent] = useState(false);
+
+  function addRole() {
+    // Default to the first role that isn't already selected
+    const taken = new Set([role, ...additionalRoles.map(r => r.role)]);
+    const next = roleOptions.find(o => !taken.has(o.value as UserRole));
+    if (next) setAdditionalRoles(prev => [...prev, { role: next.value as UserRole }]);
+  }
+
+  function updateAdditionalRole(index: number, newRole: UserRole) {
+    setAdditionalRoles(prev => prev.map((r, i) => i === index ? { role: newRole } : r));
+  }
+
+  function removeAdditionalRole(index: number) {
+    setAdditionalRoles(prev => prev.filter((_, i) => i !== index));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,9 +67,15 @@ export function SignupPage() {
     if (password.length < 6) { setValidationError('Password must be at least 6 characters'); return; }
     if (!displayName.trim()) { setValidationError('Name is required'); return; }
 
+    // Build memberships from primary + additional roles
+    const memberships: RoleMembership[] = [
+      { role, isPrimary: true },
+      ...additionalRoles.map(r => ({ role: r.role })),
+    ];
+
     setLoading(true);
     try {
-      await signup(email, password, displayName.trim(), role);
+      await signup(email, password, displayName.trim(), role, undefined, memberships);
       await logout();
       setVerificationSent(true);
     } catch {
@@ -87,9 +115,55 @@ export function SignupPage() {
         <Input label="Confirm Password" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="••••••••" required />
 
         <div className="border-t border-gray-100 pt-4 space-y-3">
-          <Select label="Role" value={role} onChange={e => setRole(e.target.value as UserRole)} options={roleOptions} />
-          {role && (
-            <p className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">{roleDescriptions[role]}</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Your Role(s)</p>
+
+          {/* Primary role */}
+          <div className="space-y-2">
+            <Select
+              label="Primary Role"
+              value={role}
+              onChange={e => setRole(e.target.value as UserRole)}
+              options={roleOptions}
+            />
+            {role && (
+              <p className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">{roleDescriptions[role]}</p>
+            )}
+          </div>
+
+          {/* Additional roles */}
+          {additionalRoles.map((ar, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <div className="flex-1 space-y-1">
+                <Select
+                  label={`Additional Role ${i + 1}`}
+                  value={ar.role}
+                  onChange={e => updateAdditionalRole(i, e.target.value as UserRole)}
+                  options={additionalRoleOptions.filter(
+                    o => o.value === ar.role || (o.value !== role && !additionalRoles.some((r, j) => j !== i && r.role === o.value))
+                  )}
+                />
+                <p className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">{roleDescriptions[ar.role]}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => removeAdditionalRole(i)}
+                className="mt-6 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                aria-label="Remove role"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          ))}
+
+          {/* Add role button — only show if there are still unused roles */}
+          {additionalRoles.length + 1 < roleOptions.length && (
+            <button
+              type="button"
+              onClick={addRole}
+              className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              <Plus size={15} /> Add another role
+            </button>
           )}
         </div>
 

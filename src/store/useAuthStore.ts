@@ -19,7 +19,7 @@ interface AuthStore {
   error: string | null;
 
   init: () => () => void;
-  signup: (email: string, password: string, displayName: string, role: UserRole, teamId?: string) => Promise<void>;
+  signup: (email: string, password: string, displayName: string, role: UserRole, teamId?: string, memberships?: import('@/types').RoleMembership[]) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (patch: Partial<Pick<UserProfile, 'displayName' | 'avatarUrl' | 'teamId' | 'playerId' | 'leagueId'>>) => Promise<void>;
@@ -94,23 +94,27 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     };
   },
 
-  signup: async (email, password, displayName, role, teamId) => {
+  signup: async (email, password, displayName, role, teamId, memberships) => {
     set({ error: null });
     try {
       const { user } = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(user, { displayName });
-      const primaryMembership: RoleMembership = {
+      const resolvedMemberships: RoleMembership[] = memberships ?? [{
         role,
         isPrimary: true,
         ...(teamId ? { teamId } : {}),
-      };
+      }];
+      // Ensure primary membership has teamId if provided
+      if (teamId && resolvedMemberships[0] && !resolvedMemberships[0].teamId) {
+        resolvedMemberships[0] = { ...resolvedMemberships[0], teamId };
+      }
       const profile: UserProfile = {
         uid: user.uid,
         email,
         displayName,
         role,
         createdAt: new Date().toISOString(),
-        memberships: [primaryMembership],
+        memberships: resolvedMemberships,
         activeContext: 0,
         ...(teamId ? { teamId } : {}),
       };
