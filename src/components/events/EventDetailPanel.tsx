@@ -28,7 +28,10 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const profile = useAuthStore(s => s.profile);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const [deleteSeriesOpen, setDeleteSeriesOpen] = useState(false);
+  const [confirmDeleteThis, setConfirmDeleteThis] = useState(false);
+  const [confirmDeleteSeries, setConfirmDeleteSeries] = useState(false);
   const [rsvpOpen, setRsvpOpen] = useState(false);
   const [homeScore, setHomeScore] = useState('');
   const [awayScore, setAwayScore] = useState('');
@@ -64,6 +67,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
 
   function handleCancel() {
     updateEvent({ ...currentEvent, status: 'cancelled' as const, updatedAt: new Date().toISOString() });
+    onClose();
   }
 
   function handleDeleteThis() {
@@ -204,7 +208,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
               </Button>
             )}
             {event.status !== 'cancelled' && (
-              <Button variant="ghost" size="sm" onClick={handleCancel}>Cancel Event</Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmCancel(true)}>Cancel Event</Button>
             )}
             <Button
               variant="danger"
@@ -221,6 +225,16 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
       <EventForm open={editOpen} onClose={() => setEditOpen(false)} editEvent={event} />
       {rsvpOpen && <RsvpInviteModal open={rsvpOpen} onClose={() => setRsvpOpen(false)} event={event} />}
 
+      {/* Cancel event confirm */}
+      <ConfirmDialog
+        open={confirmCancel}
+        onClose={() => setConfirmCancel(false)}
+        onConfirm={handleCancel}
+        title="Cancel Event"
+        message="Cancel this event? This will notify all players."
+        confirmLabel="Cancel Event"
+      />
+
       {/* Single event delete confirm */}
       <ConfirmDialog
         open={confirmDelete}
@@ -230,16 +244,36 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
         message={`Are you sure you want to delete "${event.title}"? This cannot be undone.`}
       />
 
+      {/* Recurring: delete this event only confirm */}
+      <ConfirmDialog
+        open={confirmDeleteThis}
+        onClose={() => setConfirmDeleteThis(false)}
+        onConfirm={handleDeleteThis}
+        title="Delete Event"
+        message={`Delete just this occurrence of "${event.title}"? This cannot be undone.`}
+        confirmLabel="Delete Event"
+      />
+
+      {/* Recurring: delete entire series confirm */}
+      <ConfirmDialog
+        open={confirmDeleteSeries}
+        onClose={() => setConfirmDeleteSeries(false)}
+        onConfirm={handleDeleteSeries}
+        title="Delete All in Series"
+        message={`Delete all events in the "${event.title}" series? This cannot be undone.`}
+        confirmLabel="Delete All"
+      />
+
       {/* Recurring delete choice dialog */}
       <Modal open={deleteSeriesOpen} onClose={() => setDeleteSeriesOpen(false)} title="Delete Recurring Event" size="sm">
         <p className="text-sm text-gray-600 mb-4">
           This is a recurring event. Would you like to delete just this event, or all events in this series?
         </p>
         <div className="flex flex-col gap-2">
-          <Button variant="secondary" onClick={() => { setDeleteSeriesOpen(false); handleDeleteThis(); }}>
+          <Button variant="secondary" onClick={() => { setDeleteSeriesOpen(false); setConfirmDeleteThis(true); }}>
             Delete This Event Only
           </Button>
-          <Button variant="danger" onClick={() => { setDeleteSeriesOpen(false); handleDeleteSeries(); }}>
+          <Button variant="danger" onClick={() => { setDeleteSeriesOpen(false); setConfirmDeleteSeries(true); }}>
             Delete All in Series
           </Button>
           <Button variant="ghost" onClick={() => setDeleteSeriesOpen(false)}>

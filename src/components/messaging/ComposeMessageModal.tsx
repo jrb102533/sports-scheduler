@@ -3,6 +3,7 @@ import { httpsCallable } from 'firebase/functions';
 import { MessageSquare, Mail, Phone, Users, XCircle, AlertCircle, Send } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Select } from '@/components/ui/Select';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
@@ -50,6 +51,7 @@ export function ComposeMessageModal({ open, onClose, defaultTeamId }: ComposeMes
   const [sendState, setSendState] = useState<SendState>('idle');
   const [sendResult, setSendResult] = useState<{ sent: number; failed: number; errors: string[] } | null>(null);
   const [successRecipients, setSuccessRecipients] = useState<string[]>([]);
+  const [confirmSendOpen, setConfirmSendOpen] = useState(false);
 
   const team = accessibleTeams.find(t => t.id === teamId);
 
@@ -288,12 +290,30 @@ export function ComposeMessageModal({ open, onClose, defaultTeamId }: ComposeMes
 
         <div className="flex justify-end gap-3 pt-1">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => void handleSend()} disabled={!canSend || sendState === 'sending'}>
+          <Button
+            onClick={() => {
+              if (selectedPlayers.length > 1) {
+                setConfirmSendOpen(true);
+              } else {
+                void handleSend();
+              }
+            }}
+            disabled={!canSend || sendState === 'sending'}
+          >
             {channel === 'sms' ? <MessageSquare size={15} /> : <Mail size={15} />}
             {sendState === 'sending' ? 'Sending…' : `Send${selectedPlayers.length > 0 ? ` to ${selectedPlayers.length}` : ''}`}
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmSendOpen}
+        onClose={() => setConfirmSendOpen(false)}
+        onConfirm={() => void handleSend()}
+        title="Send Message"
+        message={`Send this message to ${selectedPlayers.length} recipient${selectedPlayers.length !== 1 ? 's' : ''}?`}
+        confirmLabel="Send"
+      />
     </Modal>
   );
 }
