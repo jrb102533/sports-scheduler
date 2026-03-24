@@ -7,7 +7,7 @@ import { EventStatusBadge } from './EventStatusBadge';
 import { formatDate, formatTime } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, EVENT_TYPE_BADGE_CLASSES } from '@/constants';
 import type { ScheduledEvent, Team } from '@/types';
-import { useAuthStore } from '@/store/useAuthStore';
+import { useAuthStore, getActiveMembership } from '@/store/useAuthStore';
 import { useEventStore } from '@/store/useEventStore';
 
 interface EventCardProps {
@@ -25,16 +25,20 @@ function RsvpIndicator({ event }: { event: ScheduledEvent; onOpenDetail?: () => 
   // Never show on completed or cancelled events
   if (event.status === 'completed' || event.status === 'cancelled') return null;
 
-  const role = profile?.role;
+  // Use active membership role so context-switcher is respected
+  const role = getActiveMembership(profile)?.role ?? profile?.role;
   const rsvps = event.rsvps ?? [];
 
   // Coach / admin / league_manager: show going count
   if (role === 'coach' || role === 'admin' || role === 'league_manager') {
     const goingCount = rsvps.filter(r => r.response === 'yes').length;
-    if (goingCount === 0) return null;
+    if (rsvps.length === 0) return null;
     return (
       <div className="mt-3 pt-2.5 border-t border-gray-100">
-        <span className="text-xs text-gray-400">&#10003; {goingCount} going</span>
+        {goingCount > 0
+          ? <span className="text-xs text-gray-400">&#10003; {goingCount} going</span>
+          : <span className="text-xs text-gray-400">No responses yet</span>
+        }
       </div>
     );
   }
