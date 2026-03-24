@@ -4,11 +4,82 @@ import { EventStatusBadge } from './EventStatusBadge';
 import { formatDate, formatTime } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, EVENT_TYPE_BADGE_CLASSES } from '@/constants';
 import type { ScheduledEvent, Team } from '@/types';
+import { useAuthStore } from '@/store/useAuthStore';
 
 interface EventCardProps {
   event: ScheduledEvent;
   teams: Team[];
   onClick?: () => void;
+}
+
+function RsvpIndicator({ event }: { event: ScheduledEvent }) {
+  const { user, profile } = useAuthStore();
+
+  // Never show on completed or cancelled events
+  if (event.status === 'completed' || event.status === 'cancelled') return null;
+
+  const role = profile?.role;
+  const rsvps = event.rsvps ?? [];
+
+  // Coach / admin / league_manager: show going count
+  if (role === 'coach' || role === 'admin' || role === 'league_manager') {
+    const goingCount = rsvps.filter(r => r.response === 'yes').length;
+    if (goingCount === 0) return null;
+    return (
+      <div className="mt-3 pt-2.5 border-t border-gray-100">
+        <span className="text-xs text-gray-400">&#10003; {goingCount} going</span>
+      </div>
+    );
+  }
+
+  // Player / parent: show their own RSVP status
+  if (role === 'player' || role === 'parent') {
+    const uid = user?.uid;
+    if (!uid) return null;
+
+    const myRsvp = rsvps.find(r => r.playerId === uid);
+
+    if (myRsvp?.response === 'yes') {
+      return (
+        <div className="mt-3 pt-2.5 border-t border-gray-100">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+            &#10003; Going
+          </span>
+        </div>
+      );
+    }
+
+    if (myRsvp?.response === 'maybe') {
+      return (
+        <div className="mt-3 pt-2.5 border-t border-gray-100">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+            ? Maybe
+          </span>
+        </div>
+      );
+    }
+
+    if (myRsvp?.response === 'no') {
+      return (
+        <div className="mt-3 pt-2.5 border-t border-gray-100">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600">
+            &#10007; Can&apos;t make it
+          </span>
+        </div>
+      );
+    }
+
+    // No response yet — subtle CTA pill (no onClick; EventDetailPanel handles RSVP)
+    return (
+      <div className="mt-3 pt-2.5 border-t border-gray-100">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 cursor-pointer">
+          RSVP
+        </span>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 export function EventCard({ event, teams, onClick }: EventCardProps) {
@@ -74,6 +145,8 @@ export function EventCard({ event, teams, onClick }: EventCardProps) {
               )}
             </div>
           </div>
+
+          <RsvpIndicator event={event} />
         </div>
       </div>
     </Card>
