@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:local": "concurrently --kill-others-on-fail --names emulator,vite --prefix-colors blue,green \"npm run emulator\" \"npm run dev\"",
+    "emulator": "firebase emulators:start --import=./emulator-data --export-on-exit=./emulator-data",
     "build": "tsc -b && vite build",
     "build:test": "tsc -b && vite build --mode test",
     "deploy:test": "npm run build:test && firebase deploy --project test",
@@ -36,6 +38,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.1.1",
+    "concurrently": "^9.2.1",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",

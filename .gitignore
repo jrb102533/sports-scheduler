@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 functions/lib
 functions/node_modules
+
+# Firebase emulator persistent data (local only)
+emulator-data/
