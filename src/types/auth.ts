@@ -30,4 +30,6 @@ export interface UserProfile {
   memberships?: RoleMembership[];
   /** Index into memberships[] for the currently active context. Defaults to 0. */
   activeContext?: number;
+  /** Set to true by admin-created accounts. Forces a password change on first login. */
+  mustChangePassword?: boolean;
 }
