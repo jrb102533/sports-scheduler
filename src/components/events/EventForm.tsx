@@ -8,9 +8,27 @@ import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useOpponentStore } from '@/store/useOpponentStore';
 import { useAuthStore } from '@/store/useAuthStore';
-import { todayISO } from '@/lib/dateUtils';
+import { todayISO, formatTime } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent, EventType, EventStatus, RecurrenceFrequency } from '@/types';
+
+/** Convert HH:MM to total minutes for comparison */
+function toMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + (m ?? 0);
+}
+
+/** Returns true if time range A overlaps time range B. Missing endTime = point in time. */
+function timesOverlap(
+  aStart: string, aEnd: string | undefined,
+  bStart: string, bEnd: string | undefined
+): boolean {
+  const aS = toMinutes(aStart);
+  const aE = aEnd ? toMinutes(aEnd) : aS + 1;
+  const bS = toMinutes(bStart);
+  const bE = bEnd ? toMinutes(bEnd) : bS + 1;
+  return aS < bE && bS < aE;
+}
 
 interface EventFormProps {
   open: boolean;
@@ -52,7 +70,7 @@ function formatPreviewDate(isoDate: string): string {
 const GAME_TYPES = new Set<EventType>(['game', 'match', 'tournament']);
 
 export function EventForm({ open, onClose, initial, editEvent }: EventFormProps) {
-  const { addEvent, bulkAddEvents } = useEventStore();
+  const { addEvent, bulkAddEvents, events } = useEventStore();
   const updateEvent = useEventStore(s => s.updateEvent);
   const allTeams = useTeamStore(s => s.teams);
   const { opponents, addOpponent } = useOpponentStore();
@@ -90,6 +108,12 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const [opponentName, setOpponentName] = useState(editEvent?.opponentName ?? '');
   const [snackItem, setSnackItem] = useState(editEvent?.snackItem ?? '');
 
+  // Conflict warning dialog state
+  const [conflictWarning, setConflictWarning] = useState<{
+    conflicts: ScheduledEvent[];
+    proceed: () => void;
+  } | null>(null);
+
   // Recurrence
   const [isRecurring, setIsRecurring] = useState(false);
   const [frequency, setFrequency] = useState<RecurrenceFrequency>('weekly');
@@ -117,8 +141,26 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     return Object.keys(e).length === 0;
   }
 
-  async function handleSubmit() {
-    if (!validate()) return;
+  function checkConflicts(datesToCheck: string[]): ScheduledEvent[] {
+    const seen = new Set<string>();
+    const conflicts: ScheduledEvent[] = [];
+    for (const d of datesToCheck) {
+      for (const ev of events) {
+        if (seen.has(ev.id)) continue;
+        if (ev.id === editEvent?.id) continue;
+        if (ev.date !== d) continue;
+        if (ev.status === 'cancelled' || ev.status === 'postponed') continue;
+        if (!ev.teamIds.includes(selectedTeamId)) continue;
+        if (timesOverlap(startTime, endTime || undefined, ev.startTime, ev.endTime)) {
+          seen.add(ev.id);
+          conflicts.push(ev);
+        }
+      }
+    }
+    return conflicts;
+  }
+
+  async function doSave() {
     const now = new Date().toISOString();
     const teamIds = [selectedTeamId].filter(Boolean);
     const resolvedTitle = title.trim() || EVENT_TYPE_LABELS[type];
@@ -156,7 +198,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     } else if (isRecurring && recurrenceEnd) {
       const groupId = crypto.randomUUID();
       const occurrences = generateOccurrences(date, recurrenceEnd, frequency);
-      const events: ScheduledEvent[] = occurrences.map(occDate => ({
+      const newEvents: ScheduledEvent[] = occurrences.map(occDate => ({
         id: crypto.randomUUID(),
         title: resolvedTitle,
         type,
@@ -172,11 +214,24 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
         updatedAt: now,
         ...optionals,
       }));
-      bulkAddEvents(events);
+      bulkAddEvents(newEvents);
     } else {
       addEvent({ id: crypto.randomUUID(), title: resolvedTitle, type, status: 'scheduled' as EventStatus, date, startTime, teamIds, isRecurring: false, createdAt: now, updatedAt: now, ...optionals });
     }
     onClose();
+  }
+
+  async function handleSubmit() {
+    if (!validate()) return;
+    const datesToCheck = isRecurring && recurrenceEnd && recurrenceEnd > date
+      ? generateOccurrences(date, recurrenceEnd, frequency)
+      : [date];
+    const conflicts = checkConflicts(datesToCheck);
+    if (conflicts.length > 0) {
+      setConflictWarning({ conflicts, proceed: () => void doSave() });
+      return;
+    }
+    await doSave();
   }
 
   const myTeamOptions = myTeams.map(t => ({ value: t.id, label: t.name }));
@@ -317,6 +372,36 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           <Button onClick={() => void handleSubmit()}>{editEvent ? 'Save Changes' : 'Create Event'}</Button>
         </div>
       </div>
+
+      {/* Scheduling conflict warning */}
+      {conflictWarning && (
+        <Modal
+          open={true}
+          onClose={() => setConflictWarning(null)}
+          title="Scheduling Conflict"
+          size="sm"
+        >
+          <p className="text-sm text-gray-700 mb-3">
+            This event overlaps with {conflictWarning.conflicts.length} existing event{conflictWarning.conflicts.length !== 1 ? 's' : ''} for this team:
+          </p>
+          <ul className="space-y-2 mb-5">
+            {conflictWarning.conflicts.slice(0, 5).map(ev => (
+              <li key={ev.id} className="text-sm bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                <span className="font-medium text-gray-900">{ev.title}</span>
+                <span className="text-gray-500"> · {ev.date} · {formatTime(ev.startTime)}{ev.endTime ? ` – ${formatTime(ev.endTime)}` : ''}</span>
+              </li>
+            ))}
+            {conflictWarning.conflicts.length > 5 && (
+              <li className="text-xs text-gray-500 px-3">…and {conflictWarning.conflicts.length - 5} more</li>
+            )}
+          </ul>
+          <p className="text-sm text-gray-600 mb-5">Do you still want to schedule this event?</p>
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" onClick={() => setConflictWarning(null)}>Go Back</Button>
+            <Button onClick={() => { conflictWarning.proceed(); setConflictWarning(null); }}>Schedule Anyway</Button>
+          </div>
+        </Modal>
+      )}
     </Modal>
   );
 }
