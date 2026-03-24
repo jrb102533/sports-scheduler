@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, CalendarDays, Trophy, Users, Activity, MessageSquare, Bell, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, CalendarDays, Trophy, Users, Activity, MessageSquare, Bell, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { EventCard } from '@/components/events/EventCard';
@@ -14,10 +14,14 @@ import { usePlayerStore } from '@/store/usePlayerStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useAuthStore, getAccessibleTeamIds, getMemberships, hasRole } from '@/store/useAuthStore';
-import { isUpcoming, formatDate, formatTime } from '@/lib/dateUtils';
+import { isUpcoming, formatDate, formatTime, todayISO, parseISO } from '@/lib/dateUtils';
 import { SPORT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent } from '@/types';
 import { seedDemoData } from '@/lib/demoData';
+
+const LOW_CONFIRMATION_THRESHOLD = 7;
+const LOW_RSVP_RESPONSE_RATIO = 0.5;
+const SOON_HOURS = 48;
 
 export function Dashboard() {
   const allEvents = useEventStore(s => s.events);
@@ -60,6 +64,63 @@ export function Dashboard() {
 
   const isEmpty = teams.length === 0 && events.length === 0;
   const [seeding, setSeeding] = useState(false);
+
+  const isManager = profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach';
+
+  type NextAction =
+    | { kind: 'unrecorded_result'; event: ScheduledEvent }
+    | { kind: 'low_rsvp'; event: ScheduledEvent; nonResponders: number }
+    | { kind: 'low_confirmation'; event: ScheduledEvent; confirmed: number }
+    | { kind: 'all_clear'; nextEvent: ScheduledEvent | null };
+
+  function computeNextAction(): NextAction {
+    const today = todayISO();
+    const nowMs = Date.now();
+
+    const unrecorded = events
+      .filter(e =>
+        e.date < today &&
+        e.status !== 'completed' &&
+        e.status !== 'cancelled' &&
+        (e.type === 'game' || e.type === 'match') &&
+        !e.result
+      )
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    if (unrecorded.length > 0) {
+      return { kind: 'unrecorded_result', event: unrecorded[0] };
+    }
+
+    const upcomingEvents = events
+      .filter(e => isUpcoming(e) && e.status !== 'cancelled')
+      .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+
+    for (const e of upcomingEvents) {
+      const teamPlayers = allPlayers.filter(p => e.teamIds.includes(p.teamId));
+      const rosterSize = teamPlayers.length;
+      if (rosterSize > 0) {
+        const responded = (e.rsvps ?? []).length;
+        if (responded / rosterSize < LOW_RSVP_RESPONSE_RATIO) {
+          return { kind: 'low_rsvp', event: e, nonResponders: rosterSize - responded };
+        }
+      }
+    }
+
+    for (const e of upcomingEvents) {
+      const eventMs = parseISO(`${e.date}T${e.startTime}`).getTime();
+      const hoursUntil = (eventMs - nowMs) / (1000 * 60 * 60);
+      if (hoursUntil <= SOON_HOURS) {
+        const confirmed = (e.rsvps ?? []).filter(r => r.response === 'yes').length;
+        if (confirmed < LOW_CONFIRMATION_THRESHOLD) {
+          return { kind: 'low_confirmation', event: e, confirmed };
+        }
+      }
+    }
+
+    return { kind: 'all_clear', nextEvent: upcomingEvents[0] ?? null };
+  }
+
+  const nextAction = isManager ? computeNextAction() : null;
 
   async function handleSeed() {
     setSeeding(true);
@@ -219,6 +280,51 @@ export function Dashboard() {
           <span className="text-blue-200 text-xs flex-shrink-0">Tap to view</span>
         </div>
       )}
+
+      {/* Next Action card — coaches / admins / league managers */}
+      {nextAction && (() => {
+        const isUrgent = nextAction.kind !== 'all_clear';
+        const accentClass = isUrgent ? 'border-l-amber-400' : 'border-l-green-400';
+
+        let label = '';
+        let actionLabel = '';
+        let targetEvent: ScheduledEvent | null = null;
+
+        if (nextAction.kind === 'unrecorded_result') {
+          label = `Record the result for "${nextAction.event.title}"`;
+          actionLabel = 'Open event';
+          targetEvent = nextAction.event;
+        } else if (nextAction.kind === 'low_rsvp') {
+          label = `${nextAction.nonResponders} player${nextAction.nonResponders !== 1 ? 's' : ''} haven't responded to "${nextAction.event.title}" — send a nudge`;
+          actionLabel = 'Open event';
+          targetEvent = nextAction.event;
+        } else if (nextAction.kind === 'low_confirmation') {
+          label = `"${nextAction.event.title}" is soon — only ${nextAction.confirmed} confirmed`;
+          actionLabel = 'Open event';
+          targetEvent = nextAction.event;
+        } else {
+          label = nextAction.nextEvent
+            ? `You're all caught up! Next: ${nextAction.nextEvent.title} on ${formatDate(nextAction.nextEvent.date)}`
+            : "You're all caught up! No upcoming events scheduled.";
+        }
+
+        return (
+          <Card className={`border-l-4 ${accentClass} px-4 py-3 flex items-center gap-3`}>
+            <div className="flex-shrink-0">
+              {isUrgent
+                ? <AlertTriangle size={18} className="text-amber-500" />
+                : <CheckCircle2 size={18} className="text-green-500" />
+              }
+            </div>
+            <p className="flex-1 text-sm text-gray-800 min-w-0">{label}</p>
+            {targetEvent && (
+              <Button variant="secondary" size="sm" className="flex-shrink-0" onClick={() => setSelected(targetEvent)}>
+                {actionLabel}
+              </Button>
+            )}
+          </Card>
+        );
+      })()}
 
       {/* Main grid: Upcoming Events + Messages */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
