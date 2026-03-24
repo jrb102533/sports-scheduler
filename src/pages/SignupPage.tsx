@@ -10,6 +10,7 @@ import type { UserRole } from '@/types';
 
 const roleOptions = [
   { value: 'admin', label: 'Admin — full access' },
+  { value: 'league_manager', label: 'League Manager — manage a league' },
   { value: 'coach', label: 'Coach — manage my team' },
   { value: 'player', label: 'Player — view schedule' },
   { value: 'parent', label: 'Parent — follow my child' },
