@@ -71,10 +71,7 @@ export function MainLayout() {
       <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0">
         <div style={{ background: 'linear-gradient(135deg, #1B3A6B 0%, #0f2a52 100%)' }}>
-          <div className="px-4 py-3 sm:px-6 flex items-center gap-3">
-            <div className="bg-white rounded-xl p-1.5 flex-shrink-0">
-              <img src="/logo.png" alt="First Whistle" className="w-8 h-8 object-contain" style={{ borderRadius: '8px' }} />
-            </div>
+          <div className="px-4 py-3 sm:px-6 flex items-center">
             <div>
               <p className="text-base font-bold text-white leading-none">First <span style={{ color: '#f97316' }}>Whistle</span></p>
               <p className="text-blue-300 text-xs mt-1 leading-snug">Schedule games · Track rosters · Manage leagues</p>
