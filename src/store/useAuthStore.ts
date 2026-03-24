@@ -12,6 +12,23 @@ import { doc, setDoc, getDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { UserRole, UserProfile, RoleMembership, Team } from '@/types';
 
+/** Map Firebase Auth error codes to user-friendly messages. */
+function mapAuthError(e: unknown): string {
+  const code = (e as { code?: string }).code ?? '';
+  switch (code) {
+    case 'auth/email-already-in-use': return 'An account with this email already exists.';
+    case 'auth/invalid-email': return 'Please enter a valid email address.';
+    case 'auth/weak-password': return 'Password must be at least 6 characters.';
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential': return 'Incorrect email or password.';
+    case 'auth/user-not-found': return 'No account found with this email.';
+    case 'auth/too-many-requests': return 'Too many attempts. Please try again later.';
+    case 'auth/network-request-failed': return 'Network error. Check your connection and try again.';
+    default: return (e as Error).message ?? 'Something went wrong. Please try again.';
+  }
+}
+
+
 interface AuthStore {
   user: User | null;
   profile: UserProfile | null;
@@ -119,19 +136,32 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         ...(teamId ? { teamId } : {}),
       };
       await setDoc(doc(db, 'users', user.uid), profile);
-      await sendEmailVerification(user);
     } catch (e: unknown) {
-      set({ error: (e as Error).message });
+      set({ error: mapAuthError(e) });
       throw e;
+    }
+    // Send verification email separately — account creation already succeeded above
+    try {
+      await sendEmailVerification(auth.currentUser!);
+    } catch {
+      // Best-effort: verification email failure doesn't block the signup flow
     }
   },
 
   login: async (email, password) => {
     set({ error: null });
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const { user } = await signInWithEmailAndPassword(auth, email, password);
+      if (!user.emailVerified) {
+        await signOut(auth);
+        const err = 'Please verify your email before signing in. Check your inbox for the verification link.';
+        set({ error: err });
+        throw new Error(err);
+      }
     } catch (e: unknown) {
-      set({ error: (e as Error).message });
+      if (!(e as Error).message?.includes('verify your email')) {
+        set({ error: mapAuthError(e) });
+      }
       throw e;
     }
   },
