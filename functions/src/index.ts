@@ -1,5 +1,5 @@
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
-import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
@@ -749,5 +749,194 @@ export const sendRsvpFollowups = onSchedule(
     }
 
     console.log(`sendRsvpFollowups: sent ${totalSent} follow-up(s) for events on ${tomorrowStr}`);
+  }
+);
+
+// ─── Event updated → cancellation notifications + game result broadcast ───────
+
+export const onEventCancelled = onDocumentUpdated(
+  {
+    document: 'events/{eventId}',
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+  },
+  async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    if (!before || !after) return;
+
+    const eventId = event.params.eventId;
+    const isCancellation = before.status !== 'cancelled' && after.status === 'cancelled';
+    const isResultSet = !before.result && after.result &&
+      (after.result.homeScore !== undefined || after.result.awayScore !== undefined);
+
+    if (!isCancellation && !isResultSet) return;
+
+    const teamIds: string[] = after.teamIds ?? [];
+    if (!teamIds.length) return;
+
+    // Fetch all players on the event's teams
+    const playersSnap = await admin.firestore()
+      .collection('players')
+      .where('teamId', 'in', teamIds.slice(0, 10))
+      .get();
+
+    if (playersSnap.empty) {
+      console.log(`onEventCancelled/onResultSet: no players found for teams`, teamIds);
+      return;
+    }
+
+    // Collect player emails for looking up user UIDs
+    const playerEmails: string[] = [];
+    for (const p of playersSnap.docs) {
+      const d = p.data();
+      const addrs: string[] = [
+        d.email,
+        d.parentContact?.parentEmail,
+        d.parentContact2?.parentEmail,
+      ].filter((e: any): e is string => typeof e === 'string' && e.trim().length > 0);
+      playerEmails.push(...addrs);
+    }
+
+    // Look up user UIDs by email so we can write in-app notifications
+    const uniqueEmails = [...new Set(playerEmails)];
+    const userUidMap = new Map<string, string>(); // email → uid
+    if (uniqueEmails.length) {
+      // Firestore `in` supports up to 30 items; chunk if needed
+      const chunkSize = 30;
+      for (let i = 0; i < uniqueEmails.length; i += chunkSize) {
+        const chunk = uniqueEmails.slice(i, i + chunkSize);
+        const usersSnap = await admin.firestore()
+          .collection('users')
+          .where('email', 'in', chunk)
+          .get();
+        for (const u of usersSnap.docs) {
+          const email = u.data()?.email as string | undefined;
+          if (email) userUidMap.set(email, u.id);
+        }
+      }
+    }
+
+    // ── Item 1: Event cancellation ───────────────────────────────────────────
+    if (isCancellation) {
+      const eventTitle: string = after.title ?? 'Event';
+      const eventDate: string = after.date ?? '';
+      const eventTime: string = after.startTime ?? '';
+
+      // Send cancellation emails + in-app notifications to all players
+      const emails: { name: string; address: string }[] = [];
+      for (const p of playersSnap.docs) {
+        const d = p.data();
+        const name: string = `${d.firstName ?? ''} ${d.lastName ?? ''}`.trim() || 'Player';
+        const addrs: string[] = [
+          d.email,
+          d.parentContact?.parentEmail,
+          d.parentContact2?.parentEmail,
+        ].filter((e: any): e is string => typeof e === 'string' && e.trim().length > 0);
+        addrs.forEach(address => emails.push({ name, address }));
+      }
+
+      const transporter = createTransporter();
+
+      await Promise.allSettled(emails.map(({ name, address }) =>
+        transporter.sendMail({
+          from: emailFrom.value(),
+          to: `${name} <${address}>`,
+          subject: `First Whistle: ${eventTitle} has been cancelled`,
+          text: [
+            `Hi ${name},`,
+            '',
+            `${eventTitle} scheduled for ${eventDate} at ${eventTime} has been cancelled.`,
+            '',
+            '---',
+            'Sent via First Whistle',
+          ].join('\n'),
+          html: `
+            <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
+              <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
+                <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
+              </div>
+              <p style="color:#111827;font-size:15px">Hi ${name},</p>
+              <p style="color:#374151"><strong>${eventTitle}</strong> scheduled for ${eventDate} at ${eventTime} has been cancelled.</p>
+              <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
+              <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
+            </div>
+          `,
+        })
+      ));
+
+      // Write in-app notifications for each matched user
+      const notifTitle = `${eventTitle} cancelled`;
+      const notifMessage = `${eventTitle} scheduled for ${eventDate} at ${eventTime} has been cancelled.`;
+      const createdAt = new Date().toISOString();
+
+      const batch = admin.firestore().batch();
+      let notifCount = 0;
+      for (const [, uid] of userUidMap.entries()) {
+        const notifRef = admin.firestore()
+          .collection('users').doc(uid)
+          .collection('notifications').doc();
+        batch.set(notifRef, {
+          id: notifRef.id,
+          type: 'info',
+          title: notifTitle,
+          message: notifMessage,
+          relatedEventId: eventId,
+          isRead: false,
+          createdAt,
+        });
+        notifCount++;
+      }
+      await batch.commit();
+
+      console.log(`onEventCancelled: sent ${emails.length} cancellation email(s) and ${notifCount} in-app notification(s) for "${eventTitle}"`);
+    }
+
+    // ── Item 2: Game result broadcast ────────────────────────────────────────
+    if (isResultSet) {
+      const eventTitle: string = after.title ?? 'Event';
+      const result = after.result;
+      const homeScore: number | string = result.homeScore ?? 0;
+      const awayScore: number | string = result.awayScore ?? 0;
+
+      // Fetch team names for a human-readable result line
+      let resultSummary = `${eventTitle}: ${homeScore}–${awayScore}`;
+      if (teamIds.length >= 2) {
+        const [homeTeamDoc, awayTeamDoc] = await Promise.all([
+          admin.firestore().doc(`teams/${teamIds[0]}`).get(),
+          admin.firestore().doc(`teams/${teamIds[1]}`).get(),
+        ]);
+        const homeName = homeTeamDoc.data()?.name ?? 'Home';
+        const awayName = awayTeamDoc.data()?.name ?? 'Away';
+        resultSummary = `Final: ${homeName} ${homeScore} – ${awayScore} ${awayName}`;
+      } else if (teamIds.length === 1) {
+        const teamDoc = await admin.firestore().doc(`teams/${teamIds[0]}`).get();
+        const teamName = teamDoc.data()?.name ?? 'Team';
+        resultSummary = `Final: ${teamName} ${homeScore} – ${awayScore}`;
+      }
+
+      const notifTitle = `Result: ${eventTitle}`;
+      const createdAt = new Date().toISOString();
+
+      const batch = admin.firestore().batch();
+      let notifCount = 0;
+      for (const [, uid] of userUidMap.entries()) {
+        const notifRef = admin.firestore()
+          .collection('users').doc(uid)
+          .collection('notifications').doc();
+        batch.set(notifRef, {
+          id: notifRef.id,
+          type: 'result_recorded',
+          title: notifTitle,
+          message: resultSummary,
+          relatedEventId: eventId,
+          isRead: false,
+          createdAt,
+        });
+        notifCount++;
+      }
+      await batch.commit();
+
+      console.log(`onEventCancelled/onResultSet: sent ${notifCount} result notification(s) for "${eventTitle}" — ${resultSummary}`);
+    }
   }
 );
