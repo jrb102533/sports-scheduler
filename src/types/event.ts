@@ -7,6 +7,7 @@ export interface GameResult {
   homeScore: number;
   awayScore: number;
   notes?: string;
+  placement?: string;
 }
 
 export interface SnackVolunteer {

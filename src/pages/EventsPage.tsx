@@ -11,9 +11,12 @@ import { RoleGuard } from '@/components/auth/RoleGuard';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useAuthStore, getAccessibleTeamIds } from '@/store/useAuthStore';
+import { todayISO } from '@/lib/dateUtils';
 import { CalendarDays } from 'lucide-react';
 import type { ScheduledEvent } from '@/types';
 import { EVENT_TYPE_LABELS, EVENT_STATUS_LABELS } from '@/constants';
+
+type DateScope = 'upcoming' | 'all' | 'past';
 
 const typeOptions = [{ value: '', label: 'All Types' }, ...Object.entries(EVENT_TYPE_LABELS).map(([v, l]) => ({ value: v, label: l }))];
 const statusOptions = [{ value: '', label: 'All Statuses' }, ...Object.entries(EVENT_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))];
@@ -35,10 +38,12 @@ export function EventsPage() {
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [teamFilter, setTeamFilter] = useState('');
+  const [dateScope, setDateScope] = useState<DateScope>('upcoming');
 
   const teamOptions = [{ value: '', label: 'All Teams' }, ...teams.map(t => ({ value: t.id, label: t.name }))];
 
   const hasActiveFilters = !!(search || typeFilter || statusFilter || teamFilter);
+  const today = todayISO();
 
   function clearFilters() {
     setSearch('');
@@ -54,7 +59,8 @@ export function EventsPage() {
         (!q || e.title.toLowerCase().includes(q) || e.location?.toLowerCase().includes(q)) &&
         (!typeFilter || e.type === typeFilter) &&
         (!statusFilter || e.status === statusFilter) &&
-        (!teamFilter || e.teamIds.includes(teamFilter))
+        (!teamFilter || e.teamIds.includes(teamFilter)) &&
+        (dateScope === 'all' || (dateScope === 'upcoming' ? e.date >= today : e.date < today))
       );
     })
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
@@ -62,6 +68,19 @@ export function EventsPage() {
   return (
     <div className="p-4 sm:p-6">
       <div className="flex flex-col gap-3 mb-6">
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm font-medium w-fit">
+          {(['upcoming', 'all', 'past'] as DateScope[]).map((scope, i) => (
+            <button
+              key={scope}
+              type="button"
+              onClick={() => setDateScope(scope)}
+              className={`px-4 py-1.5 transition-colors capitalize${i > 0 ? ' border-l border-gray-200' : ''}`}
+              style={dateScope === scope ? { backgroundColor: '#1B3A6B', color: 'white' } : { color: '#6b7280' }}
+            >
+              {scope === 'upcoming' ? 'Upcoming' : scope === 'all' ? 'All' : 'Past'}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
