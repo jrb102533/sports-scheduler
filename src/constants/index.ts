@@ -37,7 +37,7 @@ export const AGE_GROUP_LABELS: Record<AgeGroup, string> = {
   U14: 'Under 14',
   U16: 'Under 16',
   U18: 'Under 18',
-  adult: 'Adult',
+  adult: 'Adult League',
 };
 
 export const EVENT_TYPE_LABELS = {
