@@ -61,6 +61,14 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
     setRemoveLogo(false);
   }, [open, editTeam?.logoUrl]);
 
+  // Auto-fill coach email with current user's email for new teams only
+  useEffect(() => {
+    if (!open || editTeam) return;
+    if (profile?.email) {
+      setCoachEmail(prev => prev || profile.email);
+    }
+  }, [open, editTeam, profile?.email]);
+
   useEffect(() => {
     if (!open || !canAssignCoach) return;
     getDocs(collection(db, 'users')).then(snap => {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList, UserCheck, Crown, CalendarDays, Trophy } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList, UserCheck, Crown, CalendarDays, Trophy, ClipboardCheck, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { TeamForm } from '@/components/teams/TeamForm';
 import { PlayerForm } from '@/components/roster/PlayerForm';
@@ -50,6 +50,7 @@ export function TeamDetailPage() {
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmHardDelete, setConfirmHardDelete] = useState(false);
+  const [rosterCopied, setRosterCopied] = useState(false);
 
   // Join requests state
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
@@ -84,6 +85,23 @@ export function TeamDetailPage() {
   const isOwner = !isAdmin && (
     team?.createdBy === profile?.uid || team?.coachId === profile?.uid
   );
+
+  // Attendance summary: events with attendance recorded
+  const eventsWithAttendance = teamEvents.filter(e => e.attendanceRecorded && e.attendance && e.attendance.length > 0);
+  const totalPresent = eventsWithAttendance.reduce((sum, e) => sum + (e.attendance?.filter(a => a.status === 'present').length ?? 0), 0);
+  const totalRecorded = eventsWithAttendance.reduce((sum, e) => sum + (e.attendance?.length ?? 0), 0);
+  const avgAttendancePct = totalRecorded > 0 ? Math.round((totalPresent / totalRecorded) * 100) : null;
+  const lastAttendanceEvent = eventsWithAttendance.length > 0 ? eventsWithAttendance[eventsWithAttendance.length - 1] : null;
+  const lastPresent = lastAttendanceEvent?.attendance?.filter(a => a.status === 'present').length ?? 0;
+  const lastTotal = lastAttendanceEvent?.attendance?.length ?? 0;
+
+  function handleCopyRoster() {
+    const text = teamPlayers.map(p => `${p.firstName} ${p.lastName}`).join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      setRosterCopied(true);
+      setTimeout(() => setRosterCopied(false), 2000);
+    });
+  }
 
   async function handleSoftDelete() {
     await softDeleteTeam(teamId);
@@ -168,6 +186,26 @@ export function TeamDetailPage() {
         )}
       </div>
 
+      {/* Attendance Summary Card */}
+      {eventsWithAttendance.length > 0 && (
+        <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mb-4 text-sm">
+          <ClipboardCheck size={18} className="text-blue-500 flex-shrink-0" />
+          <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+            {lastAttendanceEvent && (
+              <span className="text-gray-700">
+                Last event: <span className="font-semibold text-gray-900">{lastPresent}/{lastTotal} attended</span>
+              </span>
+            )}
+            {avgAttendancePct !== null && (
+              <span className="text-gray-700">
+                Avg attendance: <span className="font-semibold text-gray-900">{avgAttendancePct}%</span>
+                <span className="text-gray-400 ml-1">({eventsWithAttendance.length} events)</span>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex gap-1 mb-4 border-b border-gray-200 overflow-x-auto">
         {tabs.map(t => (
@@ -211,7 +249,14 @@ export function TeamDetailPage() {
         <div className="bg-white rounded-xl border border-gray-200">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <h3 className="font-medium text-gray-800">Players</h3>
-            {userCanEdit && <Button size="sm" onClick={() => setAddPlayerOpen(true)}><Plus size={14} /> Add Player</Button>}
+            <div className="flex items-center gap-2">
+              {teamPlayers.length > 0 && (
+                <Button size="sm" variant="secondary" onClick={handleCopyRoster}>
+                  {rosterCopied ? <><Check size={13} /> Copied!</> : <><Copy size={13} /> Copy Roster</>}
+                </Button>
+              )}
+              {userCanEdit && <Button size="sm" onClick={() => setAddPlayerOpen(true)}><Plus size={14} /> Add Player</Button>}
+            </div>
           </div>
           <RosterTable players={teamPlayers} teamId={teamId} />
         </div>
