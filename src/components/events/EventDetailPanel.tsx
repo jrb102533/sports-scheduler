@@ -37,6 +37,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const [homeScore, setHomeScore] = useState('');
   const [awayScore, setAwayScore] = useState('');
   const [resultNotes, setResultNotes] = useState('');
+  const [placement, setPlacement] = useState('');
   const [scoreSaveState, setScoreSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
 
   const canManage = profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach';
@@ -48,6 +49,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const homeTeam = teams.find(t => t.id === currentEvent.homeTeamId);
   const awayTeam = teams.find(t => t.id === currentEvent.awayTeamId);
   const isGameOrMatch = event.type === 'game' || event.type === 'match';
+  const isTournament = event.type === 'tournament';
   const isRecurringEvent = event.isRecurring && !!event.recurringGroupId;
 
   function handleRecordResult() {
@@ -58,6 +60,25 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
       recordResult(currentEvent.id, { homeScore: h, awayScore: a, notes: resultNotes || undefined });
       setHomeScore('');
       setAwayScore('');
+      setResultNotes('');
+      setScoreSaveState('saved');
+      setTimeout(() => setScoreSaveState('idle'), 2000);
+    } catch {
+      setScoreSaveState('error');
+      setTimeout(() => setScoreSaveState('idle'), 3000);
+    }
+  }
+
+  function handleRecordPlacement() {
+    if (!placement.trim()) return;
+    try {
+      recordResult(currentEvent.id, {
+        homeScore: 0,
+        awayScore: 0,
+        placement: placement.trim(),
+        notes: resultNotes || undefined,
+      });
+      setPlacement('');
       setResultNotes('');
       setScoreSaveState('saved');
       setTimeout(() => setScoreSaveState('idle'), 2000);
@@ -125,7 +146,9 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
                 </div>
                 {event.result && (
                   <div className="text-2xl font-bold text-gray-900 mt-2">
-                    {event.result.homeScore} – {event.result.awayScore}
+                    {event.result.placement
+                      ? event.result.placement
+                      : `${event.result.homeScore} – ${event.result.awayScore}`}
                   </div>
                 )}
               </div>
@@ -170,6 +193,28 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
                 </Button>
                 {scoreSaveState === 'error' && (
                   <p className="text-xs text-red-600 mt-1">Failed to save score. Please try again.</p>
+                )}
+              </div>
+            )}
+
+            {/* Tournament Placement */}
+            {isTournament && event.status !== 'cancelled' && event.status !== 'completed' && (
+              <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                  <CheckCircle size={14} className="text-green-500" /> Record Placement
+                </h3>
+                <Input
+                  label="Placement / Finish"
+                  value={placement}
+                  onChange={e => setPlacement(e.target.value)}
+                  placeholder="e.g. 1st place, Runner up, 3rd"
+                />
+                <Input label="Notes (optional)" value={resultNotes} onChange={e => setResultNotes(e.target.value)} />
+                <Button size="sm" onClick={handleRecordPlacement} disabled={!placement.trim()}>
+                  {scoreSaveState === 'saved' ? 'Saved!' : scoreSaveState === 'error' ? 'Error saving' : 'Save Placement'}
+                </Button>
+                {scoreSaveState === 'error' && (
+                  <p className="text-xs text-red-600 mt-1">Failed to save placement. Please try again.</p>
                 )}
               </div>
             )}
