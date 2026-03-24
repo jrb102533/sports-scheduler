@@ -51,8 +51,8 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   return (
     <>
       <div className="px-3 pt-4 pb-3 border-b border-white/10">
-        <div className="bg-white rounded-xl p-2" style={{ overflow: 'hidden' }}>
-          <img src="/logo.png" alt="First Whistle" className="w-10 h-10 mx-auto object-contain" style={{ borderRadius: '10px' }} />
+        <div className="bg-white rounded-xl px-3 py-2" style={{ overflow: 'hidden' }}>
+          <img src="/logo.png" alt="First Whistle" className="w-full h-auto object-contain" style={{ borderRadius: '10px' }} />
         </div>
         {kidsMode && <span className="text-xs font-medium mt-1 block text-center" style={{ color: '#f97316' }}>Kids Mode</span>}
       </div>
