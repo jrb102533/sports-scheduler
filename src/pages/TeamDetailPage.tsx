@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList, UserCheck, Crown, CalendarDays, Trophy, ClipboardCheck, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { TeamForm } from '@/components/teams/TeamForm';
@@ -29,6 +29,7 @@ type Tab = 'schedule' | 'roster' | 'attendance' | 'standings' | 'info' | 'reques
 export function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const teams = useTeamStore(s => s.teams);
   const { softDeleteTeam, hardDeleteTeam } = useTeamStore();
   const players = usePlayerStore(s => s.players);
@@ -72,6 +73,18 @@ export function TeamDetailPage() {
       .then(snap => setJoinRequests(snap.docs.map(d => d.data() as JoinRequest)))
       .finally(() => setRequestsLoading(false));
   }, [tab, team?.id, canSeeRequests]);
+
+  // Open event panel when navigating here from a notification with openEventId in state
+  useEffect(() => {
+    const openEventId = (location.state as { openEventId?: string } | null)?.openEventId;
+    if (!openEventId || allEvents.length === 0) return;
+    const event = allEvents.find(e => e.id === openEventId);
+    if (event) {
+      setSelectedEvent(event);
+      // Clear state so refresh doesn't re-open
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, allEvents]);
 
   if (!team) return <div className="p-4 sm:p-6 text-gray-500">Team not found.</div>;
 
@@ -236,9 +249,53 @@ export function TeamDetailPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {teamEvents.map(e => (
-                <EventCard key={e.id} event={e} teams={teams} onClick={() => setSelectedEvent(e)} />
-              ))}
+              {teamEvents.map(e => {
+                // For parents: show attendance badge on past events with recorded attendance
+                const isParent = profile?.role === 'parent';
+                let attendanceBadge: React.ReactNode = null;
+                if (isParent && e.attendanceRecorded && e.attendance && e.attendance.length > 0) {
+                  // Find the tracked player: prefer profile.playerId, fall back to all players
+                  const trackedPlayerId = profile?.playerId;
+                  const record = trackedPlayerId
+                    ? e.attendance.find(a => a.playerId === trackedPlayerId)
+                    : null;
+                  // If no direct link, show a summary row instead
+                  if (trackedPlayerId && record) {
+                    const statusLabel = record.status === 'present' ? 'Present' : record.status === 'excused' ? 'Excused' : 'Absent';
+                    const statusClass = record.status === 'present'
+                      ? 'bg-green-100 text-green-700'
+                      : record.status === 'excused'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-red-100 text-red-600';
+                    attendanceBadge = (
+                      <div className="-mt-1.5 mx-0.5 px-3 py-1.5 bg-white border border-t-0 border-gray-200 rounded-b-xl flex items-center gap-1.5">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusClass}`}>
+                          {statusLabel}
+                        </span>
+                        <span className="text-xs text-gray-400">Attendance recorded</span>
+                      </div>
+                    );
+                  } else if (!trackedPlayerId) {
+                    // No linked player — show team summary so parent can find their child
+                    const presentCount = e.attendance.filter(a => a.status === 'present').length;
+                    const totalCount = e.attendance.length;
+                    attendanceBadge = (
+                      <div className="-mt-1.5 mx-0.5 px-3 py-1.5 bg-white border border-t-0 border-gray-200 rounded-b-xl flex items-center gap-1.5">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600">
+                          {presentCount}/{totalCount} attended
+                        </span>
+                        <span className="text-xs text-gray-400">Attendance recorded</span>
+                      </div>
+                    );
+                  }
+                }
+                return (
+                  <div key={e.id}>
+                    <EventCard event={e} teams={teams} onClick={() => setSelectedEvent(e)} />
+                    {attendanceBadge}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
