@@ -940,3 +940,53 @@ export const onEventCancelled = onDocumentUpdated(
     }
   }
 );
+
+// ─── Membership Migration ─────────────────────────────────────────────────────
+
+/**
+ * One-time callable: backfills `memberships` array on user documents that
+ * predate the multi-role model. Safe to call multiple times — skips users
+ * that already have a memberships array.
+ *
+ * Call via Firebase Admin SDK or the Functions shell:
+ *   migrateUserMemberships({})
+ */
+export const migrateUserMemberships = onCall({ region: 'us-central1' }, async (request) => {
+  // Require admin auth
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in.');
+
+  const db = admin.firestore();
+  const callerDoc = await db.doc(`users/${request.auth.uid}`).get();
+  const callerRole = callerDoc.data()?.role;
+  if (callerRole !== 'admin') throw new HttpsError('permission-denied', 'Admin only.');
+
+  const snapshot = await db.collection('users').get();
+  const batch = db.batch();
+  let migrated = 0;
+  let skipped = 0;
+
+  for (const userDoc of snapshot.docs) {
+    const data = userDoc.data();
+    if (data.memberships && data.memberships.length > 0) {
+      skipped++;
+      continue;
+    }
+    const membership: Record<string, unknown> = {
+      role: data.role ?? 'coach',
+      isPrimary: true,
+    };
+    if (data.teamId) membership.teamId = data.teamId;
+    if (data.playerId) membership.playerId = data.playerId;
+    if (data.leagueId) membership.leagueId = data.leagueId;
+
+    batch.update(userDoc.ref, {
+      memberships: [membership],
+      activeContext: 0,
+    });
+    migrated++;
+  }
+
+  await batch.commit();
+  console.log(`migrateUserMemberships: migrated=${migrated} skipped=${skipped}`);
+  return { migrated, skipped };
+});

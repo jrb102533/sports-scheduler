@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasRole, canEdit, isReadOnly, getAccessibleTeamIds } from '@/store/useAuthStore';
+import { hasRole, canEdit, isReadOnly, getAccessibleTeamIds, getMemberships, getActiveMembership } from '@/store/useAuthStore';
 import type { UserProfile, Team } from '@/types';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -195,5 +195,143 @@ describe('getAccessibleTeamIds', () => {
   it('returns [teamId] for a parent with a teamId', () => {
     const profile = makeProfile({ role: 'parent', teamId: 't3' });
     expect(getAccessibleTeamIds(profile, teams)).toEqual(['t3']);
+  });
+});
+
+// ── getMemberships ────────────────────────────────────────────────────────────
+
+describe('getMemberships', () => {
+  it('returns empty array for null profile', () => {
+    expect(getMemberships(null)).toEqual([]);
+  });
+
+  it('returns synthetic membership from legacy fields when memberships absent', () => {
+    const profile = makeProfile({ role: 'coach', teamId: 't1' });
+    const result = getMemberships(profile);
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe('coach');
+    expect(result[0].teamId).toBe('t1');
+    expect(result[0].isPrimary).toBe(true);
+  });
+
+  it('returns memberships array when present', () => {
+    const profile = makeProfile({
+      role: 'coach',
+      memberships: [
+        { role: 'coach', teamId: 't1', isPrimary: true },
+        { role: 'parent', teamId: 't2', playerId: 'p1' },
+      ],
+    });
+    expect(getMemberships(profile)).toHaveLength(2);
+  });
+});
+
+// ── getActiveMembership ───────────────────────────────────────────────────────
+
+describe('getActiveMembership', () => {
+  it('returns null for null profile', () => {
+    expect(getActiveMembership(null)).toBeNull();
+  });
+
+  it('returns first membership by default', () => {
+    const profile = makeProfile({
+      role: 'coach',
+      memberships: [
+        { role: 'coach', teamId: 't1', isPrimary: true },
+        { role: 'parent', teamId: 't2' },
+      ],
+      activeContext: 0,
+    });
+    expect(getActiveMembership(profile)?.role).toBe('coach');
+  });
+
+  it('returns membership at activeContext index', () => {
+    const profile = makeProfile({
+      role: 'coach',
+      memberships: [
+        { role: 'coach', teamId: 't1', isPrimary: true },
+        { role: 'parent', teamId: 't2' },
+      ],
+      activeContext: 1,
+    });
+    expect(getActiveMembership(profile)?.role).toBe('parent');
+  });
+});
+
+// ── multi-membership hasRole ──────────────────────────────────────────────────
+
+describe('hasRole (multi-membership)', () => {
+  it('returns true when any membership matches the role', () => {
+    const profile = makeProfile({
+      role: 'coach',
+      memberships: [
+        { role: 'coach', teamId: 't1', isPrimary: true },
+        { role: 'parent', teamId: 't2' },
+      ],
+    });
+    expect(hasRole(profile, 'parent')).toBe(true);
+    expect(hasRole(profile, 'coach')).toBe(true);
+    expect(hasRole(profile, 'admin')).toBe(false);
+  });
+});
+
+// ── multi-membership isReadOnly ───────────────────────────────────────────────
+
+describe('isReadOnly (multi-membership)', () => {
+  it('returns false when user has a non-read-only membership alongside read-only ones', () => {
+    const profile = makeProfile({
+      role: 'coach',
+      memberships: [
+        { role: 'coach', teamId: 't1', isPrimary: true },
+        { role: 'parent', teamId: 't2' },
+      ],
+    });
+    expect(isReadOnly(profile)).toBe(false);
+  });
+
+  it('returns true when all memberships are read-only', () => {
+    const profile = makeProfile({
+      role: 'parent',
+      memberships: [
+        { role: 'parent', teamId: 't1', isPrimary: true },
+        { role: 'player', teamId: 't2' },
+      ],
+    });
+    expect(isReadOnly(profile)).toBe(true);
+  });
+});
+
+// ── multi-membership getAccessibleTeamIds ─────────────────────────────────────
+
+describe('getAccessibleTeamIds (multi-membership)', () => {
+  const teams = [
+    makeTeam({ id: 't1', leagueId: 'league1', createdBy: 'coach1', coachId: 'coach1' }),
+    makeTeam({ id: 't2', leagueId: 'league2', createdBy: 'coach2', coachId: 'coach2' }),
+    makeTeam({ id: 't3', leagueId: 'league2', createdBy: 'coach3', coachId: 'coach3' }),
+  ];
+
+  it('returns union of teams across all memberships', () => {
+    const profile = makeProfile({
+      uid: 'coach1',
+      role: 'coach',
+      memberships: [
+        { role: 'coach', isPrimary: true },       // coach1 owns t1
+        { role: 'parent', teamId: 't2' },          // child on t2
+      ],
+    });
+    const result = getAccessibleTeamIds(profile, teams);
+    expect(result).toContain('t1');
+    expect(result).toContain('t2');
+  });
+
+  it('returns null (all teams) if any membership is admin', () => {
+    const profile = makeProfile({
+      role: 'admin',
+      memberships: [
+        { role: 'admin', isPrimary: true },
+        { role: 'coach', teamId: 't1' },
+      ],
+    });
+    expect(getAccessibleTeamIds(profile, teams)).toBeNull();
   });
 });
