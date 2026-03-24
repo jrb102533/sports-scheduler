@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers, X, CalendarClock } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers, X, CalendarClock, ChevronDown } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
-import { useAuthStore, hasRole } from '@/store/useAuthStore';
+import { useAuthStore, hasRole, getMemberships, getActiveMembership } from '@/store/useAuthStore';
 import { useEventStore } from '@/store/useEventStore';
 import { FLAGS } from '@/lib/flags';
 import { todayISO, formatTime } from '@/lib/dateUtils';
@@ -42,8 +43,9 @@ const roleColors: Record<string, string> = {
 function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   const unread = useNotificationStore(s => s.notifications.filter(n => !n.isRead).length);
   const kidsMode = FLAGS.KIDS_MODE && useSettingsStore(s => s.settings.kidsSportsMode);
-  const { user, profile, logout } = useAuthStore();
+  const { user, profile, logout, updateProfile } = useAuthStore();
   const navigate = useNavigate();
+  const [contextOpen, setContextOpen] = useState(false);
   const allEvents = useEventStore(s => s.events);
 
   const today = todayISO();
@@ -63,6 +65,10 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
     ...(hasRole(profile, 'admin', 'league_manager') ? leagueNavItems : []),
     ...(hasRole(profile, 'admin') ? adminNavItems : []),
   ];
+
+  const memberships = getMemberships(profile);
+  const activeMembership = getActiveMembership(profile);
+  const activeIndex = profile?.activeContext ?? 0;
 
   return (
     <>
@@ -109,6 +115,41 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
           <p className="text-blue-300/80 text-xs mt-0.5">
             {formatEventDay(nextEvent.date)} · {formatTime(nextEvent.startTime)}
           </p>
+        </div>
+      )}
+
+      {profile && memberships.length > 1 && (
+        <div className="mx-3 mb-3 rounded-lg bg-white/5 border border-white/10">
+          <button
+            onClick={() => setContextOpen(o => !o)}
+            className="w-full flex items-center gap-2 px-3 py-2.5 text-left"
+          >
+            <Shield size={12} className={clsx('flex-shrink-0', roleColors[activeMembership?.role ?? ''] ?? 'text-gray-400')} />
+            <span className="flex-1 min-w-0 text-xs font-semibold text-white truncate uppercase tracking-wide">
+              {activeMembership?.role.replace('_', ' ')}
+            </span>
+            <ChevronDown size={14} className={clsx('text-blue-300 flex-shrink-0 transition-transform', contextOpen && 'rotate-180')} />
+          </button>
+          {contextOpen && (
+            <div className="border-t border-white/10 py-1">
+              {memberships.map((m, i) => (
+                <button
+                  key={i}
+                  onClick={() => { updateProfile({ activeContext: i }); setContextOpen(false); }}
+                  className={clsx(
+                    'w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors',
+                    i === activeIndex
+                      ? 'text-white bg-white/10'
+                      : 'text-blue-200 hover:text-white hover:bg-white/10'
+                  )}
+                >
+                  <Shield size={10} className={clsx('flex-shrink-0', roleColors[m.role] ?? 'text-gray-400')} />
+                  <span className="font-medium capitalize">{m.role.replace('_', ' ')}</span>
+                  {i === activeIndex && <span className="ml-auto text-[10px] text-blue-300">Active</span>}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
