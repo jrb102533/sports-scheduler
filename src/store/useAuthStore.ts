@@ -6,9 +6,10 @@ import {
   onAuthStateChanged,
   sendEmailVerification,
   updateProfile,
+  updatePassword,
   type User,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, getDoc, deleteDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { UserRole, UserProfile, RoleMembership, Team } from '@/types';
 
@@ -34,12 +35,14 @@ interface AuthStore {
   profile: UserProfile | null;
   loading: boolean;
   error: string | null;
+  mustChangePassword: boolean;
 
   init: () => () => void;
   signup: (email: string, password: string, displayName: string, role: UserRole, teamId?: string, memberships?: import('@/types').RoleMembership[]) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (patch: Partial<Pick<UserProfile, 'displayName' | 'avatarUrl' | 'teamId' | 'playerId' | 'leagueId' | 'activeContext' | 'memberships'>>) => Promise<void>;
+  clearMustChangePassword: (newPassword: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -48,6 +51,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   profile: null,
   loading: true,
   error: null,
+  mustChangePassword: false,
 
   init: () => {
     let profileUnsub: (() => void) | null = null;
@@ -78,7 +82,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
             return; // onSnapshot will fire again with the new document
           }
           const profile = snap.data() as UserProfile;
-          set({ profile });
+          set({ profile, mustChangePassword: profile.mustChangePassword === true });
 
           // Auto-link: if no team/player yet, check if an invite exists for this email
           if (!profile.teamId && !profile.playerId && user.email) {
@@ -178,6 +182,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     if (patch.displayName) {
       await updateProfile(user, { displayName: patch.displayName });
     }
+  },
+
+  clearMustChangePassword: async (newPassword: string) => {
+    const { user } = get();
+    if (!user) return;
+    await updatePassword(user, newPassword);
+    await updateDoc(doc(db, 'users', user.uid), { mustChangePassword: false });
+    set({ mustChangePassword: false });
   },
 
   clearError: () => set({ error: null }),
