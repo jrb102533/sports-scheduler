@@ -32,4 +32,6 @@ export interface UserProfile {
   activeContext?: number;
   /** Set to true by admin-created accounts. Forces a password change on first login. */
   mustChangePassword?: boolean;
+  /** When false, the user will not receive the Monday morning weekly digest notification. Defaults to true. */
+  weeklyDigestEnabled?: boolean;
 }

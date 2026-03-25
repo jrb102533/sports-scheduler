@@ -1072,3 +1072,318 @@ export const migrateUserMemberships = onCall({ region: 'us-central1' }, async (r
   console.log(`migrateUserMemberships: migrated=${migrated} skipped=${skipped}`);
   return { migrated, skipped };
 });
+
+// ─── Scheduled: daily weather alerts for outdoor events (8AM UTC) ────────────
+
+export const checkWeatherAlerts = onSchedule('0 8 * * *', async () => {
+  const tomorrow = new Date();
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().slice(0, 10); // YYYY-MM-DD
+
+  // Query tomorrow's outdoor events; we do two queries because Firestore can't
+  // filter on a missing field. One query for weatherAlertSent==false, another
+  // for isOutdoor==true (covers docs where weatherAlertSent is absent).
+  const [sentFalseSnap, allOutdoorSnap] = await Promise.all([
+    admin.firestore()
+      .collection('events')
+      .where('date', '==', tomorrowStr)
+      .where('isOutdoor', '==', true)
+      .where('weatherAlertSent', '==', false)
+      .get(),
+    admin.firestore()
+      .collection('events')
+      .where('date', '==', tomorrowStr)
+      .where('isOutdoor', '==', true)
+      .get(),
+  ]);
+
+  // Merge and deduplicate; skip docs where weatherAlertSent is already true
+  const seen = new Set<string>();
+  const candidates: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  for (const doc of [...sentFalseSnap.docs, ...allOutdoorSnap.docs]) {
+    if (seen.has(doc.id)) continue;
+    seen.add(doc.id);
+    if (doc.data().weatherAlertSent === true) continue;
+    candidates.push(doc);
+  }
+
+  if (candidates.length === 0) {
+    console.log(`checkWeatherAlerts: no outdoor events on ${tomorrowStr} needing alerts`);
+    return;
+  }
+
+  console.log(`checkWeatherAlerts: checking ${candidates.length} outdoor event(s) on ${tomorrowStr}`);
+
+  for (const evDoc of candidates) {
+    const ev = evDoc.data();
+    const teamIds: string[] = ev.teamIds ?? [];
+    if (!teamIds.length) continue;
+
+    // Get the first team to find venue info
+    const teamDoc = await admin.firestore().doc(`teams/${teamIds[0]}`).get();
+    const team = teamDoc.data();
+    if (!team) continue;
+
+    let lat: number | null = null;
+    let lng: number | null = null;
+
+    // Prefer explicit lat/lng, fall back to geocoding venue string
+    const venueLat = (team.venueLatLng as { lat?: number; lng?: number } | undefined)?.lat;
+    const venueLng = (team.venueLatLng as { lat?: number; lng?: number } | undefined)?.lng;
+    if (venueLat != null && venueLng != null) {
+      lat = venueLat;
+      lng = venueLng;
+    } else {
+      const venueStr: string | undefined = (team.venue as string | undefined) ?? (team.homeVenue as string | undefined);
+      if (!venueStr) {
+        console.log(`checkWeatherAlerts: no venue for team ${teamIds[0]}, skipping event ${evDoc.id}`);
+        continue;
+      }
+      // Geocode via Open-Meteo geocoding API (free, no API key)
+      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(venueStr)}&count=1`;
+      try {
+        const geoResp = await fetch(geoUrl);
+        const geoData = await geoResp.json() as { results?: { latitude: number; longitude: number }[] };
+        const first = geoData.results?.[0];
+        if (!first) {
+          console.log(`checkWeatherAlerts: geocode returned no results for "${venueStr}", skipping event ${evDoc.id}`);
+          continue;
+        }
+        lat = first.latitude;
+        lng = first.longitude;
+      } catch (err) {
+        console.error(`checkWeatherAlerts: geocode error for "${venueStr}":`, err);
+        continue;
+      }
+    }
+
+    // Fetch precipitation forecast from Open-Meteo (free, no API key)
+    const weatherUrl =
+      `https://api.open-meteo.com/v1/forecast` +
+      `?latitude=${lat}&longitude=${lng}` +
+      `&daily=precipitation_probability_max` +
+      `&timezone=auto&forecast_days=2`;
+
+    let precipProbability: number | null = null;
+    try {
+      const weatherResp = await fetch(weatherUrl);
+      const weatherData = await weatherResp.json() as {
+        daily?: { time?: string[]; precipitation_probability_max?: (number | null)[] };
+      };
+      const times = weatherData.daily?.time ?? [];
+      const probs = weatherData.daily?.precipitation_probability_max ?? [];
+      // Find the index matching tomorrow's date string
+      const tIdx = times.indexOf(tomorrowStr);
+      if (tIdx !== -1) {
+        precipProbability = probs[tIdx] ?? null;
+      } else if (probs.length > 1) {
+        // Fallback: second element is tomorrow when forecast_days=2
+        precipProbability = probs[1] ?? null;
+      }
+    } catch (err) {
+      console.error(`checkWeatherAlerts: weather fetch error for event ${evDoc.id}:`, err);
+      continue;
+    }
+
+    const eventTitle = ev.title as string ?? 'Event';
+    console.log(`checkWeatherAlerts: event="${eventTitle}" date=${tomorrowStr} precip=${precipProbability ?? 'n/a'}%`);
+
+    if (precipProbability == null || precipProbability <= 70) {
+      // No alert needed — below threshold
+      continue;
+    }
+
+    // Find the coach to notify (coachId on team, else query users collection)
+    let coachUid: string | null = (team.coachId as string | undefined) ?? null;
+    if (!coachUid) {
+      const coachSnap = await admin.firestore()
+        .collection('users')
+        .where('teamId', '==', teamIds[0])
+        .where('role', '==', 'coach')
+        .limit(1)
+        .get();
+      coachUid = coachSnap.docs[0]?.id ?? null;
+    }
+
+    if (!coachUid) {
+      console.log(`checkWeatherAlerts: no coach found for team ${teamIds[0]}, skipping notification`);
+    } else {
+      const notifRef = admin.firestore()
+        .collection('users').doc(coachUid)
+        .collection('notifications').doc();
+      await notifRef.set({
+        id: notifRef.id,
+        type: 'weather',
+        title: `Rain Alert — ${eventTitle}`,
+        message: `There's a ${precipProbability}% chance of rain tomorrow for ${eventTitle}. Consider cancelling or rescheduling.`,
+        relatedEventId: evDoc.id,
+        relatedTeamId: teamIds[0],
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
+      console.log(`checkWeatherAlerts: sent rain alert to coach ${coachUid} for event "${eventTitle}"`);
+    }
+
+    // Mark event so we don't send duplicate alerts
+    await evDoc.ref.update({ weatherAlertSent: true, updatedAt: new Date().toISOString() });
+  }
+
+  console.log(`checkWeatherAlerts: done processing ${candidates.length} candidate(s)`);
+});
+
+// ─── Scheduled: send weekly digest every Monday at 7AM UTC ───────────────────
+
+export const sendWeeklyDigest = onSchedule('0 7 * * 1', async () => {
+  const db = admin.firestore();
+
+  // Build date range: today (Monday) through Sunday
+  const monday = new Date();
+  monday.setUTCHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+
+  const mondayStr = monday.toISOString().slice(0, 10); // YYYY-MM-DD
+  const sundayStr = sunday.toISOString().slice(0, 10);
+
+  console.log(`sendWeeklyDigest: querying events from ${mondayStr} to ${sundayStr}`);
+
+  const eventsSnap = await db.collection('events')
+    .where('date', '>=', mondayStr)
+    .where('date', '<=', sundayStr)
+    .get();
+
+  if (eventsSnap.empty) {
+    console.log('sendWeeklyDigest: no events this week \u2014 skipping');
+    return;
+  }
+
+  interface WeekEvent {
+    id: string;
+    title: string;
+    date: string;
+    startTime: string;
+    teamId: string;
+    rsvps: { response: string }[];
+    playerCount: number;
+  }
+
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  function dayOfWeek(dateStr: string): string {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const d = new Date(Date.UTC(year!, (month! - 1), day!));
+    return dayNames[d.getUTCDay()] ?? dateStr;
+  }
+
+  // Group events by teamId
+  const teamEventMap = new Map<string, WeekEvent[]>();
+  for (const evDoc of eventsSnap.docs) {
+    const ev = evDoc.data();
+    const teamIds: string[] = ev.teamIds ?? (ev.teamId ? [ev.teamId as string] : []);
+    for (const tid of teamIds) {
+      if (!teamEventMap.has(tid)) teamEventMap.set(tid, []);
+      teamEventMap.get(tid)!.push({
+        id: evDoc.id,
+        title: (ev.title as string) ?? 'Event',
+        date: (ev.date as string) ?? '',
+        startTime: (ev.startTime as string) ?? '',
+        teamId: tid,
+        rsvps: (ev.rsvps as { response: string }[]) ?? [],
+        playerCount: (ev.playerCount as number) ?? 0,
+      });
+    }
+  }
+
+  if (teamEventMap.size === 0) {
+    console.log('sendWeeklyDigest: events found but none have teamIds \u2014 skipping');
+    return;
+  }
+
+  // Fetch users per team (chunked for Firestore `in` limit of 30)
+  const allTeamIds = [...teamEventMap.keys()];
+  const usersByTeam = new Map<string, { uid: string; role: string; weeklyDigestEnabled: boolean }[]>();
+
+  for (let i = 0; i < allTeamIds.length; i += 30) {
+    const chunk = allTeamIds.slice(i, i + 30);
+    const usersSnap = await db.collection('users').where('teamId', 'in', chunk).get();
+    for (const userDoc of usersSnap.docs) {
+      const u = userDoc.data();
+      const tid = u.teamId as string | undefined;
+      if (!tid) continue;
+      if (!usersByTeam.has(tid)) usersByTeam.set(tid, []);
+      usersByTeam.get(tid)!.push({
+        uid: userDoc.id,
+        role: (u.role as string) ?? 'player',
+        weeklyDigestEnabled: u.weeklyDigestEnabled !== false,
+      });
+    }
+  }
+
+  const createdAt = new Date().toISOString();
+  let firestoreBatch = db.batch();
+  let batchCount = 0;
+  let totalNotifs = 0;
+
+  async function flushBatch(): Promise<void> {
+    if (batchCount === 0) return;
+    await firestoreBatch.commit();
+    firestoreBatch = db.batch();
+    batchCount = 0;
+  }
+
+  for (const [teamId, events] of teamEventMap.entries()) {
+    const members = usersByTeam.get(teamId) ?? [];
+    if (!members.length) continue;
+
+    // Sort events by date then start time
+    events.sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+
+    // Identify events with low RSVPs (confirmed < half of total players)
+    const lowRsvpEvents = events.filter(ev => {
+      const confirmed = ev.rsvps.filter(r => r.response === 'yes').length;
+      const total = ev.playerCount > 0 ? ev.playerCount : Math.max(ev.rsvps.length, 1);
+      return confirmed < total / 2;
+    });
+
+    for (const member of members) {
+      if (!member.weeklyDigestEnabled) continue;
+
+      const eventLines = events.map(ev => {
+        const dow = dayOfWeek(ev.date);
+        const time = ev.startTime ? ` at ${ev.startTime}` : '';
+        return `${ev.title} on ${dow}${time}`;
+      });
+
+      let message = `You have ${events.length} event${events.length !== 1 ? 's' : ''} this week: ${eventLines.join(', ')}.`;
+
+      if ((member.role === 'coach' || member.role === 'admin') && lowRsvpEvents.length > 0) {
+        const lowLines = lowRsvpEvents.map(ev => {
+          const confirmed = ev.rsvps.filter(r => r.response === 'yes').length;
+          const total = ev.playerCount > 0 ? ev.playerCount : Math.max(ev.rsvps.length, 1);
+          return `${ev.title} on ${dayOfWeek(ev.date)} (${confirmed}/${total} responded)`;
+        });
+        message += ` \u26a0 Low RSVPs: ${lowLines.join(', ')}.`;
+      }
+
+      const notifRef = db.collection('users').doc(member.uid).collection('notifications').doc();
+      firestoreBatch.set(notifRef, {
+        id: notifRef.id,
+        type: 'info',
+        title: 'This Week in Sport',
+        message,
+        isRead: false,
+        createdAt,
+      });
+      batchCount++;
+      totalNotifs++;
+
+      if (batchCount >= 499) {
+        await flushBatch();
+      }
+    }
+  }
+
+  await flushBatch();
+  console.log(`sendWeeklyDigest: wrote ${totalNotifs} notification(s) for week of ${mondayStr}`);
+});
+

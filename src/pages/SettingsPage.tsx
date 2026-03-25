@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Baby, MessageSquare, ShieldCheck } from 'lucide-react';
+import { Baby, Bell, MessageSquare, ShieldCheck } from 'lucide-react';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
 import { SettingsToggle } from '@/components/settings/SettingsToggle';
 import { useSettingsStore } from '@/store/useSettingsStore';
@@ -11,7 +13,16 @@ import type { ConsentRecord } from '@/lib/consent';
 export function SettingsPage() {
   const { settings, updateSettings } = useSettingsStore();
   const user = useAuthStore(s => s.user);
+  const profile = useAuthStore(s => s.profile);
   const [consents, setConsents] = useState<Record<string, ConsentRecord | null> | null>(null);
+
+  // weeklyDigestEnabled defaults to true when the field is absent
+  const weeklyDigestEnabled = profile?.weeklyDigestEnabled !== false;
+
+  async function handleWeeklyDigestToggle(value: boolean) {
+    if (!user) return;
+    await updateDoc(doc(db, 'users', user.uid), { weeklyDigestEnabled: value });
+  }
 
   useEffect(() => {
     if (!user) return;
@@ -46,6 +57,38 @@ export function SettingsPage() {
             </div>
           </Card>
         )}
+
+        {/* Notifications */}
+        <Card className="overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+            <Bell size={18} className="text-orange-500" />
+            <h2 className="font-semibold text-gray-900">Notifications</h2>
+          </div>
+          <div className="px-5 divide-y divide-gray-100">
+            <SettingsToggle
+              checked={weeklyDigestEnabled}
+              onChange={handleWeeklyDigestToggle}
+              label="Weekly digest"
+              description="Receive a Monday morning summary of your week's events"
+            />
+          </div>
+        </Card>
+
+        {/* Notifications */}
+        <Card className="overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+            <Bell size={18} className="text-orange-500" />
+            <h2 className="font-semibold text-gray-900">Notifications</h2>
+          </div>
+          <div className="px-5 divide-y divide-gray-100">
+            <SettingsToggle
+              checked={weeklyDigestEnabled}
+              onChange={handleWeeklyDigestToggle}
+              label="Weekly digest"
+              description="Receive a Monday morning summary of your week's events"
+            />
+          </div>
+        </Card>
 
         {/* Messaging */}
         <Card className="overflow-hidden">
