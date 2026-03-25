@@ -7,6 +7,7 @@ import { EventStatusBadge } from './EventStatusBadge';
 import { EventForm } from './EventForm';
 import { SnackVolunteerForm } from './SnackVolunteerForm';
 import { RsvpInviteModal } from './RsvpInviteModal';
+import { PostGameBroadcastModal } from './PostGameBroadcastModal';
 import { AttendanceTracker } from '@/components/attendance/AttendanceTracker';
 import { PlayerStatusBadge } from '@/components/roster/PlayerStatusBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -43,6 +44,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const [resultNotes, setResultNotes] = useState('');
   const [placement, setPlacement] = useState('');
   const [scoreSaveState, setScoreSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
 
   const canManage = profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach';
   const isReadOnly = profile?.role === 'player' || profile?.role === 'parent';
@@ -70,6 +72,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
       setResultNotes('');
       setScoreSaveState('saved');
       setTimeout(() => setScoreSaveState('idle'), 2000);
+      if (canManage) setBroadcastOpen(true);
     } catch {
       setScoreSaveState('error');
       setTimeout(() => setScoreSaveState('idle'), 3000);
@@ -89,6 +92,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
       setResultNotes('');
       setScoreSaveState('saved');
       setTimeout(() => setScoreSaveState('idle'), 2000);
+      if (canManage) setBroadcastOpen(true);
     } catch {
       setScoreSaveState('error');
       setTimeout(() => setScoreSaveState('idle'), 3000);
@@ -143,19 +147,19 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
             {(homeTeam || awayTeam || event.opponentName) && (
               <div className="bg-gray-50 rounded-xl p-4 text-center">
                 <div className="flex items-center justify-center gap-4 text-sm font-semibold text-gray-700">
-                  <div style={{ color: homeTeam?.color }}>{homeTeam?.name ?? '—'}</div>
+                  <div style={{ color: homeTeam?.color }}>{homeTeam?.name ?? '\u2014'}</div>
                   <span className="text-gray-400 text-xs">vs</span>
                   {awayTeam ? (
                     <div style={{ color: awayTeam.color }}>{awayTeam.name}</div>
                   ) : (
-                    <div className="text-gray-700">{event.opponentName ?? '—'}</div>
+                    <div className="text-gray-700">{event.opponentName ?? '\u2014'}</div>
                   )}
                 </div>
                 {event.result && (
                   <div className="text-2xl font-bold text-gray-900 mt-2">
                     {event.result.placement
                       ? event.result.placement
-                      : `${event.result.homeScore} – ${event.result.awayScore}`}
+                      : `${event.result.homeScore} \u2013 ${event.result.awayScore}`}
                   </div>
                 )}
               </div>
@@ -165,7 +169,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
               <div className="flex items-center gap-2">
                 <Clock size={14} className="text-gray-400" />
                 {formatDate(event.date)} at {formatTime(event.startTime)}
-                {event.endTime && ` – ${formatTime(event.endTime)}`}
+                {event.endTime && ` \u2013 ${formatTime(event.endTime)}`}
               </div>
               {event.location && (
                 <div className="flex items-center gap-2">
@@ -375,6 +379,16 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
         }}
       />
       {rsvpOpen && <RsvpInviteModal open={rsvpOpen} onClose={() => setRsvpOpen(false)} event={event} />}
+      {broadcastOpen && (
+        <PostGameBroadcastModal
+          open={broadcastOpen}
+          onClose={() => setBroadcastOpen(false)}
+          event={currentEvent}
+          teamPlayers={currentEvent.teamIds.length > 0
+            ? allPlayers.filter(p => currentEvent.teamIds.includes(p.teamId))
+            : []}
+        />
+      )}
 
       {/* Cancel event confirm */}
       <ConfirmDialog
