@@ -134,7 +134,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
 
   // Edit series dialog state (shown when editing a recurring event)
   const [editSeriesOpen, setEditSeriesOpen] = useState(false);
-  const [pendingSave, setPendingSave] = useState<(() => Promise<void>) | null>(null);
+  const [pendingSave, setPendingSave] = useState<((scope: 'this' | 'future') => Promise<void>) | null>(null);
 
   // Recurrence
   const [isRecurring, setIsRecurring] = useState(false);

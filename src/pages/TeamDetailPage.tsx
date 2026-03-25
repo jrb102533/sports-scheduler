@@ -15,8 +15,6 @@ import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
-import { useSettingsStore } from '@/store/useSettingsStore';
-import { FLAGS } from '@/lib/flags';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { useAuthStore, canEdit } from '@/store/useAuthStore';
 import { SPORT_TYPE_LABELS, AGE_GROUP_LABELS } from '@/constants';
@@ -51,7 +49,6 @@ export function TeamDetailPage() {
   const { deletePlayersForTeam } = usePlayerStore();
   const allEvents = useEventStore(s => s.events);
   const leagues = useLeagueStore(s => s.leagues);
-  const kidsMode = FLAGS.KIDS_MODE && useSettingsStore(s => s.settings.kidsSportsMode);
   const profile = useAuthStore(s => s.profile);
 
   const team = teams.find(t => t.id === id);
@@ -170,7 +167,7 @@ export function TeamDetailPage() {
         id: notifId,
         type: 'info',
         title: 'Join request approved',
-        message: `Your request to join ${team.name} has been approved. Welcome to the team!`,
+        message: `Your request to join ${team!.name} has been approved. Welcome to the team!`,
         isRead: false,
         createdAt: new Date().toISOString(),
       });
