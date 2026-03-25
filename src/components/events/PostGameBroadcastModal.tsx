@@ -109,10 +109,10 @@ export function PostGameBroadcastModal({
           disabled={sending}
         />
 
-        {/* Man of the Match */}
+        {/* Player of the Match */}
         {teamPlayers.length > 0 && (
           <Select
-            label="Man of the Match (optional)"
+            label="Player of the Match (optional)"
             options={playerOptions}
             placeholder="Select a player (optional)"
             value={manOfTheMatchPlayerId}

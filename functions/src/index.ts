@@ -1025,7 +1025,7 @@ export const onEventCancelled = onDocumentUpdated(
 
 // ─── Post-game broadcast (callable) ──────────────────────────────────────────
 // Sends an in-app notification to all team members with the game result,
-// an optional coach message, and an optional Man of the Match callout.
+// an optional coach message, and an optional Player of the Match callout.
 
 interface SendPostGameBroadcastData {
   eventId: string;
@@ -1066,14 +1066,14 @@ export const sendPostGameBroadcast = onCall<SendPostGameBroadcastData, Promise<S
       resultSummary = `Result: ${eventTitle}`;
     }
 
-    // Resolve Man of the Match name if provided
+    // Resolve Player of the Match name if provided
     let motmLine = '';
     if (manOfTheMatchPlayerId) {
       const playerDoc = await db.doc(`players/${manOfTheMatchPlayerId}`).get();
       if (playerDoc.exists) {
         const pd = playerDoc.data()!;
         const motmName = `${pd.firstName ?? ''} ${pd.lastName ?? ''}`.trim() || 'Player';
-        motmLine = ` Man of the Match: ${motmName}.`;
+        motmLine = ` Player of the Match: ${motmName}.`;
       }
     }
 
