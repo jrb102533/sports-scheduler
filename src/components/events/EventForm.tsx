@@ -8,6 +8,8 @@ import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useOpponentStore } from '@/store/useOpponentStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { usePlayerStore } from '@/store/usePlayerStore';
+import { useAvailabilityStore } from '@/store/useAvailabilityStore';
 import { todayISO, formatTime } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent, EventType, EventStatus, RecurrenceFrequency } from '@/types';
@@ -109,6 +111,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const [duration, setDuration] = useState<number>(editEvent?.duration ?? initial?.duration ?? DEFAULT_DURATION);
   const [location, setLocation] = useState(editEvent?.location ?? initial?.location ?? '');
   const [notes, setNotes] = useState(editEvent?.notes ?? initial?.notes ?? '');
+  const [isOutdoor, setIsOutdoor] = useState<boolean>(editEvent?.isOutdoor ?? initial?.isOutdoor ?? true);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Team + home/away
@@ -149,6 +152,16 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const effectiveHomeTeamId = isHome ? selectedTeamId : '';
   const effectiveAwayTeamId = isHome ? '' : selectedTeamId;
   const contextTeamId = selectedTeamId;
+
+  // Player availability conflict hint
+  const allPlayers = usePlayerStore(s => s.players);
+  const isPlayerAvailable = useAvailabilityStore(s => s.isPlayerAvailable);
+  const unavailablePlayers = useMemo(() => {
+    if (!date || !selectedTeamId) return [];
+    return allPlayers
+      .filter(p => p.teamId === selectedTeamId)
+      .filter(p => !isPlayerAvailable(p.id, date));
+  }, [date, selectedTeamId, allPlayers, isPlayerAvailable]);
 
   function validate() {
     const e: Record<string, string> = {};
@@ -210,6 +223,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     const optionals = {
       duration,
       endTime: computedEndTime,
+      isOutdoor,
       ...(location.trim() ? { location: location.trim() } : {}),
       ...(effectiveHomeTeamId ? { homeTeamId: effectiveHomeTeamId } : {}),
       ...(effectiveAwayTeamId ? { awayTeamId: effectiveAwayTeamId } : {}),
@@ -303,6 +317,12 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           <Input label="Date" type="date" value={date} onChange={e => setDate(e.target.value)} error={errors.date} />
           <Input label="Start Time" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} error={errors.startTime} />
         </div>
+        {unavailablePlayers.length > 0 && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            {unavailablePlayers.length} {unavailablePlayers.length === 1 ? 'player' : 'players'} unavailable:{' '}
+            {unavailablePlayers.map(p => `${p.firstName} ${p.lastName}`).join(', ')}
+          </p>
+        )}
         <Input
           label="Duration (minutes)"
           type="number"
@@ -312,6 +332,25 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           placeholder="e.g. 90"
         />
         <Input label="Location (optional)" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. City Park Field 1" />
+
+        {/* Outdoor toggle */}
+        <label className="flex items-center gap-3 cursor-pointer select-none">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isOutdoor}
+            onClick={() => setIsOutdoor(v => !v)}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${isOutdoor ? 'bg-blue-600' : 'bg-gray-300'}`}
+          >
+            <span
+              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${isOutdoor ? 'translate-x-4' : 'translate-x-1'}`}
+            />
+          </button>
+          <span className="text-sm font-medium text-gray-700">Outdoor event</span>
+          {isOutdoor && (
+            <span className="text-xs text-gray-400">Weather alerts enabled</span>
+          )}
+        </label>
 
         {/* Team + Home/Away */}
         <div className="space-y-2">
@@ -414,7 +453,21 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           />
         )}
 
-        <div className="flex flex-col gap-1">
+        {/* Outdoor event toggle — only for applicable event types */}
+        {OUTDOOR_ELIGIBLE_TYPES.has(type) && (
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isOutdoor}
+              onChange={e => setIsOutdoor(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm font-medium text-gray-700">Outdoor event</span>
+            <span className="text-xs text-gray-400">(enables weather alerts)</span>
+          </label>
+        )}
+
+                <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-gray-700">Notes (optional)</label>
           <textarea
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"

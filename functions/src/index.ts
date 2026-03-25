@@ -1073,6 +1073,222 @@ export const migrateUserMemberships = onCall({ region: 'us-central1' }, async (r
   return { migrated, skipped };
 });
 
+// ─── Weather Alerts for Outdoor Events (every 6 hours) ───────────────────────
+//
+// Queries for events happening in the next 24–26 hours that:
+//   • have a non-empty location
+//   • are outdoor (isOutdoor !== false)
+//   • have not already had a weather alert sent (weatherAlertSent !== true)
+//   • are not cancelled / postponed
+//
+// For each qualifying event the function:
+//   1. Geocodes the location string via Open-Meteo geocoding API
+//   2. Fetches hourly precipitation probability from Open-Meteo forecast API
+//   3. If precipitation probability at the event hour exceeds RAIN_THRESHOLD,
+//      writes an in-app notification to the team coach's notifications subcollection
+//      and marks the event doc with weatherAlertSent: true to prevent duplicates.
+//
+// Open-Meteo is free and requires no API key.
+
+const RAIN_THRESHOLD = 70; // percent — alert if probability exceeds this
+
+interface GeocodingResult {
+  results?: Array<{ latitude: number; longitude: number; name: string }>;
+}
+
+interface ForecastResult {
+  hourly?: {
+    time: string[];
+    precipitation_probability: number[];
+  };
+}
+
+/**
+ * Geocode a free-text location string.
+ * Returns { lat, lon } or null if the location cannot be resolved.
+ */
+async function geocodeLocation(location: string): Promise<{ lat: number; lon: number } | null> {
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) {
+      console.warn(`checkWeatherAlerts: geocoding HTTP ${res.status} for "${location}"`);
+      return null;
+    }
+    const data = (await res.json()) as GeocodingResult;
+    const first = data.results?.[0];
+    if (!first) {
+      console.log(`checkWeatherAlerts: no geocoding result for "${location}"`);
+      return null;
+    }
+    return { lat: first.latitude, lon: first.longitude };
+  } catch (err) {
+    console.warn(`checkWeatherAlerts: geocoding failed for "${location}"`, err);
+    return null;
+  }
+}
+
+/**
+ * Fetch the precipitation probability (0–100) at the given UTC ISO hour string.
+ * Returns null if the forecast cannot be retrieved or the hour is not present.
+ */
+async function getPrecipitationProbability(
+  lat: number,
+  lon: number,
+  isoHour: string,
+): Promise<number | null> {
+  const url =
+    `https://api.open-meteo.com/v1/forecast` +
+    `?latitude=${lat}&longitude=${lon}` +
+    `&hourly=precipitation_probability` +
+    `&timezone=auto` +
+    `&forecast_days=3`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) {
+      console.warn(`checkWeatherAlerts: forecast HTTP ${res.status} for lat=${lat} lon=${lon}`);
+      return null;
+    }
+    const data = (await res.json()) as ForecastResult;
+    const times = data.hourly?.time;
+    const probs = data.hourly?.precipitation_probability;
+    if (!times || !probs) return null;
+
+    // Match on the first 13 chars (YYYY-MM-DDTHH) to be timezone-tolerant
+    const targetPrefix = isoHour.slice(0, 13);
+    const idx = times.findIndex(t => t.startsWith(targetPrefix));
+    if (idx === -1) {
+      console.log(`checkWeatherAlerts: no forecast slot found for "${targetPrefix}"`);
+      return null;
+    }
+    return probs[idx] ?? null;
+  } catch (err) {
+    console.warn(`checkWeatherAlerts: forecast fetch failed`, err);
+    return null;
+  }
+}
+
+export const checkWeatherAlerts = onSchedule(
+  { schedule: '0 */6 * * *' }, // every 6 hours
+  async () => {
+    const db = admin.firestore();
+    const now = new Date();
+
+    // Window: events starting between 24 h and 26 h from now
+    const windowStart = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const windowEnd   = new Date(now.getTime() + 26 * 60 * 60 * 1000);
+
+    // We query by date string (YYYY-MM-DD). Compute the set of date strings
+    // that fall within the 24–26 h window (usually just one, occasionally two
+    // when the window straddles midnight).
+    const dateStrings = new Set<string>();
+    dateStrings.add(windowStart.toISOString().slice(0, 10));
+    dateStrings.add(windowEnd.toISOString().slice(0, 10));
+
+    console.log(`checkWeatherAlerts: scanning dates ${[...dateStrings].join(', ')}`);
+
+    let alertsSent = 0;
+
+    for (const dateStr of dateStrings) {
+      const eventsSnap = await db
+        .collection('events')
+        .where('date', '==', dateStr)
+        .where('weatherAlertSent', '!=', true)
+        .get();
+
+      for (const evDoc of eventsSnap.docs) {
+        const ev = evDoc.data();
+
+        // Skip indoor, cancelled, or postponed events
+        if (ev['isOutdoor'] === false) continue;
+        const status: string = ev['status'] ?? 'scheduled';
+        if (status === 'cancelled' || status === 'postponed') continue;
+
+        const location: string | undefined = ev['location'];
+        if (!location?.trim()) continue;
+
+        // Build the event's start datetime in ISO format
+        const startTime: string = ev['startTime'] ?? '00:00'; // HH:MM
+        const eventIsoHour = `${dateStr}T${startTime}`; // e.g. 2026-03-26T14:00
+
+        // Verify it actually falls within our alert window
+        const eventTs = new Date(`${dateStr}T${startTime}:00Z`).getTime();
+        if (eventTs < windowStart.getTime() || eventTs > windowEnd.getTime()) continue;
+
+        // Geocode
+        const coords = await geocodeLocation(location);
+        if (!coords) continue;
+
+        // Fetch precipitation probability
+        const prob = await getPrecipitationProbability(coords.lat, coords.lon, eventIsoHour);
+        if (prob === null) continue;
+
+        console.log(`checkWeatherAlerts: event "${ev['title']}" (${evDoc.id}) location="${location}" prob=${prob}%`);
+
+        if (prob <= RAIN_THRESHOLD) continue;
+
+        // ── Identify coach UID ───────────────────────────────────────────────
+        // Priority: team.coachId → team.createdBy
+        const teamIds: string[] = ev['teamIds'] ?? [];
+        const coachUids = new Set<string>();
+
+        for (const teamId of teamIds.slice(0, 10)) {
+          const teamDoc = await db.doc(`teams/${teamId}`).get();
+          const teamData = teamDoc.data();
+          if (!teamData) continue;
+          const coachId: string | undefined = teamData['coachId'] ?? teamData['createdBy'];
+          if (coachId) coachUids.add(coachId);
+        }
+
+        if (!coachUids.size) {
+          console.log(`checkWeatherAlerts: no coach found for event ${evDoc.id}`);
+          continue;
+        }
+
+        // ── Write in-app notification for each coach ─────────────────────────
+        const eventTitle: string = ev['title'] ?? 'Event';
+        const deepLink = `${APP_URL}/?event=${evDoc.id}`;
+        const notifTitle = `Weather alert: ${eventTitle}`;
+        const notifMessage =
+          `Rain probability is ${prob}% at event time. ` +
+          `Tap to review and cancel or confirm: ${deepLink}`;
+        const createdAt = new Date().toISOString();
+
+        const batch = db.batch();
+        for (const uid of coachUids) {
+          const notifRef = db
+            .collection('users').doc(uid)
+            .collection('notifications').doc();
+          batch.set(notifRef, {
+            id: notifRef.id,
+            type: 'weather_alert',
+            title: notifTitle,
+            message: notifMessage,
+            relatedEventId: evDoc.id,
+            isRead: false,
+            createdAt,
+          });
+        }
+
+        // Mark the event so we don't re-alert
+        batch.update(evDoc.ref, {
+          weatherAlertSent: true,
+          updatedAt: createdAt,
+        });
+
+        await batch.commit();
+        alertsSent++;
+
+        console.log(
+          `checkWeatherAlerts: alert sent for event "${eventTitle}" (${evDoc.id}), ` +
+          `prob=${prob}%, coaches=${[...coachUids].join(', ')}`,
+        );
+      }
+    }
+
+    console.log(`checkWeatherAlerts: done — ${alertsSent} alert(s) sent`);
+  },
+);
 // ─── Scheduled: send weekly digest every Monday at 7AM UTC ───────────────────
 
 export const sendWeeklyDigest = onSchedule('0 7 * * 1', async () => {
