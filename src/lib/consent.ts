@@ -1,4 +1,4 @@
-import { doc, setDoc, getDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { LegalDocumentType } from '@/legal/versions';
 
@@ -30,10 +30,11 @@ export async function recordConsent(
 export async function getUserConsents(
   uid: string,
 ): Promise<Record<LegalDocumentType, ConsentRecord | null>> {
-  const types: LegalDocumentType[] = ['privacyPolicy', 'termsOfService', 'marketingEmail'];
+  const types: LegalDocumentType[] = ['privacyPolicy', 'termsOfService', 'liabilityLimitations', 'marketingEmail'];
   const result: Record<LegalDocumentType, ConsentRecord | null> = {
     privacyPolicy: null,
     termsOfService: null,
+    liabilityLimitations: null,
     marketingEmail: null,
   };
 
