@@ -6,6 +6,12 @@ export interface ParentContact {
   parentEmail?: string;
 }
 
+export interface EmergencyContact {
+  name: string;
+  phone: string;
+  relationship?: string;
+}
+
 export interface Player {
   id: string;
   teamId: string;
@@ -20,6 +26,7 @@ export interface Player {
   notes?: string;
   parentContact?: ParentContact;
   parentContact2?: ParentContact;
+  emergencyContact?: EmergencyContact;
   createdAt: string;
   updatedAt: string;
 }

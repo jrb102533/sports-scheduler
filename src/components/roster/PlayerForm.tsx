@@ -8,7 +8,7 @@ import { usePlayerStore } from '@/store/usePlayerStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { functions } from '@/lib/firebase';
 import { PLAYER_STATUS_LABELS } from '@/constants';
-import type { Player, PlayerStatus, ParentContact } from '@/types';
+import type { Player, PlayerStatus, ParentContact, EmergencyContact } from '@/types';
 
 interface PlayerFormProps {
   open: boolean;
@@ -67,6 +67,12 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
   const [p2Phone, setP2Phone] = useState(editPlayer?.parentContact2?.parentPhone ?? '');
   const [p2Email, setP2Email] = useState(editPlayer?.parentContact2?.parentEmail ?? '');
 
+  const [ecName, setEcName] = useState(editPlayer?.emergencyContact?.name ?? '');
+  const [ecPhone, setEcPhone] = useState(editPlayer?.emergencyContact?.phone ?? '');
+  const [ecRelationship, setEcRelationship] = useState(editPlayer?.emergencyContact?.relationship ?? '');
+
+  const isAdultTeam = team?.ageGroup === 'adult';
+
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
@@ -74,8 +80,11 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
     const e: Record<string, string> = {};
     if (!firstName.trim()) e.firstName = 'First name is required';
     if (!lastName.trim()) e.lastName = 'Last name is required';
-    if (!editPlayer && !email.trim() && !p1Email.trim() && !p2Email.trim()) {
+    if (!editPlayer && !isAdultTeam && !email.trim() && !p1Email.trim() && !p2Email.trim()) {
       e.contactEmail = 'At least one email (player or parent) is required to send an invite';
+    }
+    if (!editPlayer && isAdultTeam && !email.trim()) {
+      e.contactEmail = 'Player email is required to send an invite';
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -90,14 +99,24 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
     };
   }
 
+  function buildEmergencyContact(name: string, phone: string, relationship: string): EmergencyContact | undefined {
+    if (!name.trim() && !phone.trim()) return undefined;
+    return {
+      name: name.trim(),
+      phone: phone.trim(),
+      ...(relationship.trim() ? { relationship: relationship.trim() } : {}),
+    };
+  }
+
   async function handleSubmit() {
     if (!validate()) return;
     setSaving(true);
     const now = new Date().toISOString();
     const num = jerseyNumber ? parseInt(jerseyNumber) : undefined;
 
-    const parentContact = buildParentContact(p1Name, p1Phone, p1Email);
-    const parentContact2 = buildParentContact(p2Name, p2Phone, p2Email);
+    const parentContact = isAdultTeam ? undefined : buildParentContact(p1Name, p1Phone, p1Email);
+    const parentContact2 = isAdultTeam ? undefined : buildParentContact(p2Name, p2Phone, p2Email);
+    const emergencyContact = buildEmergencyContact(ecName, ecPhone, ecRelationship);
 
     const optionals = {
       ...(num !== undefined ? { jerseyNumber: num } : {}),
@@ -105,6 +124,7 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
       ...(email.trim() ? { email: email.trim() } : {}),
       ...(parentContact ? { parentContact } : {}),
       ...(parentContact2 ? { parentContact2 } : {}),
+      ...(emergencyContact ? { emergencyContact } : {}),
     };
 
     if (editPlayer) {
@@ -115,7 +135,9 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
 
       if (team) {
         const playerName = `${firstName.trim()} ${lastName.trim()}`;
-        const inviteEmails = [email.trim(), p1Email.trim(), p2Email.trim()].filter(Boolean);
+        const inviteEmails = isAdultTeam
+          ? [email.trim()].filter(Boolean)
+          : [email.trim(), p1Email.trim(), p2Email.trim()].filter(Boolean);
         for (const to of inviteEmails) {
           try {
             await sendInviteFn({ to, playerName, teamName: team.name, playerId, teamId });
@@ -150,19 +172,26 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
           placeholder="player@example.com"
         />
 
-        <ParentFields
-          label="Parent / Guardian 1"
-          name={p1Name} setName={setP1Name}
-          phone={p1Phone} setPhone={setP1Phone}
-          email={p1Email} setEmail={setP1Email}
-        />
-
-        <ParentFields
-          label="Parent / Guardian 2 (optional)"
-          name={p2Name} setName={setP2Name}
-          phone={p2Phone} setPhone={setP2Phone}
-          email={p2Email} setEmail={setP2Email}
-        />
+        {!isAdultTeam && (
+          <>
+            <div className="border-t border-gray-100 pt-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Parent / Guardian Contact</p>
+              <p className="text-xs text-gray-400 mb-3">(Required for youth teams)</p>
+            </div>
+            <ParentFields
+              label="Parent / Guardian 1"
+              name={p1Name} setName={setP1Name}
+              phone={p1Phone} setPhone={setP1Phone}
+              email={p1Email} setEmail={setP1Email}
+            />
+            <ParentFields
+              label="Parent / Guardian 2 (optional)"
+              name={p2Name} setName={setP2Name}
+              phone={p2Phone} setPhone={setP2Phone}
+              email={p2Email} setEmail={setP2Email}
+            />
+          </>
+        )}
 
         {errors.contactEmail && (
           <p className="text-xs text-red-600">{errors.contactEmail}</p>
@@ -173,6 +202,17 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
             An invite email will be sent to all provided email addresses so they can join the team.
           </p>
         )}
+
+        {/* Emergency Contact — always shown */}
+        <div className="border-t border-gray-100 pt-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Emergency Contact</p>
+          <p className="text-xs text-gray-400 mb-3">(Optional)</p>
+          <div className="space-y-3">
+            <Input label="Name" value={ecName} onChange={e => setEcName(e.target.value)} placeholder="Full name" />
+            <Input label="Phone" type="tel" value={ecPhone} onChange={e => setEcPhone(e.target.value)} placeholder="Phone number" />
+            <Input label="Relationship" value={ecRelationship} onChange={e => setEcRelationship(e.target.value)} placeholder="e.g. Grandmother, Uncle — optional" />
+          </div>
+        </div>
 
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>

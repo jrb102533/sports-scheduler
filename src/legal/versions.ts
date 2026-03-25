@@ -1,0 +1,13 @@
+/**
+ * Single source of truth for legal document versions.
+ * Increment the version here when a document changes.
+ * The auth state listener compares stored user consent versions
+ * against these values to determine whether re-consent is required.
+ */
+export const LEGAL_VERSIONS = {
+  privacyPolicy: '1.0',
+  termsOfService: '1.0',
+  effectiveDate: '2026-03-24',
+} as const;
+
+export type LegalDocumentType = 'privacyPolicy' | 'termsOfService' | 'marketingEmail';

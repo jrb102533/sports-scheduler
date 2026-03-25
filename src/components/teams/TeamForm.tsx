@@ -24,7 +24,10 @@ interface TeamFormProps {
 }
 
 const sportOptions = SPORT_TYPES.map(s => ({ value: s, label: SPORT_TYPE_LABELS[s] }));
-const ageGroupOptions = AGE_GROUPS.map(g => ({ value: g, label: AGE_GROUP_LABELS[g] }));
+const ageGroupOptions = AGE_GROUPS.map(g => ({
+  value: g,
+  label: g === 'adult' ? `Adult League — Adult (18+)` : `${g} — ${AGE_GROUP_LABELS[g]}`,
+}));
 
 export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const { addTeam, updateTeam } = useTeamStore();
@@ -38,6 +41,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const [coachName, setCoachName] = useState(editTeam?.coachName ?? '');
   const [coachEmail, setCoachEmail] = useState(editTeam?.coachEmail ?? '');
   const [ageGroup, setAgeGroup] = useState<AgeGroup | ''>(editTeam?.ageGroup ?? '');
+  const [divisionLabel, setDivisionLabel] = useState(editTeam?.divisionLabel ?? '');
   const [coachId, setCoachId] = useState(editTeam?.coachId ?? '');
   const [coachUsers, setCoachUsers] = useState<UserProfile[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -151,6 +155,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
           ...(coachName.trim() ? { coachName: coachName.trim() } : {}),
           ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}),
           ...(ageGroup ? { ageGroup } : {}),
+          ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}),
           ...(coachId ? { coachId } : {}),
           attendanceWarningsEnabled,
           ...(parsedThreshold !== undefined && !isNaN(parsedThreshold) ? { attendanceWarningThreshold: parsedThreshold } : {}),
@@ -175,6 +180,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         ...(coachName.trim() ? { coachName: coachName.trim() } : {}),
         ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}),
         ...(ageGroup ? { ageGroup } : {}),
+        ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}),
         ...(coachId ? { coachId } : {}),
         attendanceWarningsEnabled,
         ...(parsedThreshold2 !== undefined && !isNaN(parsedThreshold2) ? { attendanceWarningThreshold: parsedThreshold2 } : {}),
@@ -201,9 +207,16 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
       <div className="space-y-4">
         <Input label="Team Name" value={name} onChange={e => setName(e.target.value)} error={errors.name} placeholder="e.g. City Hawks" />
         <Select label="Sport" value={sportType} onChange={e => setSportType(e.target.value as SportType)} options={sportOptions} />
-        {kidsMode && (
-          <Select label="Age Group" value={ageGroup} onChange={e => setAgeGroup(e.target.value as AgeGroup)} options={ageGroupOptions} placeholder="Select age group" />
-        )}
+        <Select label="Age Group" value={ageGroup} onChange={e => setAgeGroup(e.target.value as AgeGroup)} options={ageGroupOptions} placeholder="Select age group" />
+        <div className="flex flex-col gap-1">
+          <Input
+            label="Division label (optional)"
+            value={divisionLabel}
+            onChange={e => setDivisionLabel(e.target.value)}
+            placeholder="e.g. Little League, Pee Wee, Rep"
+          />
+          <p className="text-xs text-gray-400">Use this for league-specific division names. Shown alongside the age group.</p>
+        </div>
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-gray-700">Team Color</label>
           <div className="flex gap-2 flex-wrap">

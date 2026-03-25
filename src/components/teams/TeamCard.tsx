@@ -1,7 +1,8 @@
 import { Users, Crown } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
 import { SportIcon } from '@/components/ui/SportIcon';
-import { SPORT_TYPE_LABELS } from '@/constants';
+import { SPORT_TYPE_LABELS, AGE_GROUP_LABELS } from '@/constants';
 import type { Team } from '@/types';
 
 interface TeamCardProps {
@@ -37,6 +38,14 @@ export function TeamCard({ team, playerCount, pendingRequestCount, onClick }: Te
           <div className="min-w-0">
             <h3 className="font-semibold text-gray-900 truncate">{team.name}</h3>
             <p className="text-xs text-gray-500">{SPORT_TYPE_LABELS[team.sportType]}</p>
+            {team.ageGroup && (
+              <div className="mt-1">
+                <Badge variant="default" className="text-[10px] px-1.5 py-0 font-medium text-gray-500 bg-gray-100">
+                  {AGE_GROUP_LABELS[team.ageGroup]}
+                  {team.divisionLabel && ` · ${team.divisionLabel}`}
+                </Badge>
+              </div>
+            )}
           </div>
         </div>
 

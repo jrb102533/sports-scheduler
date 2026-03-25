@@ -243,7 +243,12 @@ export function TeamDetailPage() {
           <h2 className="text-xl font-bold text-gray-900">{team.name}</h2>
           <p className="text-sm text-gray-500">
             {SPORT_TYPE_LABELS[team.sportType]}
-            {kidsMode && team.ageGroup && <span className="ml-2 text-blue-500">· {AGE_GROUP_LABELS[team.ageGroup]}</span>}
+            {team.ageGroup && (
+              <span className="ml-2 text-blue-500">
+                · {AGE_GROUP_LABELS[team.ageGroup]}
+                {team.divisionLabel && ` · ${team.divisionLabel}`}
+              </span>
+            )}
             {league && (
               <button
                 onClick={() => navigate(`/leagues/${league.id}`)}
@@ -434,7 +439,15 @@ export function TeamDetailPage() {
               <Crown size={12} className="text-amber-400" /> {team.ownerName}
             </span>
           </div>
-          {kidsMode && team.ageGroup && <div><span className="font-medium text-gray-700">Age Group:</span> <span className="text-gray-600 ml-2">{AGE_GROUP_LABELS[team.ageGroup]}</span></div>}
+          {team.ageGroup && (
+            <div>
+              <span className="font-medium text-gray-700">Age Group:</span>
+              <span className="text-gray-600 ml-2">
+                {AGE_GROUP_LABELS[team.ageGroup]}
+                {team.divisionLabel && ` · ${team.divisionLabel}`}
+              </span>
+            </div>
+          )}
           {team.homeVenue && <div><span className="font-medium text-gray-700">Home Venue:</span> <span className="text-gray-600 ml-2">{team.homeVenue}</span></div>}
           {team.coachName && <div><span className="font-medium text-gray-700">Coach:</span> <span className="text-gray-600 ml-2">{team.coachName}</span></div>}
           {team.coachEmail && <div><span className="font-medium text-gray-700">Email:</span> <span className="text-gray-600 ml-2">{team.coachEmail}</span></div>}
