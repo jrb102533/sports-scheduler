@@ -6,6 +6,9 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { RoleCardPicker } from '@/components/auth/RoleCardPicker';
 import { useAuthStore } from '@/store/useAuthStore';
+import { auth } from '@/lib/firebase';
+import { recordConsent } from '@/lib/consent';
+import { LEGAL_VERSIONS } from '@/legal/versions';
 import type { UserRole, RoleMembership } from '@/types';
 
 export function SignupPage() {
@@ -20,6 +23,8 @@ export function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [validationError, setValidationError] = useState('');
   const [verificationSent, setVerificationSent] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [agreedToMarketing, setAgreedToMarketing] = useState(false);
 
   function handlePrimaryRoleChange(newRole: UserRole) {
     setRole(newRole);
@@ -56,6 +61,15 @@ export function SignupPage() {
     setLoading(true);
     try {
       await signup(email, password, displayName.trim(), role, undefined, memberships);
+      // Capture uid from Firebase Auth before logout clears the session
+      const uid = auth.currentUser?.uid;
+      if (uid) {
+        await recordConsent(uid, 'termsOfService', LEGAL_VERSIONS.termsOfService);
+        await recordConsent(uid, 'privacyPolicy', LEGAL_VERSIONS.privacyPolicy);
+        if (agreedToMarketing) {
+          await recordConsent(uid, 'marketingEmail', '1.0');
+        }
+      }
       await logout();
       setVerificationSent(true);
     } catch {
@@ -105,11 +119,62 @@ export function SignupPage() {
           />
         </div>
 
+        {/* Consent notice */}
+        <div className="border-t border-gray-100 pt-4 space-y-3">
+          <p className="text-xs text-gray-500 leading-relaxed">
+            By creating an account, you agree to First Whistle&rsquo;s{' '}
+            <a
+              href="/legal/terms-of-service"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline font-medium"
+            >
+              Terms of Service
+            </a>{' '}
+            and{' '}
+            <a
+              href="/legal/privacy-policy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline font-medium"
+            >
+              Privacy Policy
+            </a>
+            .
+          </p>
+
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={agreedToTerms}
+              onChange={e => setAgreedToTerms(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-xs text-gray-700 leading-relaxed">
+              I agree to the Terms of Service and Privacy Policy{' '}
+              <span className="text-red-500 font-medium">(required)</span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={agreedToMarketing}
+              onChange={e => setAgreedToMarketing(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-xs text-gray-700 leading-relaxed">
+              I&rsquo;d like to receive product updates and tips by email{' '}
+              <span className="text-gray-400">(optional)</span>
+            </span>
+          </label>
+        </div>
+
         {displayedError && (
           <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{displayedError}</div>
         )}
 
-        <Button type="submit" className="w-full" disabled={loading}>
+        <Button type="submit" className="w-full" disabled={loading || !agreedToTerms}>
           {loading ? 'Creating account…' : 'Create Account'}
         </Button>
       </form>

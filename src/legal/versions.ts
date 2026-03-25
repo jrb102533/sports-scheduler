@@ -7,7 +7,8 @@
 export const LEGAL_VERSIONS = {
   privacyPolicy: '1.0',
   termsOfService: '1.0',
+  liabilityLimitations: '1.0',
   effectiveDate: '2026-03-24',
 } as const;
 
-export type LegalDocumentType = 'privacyPolicy' | 'termsOfService' | 'marketingEmail';
+export type LegalDocumentType = 'privacyPolicy' | 'termsOfService' | 'liabilityLimitations' | 'marketingEmail';

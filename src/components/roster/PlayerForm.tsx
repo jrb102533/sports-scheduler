@@ -19,6 +19,20 @@ interface PlayerFormProps {
 
 const statusOptions = Object.entries(PLAYER_STATUS_LABELS).map(([value, label]) => ({ value, label }));
 
+/** Returns the player's age in whole years given an ISO date string, or null if blank/invalid. */
+function calculateAge(dobString: string): number | null {
+  if (!dobString) return null;
+  const dob = new Date(dobString);
+  if (isNaN(dob.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const monthDiff = today.getMonth() - dob.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+    age -= 1;
+  }
+  return age;
+}
+
 const sendInviteFn = httpsCallable<{
   to: string; playerName: string; teamName: string; playerId: string; teamId: string;
 }>(functions, 'sendInvite');
@@ -56,8 +70,10 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
   const [lastName, setLastName] = useState(editPlayer?.lastName ?? '');
   const [jerseyNumber, setJerseyNumber] = useState(editPlayer?.jerseyNumber?.toString() ?? '');
   const [position, setPosition] = useState(editPlayer?.position ?? '');
+  const [dateOfBirth, setDateOfBirth] = useState(editPlayer?.dateOfBirth ?? '');
   const [status, setStatus] = useState<PlayerStatus>(editPlayer?.status ?? 'active');
   const [email, setEmail] = useState(editPlayer?.email ?? '');
+  const [consentChecked, setConsentChecked] = useState(false);
 
   const [p1Name, setP1Name] = useState(editPlayer?.parentContact?.parentName ?? '');
   const [p1Phone, setP1Phone] = useState(editPlayer?.parentContact?.parentPhone ?? '');
@@ -76,6 +92,15 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
+  const playerAge = calculateAge(dateOfBirth);
+  /** 'coppa' = under 13, 'minor' = 13–17, null = no notice needed */
+  const consentTier: 'coppa' | 'minor' | null =
+    playerAge !== null && playerAge < 13
+      ? 'coppa'
+      : playerAge !== null && playerAge < 18
+        ? 'minor'
+        : null;
+
   function validate() {
     const e: Record<string, string> = {};
     if (!firstName.trim()) e.firstName = 'First name is required';
@@ -85,6 +110,9 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
     }
     if (!editPlayer && isAdultTeam && !email.trim()) {
       e.contactEmail = 'Player email is required to send an invite';
+    }
+    if (consentTier && !consentChecked) {
+      e.consent = 'You must confirm the parental notice before saving.';
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -121,6 +149,7 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
     const optionals = {
       ...(num !== undefined ? { jerseyNumber: num } : {}),
       ...(position.trim() ? { position: position.trim() } : {}),
+      ...(dateOfBirth.trim() ? { dateOfBirth: dateOfBirth.trim() } : {}),
       ...(email.trim() ? { email: email.trim() } : {}),
       ...(parentContact ? { parentContact } : {}),
       ...(parentContact2 ? { parentContact2 } : {}),
@@ -164,6 +193,70 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
           <Input label="Position" value={position} onChange={e => setPosition(e.target.value)} placeholder="e.g. Forward" />
         </div>
         <Select label="Status" value={status} onChange={e => setStatus(e.target.value as PlayerStatus)} options={statusOptions} />
+        <Input
+          label="Date of Birth"
+          type="date"
+          value={dateOfBirth}
+          onChange={e => {
+            setDateOfBirth(e.target.value);
+            setConsentChecked(false);
+          }}
+        />
+
+        {/* COPPA / minor parental consent notice — shown based on calculated age */}
+        {consentTier === 'coppa' && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 space-y-2">
+            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">COPPA Notice — Player Under 13</p>
+            <p className="text-xs text-amber-900 leading-relaxed">
+              This player is under 13. U.S. law (COPPA) requires verifiable parental consent before collecting personal
+              information about children under 13. By checking the box below, you confirm that written or verbal parental
+              consent has been obtained and is on file with your organization.
+            </p>
+            <p className="text-xs text-amber-700">
+              Parents may request removal of their child&rsquo;s profile at any time by contacting{' '}
+              <a href="mailto:first.whistle.legal@gmail.com" className="underline">first.whistle.legal@gmail.com</a>.
+            </p>
+            <label className="flex items-start gap-2.5 cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={consentChecked}
+                onChange={e => setConsentChecked(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-amber-400 text-amber-700 focus:ring-amber-500"
+              />
+              <span className="text-xs text-amber-900 font-medium leading-relaxed">
+                I confirm parental consent has been obtained and is on file.
+              </span>
+            </label>
+            {errors.consent && (
+              <p className="text-xs text-red-600">{errors.consent}</p>
+            )}
+          </div>
+        )}
+
+        {consentTier === 'minor' && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 space-y-2">
+            <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Minor Player Notice — Under 18</p>
+            <p className="text-xs text-blue-900 leading-relaxed">
+              This player is under 18. Before saving this profile, confirm that a parent or guardian has been informed
+              that their child&rsquo;s information will be stored on First Whistle.
+            </p>
+            <label className="flex items-start gap-2.5 cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={consentChecked}
+                onChange={e => setConsentChecked(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-blue-400 text-blue-700 focus:ring-blue-500"
+              />
+              <span className="text-xs text-blue-900 font-medium leading-relaxed">
+                I confirm a parent or guardian has been notified.
+              </span>
+            </label>
+            {errors.consent && (
+              <p className="text-xs text-red-600">{errors.consent}</p>
+            )}
+          </div>
+        )}
+
         <Input
           label={editPlayer ? 'Player Email' : 'Player Email'}
           type="email"
@@ -216,7 +309,12 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
 
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={saving}>{saving ? 'Saving…' : editPlayer ? 'Save Changes' : 'Add Player'}</Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={saving || (consentTier !== null && !consentChecked)}
+          >
+            {saving ? 'Saving…' : editPlayer ? 'Save Changes' : 'Add Player'}
+          </Button>
         </div>
       </div>
     </Modal>

@@ -14,11 +14,17 @@ import { SignupPage } from '@/pages/SignupPage';
 import { UsersPage } from '@/pages/UsersPage';
 import { LeaguesPage } from '@/pages/LeaguesPage';
 import { LeagueDetailPage } from '@/pages/LeagueDetailPage';
+import { PrivacyPolicyPage } from '@/pages/legal/PrivacyPolicyPage';
+import { TermsOfServicePage } from '@/pages/legal/TermsOfServicePage';
 
 export const router = createBrowserRouter([
   // Public auth routes
   { path: '/login', element: <LoginPage /> },
   { path: '/signup', element: <SignupPage /> },
+
+  // Public legal routes
+  { path: '/legal/privacy-policy', element: <PrivacyPolicyPage /> },
+  { path: '/legal/terms-of-service', element: <TermsOfServicePage /> },
 
   // Protected app routes
   {

@@ -1,14 +1,14 @@
 # Terms of Service
 
 **First Whistle**
-Effective Date: [EFFECTIVE DATE]
-Last Updated: [EFFECTIVE DATE]
+Effective Date: 2026-03-24
+Last Updated: 2026-03-24
 
 ---
 
 ## Introduction
 
-These Terms of Service ("Terms") are a binding agreement between you and [COMPANY NAME] ("First Whistle," "we," "us," or "our") governing your access to and use of the First Whistle web application and related services (collectively, the "Service").
+These Terms of Service ("Terms") are a binding agreement between you and First Whistle ("First Whistle," "we," "us," or "our") governing your access to and use of the First Whistle web application and related services (collectively, the "Service").
 
 By creating an account, accepting an invitation, or otherwise using the Service, you agree to be bound by these Terms and our Privacy Policy, which is incorporated here by reference. **If you do not agree, do not use the Service.**
 
@@ -59,7 +59,7 @@ As a Team Admin, you are responsible for the accuracy of all player information 
 
 ### 4.2 Data Accuracy
 
-If you become aware that player data is inaccurate, you are obligated to correct it promptly within the platform or by contacting [CONTACT EMAIL].
+If you become aware that player data is inaccurate, you are obligated to correct it promptly within the platform or by contacting first.whistle.legal@gmail.com.
 
 ### 4.3 Communications Responsibility
 
@@ -91,7 +91,7 @@ By enabling account access for a player age 13–17, you represent that the play
 
 ### 5.4 Parental Requests
 
-Parents or guardians may contact us at [CONTACT EMAIL] to review, correct, or delete their child's player profile. We will process verified parental requests within 30 days.
+Parents or guardians may contact us at first.whistle.legal@gmail.com to review, correct, or delete their child's player profile. We will process verified parental requests within 30 days.
 
 ### 5.5 No Circumvention
 
@@ -137,11 +137,11 @@ You may cancel your subscription at any time. Cancellation takes effect at the e
 
 ### 8.1 Our Property
 
-First Whistle and all content, features, and functionality of the Service are owned by [COMPANY NAME] or its licensors and are protected by intellectual property laws. You may not reproduce, modify, or distribute any part of the Service without our written permission.
+First Whistle and all content, features, and functionality of the Service are owned by First Whistle or its licensors and are protected by intellectual property laws. You may not reproduce, modify, or distribute any part of the Service without our written permission.
 
 ### 8.2 Your Content
 
-You retain ownership of the data you enter into First Whistle. By entering data into the Service, you grant [COMPANY NAME] a limited, non-exclusive, royalty-free license to store, process, and display that data solely as necessary to provide the Service to you. We will not use your data for any purpose outside of providing and improving the Service.
+You retain ownership of the data you enter into First Whistle. By entering data into the Service, you grant First Whistle a limited, non-exclusive, royalty-free license to store, process, and display that data solely as necessary to provide the Service to you. We will not use your data for any purpose outside of providing and improving the Service.
 
 ### 8.3 Feedback
 
@@ -157,13 +157,13 @@ Your use of the Service is governed by our Privacy Policy, incorporated into the
 
 ## 10. Disclaimer of Warranties
 
-**The Service is provided "as is" and "as available" without warranties of any kind, express or implied. To the fullest extent permitted by law, [COMPANY NAME] disclaims all warranties, including implied warranties of merchantability, fitness for a particular purpose, and non-infringement.**
+**The Service is provided "as is" and "as available" without warranties of any kind, express or implied. To the fullest extent permitted by law, First Whistle disclaims all warranties, including implied warranties of merchantability, fitness for a particular purpose, and non-infringement.**
 
 ---
 
 ## 11. Limitation of Liability
 
-**To the fullest extent permitted by applicable law, [COMPANY NAME] and its officers, directors, employees, and agents will not be liable for any indirect, incidental, special, consequential, punitive, or exemplary damages arising from your use of or inability to use the Service.**
+**To the fullest extent permitted by applicable law, First Whistle and its officers, directors, employees, and agents will not be liable for any indirect, incidental, special, consequential, punitive, or exemplary damages arising from your use of or inability to use the Service.**
 
 **Our total liability to you for any claim will not exceed the greater of (a) the amount you paid us in the 12 months preceding the claim or (b) $100 USD.**
 
@@ -171,7 +171,7 @@ Your use of the Service is governed by our Privacy Policy, incorporated into the
 
 ## 12. Indemnification
 
-You agree to indemnify and hold harmless [COMPANY NAME] and its officers, directors, employees, and agents from and against any claims, liabilities, damages, losses, and expenses arising from your use of the Service in violation of these Terms, any consent attestation under Section 5, or any data you enter that is inaccurate, unauthorized, or unlawfully obtained.
+You agree to indemnify and hold harmless First Whistle and its officers, directors, employees, and agents from and against any claims, liabilities, damages, losses, and expenses arising from your use of the Service in violation of these Terms, any consent attestation under Section 5, or any data you enter that is inaccurate, unauthorized, or unlawfully obtained.
 
 ---
 
@@ -179,7 +179,7 @@ You agree to indemnify and hold harmless [COMPANY NAME] and its officers, direct
 
 ### 13.1 By You
 
-You may terminate your account at any time through account settings or by contacting [CONTACT EMAIL].
+You may terminate your account at any time through account settings or by contacting first.whistle.legal@gmail.com.
 
 ### 13.2 By Us
 
@@ -193,13 +193,13 @@ Upon termination, your right to access the Service ends immediately. Sections 5,
 
 ## 14. Governing Law and Dispute Resolution
 
-These Terms are governed by the laws of the State of [GOVERNING STATE/JURISDICTION]. Disputes that cannot be resolved informally will be resolved through binding arbitration administered by [ARBITRATION PROVIDER] under its applicable rules, except that either party may seek injunctive relief in a court of competent jurisdiction for intellectual property or data privacy violations. **By using the Service, you waive any right to a jury trial or class action.**
+These Terms are governed by the laws of the State of Virginia. Disputes that cannot be resolved informally will be resolved through binding arbitration administered by AAA (American Arbitration Association) under its applicable rules, except that either party may seek injunctive relief in a court of competent jurisdiction for intellectual property or data privacy violations. **By using the Service, you waive any right to a jury trial or class action.**
 
 ---
 
 ## 15. General Provisions
 
-These Terms constitute the entire agreement between you and [COMPANY NAME] regarding the Service. If any provision is found unenforceable, the remaining provisions continue in full force. Our failure to enforce any right or provision does not constitute a waiver. You may not assign your rights under these Terms without our prior written consent.
+These Terms constitute the entire agreement between you and First Whistle regarding the Service. If any provision is found unenforceable, the remaining provisions continue in full force. Our failure to enforce any right or provision does not constitute a waiver. You may not assign your rights under these Terms without our prior written consent.
 
 We may update these Terms from time to time. When we make material changes, we will notify you by email at least **14 days** before the changes take effect. Continued use after the effective date constitutes acceptance.
 
@@ -207,6 +207,6 @@ We may update these Terms from time to time. When we make material changes, we w
 
 ## 16. Contact Us
 
-**[COMPANY NAME]**
-Email: [CONTACT EMAIL]
-[MAILING ADDRESS]
+**First Whistle**
+Email: first.whistle.legal@gmail.com
+Virginia, USA
