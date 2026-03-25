@@ -1023,6 +1023,99 @@ export const onEventCancelled = onDocumentUpdated(
   }
 );
 
+// ─── Post-game broadcast (callable) ──────────────────────────────────────────
+// Sends an in-app notification to all team members with the game result,
+// an optional coach message, and an optional Man of the Match callout.
+
+interface SendPostGameBroadcastData {
+  eventId: string;
+  teamId: string;
+  message?: string;
+  manOfTheMatchPlayerId?: string;
+}
+
+interface SendPostGameBroadcastResult {
+  sent: number;
+}
+
+export const sendPostGameBroadcast = onCall<SendPostGameBroadcastData, Promise<SendPostGameBroadcastResult>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+    await assertAdminOrCoach(request.auth.uid);
+
+    const { eventId, teamId, message, manOfTheMatchPlayerId } = request.data;
+    if (!eventId?.trim()) throw new HttpsError('invalid-argument', 'eventId is required.');
+    if (!teamId?.trim()) throw new HttpsError('invalid-argument', 'teamId is required.');
+
+    const db = admin.firestore();
+
+    // Read the event to get result info
+    const eventDoc = await db.doc(`events/${eventId}`).get();
+    if (!eventDoc.exists) throw new HttpsError('not-found', 'Event not found.');
+    const ev = eventDoc.data()!;
+
+    const result = ev.result as { homeScore?: number; awayScore?: number; placement?: string } | undefined;
+    const eventTitle: string = ev.title ?? 'Event';
+
+    let resultSummary: string;
+    if (result?.placement) {
+      resultSummary = `${eventTitle}: ${result.placement}`;
+    } else if (result != null && result.homeScore !== undefined && result.awayScore !== undefined) {
+      resultSummary = `${eventTitle}: ${result.homeScore} \u2013 ${result.awayScore}`;
+    } else {
+      resultSummary = `Result: ${eventTitle}`;
+    }
+
+    // Resolve Man of the Match name if provided
+    let motmLine = '';
+    if (manOfTheMatchPlayerId) {
+      const playerDoc = await db.doc(`players/${manOfTheMatchPlayerId}`).get();
+      if (playerDoc.exists) {
+        const pd = playerDoc.data()!;
+        const motmName = `${pd.firstName ?? ''} ${pd.lastName ?? ''}`.trim() || 'Player';
+        motmLine = ` Man of the Match: ${motmName}.`;
+      }
+    }
+
+    const notifMessage = message?.trim()
+      ? `${message.trim()}${motmLine}`
+      : `Great effort today, team!${motmLine}`;
+
+    // Query all users on this team
+    const usersSnap = await db.collection('users').where('teamId', '==', teamId).get();
+
+    if (usersSnap.empty) {
+      console.log(`sendPostGameBroadcast: no users found for teamId=${teamId}`);
+      return { sent: 0 };
+    }
+
+    const now = new Date().toISOString();
+    const batch = db.batch();
+    let notifCount = 0;
+
+    for (const userDoc of usersSnap.docs) {
+      const notifRef = db
+        .collection('users').doc(userDoc.id)
+        .collection('notifications').doc();
+      batch.set(notifRef, {
+        id: notifRef.id,
+        type: 'result_recorded',
+        title: resultSummary,
+        message: notifMessage,
+        relatedEventId: eventId,
+        relatedTeamId: teamId,
+        isRead: false,
+        createdAt: now,
+      });
+      notifCount++;
+    }
+
+    await batch.commit();
+    console.log(`sendPostGameBroadcast: sent ${notifCount} notification(s) for event="${eventTitle}" teamId=${teamId}`);
+    return { sent: notifCount };
+  }
+);
+
 // ─── Membership Migration ─────────────────────────────────────────────────────
 
 /**
