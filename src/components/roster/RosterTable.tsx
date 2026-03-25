@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { Edit, Trash2, Phone, Bandage, CalendarX } from 'lucide-react';
+import { Edit, Trash2, Phone, ShieldAlert, Bandage, CalendarX } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { PlayerForm } from './PlayerForm';
+import { PlayerStatusBadge } from './PlayerStatusBadge';
+import { PlayerStatusModal } from './PlayerStatusModal';
 import { MarkAbsenceModal } from './MarkAbsenceModal';
 import { PlayerAvailabilityModal } from './PlayerAvailabilityModal';
 import { usePlayerStore } from '@/store/usePlayerStore';
@@ -16,6 +18,7 @@ import type { Player } from '@/types';
 const statusColors: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
   injured: 'bg-red-100 text-red-700',
+  suspended: 'bg-orange-100 text-orange-700',
   inactive: 'bg-gray-100 text-gray-600',
 };
 
@@ -59,15 +62,16 @@ interface RosterTableProps {
 export function RosterTable({ players, teamId }: RosterTableProps) {
   const { deletePlayer } = usePlayerStore();
   const team = useTeamStore(s => s.teams.find(t => t.id === teamId));
-  const isAdultTeam = team?.ageGroup === 'adult';
   const profile = useAuthStore(s => s.profile);
   const availability = useAvailabilityStore(s => s.availability);
+  const isAdultTeam = team?.ageGroup === 'adult';
   const isCoachOrAdmin =
     profile?.role === 'admin' ||
     profile?.role === 'league_manager' ||
     profile?.role === 'coach';
   const [editPlayer, setEditPlayer] = useState<Player | null>(null);
   const [deletePlayer_, setDeletePlayer] = useState<Player | null>(null);
+  const [statusPlayer, setStatusPlayer] = useState<Player | null>(null);
   const [absencePlayer, setAbsencePlayer] = useState<Player | null>(null);
   const [availabilityPlayer, setAvailabilityPlayer] = useState<Player | null>(null);
 
@@ -97,15 +101,18 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
               <tr key={player.id} className="border-b border-gray-100 hover:bg-gray-50">
                 <td className="px-3 py-3 text-gray-500 text-sm">{player.jerseyNumber ?? '\u2014'}</td>
                 <td className="px-3 py-3 text-sm">
-                  <span className="font-medium text-gray-900">{player.firstName} {player.lastName}</span>
-                  {player.absence && (
-                    <Badge className={`ml-2 ${absenceBadgeClass[player.absence.type]}`}>
-                      {absenceLabel[player.absence.type]}
-                      {player.absence.returnDate && (
-                        <span className="font-normal"> &middot; returns {formatReturnDate(player.absence.returnDate)}</span>
-                      )}
-                    </Badge>
-                  )}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-medium text-gray-900">{player.firstName} {player.lastName}</span>
+                    <PlayerStatusBadge player={player} showReturnDate />
+                    {player.absence && (
+                      <Badge className={`${absenceBadgeClass[player.absence.type]}`}>
+                        {absenceLabel[player.absence.type]}
+                        {player.absence.returnDate && (
+                          <span className="font-normal"> &middot; returns {formatReturnDate(player.absence.returnDate)}</span>
+                        )}
+                      </Badge>
+                    )}
+                  </div>
                 </td>
                 <td className="hidden sm:table-cell px-3 py-3 text-gray-600 text-sm">{player.position ?? '\u2014'}</td>
                 <td className="px-3 py-3">
@@ -146,6 +153,16 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
                 </td>
                 <td className="px-3 py-3 text-right">
                   <div className="flex justify-end gap-1">
+                    {isCoachOrAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setStatusPlayer(player)}
+                        title="Update injury / suspension status"
+                      >
+                        <ShieldAlert size={13} className={player.status === 'injured' ? 'text-red-500' : player.status === 'suspended' ? 'text-orange-500' : 'text-gray-400'} />
+                      </Button>
+                    )}
                     <Button variant="ghost" size="sm" onClick={() => setEditPlayer(player)}><Edit size={13} /></Button>
                     <Button variant="ghost" size="sm" onClick={() => setDeletePlayer(player)}><Trash2 size={13} className="text-red-500" /></Button>
                     {isCoachOrAdmin && (
@@ -184,6 +201,13 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
         </table>
       </div>
       {editPlayer && <PlayerForm open teamId={teamId} onClose={() => setEditPlayer(null)} editPlayer={editPlayer} />}
+      {statusPlayer && (
+        <PlayerStatusModal
+          open
+          onClose={() => setStatusPlayer(null)}
+          player={statusPlayer}
+        />
+      )}
       <ConfirmDialog
         open={!!deletePlayer_}
         onClose={() => setDeletePlayer(null)}

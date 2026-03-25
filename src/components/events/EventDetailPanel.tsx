@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send, Copy, AlertTriangle, Bell } from 'lucide-react';
+import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send, Copy, AlertTriangle, Bell, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
@@ -8,6 +8,7 @@ import { EventForm } from './EventForm';
 import { SnackVolunteerForm } from './SnackVolunteerForm';
 import { RsvpInviteModal } from './RsvpInviteModal';
 import { AttendanceTracker } from '@/components/attendance/AttendanceTracker';
+import { PlayerStatusBadge } from '@/components/roster/PlayerStatusBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { useEventStore } from '@/store/useEventStore';
@@ -239,6 +240,11 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
               const rosterSize = teamPlayers.length;
               const noResponse = rosterSize > 0 ? Math.max(0, rosterSize - respondedCount) : null;
 
+              const unavailablePlayers = teamPlayers.filter(
+                p => p.status === 'injured' || p.status === 'suspended'
+              );
+              const unavailableCount = unavailablePlayers.length;
+
               const isBelowThreshold = warningsEnabled && confirmed < threshold;
               const hasNonResponders = noResponse !== null ? noResponse > 0 : false;
 
@@ -271,16 +277,33 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
                     )}
                   </div>
 
+                  {unavailableCount > 0 && (
+                    <div className="flex items-center gap-1.5 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                      <UserX size={13} className="shrink-0" />
+                      <span>
+                        {unavailableCount} player{unavailableCount !== 1 ? 's' : ''} unavailable (injured/suspended)
+                      </span>
+                    </div>
+                  )}
+
                   {rsvps.length > 0 && (
                     <ul className="space-y-0.5 text-xs text-gray-600 max-h-28 overflow-y-auto">
-                      {rsvps.map(r => (
-                        <li key={r.playerId} className="flex justify-between gap-2">
-                          <span className="truncate">{r.name}</span>
-                          <span className={r.response === 'yes' ? 'text-green-600' : r.response === 'no' ? 'text-red-500' : 'text-yellow-600'}>
-                            {r.response === 'yes' ? 'Yes' : r.response === 'no' ? 'No' : 'Maybe'}
-                          </span>
-                        </li>
-                      ))}
+                      {rsvps.map(r => {
+                        const rsvpPlayer = teamPlayers.find(p => p.id === r.playerId);
+                        return (
+                          <li key={r.playerId} className="flex justify-between items-center gap-2">
+                            <span className="flex items-center gap-1.5 truncate min-w-0">
+                              <span className="truncate">{r.name}</span>
+                              {rsvpPlayer && (
+                                <PlayerStatusBadge player={rsvpPlayer} />
+                              )}
+                            </span>
+                            <span className={`shrink-0 ${r.response === 'yes' ? 'text-green-600' : r.response === 'no' ? 'text-red-500' : 'text-yellow-600'}`}>
+                              {r.response === 'yes' ? 'Yes' : r.response === 'no' ? 'No' : 'Maybe'}
+                            </span>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
 

@@ -1,4 +1,4 @@
-export type PlayerStatus = 'active' | 'injured' | 'inactive';
+export type PlayerStatus = 'active' | 'injured' | 'suspended' | 'inactive';
 
 export interface ParentContact {
   parentName: string;
@@ -29,6 +29,15 @@ export interface Player {
   email?: string;
   phone?: string;
   status: PlayerStatus;
+  /** ISO date string — expected return date for injured/suspended players */
+  statusReturnDate?: string;
+  /**
+   * Coach-only private note about the injury/suspension.
+   * Must NOT be exposed to player or parent roles.
+   */
+  statusNote?: string;
+  /** ISO timestamp of the last status change */
+  statusUpdatedAt?: string;
   notes?: string;
   absence?: PlayerAbsence | null;
   parentContact?: ParentContact;
