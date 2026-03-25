@@ -1,4 +1,4 @@
-export type NotificationType = 'event_reminder' | 'result_recorded' | 'roster_change' | 'attendance_missing' | 'info';
+export type NotificationType = 'event_reminder' | 'result_recorded' | 'roster_change' | 'attendance_missing' | 'info' | 'weather_alert';
 
 export interface AppNotification {
   id: string;
