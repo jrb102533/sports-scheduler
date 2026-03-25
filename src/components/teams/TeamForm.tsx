@@ -10,7 +10,7 @@ import { useTeamStore } from '@/store/useTeamStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { FLAGS } from '@/lib/flags';
-import { SPORT_TYPES, SPORT_TYPE_LABELS, TEAM_COLORS, AGE_GROUPS, AGE_GROUP_LABELS } from '@/constants';
+import { SPORT_TYPES, SPORT_TYPE_LABELS, TEAM_COLORS, AGE_GROUPS, AGE_GROUP_LABELS, SPORT_FORFEIT_THRESHOLDS } from '@/constants';
 import { Upload, X, Image } from 'lucide-react';
 import type { Team, SportType, AgeGroup, UserProfile } from '@/types';
 
@@ -41,6 +41,10 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const [coachId, setCoachId] = useState(editTeam?.coachId ?? '');
   const [coachUsers, setCoachUsers] = useState<UserProfile[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [attendanceWarningsEnabled, setAttendanceWarningsEnabled] = useState<boolean>(editTeam?.attendanceWarningsEnabled !== false);
+  const [attendanceWarningThreshold, setAttendanceWarningThreshold] = useState<string>(
+    editTeam?.attendanceWarningThreshold !== undefined ? String(editTeam.attendanceWarningThreshold) : ''
+  );
 
   // Logo state
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -59,7 +63,12 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
     setLogoFile(null);
     setLogoPreview(editTeam?.logoUrl ?? null);
     setRemoveLogo(false);
-  }, [open, editTeam?.logoUrl]);
+    // Reset attendance warning state
+    setAttendanceWarningsEnabled(editTeam?.attendanceWarningsEnabled !== false);
+    setAttendanceWarningThreshold(
+      editTeam?.attendanceWarningThreshold !== undefined ? String(editTeam.attendanceWarningThreshold) : ''
+    );
+  }, [open, editTeam?.logoUrl, editTeam?.attendanceWarningsEnabled, editTeam?.attendanceWarningThreshold]);
 
   // Auto-fill coach email with current user's email for new teams only
   useEffect(() => {
@@ -131,6 +140,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
 
         // If this is a new team we need to carry the id through
         const now = new Date().toISOString();
+        const parsedThreshold = attendanceWarningThreshold !== '' ? parseInt(attendanceWarningThreshold, 10) : undefined;
         const base = {
           name: name.trim(),
           sportType,
@@ -142,6 +152,8 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
           ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}),
           ...(ageGroup ? { ageGroup } : {}),
           ...(coachId ? { coachId } : {}),
+          attendanceWarningsEnabled,
+          ...(parsedThreshold !== undefined && !isNaN(parsedThreshold) ? { attendanceWarningThreshold: parsedThreshold } : {}),
         };
         if (editTeam) {
           await updateTeam({ ...editTeam, ...base });
@@ -153,6 +165,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
       }
 
       const now = new Date().toISOString();
+      const parsedThreshold2 = attendanceWarningThreshold !== '' ? parseInt(attendanceWarningThreshold, 10) : undefined;
       const base: Partial<Team> = {
         name: name.trim(),
         sportType,
@@ -163,6 +176,8 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}),
         ...(ageGroup ? { ageGroup } : {}),
         ...(coachId ? { coachId } : {}),
+        attendanceWarningsEnabled,
+        ...(parsedThreshold2 !== undefined && !isNaN(parsedThreshold2) ? { attendanceWarningThreshold: parsedThreshold2 } : {}),
       };
       if (logoUrl) base.logoUrl = logoUrl;
       else delete base.logoUrl;
@@ -257,6 +272,35 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
             <p className="text-xs text-gray-400 mt-1">Links a registered coach account to this team.</p>
           </div>
         )}
+        {/* Attendance Warnings */}
+        <div className="border-t border-gray-100 pt-4 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-700">Attendance Warnings</h3>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={attendanceWarningsEnabled}
+              onChange={e => setAttendanceWarningsEnabled(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-gray-700">Warn me when confirmed attendance is low</span>
+          </label>
+          {attendanceWarningsEnabled && (
+            <div className="space-y-1">
+              <Input
+                label="Minimum players threshold"
+                type="number"
+                min={1}
+                value={attendanceWarningThreshold}
+                onChange={e => setAttendanceWarningThreshold(e.target.value)}
+                placeholder={`Default for ${sportType}: ${SPORT_FORFEIT_THRESHOLDS[sportType]}`}
+              />
+              <p className="text-xs text-gray-400">
+                Warn when fewer than this many players have confirmed. Leave blank to use the sport default.
+              </p>
+            </div>
+          )}
+        </div>
+
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button onClick={() => void handleSubmit()} disabled={uploading}>

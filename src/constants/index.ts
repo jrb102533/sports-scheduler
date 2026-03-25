@@ -1,4 +1,4 @@
-import type { SportType, AgeGroup } from '@/types';
+import type { SportType, AgeGroup, Team } from '@/types';
 
 export const STORAGE_KEYS = {
   TEAMS: 'sportsScheduler_teams',
@@ -91,3 +91,25 @@ export const TEAM_COLORS = [
   '#14b8a6', '#3b82f6', '#8b5cf6', '#ec4899',
   '#06b6d4', '#84cc16', '#f59e0b', '#6366f1',
 ];
+
+export const SPORT_FORFEIT_THRESHOLDS: Record<SportType, number> = {
+  soccer: 7,
+  basketball: 5,
+  baseball: 9,
+  softball: 9,
+  volleyball: 6,
+  football: 8,
+  hockey: 7,
+  tennis: 1,
+  other: 7,
+};
+
+export function getAttendanceThreshold(team: Team | undefined): number {
+  if (!team) return 7;
+  if (team.attendanceWarningThreshold !== undefined) return team.attendanceWarningThreshold;
+  return SPORT_FORFEIT_THRESHOLDS[team.sportType] ?? 7;
+}
+
+export function isAttendanceWarningEnabled(team: Team | undefined): boolean {
+  return team?.attendanceWarningsEnabled !== false; // default true
+}

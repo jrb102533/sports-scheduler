@@ -19,6 +19,8 @@ export interface Team {
   ownerName: string;
   coachId?: string;
   leagueId?: string;   // optional: id of the league this team belongs to
+  attendanceWarningThreshold?: number;  // undefined = use sport default
+  attendanceWarningsEnabled?: boolean;  // undefined = true (warnings on by default)
   isDeleted?: boolean;
   deletedAt?: string;
   createdAt: string;
