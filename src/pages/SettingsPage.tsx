@@ -74,22 +74,6 @@ export function SettingsPage() {
           </div>
         </Card>
 
-        {/* Notifications */}
-        <Card className="overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-            <Bell size={18} className="text-orange-500" />
-            <h2 className="font-semibold text-gray-900">Notifications</h2>
-          </div>
-          <div className="px-5 divide-y divide-gray-100">
-            <SettingsToggle
-              checked={weeklyDigestEnabled}
-              onChange={handleWeeklyDigestToggle}
-              label="Weekly digest"
-              description="Receive a Monday morning summary of your week's events"
-            />
-          </div>
-        </Card>
-
         {/* Messaging */}
         <Card className="overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
