@@ -92,7 +92,7 @@ export function TermsOfServicePage() {
             <p className="text-sm text-gray-700">
               If you become aware that player data is inaccurate, you are obligated to correct it promptly within the platform
               or by contacting{' '}
-              <a href="mailto:privacy@firstwhistle.app" className="text-blue-600 hover:underline">privacy@firstwhistle.app</a>.
+              <a href="mailto:first.whistle.legal@gmail.com" className="text-blue-600 hover:underline">first.whistle.legal@gmail.com</a>.
             </p>
 
             <h3 className="text-base font-semibold text-gray-800">4.3 Communications Responsibility</h3>
@@ -141,7 +141,7 @@ export function TermsOfServicePage() {
             <h3 className="text-base font-semibold text-gray-800">5.4 Parental Requests</h3>
             <p className="text-sm text-gray-700">
               Parents or guardians may contact us at{' '}
-              <a href="mailto:privacy@firstwhistle.app" className="text-blue-600 hover:underline">privacy@firstwhistle.app</a>{' '}
+              <a href="mailto:first.whistle.legal@gmail.com" className="text-blue-600 hover:underline">first.whistle.legal@gmail.com</a>{' '}
               to review, correct, or delete their child&rsquo;s player profile. We will process verified parental requests within 30 days.
             </p>
 
@@ -266,7 +266,7 @@ export function TermsOfServicePage() {
             <h3 className="text-base font-semibold text-gray-800">13.1 By You</h3>
             <p className="text-sm text-gray-700">
               You may terminate your account at any time through account settings or by contacting{' '}
-              <a href="mailto:privacy@firstwhistle.app" className="text-blue-600 hover:underline">privacy@firstwhistle.app</a>.
+              <a href="mailto:first.whistle.legal@gmail.com" className="text-blue-600 hover:underline">first.whistle.legal@gmail.com</a>.
             </p>
 
             <h3 className="text-base font-semibold text-gray-800">13.2 By Us</h3>
@@ -309,7 +309,7 @@ export function TermsOfServicePage() {
             <h2 className="text-xl font-semibold text-gray-900 border-b border-gray-100 pb-2">16. Contact Us</h2>
             <p className="text-sm text-gray-700">
               Email:{' '}
-              <a href="mailto:privacy@firstwhistle.app" className="text-blue-600 hover:underline">privacy@firstwhistle.app</a>
+              <a href="mailto:first.whistle.legal@gmail.com" className="text-blue-600 hover:underline">first.whistle.legal@gmail.com</a>
             </p>
           </section>
         </div>

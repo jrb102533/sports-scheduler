@@ -40,7 +40,7 @@ export function PrivacyPolicyPage() {
             </p>
             <p className="text-sm text-gray-700">
               If you have questions, contact us at{' '}
-              <a href="mailto:privacy@firstwhistle.app" className="text-blue-600 hover:underline">privacy@firstwhistle.app</a>.
+              <a href="mailto:first.whistle.legal@gmail.com" className="text-blue-600 hover:underline">first.whistle.legal@gmail.com</a>.
             </p>
           </section>
 
@@ -141,7 +141,7 @@ export function PrivacyPolicyPage() {
               By adding a player under 13 to a team, the coach or administrator represents that they have obtained verifiable
               parental or guardian consent. Parents who believe their child&rsquo;s profile was created without their consent
               should contact us immediately at{' '}
-              <a href="mailto:privacy@firstwhistle.app" className="text-blue-600 hover:underline">privacy@firstwhistle.app</a>.
+              <a href="mailto:first.whistle.legal@gmail.com" className="text-blue-600 hover:underline">first.whistle.legal@gmail.com</a>.
               We will respond to verified parental requests within <strong>30 days</strong>.
             </p>
 
@@ -155,7 +155,7 @@ export function PrivacyPolicyPage() {
             <h3 className="text-base font-semibold text-gray-800">4.5 How to Submit a Parental Request</h3>
             <p className="text-sm text-gray-700">
               Contact us at{' '}
-              <a href="mailto:privacy@firstwhistle.app" className="text-blue-600 hover:underline">privacy@firstwhistle.app</a>{' '}
+              <a href="mailto:first.whistle.legal@gmail.com" className="text-blue-600 hover:underline">first.whistle.legal@gmail.com</a>{' '}
               with the subject line &ldquo;Parental Data Request.&rdquo; Please include your name, your child&rsquo;s name and
               team, and the action you are requesting. We may ask you to verify your identity before processing the request.
             </p>
@@ -210,7 +210,7 @@ export function PrivacyPolicyPage() {
               We implement industry-standard security measures including encrypted data transmission (HTTPS/TLS), encrypted
               password storage via Firebase Authentication, and role-based access controls. No system is completely secure.
               If you believe your account has been compromised, contact us immediately at{' '}
-              <a href="mailto:privacy@firstwhistle.app" className="text-blue-600 hover:underline">privacy@firstwhistle.app</a>.
+              <a href="mailto:first.whistle.legal@gmail.com" className="text-blue-600 hover:underline">first.whistle.legal@gmail.com</a>.
             </p>
           </section>
 
@@ -237,7 +237,7 @@ export function PrivacyPolicyPage() {
             </div>
             <p className="text-sm text-gray-700">
               To exercise any of these rights, contact us at{' '}
-              <a href="mailto:privacy@firstwhistle.app" className="text-blue-600 hover:underline">privacy@firstwhistle.app</a>.
+              <a href="mailto:first.whistle.legal@gmail.com" className="text-blue-600 hover:underline">first.whistle.legal@gmail.com</a>.
               We will respond within <strong>30 days</strong>.
             </p>
             <p className="text-sm text-gray-700">
@@ -269,7 +269,7 @@ export function PrivacyPolicyPage() {
             <h2 className="text-xl font-semibold text-gray-900 border-b border-gray-100 pb-2">12. Contact Us</h2>
             <p className="text-sm text-gray-700">
               Email:{' '}
-              <a href="mailto:privacy@firstwhistle.app" className="text-blue-600 hover:underline">privacy@firstwhistle.app</a>
+              <a href="mailto:first.whistle.legal@gmail.com" className="text-blue-600 hover:underline">first.whistle.legal@gmail.com</a>
             </p>
           </section>
         </div>
