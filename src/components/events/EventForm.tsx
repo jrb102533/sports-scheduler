@@ -109,6 +109,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const [duration, setDuration] = useState<number>(editEvent?.duration ?? initial?.duration ?? DEFAULT_DURATION);
   const [location, setLocation] = useState(editEvent?.location ?? initial?.location ?? '');
   const [notes, setNotes] = useState(editEvent?.notes ?? initial?.notes ?? '');
+  const [isOutdoor, setIsOutdoor] = useState<boolean>(editEvent?.isOutdoor ?? initial?.isOutdoor ?? true);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Team + home/away
@@ -210,6 +211,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     const optionals = {
       duration,
       endTime: computedEndTime,
+      isOutdoor,
       ...(location.trim() ? { location: location.trim() } : {}),
       ...(effectiveHomeTeamId ? { homeTeamId: effectiveHomeTeamId } : {}),
       ...(effectiveAwayTeamId ? { awayTeamId: effectiveAwayTeamId } : {}),
@@ -312,6 +314,25 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           placeholder="e.g. 90"
         />
         <Input label="Location (optional)" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. City Park Field 1" />
+
+        {/* Outdoor toggle */}
+        <label className="flex items-center gap-3 cursor-pointer select-none">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isOutdoor}
+            onClick={() => setIsOutdoor(v => !v)}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${isOutdoor ? 'bg-blue-600' : 'bg-gray-300'}`}
+          >
+            <span
+              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${isOutdoor ? 'translate-x-4' : 'translate-x-1'}`}
+            />
+          </button>
+          <span className="text-sm font-medium text-gray-700">Outdoor event</span>
+          {isOutdoor && (
+            <span className="text-xs text-gray-400">Weather alerts enabled</span>
+          )}
+        </label>
 
         {/* Team + Home/Away */}
         <div className="space-y-2">
