@@ -8,6 +8,7 @@ import { useAuthStore, getMemberships } from '@/store/useAuthStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
+import { ROLE_DEFINITIONS } from '@/components/auth/RoleCardPicker';
 import type { RoleMembership } from '@/types';
 
 const roleColors: Record<string, string> = {
@@ -77,9 +78,16 @@ export function ProfilePage() {
             <h2 className="text-lg font-bold text-gray-900">{profile.displayName}</h2>
             <p className="text-sm text-gray-500">{profile.email}</p>
             <div className="flex items-center gap-2 mt-1">
-              <Badge className={roleColors[profile.role]}>
-                <Shield size={11} className="mr-1" /> {profile.role.charAt(0).toUpperCase() + profile.role.slice(1)}
-              </Badge>
+              {(() => {
+                const def = ROLE_DEFINITIONS.find(d => d.role === profile.role);
+                const PrimaryIcon = def?.icon ?? Shield;
+                const primaryTitle = def?.title ?? (profile.role.charAt(0).toUpperCase() + profile.role.slice(1));
+                return (
+                  <Badge className={roleColors[profile.role]}>
+                    <PrimaryIcon size={11} className="mr-1" /> {primaryTitle}
+                  </Badge>
+                );
+              })()}
               {team && (
                 <span className="text-xs text-gray-500 flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: team.color }} />
@@ -111,18 +119,30 @@ export function ProfilePage() {
               const memberLeague = m.leagueId ? leagues.find(l => l.id === m.leagueId) : undefined;
               const contextLabel = membershipContextLabel(m, memberTeam?.name, memberLeague?.name);
               const isActive = i === activeIndex;
+              const roleDef = ROLE_DEFINITIONS.find(d => d.role === m.role);
+              const RoleIcon = roleDef?.icon ?? Shield;
+              const roleTitle = roleDef?.title ?? m.role.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
               return (
                 <li
                   key={i}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 border ${isActive ? 'border-orange-300 bg-orange-50' : 'border-gray-100 bg-gray-50'}`}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 border transition-colors ${isActive ? 'border-orange-300 bg-orange-50' : 'border-gray-100 bg-gray-50'}`}
                 >
-                  <Badge className={roleColors[m.role] ?? 'bg-gray-100 text-gray-700'}>
-                    <Shield size={11} className="mr-1" />
-                    {m.role.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                  </Badge>
+                  {/* Role pill with icon */}
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                      isActive
+                        ? 'bg-[#f97316] text-white'
+                        : (roleColors[m.role] ?? 'bg-gray-100 text-gray-700')
+                    }`}
+                  >
+                    <RoleIcon size={11} />
+                    {roleTitle}
+                  </span>
+
                   {contextLabel && (
                     <span className="text-sm text-gray-600 truncate flex-1">{contextLabel}</span>
                   )}
+
                   <div className="ml-auto flex items-center gap-2 flex-shrink-0">
                     {isActive && (
                       <span className="text-xs font-medium text-orange-600">Active</span>
