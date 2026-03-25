@@ -15,6 +15,7 @@ import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
+import { useAvailabilityStore } from '@/store/useAvailabilityStore';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { useAuthStore, canEdit } from '@/store/useAuthStore';
 import { SPORT_TYPE_LABELS, AGE_GROUP_LABELS } from '@/constants';
@@ -83,6 +84,14 @@ export function TeamDetailPage() {
   const [invitesLoading, setInvitesLoading] = useState(false);
   const [resendingEmails, setResendingEmails] = useState<Set<string>>(new Set());
   const [revokingEmails, setRevokingEmails] = useState<Set<string>>(new Set());
+
+  // Load player availability for this team on mount
+  const loadAvailability = useAvailabilityStore(s => s.loadAvailability);
+  useEffect(() => {
+    if (!id) return;
+    const unsub = loadAvailability(id);
+    return unsub;
+  }, [id, loadAvailability]);
 
   useEffect(() => {
     if (tab !== 'requests' || !team || !canSeeRequests) return;
