@@ -1289,3 +1289,159 @@ export const checkWeatherAlerts = onSchedule(
     console.log(`checkWeatherAlerts: done — ${alertsSent} alert(s) sent`);
   },
 );
+// ─── Scheduled: send weekly digest every Monday at 7AM UTC ───────────────────
+
+export const sendWeeklyDigest = onSchedule('0 7 * * 1', async () => {
+  const db = admin.firestore();
+
+  // Build date range: today (Monday) through Sunday
+  const monday = new Date();
+  monday.setUTCHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+
+  const mondayStr = monday.toISOString().slice(0, 10); // YYYY-MM-DD
+  const sundayStr = sunday.toISOString().slice(0, 10);
+
+  console.log(`sendWeeklyDigest: querying events from ${mondayStr} to ${sundayStr}`);
+
+  const eventsSnap = await db.collection('events')
+    .where('date', '>=', mondayStr)
+    .where('date', '<=', sundayStr)
+    .get();
+
+  if (eventsSnap.empty) {
+    console.log('sendWeeklyDigest: no events this week \u2014 skipping');
+    return;
+  }
+
+  interface WeekEvent {
+    id: string;
+    title: string;
+    date: string;
+    startTime: string;
+    teamId: string;
+    rsvps: { response: string }[];
+    playerCount: number;
+  }
+
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  function dayOfWeek(dateStr: string): string {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const d = new Date(Date.UTC(year!, (month! - 1), day!));
+    return dayNames[d.getUTCDay()] ?? dateStr;
+  }
+
+  // Group events by teamId
+  const teamEventMap = new Map<string, WeekEvent[]>();
+  for (const evDoc of eventsSnap.docs) {
+    const ev = evDoc.data();
+    const teamIds: string[] = ev.teamIds ?? (ev.teamId ? [ev.teamId as string] : []);
+    for (const tid of teamIds) {
+      if (!teamEventMap.has(tid)) teamEventMap.set(tid, []);
+      teamEventMap.get(tid)!.push({
+        id: evDoc.id,
+        title: (ev.title as string) ?? 'Event',
+        date: (ev.date as string) ?? '',
+        startTime: (ev.startTime as string) ?? '',
+        teamId: tid,
+        rsvps: (ev.rsvps as { response: string }[]) ?? [],
+        playerCount: (ev.playerCount as number) ?? 0,
+      });
+    }
+  }
+
+  if (teamEventMap.size === 0) {
+    console.log('sendWeeklyDigest: events found but none have teamIds \u2014 skipping');
+    return;
+  }
+
+  // Fetch users per team (chunked for Firestore `in` limit of 30)
+  const allTeamIds = [...teamEventMap.keys()];
+  const usersByTeam = new Map<string, { uid: string; role: string; weeklyDigestEnabled: boolean }[]>();
+
+  for (let i = 0; i < allTeamIds.length; i += 30) {
+    const chunk = allTeamIds.slice(i, i + 30);
+    const usersSnap = await db.collection('users').where('teamId', 'in', chunk).get();
+    for (const userDoc of usersSnap.docs) {
+      const u = userDoc.data();
+      const tid = u.teamId as string | undefined;
+      if (!tid) continue;
+      if (!usersByTeam.has(tid)) usersByTeam.set(tid, []);
+      usersByTeam.get(tid)!.push({
+        uid: userDoc.id,
+        role: (u.role as string) ?? 'player',
+        weeklyDigestEnabled: u.weeklyDigestEnabled !== false,
+      });
+    }
+  }
+
+  const createdAt = new Date().toISOString();
+  let firestoreBatch = db.batch();
+  let batchCount = 0;
+  let totalNotifs = 0;
+
+  async function flushBatch(): Promise<void> {
+    if (batchCount === 0) return;
+    await firestoreBatch.commit();
+    firestoreBatch = db.batch();
+    batchCount = 0;
+  }
+
+  for (const [teamId, events] of teamEventMap.entries()) {
+    const members = usersByTeam.get(teamId) ?? [];
+    if (!members.length) continue;
+
+    // Sort events by date then start time
+    events.sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+
+    // Identify events with low RSVPs (confirmed < half of total players)
+    const lowRsvpEvents = events.filter(ev => {
+      const confirmed = ev.rsvps.filter(r => r.response === 'yes').length;
+      const total = ev.playerCount > 0 ? ev.playerCount : Math.max(ev.rsvps.length, 1);
+      return confirmed < total / 2;
+    });
+
+    for (const member of members) {
+      if (!member.weeklyDigestEnabled) continue;
+
+      const eventLines = events.map(ev => {
+        const dow = dayOfWeek(ev.date);
+        const time = ev.startTime ? ` at ${ev.startTime}` : '';
+        return `${ev.title} on ${dow}${time}`;
+      });
+
+      let message = `You have ${events.length} event${events.length !== 1 ? 's' : ''} this week: ${eventLines.join(', ')}.`;
+
+      if ((member.role === 'coach' || member.role === 'admin') && lowRsvpEvents.length > 0) {
+        const lowLines = lowRsvpEvents.map(ev => {
+          const confirmed = ev.rsvps.filter(r => r.response === 'yes').length;
+          const total = ev.playerCount > 0 ? ev.playerCount : Math.max(ev.rsvps.length, 1);
+          return `${ev.title} on ${dayOfWeek(ev.date)} (${confirmed}/${total} responded)`;
+        });
+        message += ` \u26a0 Low RSVPs: ${lowLines.join(', ')}.`;
+      }
+
+      const notifRef = db.collection('users').doc(member.uid).collection('notifications').doc();
+      firestoreBatch.set(notifRef, {
+        id: notifRef.id,
+        type: 'info',
+        title: 'This Week in Sport',
+        message,
+        isRead: false,
+        createdAt,
+      });
+      batchCount++;
+      totalNotifs++;
+
+      if (batchCount >= 499) {
+        await flushBatch();
+      }
+    }
+  }
+
+  await flushBatch();
+  console.log(`sendWeeklyDigest: wrote ${totalNotifs} notification(s) for week of ${mondayStr}`);
+});
+
