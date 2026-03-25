@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, CalendarDays, Trophy, Users, Activity, MessageSquare, Bell, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Plus, CalendarDays, Trophy, Users, Activity, MessageSquare, Bell, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Bandage } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { EventCard } from '@/components/events/EventCard';
@@ -21,6 +21,14 @@ import { seedDemoData } from '@/lib/demoData';
 
 const LOW_RSVP_RESPONSE_RATIO = 0.5;
 const SOON_HOURS = 48;
+
+function formatAbsenceReturnDate(iso: string): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  return new Date(year, (month ?? 1) - 1, day).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+}
 
 export function Dashboard() {
   const allEvents = useEventStore(s => s.events);
@@ -66,6 +74,16 @@ export function Dashboard() {
 
   const isManager = profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach';
 
+  // Absent/injured players — visible to coaches/admins only
+  const todayStr = todayISO();
+  const absentPlayers = isManager
+    ? players.filter(p => {
+        if (!p.absence) return false;
+        if (!p.absence.returnDate) return true;
+        return p.absence.returnDate >= todayStr;
+      })
+    : [];
+
   type NextAction =
     | { kind: 'unrecorded_result'; event: ScheduledEvent }
     | { kind: 'low_rsvp'; event: ScheduledEvent; nonResponders: number }
@@ -73,7 +91,7 @@ export function Dashboard() {
     | { kind: 'all_clear'; nextEvent: ScheduledEvent | null };
 
   function computeNextAction(): NextAction {
-    const today = todayISO();
+    const today = todayStr;
     const nowMs = Date.now();
 
     const unrecorded = events
@@ -326,6 +344,34 @@ export function Dashboard() {
           </Card>
         );
       })()}
+
+      {/* Injured / Absent Players — coaches and admins only */}
+      {absentPlayers.length > 0 && (
+        <Card className="p-4">
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2 mb-3">
+            <Bandage size={16} className="text-red-500" /> Injured / Absent Players
+          </h2>
+          <ul className="space-y-1.5">
+            {absentPlayers.map(p => (
+              <li key={p.id} className="flex items-center gap-2 text-sm text-gray-700">
+                <span className="font-medium">{p.firstName} {p.lastName}</span>
+                <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium ${
+                  p.absence!.type === 'injured' ? 'bg-red-100 text-red-700' :
+                  p.absence!.type === 'suspended' ? 'bg-amber-100 text-amber-700' :
+                  'bg-gray-100 text-gray-600'
+                }`}>
+                  {p.absence!.type === 'injured' ? 'Injured' : p.absence!.type === 'suspended' ? 'Suspended' : 'Unavailable'}
+                </span>
+                {p.absence!.returnDate && (
+                  <span className="text-gray-400 text-xs">
+                    returns {formatAbsenceReturnDate(p.absence!.returnDate)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {/* Main grid: Upcoming Events + Messages */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

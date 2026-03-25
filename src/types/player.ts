@@ -12,6 +12,12 @@ export interface EmergencyContact {
   relationship?: string;
 }
 
+export interface PlayerAbsence {
+  type: 'injured' | 'suspended' | 'other';
+  returnDate?: string;  // ISO date YYYY-MM-DD
+  note?: string;        // private, only visible to coach/admin
+}
+
 export interface Player {
   id: string;
   teamId: string;
@@ -33,6 +39,7 @@ export interface Player {
   /** ISO timestamp of the last status change */
   statusUpdatedAt?: string;
   notes?: string;
+  absence?: PlayerAbsence | null;
   parentContact?: ParentContact;
   parentContact2?: ParentContact;
   emergencyContact?: EmergencyContact;

@@ -64,6 +64,10 @@ export interface ScheduledEvent {
   rsvps?: EventRsvp[];
   attendance?: AttendanceRecord[];
   attendanceRecorded?: boolean;
+  /** True if the event is held outdoors (default true). Set to false for indoor venues. */
+  isOutdoor?: boolean;
+  /** Set to true once a weather alert notification has been sent for this event. */
+  weatherAlertSent?: boolean;
   createdAt: string;
   updatedAt: string;
 }
