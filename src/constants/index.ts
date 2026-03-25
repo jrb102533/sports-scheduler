@@ -67,6 +67,7 @@ export const EVENT_STATUS_COLORS = {
 export const PLAYER_STATUS_LABELS = {
   active: 'Active',
   injured: 'Injured',
+  suspended: 'Suspended',
   inactive: 'Inactive',
 } as const;
 

@@ -1,17 +1,21 @@
 import { useState } from 'react';
-import { Edit, Trash2, Phone } from 'lucide-react';
+import { Edit, Trash2, Phone, ShieldAlert } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { PlayerForm } from './PlayerForm';
+import { PlayerStatusBadge } from './PlayerStatusBadge';
+import { PlayerStatusModal } from './PlayerStatusModal';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useTeamStore } from '@/store/useTeamStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import { PLAYER_STATUS_LABELS } from '@/constants';
 import type { Player } from '@/types';
 
 const statusColors: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
   injured: 'bg-red-100 text-red-700',
+  suspended: 'bg-orange-100 text-orange-700',
   inactive: 'bg-gray-100 text-gray-600',
 };
 
@@ -23,9 +27,12 @@ interface RosterTableProps {
 export function RosterTable({ players, teamId }: RosterTableProps) {
   const { deletePlayer } = usePlayerStore();
   const team = useTeamStore(s => s.teams.find(t => t.id === teamId));
+  const profile = useAuthStore(s => s.profile);
   const isAdultTeam = team?.ageGroup === 'adult';
+  const canManage = profile?.role === 'admin' || profile?.role === 'coach';
   const [editPlayer, setEditPlayer] = useState<Player | null>(null);
   const [deletePlayer_, setDeletePlayer] = useState<Player | null>(null);
+  const [statusPlayer, setStatusPlayer] = useState<Player | null>(null);
 
   if (players.length === 0) {
     return <p className="text-sm text-gray-500 py-6 text-center">No players yet. Add your first player above.</p>;
@@ -52,7 +59,12 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
             {players.sort((a, b) => (a.jerseyNumber ?? 999) - (b.jerseyNumber ?? 999)).map(player => (
               <tr key={player.id} className="border-b border-gray-100 hover:bg-gray-50">
                 <td className="px-3 py-3 text-gray-500 text-sm">{player.jerseyNumber ?? '—'}</td>
-                <td className="px-3 py-3 font-medium text-gray-900 text-sm">{player.firstName} {player.lastName}</td>
+                <td className="px-3 py-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-medium text-gray-900">{player.firstName} {player.lastName}</span>
+                    <PlayerStatusBadge player={player} showReturnDate />
+                  </div>
+                </td>
                 <td className="hidden sm:table-cell px-3 py-3 text-gray-600 text-sm">{player.position ?? '—'}</td>
                 <td className="px-3 py-3">
                   <Badge className={statusColors[player.status]}>{PLAYER_STATUS_LABELS[player.status]}</Badge>
@@ -92,6 +104,16 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
                 </td>
                 <td className="px-3 py-3 text-right">
                   <div className="flex justify-end gap-1">
+                    {canManage && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setStatusPlayer(player)}
+                        title="Update injury / suspension status"
+                      >
+                        <ShieldAlert size={13} className={player.status === 'injured' ? 'text-red-500' : player.status === 'suspended' ? 'text-orange-500' : 'text-gray-400'} />
+                      </Button>
+                    )}
                     <Button variant="ghost" size="sm" onClick={() => setEditPlayer(player)}><Edit size={13} /></Button>
                     <Button variant="ghost" size="sm" onClick={() => setDeletePlayer(player)}><Trash2 size={13} className="text-red-500" /></Button>
                   </div>
@@ -102,6 +124,13 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
         </table>
       </div>
       {editPlayer && <PlayerForm open teamId={teamId} onClose={() => setEditPlayer(null)} editPlayer={editPlayer} />}
+      {statusPlayer && (
+        <PlayerStatusModal
+          open
+          onClose={() => setStatusPlayer(null)}
+          player={statusPlayer}
+        />
+      )}
       <ConfirmDialog
         open={!!deletePlayer_}
         onClose={() => setDeletePlayer(null)}
