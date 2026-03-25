@@ -234,7 +234,9 @@ export function EventCard({ event, teams, onClick }: EventCardProps) {
 
               {event.result && (
                 <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-100 text-sm font-bold text-gray-800">
-                  {event.result.homeScore} – {event.result.awayScore}
+                  {event.result.placement
+                    ? event.result.placement
+                    : `${event.result.homeScore} – ${event.result.awayScore}`}
                 </div>
               )}
             </div>

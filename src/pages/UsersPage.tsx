@@ -1,14 +1,8 @@
 import { useState, useEffect } from 'react';
 import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { initializeApp, deleteApp } from 'firebase/app';
-import {
-  getAuth,
-  createUserWithEmailAndPassword,
-  updateProfile,
-  sendEmailVerification,
-} from 'firebase/auth';
-import { db, firebaseConfig } from '@/lib/firebase';
-import { Shield, Users, Plus, Trash2, Pencil, Check, X } from 'lucide-react';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '@/lib/firebase';
+import { Shield, Users, Plus, Trash2, Pencil, Check, X, Copy, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
@@ -222,53 +216,112 @@ interface AddUserModalProps {
   onCreated: (user: UserProfile) => void;
 }
 
+function generatePassword(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let result = '';
+  for (let i = 0; i < 12; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
 function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [tempPassword, setTempPassword] = useState('');
   const [role, setRole] = useState<UserRole>('coach');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [createdPassword, setCreatedPassword] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   function reset() {
-    setDisplayName(''); setEmail(''); setPassword(''); setRole('coach'); setError('');
+    setDisplayName(''); setEmail(''); setTempPassword(''); setRole('coach');
+    setError(''); setCreatedPassword(null); setCopied(false);
   }
 
   function handleClose() { reset(); onClose(); }
 
+  function handleAutoGenerate() {
+    setTempPassword(generatePassword());
+  }
+
+  function handleCopyPassword() {
+    navigator.clipboard.writeText(tempPassword).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (tempPassword.length < 8) { setError('Temporary password must be at least 8 characters'); return; }
 
     setLoading(true);
     try {
-      // Use a secondary app instance so admin stays signed in
-      const appName = `admin-create-${Date.now()}`;
-      const secondaryApp = initializeApp(firebaseConfig, appName);
-      const secondaryAuth = getAuth(secondaryApp);
-      try {
-        const { user } = await createUserWithEmailAndPassword(secondaryAuth, email, password);
-        await updateProfile(user, { displayName });
-        await sendEmailVerification(user);
-        const profile: UserProfile = {
-          uid: user.uid,
-          email,
-          displayName,
-          role,
-          createdAt: new Date().toISOString(),
-        };
-        await setDoc(doc(db, 'users', user.uid), profile);
-        onCreated(profile);
-        handleClose();
-      } finally {
-        await deleteApp(secondaryApp);
-      }
+      const fn = httpsCallable<
+        { email: string; displayName: string; role: string; tempPassword: string },
+        { uid: string }
+      >(functions, 'createUserByAdmin');
+      const result = await fn({ email, displayName, role, tempPassword });
+      const profile: UserProfile = {
+        uid: result.data.uid,
+        email,
+        displayName,
+        role,
+        mustChangePassword: true,
+        createdAt: new Date().toISOString(),
+      };
+      onCreated(profile);
+      setCreatedPassword(tempPassword);
     } catch (e: unknown) {
-      setError((e as Error).message);
+      const msg = (e as { message?: string }).message ?? 'Something went wrong. Please try again.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleCopyCreatedPassword() {
+    if (!createdPassword) return;
+    navigator.clipboard.writeText(createdPassword).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  if (createdPassword) {
+    return (
+      <Modal open={open} onClose={handleClose} title="User Created">
+        <div className="space-y-4">
+          <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+            <p className="text-sm font-medium text-green-800 mb-2">
+              User created successfully. Share this temporary password with them:
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 bg-white border border-green-200 rounded px-3 py-1.5 text-sm font-mono text-green-900 select-all">
+                {createdPassword}
+              </code>
+              <button
+                type="button"
+                onClick={handleCopyCreatedPassword}
+                className="p-1.5 rounded hover:bg-green-100 text-green-700 transition-colors"
+                title="Copy password"
+              >
+                {copied ? <Check size={16} /> : <Copy size={16} />}
+              </button>
+            </div>
+            <p className="text-xs text-green-600 mt-2">
+              They will be asked to set a new password when they first sign in.
+            </p>
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button onClick={handleClose}>Done</Button>
+          </div>
+        </div>
+      </Modal>
+    );
   }
 
   return (
@@ -276,10 +329,39 @@ function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input label="Full Name" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Jane Smith" required />
         <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required />
-        <Input label="Temporary Password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" required />
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-gray-700">Temporary Password</label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={tempPassword}
+                onChange={e => setTempPassword(e.target.value)}
+                placeholder="At least 8 characters"
+                required
+                minLength={8}
+                className="w-full px-3 py-2 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10 font-mono"
+              />
+              {tempPassword && (
+                <button
+                  type="button"
+                  onClick={handleCopyPassword}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                  title="Copy password"
+                >
+                  {copied ? <Check size={15} /> : <Copy size={15} />}
+                </button>
+              )}
+            </div>
+            <Button type="button" variant="secondary" onClick={handleAutoGenerate} className="shrink-0 flex items-center gap-1.5 px-3">
+              <RefreshCw size={14} />
+              Auto-generate
+            </Button>
+          </div>
+        </div>
         <Select label="Role" value={role} onChange={e => setRole(e.target.value as UserRole)} options={roleOptions.filter(o => o.value !== 'admin')} />
         {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
-        <p className="text-xs text-gray-400">A verification email will be sent to the user. You can assign their team from the users table.</p>
+        <p className="text-xs text-gray-400">The user will be prompted to set a new password when they first sign in.</p>
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="secondary" onClick={handleClose}>Cancel</Button>
           <Button type="submit" disabled={loading}>{loading ? 'Creating…' : 'Create User'}</Button>
