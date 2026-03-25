@@ -1,5 +1,6 @@
 {
   "projects": {
+    "default": "first-whistle-e76f4",
     "test": "first-whistle-e76f4"
   }
 }
