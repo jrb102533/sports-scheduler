@@ -1,4 +1,4 @@
-import { Check, Users, Heart, Trophy, Layers, Shield, X } from 'lucide-react';
+import { Check, Users, Heart, Trophy, Layers, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { UserRole } from '@/types';
 
@@ -33,12 +33,6 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
     icon: Layers,
     title: 'League Manager',
     description: 'I manage schedules across multiple teams',
-  },
-  {
-    role: 'admin',
-    icon: Shield,
-    title: 'Admin',
-    description: 'I have full access to manage the platform',
   },
 ];
 
