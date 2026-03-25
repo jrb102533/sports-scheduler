@@ -11,6 +11,8 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, deleteDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
+import { getUserConsents } from '@/lib/consent';
+import { LEGAL_VERSIONS } from '@/legal/versions';
 import type { UserRole, UserProfile, RoleMembership, Team } from '@/types';
 
 /** Map Firebase Auth error codes to user-friendly messages. */
@@ -36,6 +38,7 @@ interface AuthStore {
   loading: boolean;
   error: string | null;
   mustChangePassword: boolean;
+  consentOutdated: boolean;
 
   init: () => () => void;
   signup: (email: string, password: string, displayName: string, role: UserRole, teamId?: string, memberships?: import('@/types').RoleMembership[]) => Promise<void>;
@@ -43,6 +46,7 @@ interface AuthStore {
   logout: () => Promise<void>;
   updateProfile: (patch: Partial<Pick<UserProfile, 'displayName' | 'avatarUrl' | 'teamId' | 'playerId' | 'leagueId' | 'activeContext' | 'memberships'>>) => Promise<void>;
   clearMustChangePassword: (newPassword: string) => Promise<void>;
+  markConsentCurrent: () => void;
   clearError: () => void;
 }
 
@@ -52,6 +56,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   loading: true,
   error: null,
   mustChangePassword: false,
+  consentOutdated: false,
 
   init: () => {
     let profileUnsub: (() => void) | null = null;
@@ -61,7 +66,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       profileUnsub = null;
 
       if (!user) {
-        set({ user: null, profile: null, loading: false });
+        set({ user: null, profile: null, loading: false, consentOutdated: false });
         return;
       }
 
@@ -83,6 +88,17 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           }
           const profile = snap.data() as UserProfile;
           set({ profile, mustChangePassword: profile.mustChangePassword === true });
+
+          // Check whether the user's stored consent versions are current
+          try {
+            const consents = await getUserConsents(user.uid);
+            const outdated =
+              consents.termsOfService?.version !== LEGAL_VERSIONS.termsOfService ||
+              consents.privacyPolicy?.version !== LEGAL_VERSIONS.privacyPolicy;
+            set({ consentOutdated: outdated });
+          } catch {
+            // Best-effort; don't block the app if consent check fails
+          }
 
           // Auto-link: if no team/player yet, check if an invite exists for this email
           if (!profile.teamId && !profile.playerId && user.email) {
@@ -191,6 +207,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     await updateDoc(doc(db, 'users', user.uid), { mustChangePassword: false });
     set({ mustChangePassword: false });
   },
+
+  markConsentCurrent: () => set({ consentOutdated: false }),
 
   clearError: () => set({ error: null }),
 }));
