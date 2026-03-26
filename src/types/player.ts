@@ -18,6 +18,22 @@ export interface PlayerAbsence {
   note?: string;        // private, only visible to coach/admin
 }
 
+/**
+ * Coach/admin-only PII stored in players/{id}/sensitiveData/private subcollection.
+ * The Firestore rule for this path restricts reads to isAdmin() || isCoach().
+ * These fields are merged into Player objects in usePlayerStore for privileged
+ * users, so all existing component code continues to work unchanged.
+ */
+export interface SensitivePlayerData {
+  /** Mirrors the parent document ID for collection-group queries. */
+  playerId: string;
+  teamId: string;
+  dateOfBirth?: string;
+  parentContact?: ParentContact;
+  parentContact2?: ParentContact;
+  emergencyContact?: EmergencyContact;
+}
+
 export interface Player {
   id: string;
   teamId: string;

@@ -83,6 +83,19 @@ service cloud.firestore {
         || (request.auth != null
             && request.auth.uid == resource.data.linkedUid
             && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['statusNote', 'statusReturnDate', 'statusUpdatedAt', 'status']));
+
+      // Sensitive PII subcollection — restricted to coaches and admins only.
+      // Stores: dateOfBirth, parentContact, parentContact2, emergencyContact.
+      // Players and parents never have access to this path.
+      match /sensitiveData/{doc} {
+        allow read, write: if isAdmin() || isCoach();
+      }
+    }
+
+    // Rate limit tracking written exclusively by Cloud Functions (Admin SDK).
+    // Clients have no access.
+    match /rateLimits/{doc} {
+      allow read, write: if false;
     }
 
     match /events/{eventId} {

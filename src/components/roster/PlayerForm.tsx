@@ -63,7 +63,7 @@ function ParentFields({
 }
 
 export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProps) {
-  const { addPlayer, updatePlayer } = usePlayerStore();
+  const { addPlayer, updatePlayer, addSensitiveData, updateSensitiveData } = usePlayerStore();
   const team = useTeamStore(s => s.teams.find(t => t.id === teamId));
 
   const [firstName, setFirstName] = useState(editPlayer?.firstName ?? '');
@@ -146,21 +146,31 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
     const parentContact2 = isAdultTeam ? undefined : buildParentContact(p2Name, p2Phone, p2Email);
     const emergencyContact = buildEmergencyContact(ecName, ecPhone, ecRelationship);
 
-    const optionals = {
-      ...(num !== undefined ? { jerseyNumber: num } : {}),
-      ...(position.trim() ? { position: position.trim() } : {}),
+    // Sensitive PII fields go to the restricted subcollection, not the main doc.
+    const sensitiveFields = {
       ...(dateOfBirth.trim() ? { dateOfBirth: dateOfBirth.trim() } : {}),
-      ...(email.trim() ? { email: email.trim() } : {}),
       ...(parentContact ? { parentContact } : {}),
       ...(parentContact2 ? { parentContact2 } : {}),
       ...(emergencyContact ? { emergencyContact } : {}),
     };
 
+    const mainOptionals = {
+      ...(num !== undefined ? { jerseyNumber: num } : {}),
+      ...(position.trim() ? { position: position.trim() } : {}),
+      ...(email.trim() ? { email: email.trim() } : {}),
+    };
+
     if (editPlayer) {
-      updatePlayer({ ...editPlayer, firstName: firstName.trim(), lastName: lastName.trim(), status, updatedAt: now, ...optionals });
+      await updatePlayer({ ...editPlayer, firstName: firstName.trim(), lastName: lastName.trim(), status, updatedAt: now, ...mainOptionals });
+      if (Object.keys(sensitiveFields).length > 0) {
+        await updateSensitiveData(editPlayer.id, teamId, sensitiveFields);
+      }
     } else {
       const playerId = crypto.randomUUID();
-      addPlayer({ id: playerId, teamId, firstName: firstName.trim(), lastName: lastName.trim(), status, createdAt: now, updatedAt: now, ...optionals });
+      await addPlayer({ id: playerId, teamId, firstName: firstName.trim(), lastName: lastName.trim(), status, createdAt: now, updatedAt: now, ...mainOptionals });
+      if (Object.keys(sensitiveFields).length > 0) {
+        await addSensitiveData(playerId, teamId, sensitiveFields);
+      }
 
       if (team) {
         const playerName = `${firstName.trim()} ${lastName.trim()}`;

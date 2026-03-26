@@ -86,6 +86,39 @@ function verifyRsvpToken(eventId: string, playerId: string, token: string): bool
   }
 }
 
+/**
+ * Per-user rate limiter backed by Firestore.
+ * Uses a fixed window: if the window has elapsed, it resets the counter.
+ * The rateLimits collection is write-protected from clients (Firestore rules: allow write: if false).
+ *
+ * @param uid       Firebase Auth UID of the caller
+ * @param action    Short identifier for the action being rate-limited (e.g. 'sendEmail')
+ * @param maxCalls  Maximum number of allowed calls within the window
+ * @param windowMs  Window duration in milliseconds (default: 60 000 = 1 minute)
+ */
+async function checkRateLimit(uid: string, action: string, maxCalls: number, windowMs = 60_000): Promise<void> {
+  const ref = admin.firestore().doc(`rateLimits/${uid}_${action}`);
+  const now = Date.now();
+
+  await admin.firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.data() as { count: number; windowStart: number } | undefined;
+
+    if (!data || now - data.windowStart > windowMs) {
+      // First call or window has expired — open a fresh window.
+      tx.set(ref, { count: 1, windowStart: now });
+      return;
+    }
+    if (data.count >= maxCalls) {
+      throw new HttpsError(
+        'resource-exhausted',
+        `Rate limit exceeded. You may send at most ${maxCalls} ${action} requests per minute.`,
+      );
+    }
+    tx.update(ref, { count: admin.firestore.FieldValue.increment(1) });
+  });
+}
+
 // ─── Admin: create user with temporary password ───────────────────────────────
 
 interface CreateUserByAdminData {
@@ -183,6 +216,7 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
     await assertAdminOrCoach(request.auth.uid);
+    await checkRateLimit(request.auth.uid, 'sendEmail', 10);
 
     const { to, subject, message, recipients, senderName, teamName } = request.data;
     if (!to?.length) throw new HttpsError('invalid-argument', 'No recipients provided.');
@@ -267,6 +301,7 @@ export const sendInvite = onCall<SendInviteData>(
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
     await assertAdminOrCoach(request.auth.uid);
+    await checkRateLimit(request.auth.uid, 'sendInvite', 20);
 
     const { to, playerName, teamName, playerId, teamId } = request.data;
     if (!to?.trim()) throw new HttpsError('invalid-argument', 'Email address is required.');
@@ -449,6 +484,7 @@ export const sendEventInvite = onCall<SendEventInviteData>(
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
     await assertAdminOrCoach(request.auth.uid);
+    await checkRateLimit(request.auth.uid, 'sendEventInvite', 5);
 
     const { eventId, eventTitle, eventDate, eventTime, eventLocation, teamName, senderName, recipients } = request.data;
     if (!recipients?.length) throw new HttpsError('invalid-argument', 'No recipients provided.');
@@ -1608,4 +1644,73 @@ export const sendWeeklyDigest = onSchedule('0 7 * * 1', async () => {
   await flushBatch();
   console.log(`sendWeeklyDigest: wrote ${totalNotifs} notification(s) for week of ${mondayStr}`);
 });
+
+// ─── One-time migration: move PII fields to sensitiveData subcollection ────────
+// Call once (admin only) to back-fill existing player docs.
+// Safe to call multiple times — idempotent; existing subcollection docs are overwritten.
+
+export const migrateSensitivePlayerData = onCall(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+    await assertAdminOrCoach(request.auth.uid);
+
+    const playersSnap = await admin.firestore().collection('players').get();
+    const SENSITIVE_KEYS = ['dateOfBirth', 'parentContact', 'parentContact2', 'emergencyContact'];
+
+    let migrated = 0;
+    let skipped = 0;
+    let batch = admin.firestore().batch();
+    let batchOps = 0;
+
+    const flushIfNeeded = async () => {
+      // 2 ops per player; flush before hitting the 500-op limit
+      if (batchOps >= 400) {
+        await batch.commit();
+        batch = admin.firestore().batch();
+        batchOps = 0;
+      }
+    };
+
+    for (const playerDoc of playersSnap.docs) {
+      const data = playerDoc.data();
+      const sensitiveFields: Record<string, unknown> = {};
+      let hasAny = false;
+
+      for (const key of SENSITIVE_KEYS) {
+        if (data[key] !== undefined) {
+          sensitiveFields[key] = data[key];
+          hasAny = true;
+        }
+      }
+
+      if (!hasAny) {
+        skipped++;
+        continue;
+      }
+
+      // Write to sensitiveData subcollection
+      const sensitiveRef = admin.firestore()
+        .doc(`players/${playerDoc.id}/sensitiveData/private`);
+      batch.set(sensitiveRef, { playerId: playerDoc.id, teamId: data.teamId ?? '', ...sensitiveFields }, { merge: true });
+
+      // Strip sensitive fields from main doc
+      const stripped: Record<string, admin.firestore.FieldValue> = {};
+      for (const key of SENSITIVE_KEYS) {
+        if (data[key] !== undefined) {
+          stripped[key] = admin.firestore.FieldValue.delete();
+        }
+      }
+      batch.update(playerDoc.ref, stripped);
+
+      migrated++;
+      batchOps += 2;
+      await flushIfNeeded();
+    }
+
+    await batch.commit();
+
+    console.log(`migrateSensitivePlayerData: migrated=${migrated}, skipped=${skipped}`);
+    return { migrated, skipped };
+  }
+);
 
