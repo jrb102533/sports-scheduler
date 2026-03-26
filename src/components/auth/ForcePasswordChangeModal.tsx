@@ -54,6 +54,7 @@ export function ForcePasswordChangeModal() {
               required
               minLength={8}
               autoFocus
+              showToggle
             />
             <Input
               label="Confirm Password"
@@ -62,6 +63,7 @@ export function ForcePasswordChangeModal() {
               onChange={e => setConfirmPassword(e.target.value)}
               placeholder="Re-enter your new password"
               required
+              showToggle
             />
             {error && (
               <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>

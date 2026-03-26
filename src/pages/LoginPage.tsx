@@ -44,6 +44,7 @@ export function LoginPage() {
           onChange={e => setPassword(e.target.value)}
           placeholder="••••••••"
           required
+          showToggle
         />
         {error && (
           <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>
