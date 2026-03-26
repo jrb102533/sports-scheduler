@@ -13,7 +13,12 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if request.auth != null;
       allow create: if request.auth.uid == uid || isAdmin();
-      allow update: if request.auth.uid == uid
+      // Self-update is allowed ONLY for non-privileged fields.
+      // role, memberships, uid, and mustChangePassword may only be changed by admins
+      // or the Cloud Function admin SDK — never by the user themselves.
+      allow update: if (request.auth.uid == uid
+          && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['role', 'memberships', 'uid', 'mustChangePassword']))
         || isAdmin()
         || (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamId']) &&
@@ -33,7 +38,7 @@ service cloud.firestore {
 
     match /teams/{teamId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null;
+      allow create: if isAdmin() || isCoach() || isLeagueManager();
       allow delete: if isAdmin();
       allow update: if isAdmin()
         || request.auth.uid == resource.data.createdBy
@@ -63,10 +68,15 @@ service cloud.firestore {
     }
 
     match /players/{playerId} {
-      // Players and parents may read, but statusNote must be stripped client-side.
       // Coaches/admins have unrestricted read and write access.
-      // Players/parents can read but must NOT write statusNote.
-      allow read: if request.auth != null;
+      // Players/parents may read their own team's records only.
+      // statusNote is a coach-only private field — it must also be stripped
+      // client-side since Firestore cannot project individual fields.
+      allow read: if request.auth != null && (
+        isAdmin() || isCoach() || isLeagueManager() ||
+        resource.data.linkedUid == request.auth.uid ||
+        getProfile().teamId == resource.data.teamId
+      );
       allow create, delete: if isAdmin() || isCoach();
       allow update: if isAdmin() || isCoach()
         // A player may update their own record (e.g. RSVP) but must never touch status fields

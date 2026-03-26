@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { MainLayout } from '@/layouts/MainLayout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { RoleGuard } from '@/components/auth/RoleGuard';
 import { Dashboard } from '@/pages/Dashboard';
 import { CalendarPage } from '@/pages/CalendarPage';
 import { TeamsPage } from '@/pages/TeamsPage';
@@ -43,7 +44,7 @@ export const router = createBrowserRouter([
       { path: 'messaging', element: <MessagingPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'profile', element: <ProfilePage /> },
-      { path: 'users', element: <UsersPage /> },
+      { path: 'users', element: <RoleGuard roles={['admin']} redirect><UsersPage /></RoleGuard> },
       { path: 'leagues', element: <LeaguesPage /> },
       { path: 'leagues/:id', element: <LeagueDetailPage /> },
     ],

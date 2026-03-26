@@ -3,6 +3,7 @@ import {
   collection, onSnapshot, doc, setDoc, deleteDoc, query, orderBy, writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useAuthStore } from './useAuthStore';
 import type { Player } from '@/types';
 
 interface PlayerStore {
@@ -22,7 +23,17 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   subscribe: () => {
     const q = query(collection(db, 'players'), orderBy('createdAt'));
     const unsub = onSnapshot(q, (snap) => {
-      const players = snap.docs.map(d => ({ ...d.data(), id: d.id }) as Player);
+      const profile = useAuthStore.getState().profile;
+      const isPrivileged = ['admin', 'coach', 'league_manager'].includes(profile?.role ?? '');
+      const players = snap.docs.map(d => {
+        const data = { ...d.data(), id: d.id } as Player;
+        // statusNote is a private coach-only field. Firestore rules cannot project
+        // individual fields, so we strip it here for all non-privileged users.
+        if (!isPrivileged) {
+          delete (data as Partial<Player>).statusNote;
+        }
+        return data;
+      });
       set({ players, loading: false });
     }, () => set({ loading: false }));
     return unsub;
