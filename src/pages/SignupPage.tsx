@@ -105,8 +105,8 @@ export function SignupPage() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input label="Full Name" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Jane Smith" required />
         <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required />
-        <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" required />
-        <Input label="Confirm Password" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="••••••••" required />
+        <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" required showToggle />
+        <Input label="Confirm Password" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="••••••••" required showToggle />
 
         <div className="border-t border-gray-100 pt-4 space-y-3">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Your Role(s)</p>
