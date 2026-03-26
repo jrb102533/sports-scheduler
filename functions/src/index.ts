@@ -4,6 +4,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
 import * as nodemailer from 'nodemailer';
+import * as crypto from 'crypto';
 
 const APP_URL = 'https://first-whistle-e76f4.web.app';
 const FUNCTIONS_BASE = 'https://us-central1-first-whistle-e76f4.cloudfunctions.net';
@@ -19,6 +20,9 @@ const smtpPort = defineSecret('SMTP_PORT');
 const smtpUser = defineSecret('SMTP_USER');
 const smtpPass = defineSecret('SMTP_PASS');
 const emailFrom = defineSecret('EMAIL_FROM');
+// HMAC secret for signing/verifying RSVP email links (F-02).
+// Provision with: firebase functions:secrets:set RSVP_HMAC_SECRET
+const rsvpSecret = defineSecret('RSVP_HMAC_SECRET');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -31,12 +35,54 @@ function createTransporter() {
   });
 }
 
-async function assertAdminOrCoach(uid: string) {
-  const doc = await admin.firestore().doc(`users/${uid}`).get();
-  const role = doc.data()?.role;
-  console.log(`assertAdminOrCoach: uid=${uid}, role=${role}`);
-  if (!['admin', 'coach', 'league_manager'].includes(role)) {
-    throw new HttpsError('permission-denied', 'Only admins, coaches, and league managers can perform this action.');
+/** Escape a string for safe HTML interpolation in email templates. */
+function esc(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Assert the caller holds an elevated role (admin, coach, or league_manager).
+ * Checks both the legacy top-level `role` field and the `memberships` array so
+ * that accounts created under either model are handled correctly.
+ * Returns the highest-privileged role found so callers can enforce finer-grained
+ * restrictions without a second Firestore read.
+ */
+async function assertAdminOrCoach(uid: string): Promise<string> {
+  const userDoc = await admin.firestore().doc(`users/${uid}`).get();
+  const data = userDoc.data();
+  const legacyRole: string = data?.role ?? '';
+  const membershipRoles: string[] = (data?.memberships ?? []).map((m: Record<string, unknown>) => m.role as string);
+  const allRoles = new Set([legacyRole, ...membershipRoles]);
+  // Return the highest-privilege role so callers can enforce further restrictions.
+  for (const r of ['admin', 'coach', 'league_manager'] as const) {
+    if (allRoles.has(r)) {
+      console.log(`assertAdminOrCoach: uid=${uid}, effective role=${r}`);
+      return r;
+    }
+  }
+  throw new HttpsError('permission-denied', 'Only admins, coaches, and league managers can perform this action.');
+}
+
+/** Sign an RSVP token tied to a specific event+player pair. */
+function signRsvpToken(eventId: string, playerId: string): string {
+  const secret = rsvpSecret.value();
+  return crypto.createHmac('sha256', secret).update(`${eventId}:${playerId}`).digest('hex');
+}
+
+/** Verify an RSVP token. Returns false if the secret is not yet provisioned (soft mode). */
+function verifyRsvpToken(eventId: string, playerId: string, token: string): boolean {
+  const secret = rsvpSecret.value();
+  if (!secret) return true; // secret not yet provisioned — allow existing links
+  const expected = crypto.createHmac('sha256', secret).update(`${eventId}:${playerId}`).digest('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(token, 'hex'), Buffer.from(expected, 'hex'));
+  } catch {
+    return false;
   }
 }
 
@@ -54,10 +100,16 @@ interface CreateUserByAdminData {
 export const createUserByAdmin = onCall<CreateUserByAdminData>(
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
-    await assertAdminOrCoach(request.auth.uid);
+    const callerRole = await assertAdminOrCoach(request.auth.uid);
 
     const { email, displayName, role, tempPassword, teamId, leagueId } = request.data;
     if (!email?.trim()) throw new HttpsError('invalid-argument', 'Email is required.');
+
+    // Only admins may create elevated roles. Coaches may only create player/parent accounts.
+    const elevatedRoles = ['admin', 'coach', 'league_manager'];
+    if (callerRole !== 'admin' && elevatedRoles.includes(role)) {
+      throw new HttpsError('permission-denied', 'Only admins can create coach, league manager, or admin accounts.');
+    }
     if (!displayName?.trim()) throw new HttpsError('invalid-argument', 'Display name is required.');
     if (!tempPassword || tempPassword.length < 8) throw new HttpsError('invalid-argument', 'Temporary password must be at least 8 characters.');
 
@@ -149,10 +201,10 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
         const recipient = recipients?.[i];
         const toHeader = recipient ? `${recipient.name} <${recipient.email}>` : address;
         const senderLine = senderName
-          ? `<p style="color:#6b7280;font-size:13px;margin:0">From: <strong>${senderName}</strong>${teamName ? ` · ${teamName}` : ''}</p>`
+          ? `<p style="color:#6b7280;font-size:13px;margin:0">From: <strong>${esc(senderName)}</strong>${teamName ? ` · ${esc(teamName)}` : ''}</p>`
           : '';
         const recipientLine = recipient
-          ? `<p style="color:#6b7280;font-size:13px;margin:0 0 16px">To: ${recipient.name} &lt;${recipient.email}&gt;</p>`
+          ? `<p style="color:#6b7280;font-size:13px;margin:0 0 16px">To: ${esc(recipient.name)} &lt;${esc(recipient.email)}&gt;</p>`
           : '';
 
         return transporter.sendMail({
@@ -172,7 +224,7 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
             <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
               <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
                 <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
-                ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${teamName}</p>` : ''}
+                ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${esc(teamName)}</p>` : ''}
               </div>
               ${senderLine}
               ${recipientLine}
@@ -303,14 +355,30 @@ export const onNotificationCreated = onDocumentCreated(
 // ─── RSVP handler (HTTP GET) ──────────────────────────────────────────────────
 // Called by email links: ?e={eventId}&p={playerId}&r={yes|no|maybe}&n={name}
 
-export const rsvpEvent = onRequest(async (req, res) => {
+export const rsvpEvent = onRequest(
+  { secrets: [rsvpSecret] },
+  async (req, res) => {
   const eventId = req.query['e'] as string | undefined;
   const playerId = req.query['p'] as string | undefined;
   const response = req.query['r'] as string | undefined;
   const name = req.query['n'] as string | undefined;
+  const token = req.query['t'] as string | undefined;
 
   if (!eventId || !playerId || !['yes', 'no', 'maybe'].includes(response ?? '')) {
     res.status(400).send('<p>Invalid RSVP link.</p>');
+    return;
+  }
+
+  // Verify HMAC token to prevent forged RSVPs.
+  // Token is required once RSVP_HMAC_SECRET is provisioned; until then,
+  // links without a token are accepted (backwards-compat for in-flight emails).
+  if (token && !verifyRsvpToken(eventId, playerId, token)) {
+    res.status(403).send('<p>This RSVP link is invalid or has been tampered with.</p>');
+    return;
+  }
+  if (!token && rsvpSecret.value()) {
+    // Secret is provisioned but no token present — link is pre-HMAC; reject.
+    res.status(403).send('<p>This RSVP link has expired. Please ask your coach to resend the invite.</p>');
     return;
   }
 
@@ -331,9 +399,10 @@ export const rsvpEvent = onRequest(async (req, res) => {
     filtered.push({ playerId, name: name ?? 'Guest', response, respondedAt: new Date().toISOString() });
     await eventRef.update({ rsvps: filtered, updatedAt: new Date().toISOString() });
 
-    const eventTitle = eventData.title ?? 'Event';
-    const eventDate = eventData.date ?? '';
-    const eventTime = eventData.startTime ?? '';
+    const eventTitle = esc(eventData.title ?? 'Event');
+    const eventDate = esc(eventData.date ?? '');
+    const eventTime = esc(eventData.startTime ?? '');
+    const safeName = esc(name ?? 'You');
 
     res.status(200).send(`
       <!DOCTYPE html>
@@ -348,7 +417,7 @@ export const rsvpEvent = onRequest(async (req, res) => {
             <span style="color:white;font-size:28px">${response === 'yes' ? '✓' : response === 'no' ? '✕' : '~'}</span>
           </div>
           <h1 style="color:#111827;font-size:20px;margin:0 0 8px">${label}</h1>
-          <p style="color:#6b7280;font-size:14px;margin:0 0 4px"><strong>${name ?? 'You'}</strong></p>
+          <p style="color:#6b7280;font-size:14px;margin:0 0 4px"><strong>${safeName}</strong></p>
           <p style="color:#6b7280;font-size:14px;margin:0">${eventTitle}${eventDate ? ' · ' + eventDate : ''}${eventTime ? ' at ' + eventTime : ''}</p>
           <a href="${APP_URL}" style="display:inline-block;margin-top:28px;background:#1B3A6B;color:white;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open First Whistle</a>
         </div>
@@ -376,7 +445,7 @@ interface SendEventInviteData {
 }
 
 export const sendEventInvite = onCall<SendEventInviteData>(
-  { secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom] },
+  { secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret] },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
     await assertAdminOrCoach(request.auth.uid);
@@ -389,7 +458,9 @@ export const sendEventInvite = onCall<SendEventInviteData>(
 
     const results = await Promise.allSettled(
       recipients.map((recipient) => {
-        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(recipient.playerId)}&n=${encodeURIComponent(recipient.name)}`;
+        // Include a per-recipient HMAC token so RSVP links can't be forged.
+        const token = signRsvpToken(eventId, recipient.playerId);
+        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(recipient.playerId)}&n=${encodeURIComponent(recipient.name)}&t=${token}`;
         const yesUrl = `${base}&r=yes`;
         const noUrl = `${base}&r=no`;
         const maybeUrl = `${base}&r=maybe`;
@@ -422,19 +493,19 @@ export const sendEventInvite = onCall<SendEventInviteData>(
             <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
               <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
                 <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
-                <p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${teamName}</p>
+                <p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${esc(teamName)}</p>
               </div>
 
               <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:20px">
-                <tr><td style="padding:3px 8px 3px 0;width:60px">From</td><td style="color:#111827;font-weight:600">${senderName} · ${teamName}</td></tr>
-                <tr><td style="padding:3px 8px 3px 0">To</td><td style="color:#111827">${recipient.name} &lt;${recipient.email}&gt;</td></tr>
-                <tr><td style="padding:3px 8px 3px 0">Event</td><td style="color:#111827;font-weight:600">${eventTitle}</td></tr>
-                <tr><td style="padding:3px 8px 3px 0">Date</td><td style="color:#111827">${eventDate}</td></tr>
-                <tr><td style="padding:3px 8px 3px 0">Time</td><td style="color:#111827">${eventTime}</td></tr>
-                ${eventLocation ? `<tr><td style="padding:3px 8px 3px 0">Location</td><td style="color:#111827">${eventLocation}</td></tr>` : ''}
+                <tr><td style="padding:3px 8px 3px 0;width:60px">From</td><td style="color:#111827;font-weight:600">${esc(senderName)} · ${esc(teamName)}</td></tr>
+                <tr><td style="padding:3px 8px 3px 0">To</td><td style="color:#111827">${esc(recipient.name)} &lt;${esc(recipient.email)}&gt;</td></tr>
+                <tr><td style="padding:3px 8px 3px 0">Event</td><td style="color:#111827;font-weight:600">${esc(eventTitle)}</td></tr>
+                <tr><td style="padding:3px 8px 3px 0">Date</td><td style="color:#111827">${esc(eventDate)}</td></tr>
+                <tr><td style="padding:3px 8px 3px 0">Time</td><td style="color:#111827">${esc(eventTime)}</td></tr>
+                ${eventLocation ? `<tr><td style="padding:3px 8px 3px 0">Location</td><td style="color:#111827">${esc(eventLocation)}</td></tr>` : ''}
               </table>
 
-              <p style="color:#111827;font-size:15px;font-weight:600;text-align:center;margin:0 0 20px">Will you be there, ${recipient.name.split(' ')[0]}?</p>
+              <p style="color:#111827;font-size:15px;font-weight:600;text-align:center;margin:0 0 20px">Will you be there, ${esc(recipient.name.split(' ')[0])}?</p>
 
               <div style="text-align:center;margin-bottom:24px">
                 <a href="${yesUrl}" style="${btnStyle('#15803d')}">Yes, I'll be there</a>

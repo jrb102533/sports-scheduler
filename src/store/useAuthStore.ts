@@ -76,12 +76,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         doc(db, 'users', user.uid),
         async (snap) => {
           if (!snap.exists()) {
-            // Profile document missing — create a minimal one so the app is usable
+            // Profile document missing — create a minimal one with the least-privilege
+            // role ('player'). An admin can elevate the role once identity is confirmed.
             await setDoc(doc(db, 'users', user.uid), {
               uid: user.uid,
               email: user.email ?? '',
               displayName: user.displayName ?? user.email?.split('@')[0] ?? 'User',
-              role: 'coach',
+              role: 'player',
               createdAt: new Date().toISOString(),
             });
             return; // onSnapshot will fire again with the new document
@@ -106,11 +107,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
               const inviteSnap = await getDoc(doc(db, 'invites', user.email.toLowerCase()));
               if (inviteSnap.exists()) {
                 const invite = inviteSnap.data();
-                await setDoc(doc(db, 'users', user.uid), {
-                  ...profile,
-                  teamId: invite.teamId,
-                  playerId: invite.playerId,
-                });
+                const { teamId, playerId } = invite as { teamId?: string; playerId?: string };
+                // Validate that the invite's playerId actually belongs to the teamId
+                // before linking to prevent a compromised invite from linking a user
+                // to an arbitrary player record on an unrelated team.
+                if (teamId && playerId) {
+                  const playerSnap = await getDoc(doc(db, 'players', playerId));
+                  if (playerSnap.exists() && playerSnap.data().teamId === teamId) {
+                    await setDoc(doc(db, 'users', user.uid), { ...profile, teamId, playerId });
+                  } else {
+                    console.warn(`Auto-link skipped: player ${playerId} not found on team ${teamId}`);
+                  }
+                }
+                // Always delete the invite, even if the link was invalid, to prevent reuse.
                 await deleteDoc(doc(db, 'invites', user.email.toLowerCase()));
               }
             } catch {
