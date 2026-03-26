@@ -40,6 +40,16 @@ service cloud.firestore {
         || request.auth.uid == resource.data.coachId
         || (isLeagueManager() && resource.data.leagueId == getProfile().leagueId);
 
+      // Player availability windows — any team member can read; players/parents write their own,
+      // coaches and admins can write any player's record.
+      match /availability/{playerId} {
+        allow read: if request.auth != null;
+        allow write: if isAdmin() || isCoach()
+          || (request.auth != null
+              && exists(/databases/$(database)/documents/players/$(playerId))
+              && get(/databases/$(database)/documents/players/$(playerId)).data.linkedUid == request.auth.uid);
+      }
+
       match /joinRequests/{requestUid} {
         allow create: if request.auth.uid == requestUid;
         allow read: if request.auth.uid == requestUid

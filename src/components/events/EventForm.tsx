@@ -453,19 +453,6 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           />
         )}
 
-        {/* Outdoor event toggle — only for applicable event types */}
-        {OUTDOOR_ELIGIBLE_TYPES.has(type) && (
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={isOutdoor}
-              onChange={e => setIsOutdoor(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <span className="text-sm font-medium text-gray-700">Outdoor event</span>
-            <span className="text-xs text-gray-400">(enables weather alerts)</span>
-          </label>
-        )}
 
                 <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-gray-700">Notes (optional)</label>
