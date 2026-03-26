@@ -41,7 +41,7 @@ export function PlayerAvailabilityModal({ open, onClose, player, teamId }: Playe
   // Players/parents can edit only their own linked record
   const isOwnRecord =
     profile?.uid !== undefined &&
-    (player as Player & { linkedUid?: string }).linkedUid === profile.uid;
+    player.linkedUid === profile.uid;
 
   const canEdit = isCoachOrAdmin || isOwnRecord;
 
