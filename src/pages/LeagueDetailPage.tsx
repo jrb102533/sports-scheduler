@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, CalendarClock } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { EventCard } from '@/components/events/EventCard';
 import { EventForm } from '@/components/events/EventForm';
@@ -8,6 +8,10 @@ import { EventDetailPanel } from '@/components/events/EventDetailPanel';
 import { StandingsTable } from '@/components/standings/StandingsTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { LeagueForm } from '@/components/leagues/LeagueForm';
+import { VenuesPanel } from '@/components/scheduler/VenuesPanel';
+import { BlackoutDatesPanel } from '@/components/scheduler/BlackoutDatesPanel';
+import { CoachAvailabilityPanel } from '@/components/scheduler/CoachAvailabilityPanel';
+import { ScheduleGeneratorPanel } from '@/components/scheduler/ScheduleGeneratorPanel';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useEventStore } from '@/store/useEventStore';
@@ -16,7 +20,7 @@ import { RoleGuard } from '@/components/auth/RoleGuard';
 import { SPORT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent } from '@/types';
 
-type Tab = 'schedule' | 'standings' | 'teams';
+type Tab = 'schedule' | 'standings' | 'teams' | 'scheduler';
 
 export function LeagueDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -72,6 +76,7 @@ export function LeagueDetailPage() {
     { key: 'schedule', label: 'Schedule', icon: <CalendarDays size={14} /> },
     { key: 'standings', label: 'Standings', icon: <Trophy size={14} /> },
     { key: 'teams', label: `Teams (${leagueTeams.length})`, icon: <Users size={14} /> },
+    ...(canManage || profile?.role === 'coach' ? [{ key: 'scheduler' as Tab, label: 'Scheduler', icon: <CalendarClock size={14} /> }] : []),
   ];
 
   return (
@@ -174,6 +179,30 @@ export function LeagueDetailPage() {
                   <span className="text-xs text-gray-400">View →</span>
                 </button>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Scheduler Tab */}
+      {tab === 'scheduler' && (
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Venues</h3>
+            <VenuesPanel leagueId={id!} />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Blackout Dates</h3>
+            <BlackoutDatesPanel leagueId={id!} />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Coach Availability</h3>
+            <CoachAvailabilityPanel leagueId={id!} />
+          </div>
+          {canManage && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Generate Schedule</h3>
+              <ScheduleGeneratorPanel leagueId={id!} />
             </div>
           )}
         </div>

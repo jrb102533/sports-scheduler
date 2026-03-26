@@ -8,3 +8,7 @@ export type { AppSettings } from './settings';
 export type { UserRole, UserProfile, RoleMembership } from './auth';
 export type { JoinRequest } from './joinRequest';
 export type { Opponent } from './opponent';
+export type { AvailabilitySlot, Venue } from './venue';
+export type { LeagueBlackout } from './blackout';
+export type { DateRange, LeagueAvailabilityRequest, CoachAvailability } from './coachAvailability';
+export type { ScheduleParameters, LeagueSchedule } from './leagueSchedule';

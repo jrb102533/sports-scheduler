@@ -54,6 +54,7 @@ export const EVENT_STATUS_LABELS = {
   completed: 'Completed',
   cancelled: 'Cancelled',
   postponed: 'Postponed',
+  draft: 'Draft',
 } as const;
 
 export const EVENT_STATUS_COLORS = {
@@ -62,6 +63,7 @@ export const EVENT_STATUS_COLORS = {
   completed: 'bg-green-100 text-green-700',
   cancelled: 'bg-red-100 text-red-700',
   postponed: 'bg-gray-100 text-gray-600',
+  draft: 'bg-purple-100 text-purple-700',
 } as const;
 
 export const PLAYER_STATUS_LABELS = {

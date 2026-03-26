@@ -1,5 +1,5 @@
 export type EventType = 'game' | 'match' | 'practice' | 'tournament' | 'other';
-export type EventStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'postponed';
+export type EventStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'postponed' | 'draft';
 export type AttendanceStatus = 'present' | 'absent' | 'excused';
 export type RecurrenceFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly';
 
@@ -68,6 +68,10 @@ export interface ScheduledEvent {
   isOutdoor?: boolean;
   /** Set to true once a weather alert notification has been sent for this event. */
   weatherAlertSent?: boolean;
+  /** Links to the LeagueSchedule that generated this event */
+  scheduleId?: string;
+  /** Resolved venue id from venues collection */
+  venueId?: string;
   createdAt: string;
   updatedAt: string;
 }
