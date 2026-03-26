@@ -38,6 +38,13 @@ export interface Player {
   statusNote?: string;
   /** ISO timestamp of the last status change */
   statusUpdatedAt?: string;
+  /**
+   * Firebase Auth UID of the user account linked to this player record.
+   * Set when a player self-registers or a coach links an existing user.
+   * Used for Firestore security rules (player self-service writes) and
+   * availability ownership checks.
+   */
+  linkedUid?: string;
   notes?: string;
   absence?: PlayerAbsence | null;
   parentContact?: ParentContact;
