@@ -62,12 +62,14 @@ const frequencyOptions: { value: RecurrenceFrequency; label: string }[] = [
   { value: 'monthly', label: 'Monthly' },
 ];
 
+const MAX_OCCURRENCES = 365;
+
 function generateOccurrences(startDate: string, endDate: string, frequency: RecurrenceFrequency): string[] {
   const start = parseISO(startDate);
   const end = parseISO(endDate);
   const dates: string[] = [];
   let current = start;
-  while (!isAfter(current, end)) {
+  while (!isAfter(current, end) && dates.length < MAX_OCCURRENCES) {
     dates.push(format(current, 'yyyy-MM-dd'));
     switch (frequency) {
       case 'daily': current = addDays(current, 1); break;
@@ -145,7 +147,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const [recurrenceEnd, setRecurrenceEnd] = useState('');
 
   const occurrenceCount = useMemo(() => {
-    if (!isRecurring || !date || !recurrenceEnd || recurrenceEnd <= date) return 0;
+    if (!isRecurring || !date || !recurrenceEnd || recurrenceEnd < date) return 0;
     return generateOccurrences(date, recurrenceEnd, frequency).length;
   }, [isRecurring, date, recurrenceEnd, frequency]);
 
@@ -240,7 +242,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
         );
         await Promise.all(
           futureEvents.map(e =>
-            updateEvent({ ...e, title: resolvedTitle, startTime, teamIds, updatedAt: now, ...optionals })
+            updateEvent({ ...e, title: resolvedTitle, type, startTime, teamIds, updatedAt: now, ...optionals })
           )
         );
       } else {
