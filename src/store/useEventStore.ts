@@ -16,7 +16,7 @@ interface EventStore {
   recordResult: (id: string, result: GameResult) => Promise<void>;
   bulkAddEvents: (events: ScheduledEvent[]) => Promise<void>;
   deleteEventsByGroupId: (groupId: string) => Promise<void>;
-  updateEventsByGroupId: (groupId: string, patch: Partial<ScheduledEvent>) => Promise<void>;
+  updateEventsByGroupId: (groupId: string, patch: Partial<ScheduledEvent>, fromDate?: string) => Promise<void>;
 }
 
 export const useEventStore = create<EventStore>((set, get) => ({
@@ -64,9 +64,9 @@ export const useEventStore = create<EventStore>((set, get) => ({
     await Promise.all(matching.map(e => deleteDoc(doc(db, 'events', e.id))));
   },
 
-  updateEventsByGroupId: async (groupId, patch) => {
-    const today = todayISO();
-    const matching = get().events.filter(e => e.recurringGroupId === groupId && e.date >= today);
+  updateEventsByGroupId: async (groupId, patch, fromDate) => {
+    const cutoff = fromDate ?? todayISO();
+    const matching = get().events.filter(e => e.recurringGroupId === groupId && e.date >= cutoff);
     await Promise.all(matching.map(e => setDoc(doc(db, 'events', e.id), { ...e, ...patch })));
   },
 }));
