@@ -61,19 +61,24 @@ export function SignupPage() {
     setLoading(true);
     try {
       await signup(email, password, displayName.trim(), role, undefined, memberships);
-      // Capture uid from Firebase Auth before logout clears the session
+
+      // Account created — show the verification screen immediately.
+      // Consent recording and logout are best-effort and must not block or hide this.
+      setVerificationSent(true);
+
       const uid = auth.currentUser?.uid;
       if (uid) {
-        await recordConsent(uid, 'termsOfService', LEGAL_VERSIONS.termsOfService);
-        await recordConsent(uid, 'privacyPolicy', LEGAL_VERSIONS.privacyPolicy);
-        if (agreedToMarketing) {
-          await recordConsent(uid, 'marketingEmail', '1.0');
+        try {
+          await recordConsent(uid, 'termsOfService', LEGAL_VERSIONS.termsOfService);
+          await recordConsent(uid, 'privacyPolicy', LEGAL_VERSIONS.privacyPolicy);
+          if (agreedToMarketing) await recordConsent(uid, 'marketingEmail', '1.0');
+        } catch (e) {
+          console.warn('Consent recording failed (non-blocking):', e);
         }
       }
-      await logout();
-      setVerificationSent(true);
+      logout().catch(() => {});
     } catch {
-      // error set in store
+      // signup itself failed — error set in store, stay on form
     } finally {
       setLoading(false);
     }

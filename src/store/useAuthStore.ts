@@ -44,7 +44,7 @@ interface AuthStore {
   signup: (email: string, password: string, displayName: string, role: UserRole, teamId?: string, memberships?: import('@/types').RoleMembership[]) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (patch: Partial<Pick<UserProfile, 'displayName' | 'avatarUrl' | 'teamId' | 'playerId' | 'leagueId' | 'activeContext' | 'memberships'>>) => Promise<void>;
+  updateProfile: (patch: Partial<Pick<UserProfile, 'displayName' | 'avatarUrl' | 'teamId' | 'playerId' | 'leagueId' | 'activeContext' | 'memberships' | 'role'>>) => Promise<void>;
   clearMustChangePassword: (newPassword: string) => Promise<void>;
   markConsentCurrent: () => void;
   clearError: () => void;
@@ -76,8 +76,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         doc(db, 'users', user.uid),
         async (snap) => {
           if (!snap.exists()) {
-            // Profile document missing — create a minimal one with the least-privilege
-            // role ('player'). An admin can elevate the role once identity is confirmed.
+            // Only create a fallback profile if we have no profile in state yet.
+            // Guarding here prevents a transient snapshot (e.g. during a rules
+            // deployment) from overwriting an existing user profile with a bare
+            // 'player' document.
+            if (get().profile) return;
             await setDoc(doc(db, 'users', user.uid), {
               uid: user.uid,
               email: user.email ?? '',
