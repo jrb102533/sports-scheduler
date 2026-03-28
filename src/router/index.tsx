@@ -15,6 +15,7 @@ import { SignupPage } from '@/pages/SignupPage';
 import { UsersPage } from '@/pages/UsersPage';
 import { LeaguesPage } from '@/pages/LeaguesPage';
 import { LeagueDetailPage } from '@/pages/LeagueDetailPage';
+import { CoachAvailabilityPage } from '@/pages/CoachAvailabilityPage';
 import { PrivacyPolicyPage } from '@/pages/legal/PrivacyPolicyPage';
 import { TermsOfServicePage } from '@/pages/legal/TermsOfServicePage';
 
@@ -47,6 +48,7 @@ export const router = createBrowserRouter([
       { path: 'users', element: <RoleGuard roles={['admin']} redirect><UsersPage /></RoleGuard> },
       { path: 'leagues', element: <LeaguesPage /> },
       { path: 'leagues/:id', element: <LeagueDetailPage /> },
+      { path: 'leagues/:leagueId/availability/:collectionId', element: <CoachAvailabilityPage /> },
     ],
   },
 

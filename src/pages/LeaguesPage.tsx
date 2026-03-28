@@ -14,17 +14,19 @@ import type { League, Team } from '@/types';
 export function LeaguesPage() {
   const { leagues, addLeague, updateLeague, deleteLeague } = useLeagueStore();
   const { teams, updateTeam } = useTeamStore();
-  const profile = useAuthStore(s => s.profile);
+  const { profile, updateProfile } = useAuthStore();
   const navigate = useNavigate();
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<League | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<League | null>(null);
 
   const isAdmin = profile?.role === 'admin';
+  const isLeagueManager = profile?.role === 'league_manager';
+  const canCreateLeague = isAdmin || isLeagueManager;
 
   const visibleLeagues = isAdmin
     ? leagues
-    : leagues.filter(l => l.id === profile?.leagueId);
+    : leagues.filter(l => l.managedBy === profile?.uid || l.id === profile?.leagueId);
 
   function openEdit(league: League, e: React.MouseEvent) {
     e.stopPropagation();
@@ -48,7 +50,7 @@ export function LeaguesPage() {
     <div className="p-4 sm:p-6">
       <div className="flex items-center justify-between mb-6">
         <p className="text-sm text-gray-500">{visibleLeagues.length} {visibleLeagues.length === 1 ? 'league' : 'leagues'}</p>
-        {isAdmin && (
+        {canCreateLeague && (
           <Button onClick={openAdd}><Plus size={16} /> New League</Button>
         )}
       </div>
@@ -58,7 +60,7 @@ export function LeaguesPage() {
           icon={<Trophy size={40} />}
           title="No leagues yet"
           description="Create a league to manage multi-team schedules and standings."
-          action={isAdmin ? <Button onClick={openAdd}><Plus size={16} /> New League</Button> : undefined}
+          action={canCreateLeague ? <Button onClick={openAdd}><Plus size={16} /> New League</Button> : undefined}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -69,7 +71,8 @@ export function LeaguesPage() {
                 key={league.id}
                 league={league}
                 leagueTeams={leagueTeams}
-                isAdmin={isAdmin}
+                canEdit={isAdmin || (isLeagueManager && (league.managedBy === profile?.uid || league.id === profile?.leagueId))}
+                canDelete={isAdmin}
                 onClick={() => navigate(`/leagues/${league.id}`)}
                 onEdit={e => openEdit(league, e)}
                 onDelete={e => { e.stopPropagation(); setDeleteTarget(league); }}
@@ -94,7 +97,18 @@ export function LeaguesPage() {
             if (editTarget) {
               await updateLeague({ ...editTarget, ...leagueData, id: leagueId, updatedAt: now });
             } else {
-              await addLeague({ ...leagueData, id: leagueId, createdAt: now, updatedAt: now });
+              const managedBy = isLeagueManager ? profile?.uid : undefined;
+              await addLeague({
+                ...leagueData,
+                id: leagueId,
+                createdAt: now,
+                updatedAt: now,
+                ...(managedBy ? { managedBy } : {}),
+              });
+              // Link the league manager's profile to this league if not yet set
+              if (isLeagueManager && !profile?.leagueId) {
+                await updateProfile({ leagueId });
+              }
             }
 
             await Promise.all([
@@ -122,13 +136,14 @@ export function LeaguesPage() {
 interface LeagueCardProps {
   league: League;
   leagueTeams: Team[];
-  isAdmin: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   onClick: () => void;
   onEdit: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
 }
 
-function LeagueCard({ league, leagueTeams, isAdmin, onClick, onEdit, onDelete }: LeagueCardProps) {
+function LeagueCard({ league, leagueTeams, canEdit, canDelete, onClick, onEdit, onDelete }: LeagueCardProps) {
   return (
     <Card className="p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={onClick}>
       <div className="flex items-start justify-between gap-2 mb-3">
@@ -142,15 +157,15 @@ function LeagueCard({ league, leagueTeams, isAdmin, onClick, onEdit, onDelete }:
           </div>
         </div>
         <div className="flex gap-1 flex-shrink-0">
-          {isAdmin && (
-            <>
-              <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
-                <Pencil size={14} />
-              </button>
-              <button onClick={onDelete} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors">
-                <Trash2 size={14} />
-              </button>
-            </>
+          {canEdit && (
+            <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
+              <Pencil size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button onClick={onDelete} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors">
+              <Trash2 size={14} />
+            </button>
           )}
           <span className="p-1.5 text-gray-300">
             <ChevronRight size={14} />
