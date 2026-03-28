@@ -1718,13 +1718,23 @@ export const migrateSensitivePlayerData = onCall(
 
 // ─── Schedule Wizard ──────────────────────────────────────────────────────────
 
+export interface RecurringVenueWindow {
+  dayOfWeek: number;   // 0 = Sunday … 6 = Saturday
+  startTime: string;   // 'HH:MM'
+  endTime: string;     // 'HH:MM'
+}
+
 export interface VenueInput {
   name: string;
   concurrentPitches: number;
-  availableDays: string[];         // e.g. ['Saturday', 'Sunday']
-  availableTimeStart: string;      // e.g. '09:00'
-  availableTimeEnd: string;        // e.g. '17:00'
-  blackoutDates?: string[];        // ISO date strings e.g. '2026-04-18'
+  // New format (v2 wizard)
+  availabilityWindows?: RecurringVenueWindow[];
+  fallbackWindows?: RecurringVenueWindow[];
+  // Legacy format (v1 wizard) — kept for backwards compatibility
+  availableDays?: string[];
+  availableTimeStart?: string;
+  availableTimeEnd?: string;
+  blackoutDates?: string[];
 }
 
 export interface TeamInput {
@@ -1807,6 +1817,25 @@ export const generateLeagueSchedule = onCall(
 
     const client = new Anthropic({ apiKey: anthropicKey.value() });
 
+    const DAY_NAMES_CF = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    function venueWindowsText(windows: RecurringVenueWindow[] | undefined | null): string {
+      if (!windows?.length) return 'not specified';
+      return windows.map(w => `${DAY_NAMES_CF[w.dayOfWeek]} ${w.startTime}–${w.endTime}`).join(', ');
+    }
+
+    function venueAvailabilityText(v: VenueInput): string {
+      if (v.availabilityWindows?.length) {
+        const primary = `primary: ${venueWindowsText(v.availabilityWindows)}`;
+        const fallback = v.fallbackWindows?.length ? `; fallback: ${venueWindowsText(v.fallbackWindows)}` : '';
+        return `available ${primary}${fallback}`;
+      }
+      // Legacy format
+      const days = v.availableDays?.join('/') ?? 'unspecified days';
+      const time = v.availableTimeStart && v.availableTimeEnd ? `${v.availableTimeStart}–${v.availableTimeEnd}` : 'unspecified times';
+      return `available ${days} ${time}`;
+    }
+
     const formatDescriptions: Record<string, string> = {
       single_round_robin: 'Single round-robin: each pair of teams plays once.',
       double_round_robin: 'Double round-robin: each pair of teams plays twice (home and away).',
@@ -1842,7 +1871,7 @@ Rules you must follow:
 ${input.teams.map((t, i) => `${i + 1}. ${t.name} (id: ${t.id})${t.homeVenue ? `, home venue: ${t.homeVenue}` : ''}${t.earliestKickOff ? `, earliest kick-off: ${t.earliestKickOff}` : ''}`).join('\n')}
 
 **Venues (${input.venues.length}):**
-${input.venues.map(v => `- ${v.name}: ${v.concurrentPitches} pitch(es), available ${v.availableDays.join('/')} ${v.availableTimeStart}–${v.availableTimeEnd}${v.blackoutDates?.length ? `, blackout: ${v.blackoutDates.join(', ')}` : ''}`).join('\n')}
+${input.venues.map(v => `- ${v.name}: ${v.concurrentPitches} pitch(es), ${venueAvailabilityText(v)}${v.blackoutDates?.length ? `, blackout: ${v.blackoutDates.join(', ')}` : ''}`).join('\n')}
 
 **Season-wide blackout dates:** ${input.blackoutDates?.length ? input.blackoutDates.join(', ') : 'None'}
 
@@ -1895,7 +1924,7 @@ Output JSON with this exact structure:
         }
       }
     } catch (err) {
-      console.error('Anthropic API error:', err);
+      console.error('Anthropic API error:', JSON.stringify(err));
       throw new HttpsError('internal', 'Schedule generation failed. Please try again.');
     }
 
@@ -1905,8 +1934,11 @@ Output JSON with this exact structure:
     let result: ScheduleWizardOutput;
     try {
       result = JSON.parse(jsonText) as ScheduleWizardOutput;
-    } catch {
-      console.error('Failed to parse LLM output:', jsonText.slice(0, 500));
+      if (!Array.isArray(result.fixtures)) {
+        throw new Error('LLM response missing fixtures array');
+      }
+    } catch (err) {
+      console.error('Failed to parse LLM output:', (err as Error).message, jsonText.slice(0, 500));
       throw new HttpsError('internal', 'Schedule generation returned an unexpected format. Please try again.');
     }
 
