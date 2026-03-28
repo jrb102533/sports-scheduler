@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { EventCard } from '@/components/events/EventCard';
 import { EventForm } from '@/components/events/EventForm';
@@ -8,6 +8,7 @@ import { EventDetailPanel } from '@/components/events/EventDetailPanel';
 import { StandingsTable } from '@/components/standings/StandingsTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { LeagueForm } from '@/components/leagues/LeagueForm';
+import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useEventStore } from '@/store/useEventStore';
@@ -40,6 +41,7 @@ export function LeagueDetailPage() {
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const isAdmin = profile?.role === 'admin';
   const canManage = isAdmin || (profile?.role === 'league_manager' && profile?.leagueId === id);
@@ -122,9 +124,16 @@ export function LeagueDetailPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm text-gray-500">{leagueEvents.length} {leagueEvents.length === 1 ? 'event' : 'events'}</p>
-            <RoleGuard roles={['admin', 'league_manager', 'coach']}>
-              <Button size="sm" onClick={() => setEventFormOpen(true)}><Plus size={14} /> Add Event</Button>
-            </RoleGuard>
+            <div className="flex gap-2">
+              {canManage && leagueTeams.length >= 2 && (
+                <Button size="sm" variant="secondary" onClick={() => setWizardOpen(true)}>
+                  <Wand2 size={14} /> Schedule Wizard
+                </Button>
+              )}
+              <RoleGuard roles={['admin', 'league_manager', 'coach']}>
+                <Button size="sm" onClick={() => setEventFormOpen(true)}><Plus size={14} /> Add Event</Button>
+              </RoleGuard>
+            </div>
           </div>
           {leagueEvents.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-400">
@@ -181,6 +190,15 @@ export function LeagueDetailPage() {
 
       <EventForm open={eventFormOpen} onClose={() => setEventFormOpen(false)} />
       <EventDetailPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+
+      {wizardOpen && (
+        <ScheduleWizardModal
+          open={wizardOpen}
+          onClose={() => setWizardOpen(false)}
+          league={league}
+          leagueTeams={leagueTeams}
+        />
+      )}
 
       {editOpen && (
         <LeagueForm

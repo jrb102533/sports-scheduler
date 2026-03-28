@@ -5,6 +5,7 @@ import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
 import * as nodemailer from 'nodemailer';
 import * as crypto from 'crypto';
+import Anthropic from '@anthropic-ai/sdk';
 
 const APP_URL = 'https://first-whistle-e76f4.web.app';
 const FUNCTIONS_BASE = 'https://us-central1-first-whistle-e76f4.cloudfunctions.net';
@@ -23,6 +24,7 @@ const emailFrom = defineSecret('EMAIL_FROM');
 // HMAC secret for signing/verifying RSVP email links (F-02).
 // Provision with: firebase functions:secrets:set RSVP_HMAC_SECRET
 const rsvpSecret = defineSecret('RSVP_HMAC_SECRET');
+const anthropicKey = defineSecret('ANTHROPIC_API_KEY');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1711,6 +1713,204 @@ export const migrateSensitivePlayerData = onCall(
 
     console.log(`migrateSensitivePlayerData: migrated=${migrated}, skipped=${skipped}`);
     return { migrated, skipped };
+  }
+);
+
+// ─── Schedule Wizard ──────────────────────────────────────────────────────────
+
+export interface VenueInput {
+  name: string;
+  concurrentPitches: number;
+  availableDays: string[];         // e.g. ['Saturday', 'Sunday']
+  availableTimeStart: string;      // e.g. '09:00'
+  availableTimeEnd: string;        // e.g. '17:00'
+  blackoutDates?: string[];        // ISO date strings e.g. '2026-04-18'
+}
+
+export interface TeamInput {
+  id: string;
+  name: string;
+  homeVenue?: string;              // venue name
+  earliestKickOff?: string;        // e.g. '10:00'
+}
+
+export interface ScheduleWizardInput {
+  leagueId: string;
+  leagueName: string;
+  seasonStart: string;             // ISO date
+  seasonEnd: string;               // ISO date
+  matchDurationMinutes: number;
+  bufferMinutes: number;
+  format: 'single_round_robin' | 'double_round_robin' | 'single_elimination' | 'double_elimination' | 'group_then_knockout';
+  teams: TeamInput[];
+  venues: VenueInput[];
+  blackoutDates?: string[];        // season-wide blackout ISO dates
+  minRestDays?: number;            // default 6
+  maxConsecutiveAway?: number;     // default 2
+  groupCount?: number;             // for group_then_knockout
+  groupAdvance?: number;           // top N from each group advance
+}
+
+export interface GeneratedFixture {
+  round: number;
+  homeTeamId: string;
+  homeTeamName: string;
+  awayTeamId: string;
+  awayTeamName: string;
+  date: string;       // ISO date e.g. '2026-04-05'
+  startTime: string;  // e.g. '10:00'
+  venue: string;
+  stage?: string;     // e.g. 'Group A', 'Quarter-final', 'Final'
+}
+
+export interface ScheduleWizardOutput {
+  fixtures: GeneratedFixture[];
+  conflicts: Array<{
+    severity: 'hard' | 'soft';
+    description: string;
+    constraintId?: string;
+  }>;
+  stats: {
+    totalFixtures: number;
+    assignedFixtures: number;
+    unassignedFixtures: number;
+    feasible: boolean;
+  };
+  summary: string;
+}
+
+export const generateLeagueSchedule = onCall(
+  {
+    timeoutSeconds: 300,
+    memory: '512MiB',
+    secrets: [anthropicKey],
+  },
+  async (request): Promise<ScheduleWizardOutput> => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Authentication required.');
+    }
+    const role = await assertAdminOrCoach(request.auth.uid);
+    if (role !== 'admin' && role !== 'league_manager') {
+      throw new HttpsError('permission-denied', 'Only league managers and admins can generate schedules.');
+    }
+
+    await checkRateLimit(request.auth.uid, 'generateSchedule', 5, 60_000);
+
+    const input = request.data as ScheduleWizardInput;
+
+    if (!input.leagueId || !input.seasonStart || !input.seasonEnd || !input.teams?.length || !input.venues?.length) {
+      throw new HttpsError('invalid-argument', 'Missing required schedule inputs.');
+    }
+    if (input.teams.length < 2) {
+      throw new HttpsError('invalid-argument', 'At least 2 teams are required to generate a schedule.');
+    }
+
+    const client = new Anthropic({ apiKey: anthropicKey.value() });
+
+    const formatDescriptions: Record<string, string> = {
+      single_round_robin: 'Single round-robin: each pair of teams plays once.',
+      double_round_robin: 'Double round-robin: each pair of teams plays twice (home and away).',
+      single_elimination: 'Single elimination knockout bracket. Teams are seeded. Losers are eliminated immediately. Byes are assigned if the team count is not a power of 2.',
+      double_elimination: 'Double elimination: teams must lose twice to be eliminated. Winners and Losers brackets merge in a Grand Final.',
+      group_then_knockout: `Group stage (${input.groupCount ?? 2} groups, top ${input.groupAdvance ?? 2} advance) followed by single-elimination knockout.`,
+    };
+
+    const systemPrompt = `You are an expert sports scheduling engine. Your job is to produce a complete, valid fixture schedule for a sports league or tournament.
+
+You must output ONLY valid JSON matching the exact schema provided. No explanatory text, no markdown, no code fences — raw JSON only.
+
+Rules you must follow:
+- Hard constraints must NEVER be violated (no double-booking, no team plays twice on same day, venues available on scheduled day/time, no fixtures on blackout dates).
+- Soft constraints should be respected as much as possible (min rest days, home/away balance, max consecutive away).
+- If a complete schedule is infeasible, assign as many fixtures as possible and report the rest as conflicts.
+- Fixture dates must fall between seasonStart and seasonEnd inclusive.
+- Fixture times must fall within venue available hours.
+- Concurrent pitch limits at each venue must be respected.
+- For knockout formats: clearly label the stage (e.g. "Round of 16", "Quarter-final", "Semi-final", "Final").
+- For group+knockout: label group stage fixtures with "Group A", "Group B" etc.`;
+
+    const userMessage = `Generate a complete fixture schedule for the following league/tournament:
+
+**League:** ${input.leagueName}
+**Format:** ${formatDescriptions[input.format] ?? input.format}
+**Season:** ${input.seasonStart} to ${input.seasonEnd}
+**Match duration:** ${input.matchDurationMinutes} minutes + ${input.bufferMinutes} min buffer between games at same venue
+**Minimum rest days between games per team:** ${input.minRestDays ?? 6}
+**Maximum consecutive away games:** ${input.maxConsecutiveAway ?? 2}
+
+**Teams (${input.teams.length}):**
+${input.teams.map((t, i) => `${i + 1}. ${t.name} (id: ${t.id})${t.homeVenue ? `, home venue: ${t.homeVenue}` : ''}${t.earliestKickOff ? `, earliest kick-off: ${t.earliestKickOff}` : ''}`).join('\n')}
+
+**Venues (${input.venues.length}):**
+${input.venues.map(v => `- ${v.name}: ${v.concurrentPitches} pitch(es), available ${v.availableDays.join('/')} ${v.availableTimeStart}–${v.availableTimeEnd}${v.blackoutDates?.length ? `, blackout: ${v.blackoutDates.join(', ')}` : ''}`).join('\n')}
+
+**Season-wide blackout dates:** ${input.blackoutDates?.length ? input.blackoutDates.join(', ') : 'None'}
+
+Output JSON with this exact structure:
+{
+  "fixtures": [
+    {
+      "round": 1,
+      "homeTeamId": "<team id>",
+      "homeTeamName": "<team name>",
+      "awayTeamId": "<team id>",
+      "awayTeamName": "<team name>",
+      "date": "YYYY-MM-DD",
+      "startTime": "HH:MM",
+      "venue": "<venue name>",
+      "stage": "<optional: e.g. Group A, Quarter-final>"
+    }
+  ],
+  "conflicts": [
+    {
+      "severity": "hard|soft",
+      "description": "<plain English explanation>",
+      "constraintId": "<optional: HC-01, SC-01, etc.>"
+    }
+  ],
+  "stats": {
+    "totalFixtures": <number>,
+    "assignedFixtures": <number>,
+    "unassignedFixtures": <number>,
+    "feasible": <true|false>
+  },
+  "summary": "<1-2 sentence plain-English summary of the schedule quality and any notable issues>"
+}`;
+
+    let rawContent = '';
+    try {
+      const stream = client.messages.stream({
+        model: 'claude-opus-4-6',
+        max_tokens: 64000,
+        thinking: { type: 'adaptive' },
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      });
+
+      const message = await stream.finalMessage();
+      for (const block of message.content) {
+        if (block.type === 'text') {
+          rawContent = block.text;
+          break;
+        }
+      }
+    } catch (err) {
+      console.error('Anthropic API error:', err);
+      throw new HttpsError('internal', 'Schedule generation failed. Please try again.');
+    }
+
+    // Strip any accidental markdown fences
+    const jsonText = rawContent.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+
+    let result: ScheduleWizardOutput;
+    try {
+      result = JSON.parse(jsonText) as ScheduleWizardOutput;
+    } catch {
+      console.error('Failed to parse LLM output:', jsonText.slice(0, 500));
+      throw new HttpsError('internal', 'Schedule generation returned an unexpected format. Please try again.');
+    }
+
+    return result;
   }
 );
 
