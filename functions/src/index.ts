@@ -1407,7 +1407,33 @@ export const checkWeatherAlerts = onSchedule(
         if (status === 'cancelled' || status === 'postponed') continue;
 
         const location: string | undefined = ev['location'];
-        if (!location?.trim()) continue;
+        const venueId: string | undefined = ev['venueId'];
+
+        // Attempt to use pre-geocoded venue lat/lng before falling back to geocoding
+        let coords: { lat: number; lon: number } | null = null;
+
+        if (venueId) {
+          // Try each team's coach uid as the potential venue owner
+          const teamIds: string[] = ev['teamIds'] ?? [];
+          for (const teamId of teamIds.slice(0, 5)) {
+            const teamDoc = await db.doc(`teams/${teamId}`).get();
+            const teamData = teamDoc.data();
+            const ownerUid: string | undefined = teamData?.['createdBy'];
+            if (!ownerUid) continue;
+            const venueDoc = await db.doc(`users/${ownerUid}/venues/${venueId}`).get();
+            const venueData = venueDoc.data();
+            if (venueData?.['lat'] != null && venueData?.['lng'] != null) {
+              coords = { lat: venueData['lat'] as number, lon: venueData['lng'] as number };
+              break;
+            }
+          }
+        }
+
+        if (!coords) {
+          if (!location?.trim()) continue;
+          coords = await geocodeLocation(location);
+        }
+        if (!coords) continue;
 
         // Build the event's start datetime in ISO format
         const startTime: string = ev['startTime'] ?? '00:00'; // HH:MM
@@ -1417,15 +1443,11 @@ export const checkWeatherAlerts = onSchedule(
         const eventTs = new Date(`${dateStr}T${startTime}:00Z`).getTime();
         if (eventTs < windowStart.getTime() || eventTs > windowEnd.getTime()) continue;
 
-        // Geocode
-        const coords = await geocodeLocation(location);
-        if (!coords) continue;
-
         // Fetch precipitation probability
         const prob = await getPrecipitationProbability(coords.lat, coords.lon, eventIsoHour);
         if (prob === null) continue;
 
-        console.log(`checkWeatherAlerts: event "${ev['title']}" (${evDoc.id}) location="${location}" prob=${prob}%`);
+        console.log(`checkWeatherAlerts: event "${ev['title']}" (${evDoc.id}) location="${location ?? venueId}" prob=${prob}%`);
 
         if (prob <= RAIN_THRESHOLD) continue;
 
@@ -1944,5 +1966,56 @@ Output JSON with this exact structure:
 
     return result;
   }
+);
+
+// ─── Callable: geocode a venue address via Nominatim ─────────────────────────
+
+export const geocodeVenueAddress = onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    const { venueId, address, ownerUid } = request.data as {
+      venueId: string;
+      address: string;
+      ownerUid: string;
+    };
+
+    if (!venueId || !address || !ownerUid) {
+      throw new HttpsError('invalid-argument', 'venueId, address, and ownerUid are required');
+    }
+
+    // Auth check: caller must be the owner
+    if (request.auth?.uid !== ownerUid) {
+      throw new HttpsError('permission-denied', 'Not authorised');
+    }
+
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'FirstWhistle/1.0 (contact@firstwhistle.app)' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) {
+        console.warn(`geocodeVenueAddress: Nominatim HTTP ${res.status} for "${address}"`);
+        return { success: false };
+      }
+      const data = await res.json() as Array<{ lat: string; lon: string }>;
+      const first = data[0];
+      if (!first) {
+        console.log(`geocodeVenueAddress: no result for "${address}"`);
+        return { success: false };
+      }
+      const lat = parseFloat(first.lat);
+      const lng = parseFloat(first.lon);
+      await admin.firestore()
+        .doc(`users/${ownerUid}/venues/${venueId}`)
+        .update({ lat, lng, updatedAt: new Date().toISOString() });
+      console.log(`geocodeVenueAddress: geocoded "${address}" → lat=${lat} lng=${lng}`);
+      return { success: true, lat, lng };
+    } catch (err) {
+      console.warn(`geocodeVenueAddress: failed for "${address}"`, err);
+      return { success: false };
+    }
+  },
 );
 
