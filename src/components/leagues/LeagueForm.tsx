@@ -30,8 +30,11 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
   const [sportType, setSportType] = useState(editLeague?.sportType ?? '');
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState('');
+  const [saveError, setSaveError] = useState('');
 
-  const prevTeamIds = allTeams.filter(t => t.leagueId === editLeague?.id).map(t => t.id);
+  const prevTeamIds = editLeague?.id
+    ? allTeams.filter(t => t.leagueId === editLeague.id).map(t => t.id)
+    : [];
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set(prevTeamIds));
 
   const eligibleTeams = allTeams.filter(t => !t.leagueId || t.leagueId === editLeague?.id);
@@ -48,6 +51,7 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
   async function handleSubmit() {
     if (!name.trim()) { setNameError('League name is required'); return; }
     setNameError('');
+    setSaveError('');
     setSaving(true);
     try {
       await onSave(
@@ -61,6 +65,11 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
         [...selectedTeamIds],
         prevTeamIds,
       );
+    } catch (e: unknown) {
+      const msg = (e as { message?: string }).message ?? 'Save failed. Please try again.';
+      setSaveError(msg.includes('Missing or insufficient permissions')
+        ? 'Permission denied. Your role may not allow this action — try refreshing and signing in again.'
+        : msg);
     } finally {
       setSaving(false);
     }
@@ -123,6 +132,9 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
           )}
         </div>
 
+        {saveError && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>
+        )}
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
           <Button onClick={handleSubmit} disabled={saving}>
