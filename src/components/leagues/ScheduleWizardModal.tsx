@@ -1,10 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { httpsCallable, getFunctions } from 'firebase/functions';
 import { collection, getDocs } from 'firebase/firestore';
 import {
   Calendar, MapPin, Users, Wand2, CheckCircle2, AlertTriangle,
   AlertCircle, ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
-  GripVertical, Trophy, Dumbbell, Star, ChevronDown,
+  GripVertical, Trophy, Dumbbell, Star, ChevronDown, Lightbulb,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
@@ -14,6 +14,7 @@ import { db } from '@/lib/firebase';
 import { useEventStore } from '@/store/useEventStore';
 import { useCollectionStore } from '@/store/useCollectionStore';
 import { DEFAULT_CONSTRAINTS } from '@/types/wizard';
+import { getTopCoverageSlots } from '@/lib/coverageUtils';
 import type { League, Team, ScheduledEvent, WizardMode, WizardVenueInput, ScheduleConstraint, RecurringVenueWindow, CoachAvailabilityResponse } from '@/types';
 
 // ─── Local types ──────────────────────────────────────────────────────────────
@@ -83,7 +84,7 @@ const STEP_LABELS: Record<WizardStep, string> = {
   preferences: 'Preferences',
   availability: 'Coach Availability',
   blackouts: 'Blackout Dates',
-  generate: 'Generating…',
+  generate: 'Generate',
   preview: 'Preview',
   publish: 'Publish',
 };
@@ -115,7 +116,7 @@ interface Props {
 
 export function ScheduleWizardModal({ open, onClose, league, leagueTeams, currentUserUid }: Props) {
   const { addEvent } = useEventStore();
-  const { createCollection, saveWizardDraft, wizardDraft } = useCollectionStore();
+  const { createCollection, saveWizardDraft, wizardDraft, activeCollection, responses, loadCollection } = useCollectionStore();
 
   // Mode & step
   const [mode, setMode] = useState<WizardMode | null>(null);
@@ -170,6 +171,17 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
   const [collectionDueDate, setCollectionDueDate] = useState('');
   const [collectionId, setCollectionId] = useState<string | null>(null);
 
+  // ── Generate step ─────────────────────────────────────────────────────────
+  const [generatePhase, setGeneratePhase] = useState<'configure' | 'running'>('configure');
+  const [recommendationDismissed, setRecommendationDismissed] = useState(false);
+
+  useEffect(() => {
+    if (step === 'generate' && generatePhase === 'configure' && mode === 'season') {
+      const unsub = loadCollection(league.id);
+      return unsub;
+    }
+  }, [step, generatePhase, mode, league.id, loadCollection]);
+
   // ── Preview: per-fixture fallback acknowledgement ────────────────────────
   const [acknowledgedFallbacks, setAcknowledgedFallbacks] = useState<Set<number>>(new Set());
 
@@ -190,6 +202,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
     setVenueErrors([]);
     setSeasonBlackouts([]);
     setBlackoutInput('');
+    setGeneratePhase('configure');
+    setRecommendationDismissed(false);
   }
 
   function validateConfig(): boolean {
@@ -242,7 +256,13 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
     }
 
     if (step === 'blackouts') {
-      void handleGenerate();
+      if (mode === 'season') {
+        setGeneratePhase('configure');
+        setRecommendationDismissed(false);
+        setStep('generate');
+      } else {
+        void handleGenerate();
+      }
       return;
     }
 
@@ -286,11 +306,23 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
     const steps = getSteps(mode);
     const idx = steps.indexOf(step);
 
-    if (step === 'generate' || step === 'preview') {
-      setResult(null);
-      setGenError('');
+    if (step === 'generate' && generatePhase === 'configure') {
       const blackoutsIdx = steps.indexOf('blackouts');
       setStep(steps[blackoutsIdx]);
+      return;
+    }
+
+    if (step === 'preview') {
+      setResult(null);
+      setGenError('');
+      if (mode === 'season') {
+        setGeneratePhase('configure');
+        setRecommendationDismissed(false);
+        setStep('generate');
+      } else {
+        const blackoutsIdx = steps.indexOf('blackouts');
+        setStep(steps[blackoutsIdx]);
+      }
       return;
     }
 
@@ -307,6 +339,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
     setGenerating(true);
     setGenError('');
     setResult(null);
+    setGeneratePhase('running');
     setStep('generate');
 
     try {
@@ -545,6 +578,24 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
   }
 
   // ─── Computed ────────────────────────────────────────────────────────────────
+
+  const teamNameById = useMemo<Record<string, string>>(
+    () => Object.fromEntries(leagueTeams.map(t => [t.id, t.name])),
+    [leagueTeams],
+  );
+  const allTeamIds = useMemo(() => leagueTeams.map(t => t.id), [leagueTeams]);
+
+  const topSlots = useMemo(
+    () => getTopCoverageSlots(responses, allTeamIds, teamNameById, 2),
+    [responses, allTeamIds, teamNameById],
+  );
+
+  const hasResponses = activeCollection !== null && responses.length > 0;
+
+  const recommendedWindow = useMemo(() => {
+    if (!seasonStart || !seasonEnd) return null;
+    return { start: seasonStart, end: seasonEnd };
+  }, [seasonStart, seasonEnd]);
 
   const hardConflicts = result?.conflicts.filter(c => c.severity === 'hard') ?? [];
   const softConflicts = result?.conflicts.filter(c => c.severity === 'soft') ?? [];
@@ -1049,8 +1100,87 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
         </div>
       )}
 
+      {/* ── Generate: configure phase (Season mode — show recommendation) ────── */}
+      {step === 'generate' && generatePhase === 'configure' && mode === 'season' && (
+        <div className="space-y-5">
+
+          {/* Recommendation card */}
+          {hasResponses && !recommendationDismissed && topSlots.length > 0 && recommendedWindow && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <Lightbulb size={18} className="text-blue-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-blue-900">Availability recommendation</p>
+                  <p className="text-sm text-blue-800 mt-1">
+                    Based on coach availability,{' '}
+                    {topSlots.map((s, i) => (
+                      <span key={`${s.dayLabel}-${s.slotLabel}`}>
+                        {i > 0 && ' and '}
+                        <strong>{s.dayLabel} {s.slotLabel}s</strong>
+                      </span>
+                    ))}{' '}
+                    have strongest coverage. Recommended season:{' '}
+                    <strong>
+                      {new Date(recommendedWindow.start + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {' – '}
+                      {new Date(recommendedWindow.end + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </strong>
+                  </p>
+                  <p className="text-xs text-blue-600 mt-1">
+                    Based on {responses.length} coach response{responses.length !== 1 ? 's' : ''}.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 pl-7">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    setSeasonStart(recommendedWindow.start);
+                    setSeasonEnd(recommendedWindow.end);
+                    setRecommendationDismissed(true);
+                  }}
+                >
+                  Use this recommendation
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setRecommendationDismissed(true)}
+                >
+                  Set manually
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Season window fields */}
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-gray-700">Season window</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Season Start"
+                type="date"
+                value={seasonStart}
+                onChange={e => setSeasonStart(e.target.value)}
+              />
+              <Input
+                label="Season End"
+                type="date"
+                value={seasonEnd}
+                onChange={e => setSeasonEnd(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {(!seasonStart || !seasonEnd) && (
+            <p className="text-xs text-amber-600">Season start and end dates are required before generating.</p>
+          )}
+        </div>
+      )}
+
       {/* ── Generating ───────────────────────────────────────────────────────── */}
-      {step === 'generate' && (
+      {step === 'generate' && generatePhase === 'running' && (
         <div className="flex flex-col items-center justify-center py-12 gap-4">
           {generating ? (
             <>
@@ -1072,6 +1202,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
           ) : null}
         </div>
       )}
+
 
       {/* ── Preview ──────────────────────────────────────────────────────────── */}
       {step === 'preview' && result && (
@@ -1243,15 +1374,35 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
       )}
 
       {/* ── Navigation ───────────────────────────────────────────────────────── */}
-      {!published && step !== 'generate' && step !== 'mode' && (
+      {!published && step !== 'mode' && !(step === 'generate' && generatePhase === 'running') && (
         <div className="flex justify-between pt-4 mt-4 border-t border-gray-100">
           <Button variant="secondary" onClick={goBack} disabled={publishing}>
             <ChevronLeft size={16} /> {currentStepIdx === 0 ? 'Change Mode' : 'Back'}
           </Button>
 
-          {step === 'preview' ? (
+          {step === 'generate' && generatePhase === 'configure' ? (
+            <Button
+              onClick={() => void handleGenerate()}
+              disabled={!seasonStart || !seasonEnd}
+            >
+              <Wand2 size={15} /> Generate Schedule
+            </Button>
+          ) : step === 'preview' ? (
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => { setStep('blackouts'); setResult(null); }}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setResult(null);
+                  setGenError('');
+                  if (mode === 'season') {
+                    setGeneratePhase('configure');
+                    setRecommendationDismissed(false);
+                    setStep('generate');
+                  } else {
+                    void handleGenerate();
+                  }
+                }}
+              >
                 Regenerate
               </Button>
               <Button onClick={goNext} disabled={!canPublish}>
@@ -1267,7 +1418,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
               onClick={goNext}
               disabled={step === 'availability' && availabilityOption === 'collect' && !collectionDueDate}
             >
-              {step === 'blackouts'
+              {step === 'blackouts' && mode !== 'season'
                 ? <><Wand2 size={15} /> Generate</>
                 : step === 'availability' && availabilityOption === 'collect'
                   ? <>Send {'&'} Pause</>
