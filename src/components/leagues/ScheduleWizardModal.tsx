@@ -291,10 +291,10 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
     <Modal open={open} onClose={onClose} title="Schedule Wizard" size="lg">
       {/* Progress bar */}
       <div className="flex items-center gap-1 mb-6 -mt-1">
-        {steps.filter(s => s !== 'generate').map((s, i) => {
+        {steps.filter(s => s !== 'generate').map((s) => {
           const visibleIdx = steps.filter(x => x !== 'generate').indexOf(s);
-          const isActive = s === step || (step === 'generate' && s === 'blackouts');
-          const isDone = currentStepIdx > steps.indexOf(s) && s !== 'generate';
+          const isActive = s === step || (step as string) === 'generate' && s === 'blackouts';
+          const isDone = currentStepIdx > steps.indexOf(s) && (s as string) !== 'generate';
           return (
             <div key={s} className="flex items-center gap-1 flex-1">
               <div className={`h-1.5 flex-1 rounded-full transition-colors ${isDone ? 'bg-blue-600' : isActive ? 'bg-blue-400' : 'bg-gray-200'}`} />
@@ -603,7 +603,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
             <Button onClick={handlePublish} disabled={publishing || !canPublish}>
               {publishing ? <><Loader2 size={14} className="animate-spin" /> Publishing…</> : 'Publish Schedule'}
             </Button>
-          ) : step !== 'generate' ? (
+          ) : (step as string) !== 'generate' ? (
             <Button onClick={goNext}>
               {step === 'blackouts' ? <><Wand2 size={15} /> Generate</> : <>Next <ChevronRight size={16} /></>}
             </Button>
