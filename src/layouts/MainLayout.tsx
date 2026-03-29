@@ -25,6 +25,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/profile': 'My Profile',
   '/users': 'Manage Users',
   '/leagues': 'Leagues',
+  '/venues': 'Venues',
 };
 
 export function MainLayout() {

@@ -72,6 +72,7 @@ function VenueFormModal({ open, onClose, editVenue, onSave }: VenueFormModalProp
   const [newBlackout, setNewBlackout] = useState('');
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -84,6 +85,7 @@ function VenueFormModal({ open, onClose, editVenue, onSave }: VenueFormModalProp
         setFieldCount('');
       }
       setErrors({});
+      setSaveError('');
       setNewBlackout('');
     }
   }, [open, editVenue]);
@@ -100,8 +102,20 @@ function VenueFormModal({ open, onClose, editVenue, onSave }: VenueFormModalProp
     e.preventDefault();
     if (!validate()) return;
     setSaving(true);
+    setSaveError('');
     try {
       await onSave(form);
+    } catch (e: unknown) {
+      const raw = (e as { message?: string }).message ?? '';
+      let userMessage: string;
+      if (raw.includes('Missing or insufficient permissions')) {
+        userMessage = 'Permission denied. Your role may not allow this action — try refreshing and signing in again.';
+      } else if (raw === 'Not authenticated') {
+        userMessage = 'You are not signed in. Please sign in and try again.';
+      } else {
+        userMessage = 'Save failed. Please try again.';
+      }
+      setSaveError(userMessage);
     } finally {
       setSaving(false);
     }
@@ -371,6 +385,9 @@ function VenueFormModal({ open, onClose, editVenue, onSave }: VenueFormModalProp
         />
 
         {/* Actions */}
+        {saveError && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>
+        )}
         <div className="flex justify-end gap-3 pt-1 border-t border-gray-100">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
