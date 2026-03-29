@@ -163,8 +163,6 @@ function venueConfigFromSaved(saved: Venue): Partial<WizardVenueConfig> {
   };
 }
 
-const generateScheduleFn = httpsCallable<object, ScheduleOutput>(getFunctions(), 'generateSchedule');
-
 // ─── Quick-Create Venue Modal ─────────────────────────────────────────────────
 
 interface QuickCreateModalProps {
