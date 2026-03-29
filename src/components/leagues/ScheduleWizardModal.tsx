@@ -3,29 +3,18 @@ import { httpsCallable } from 'firebase/functions';
 import { getFunctions } from 'firebase/functions';
 import {
   Calendar, MapPin, Users, Wand2, CheckCircle2, AlertTriangle,
-  AlertCircle, ChevronLeft, ChevronRight, Plus, Trash2, Loader2, Search,
+  AlertCircle, ChevronLeft, ChevronRight, Plus, Trash2, Loader2, Search, ChevronDown,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useEventStore } from '@/store/useEventStore';
 import { useVenueStore } from '@/store/useVenueStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import type { Venue, RecurringVenueWindow } from '@/types/venue';
-import type { League, Team, ScheduledEvent } from '@/types';
+import type { League, Team, ScheduledEvent, Season } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-// Legacy type kept for generator payload compat
-interface VenueInput {
-  name: string;
-  concurrentPitches: number;
-  availableDays: string[];
-  availableTimeStart: string;
-  availableTimeEnd: string;
-  blackoutDates: string[];
-}
 
 interface WizardVenueConfig {
   selectedVenueId: string | null; // null = manual entry
@@ -70,18 +59,9 @@ interface ScheduleOutput {
 }
 
 type Step = 'config' | 'venues' | 'blackouts' | 'generate' | 'preview' | 'publish';
-type Format = 'single_round_robin' | 'double_round_robin' | 'single_elimination' | 'double_elimination' | 'group_then_knockout';
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-const FORMAT_OPTIONS = [
-  { value: 'single_round_robin', label: 'Single Round-Robin (each pair plays once)' },
-  { value: 'double_round_robin', label: 'Double Round-Robin (home & away)' },
-  { value: 'single_elimination', label: 'Single Elimination (knockout)' },
-  { value: 'double_elimination', label: 'Double Elimination (2 losses to exit)' },
-  { value: 'group_then_knockout', label: 'Group Stage + Knockout' },
-];
 
 const generateScheduleFn = httpsCallable<object, ScheduleOutput>(getFunctions(), 'generateLeagueSchedule');
 
@@ -310,9 +290,10 @@ interface Props {
   onClose: () => void;
   league: League;
   leagueTeams: Team[];
+  season?: Season;
 }
 
-export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Props) {
+export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season }: Props) {
   const { addEvent } = useEventStore();
   const user = useAuthStore(s => s.user);
 
@@ -330,15 +311,15 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
   const [step, setStep] = useState<Step>('config');
 
   // Step 1 — config
-  const [seasonStart, setSeasonStart] = useState('');
-  const [seasonEnd, setSeasonEnd] = useState('');
+  const [seasonStart, setSeasonStart] = useState(season?.startDate ?? '');
+  const [seasonEnd, setSeasonEnd] = useState(season?.endDate ?? '');
   const [matchDuration, setMatchDuration] = useState('60');
   const [bufferMinutes, setBufferMinutes] = useState('15');
-  const [format, setFormat] = useState<Format>('single_round_robin');
+  const [gamesPerTeam, setGamesPerTeam] = useState(String(season?.gamesPerTeam ?? 10));
+  const [homeAwayBalance, setHomeAwayBalance] = useState(season?.homeAwayBalance ?? true);
   const [minRestDays, setMinRestDays] = useState('6');
   const [maxConsecAway, setMaxConsecAway] = useState('2');
-  const [groupCount, setGroupCount] = useState('2');
-  const [groupAdvance, setGroupAdvance] = useState('2');
+  const [distributionExpanded, setDistributionExpanded] = useState(false);
 
   // Step 2 — venues (WizardVenueConfig replaces VenueInput)
   const [venueConfigs, setVenueConfigs] = useState<WizardVenueConfig[]>([newVenueConfig()]);
@@ -362,6 +343,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
   // Step 6 — publish
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
+  const [publishedAsDraft, setPublishedAsDraft] = useState(false);
 
   // Validation
   const [configError, setConfigError] = useState('');
@@ -373,6 +355,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
     if (!seasonStart || !seasonEnd) { setConfigError('Season start and end dates are required.'); return false; }
     if (seasonStart >= seasonEnd) { setConfigError('Season end must be after start date.'); return false; }
     if (!matchDuration || parseInt(matchDuration) < 10) { setConfigError('Match duration must be at least 10 minutes.'); return false; }
+    const gpt = parseInt(gamesPerTeam);
+    if (isNaN(gpt) || gpt < 1) { setConfigError('Games per team must be at least 1.'); return false; }
     setConfigError('');
     return true;
   }
@@ -493,7 +477,10 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
         seasonEnd,
         matchDurationMinutes: parseInt(matchDuration),
         bufferMinutes: parseInt(bufferMinutes),
-        format,
+        gamesPerTeam: parseInt(gamesPerTeam),
+        homeAwayBalance,
+        ...(season?.id ? { seasonId: season.id } : {}),
+        randomNonce: crypto.randomUUID(),
         teams: leagueTeams.map(t => ({
           id: t.id,
           name: t.name,
@@ -503,7 +490,6 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
         blackoutDates: seasonBlackouts,
         minRestDays: parseInt(minRestDays),
         maxConsecutiveAway: parseInt(maxConsecAway),
-        ...(format === 'group_then_knockout' ? { groupCount: parseInt(groupCount), groupAdvance: parseInt(groupAdvance) } : {}),
       });
       setResult(data);
       setStep('preview');
@@ -517,7 +503,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
 
   // ─── Publish ───────────────────────────────────────────────────────────────
 
-  async function handlePublish() {
+  async function saveFixtures(publishNow: boolean) {
     if (!result) return;
     setPublishing(true);
     const now = new Date().toISOString();
@@ -532,7 +518,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
           const event: Omit<ScheduledEvent, 'id'> = {
             title: `${fixture.homeTeamName} vs ${fixture.awayTeamName}`,
             type: 'game',
-            status: 'scheduled',
+            status: publishNow ? 'scheduled' : 'draft',
             date: fixture.date,
             startTime: fixture.startTime,
             endTime,
@@ -546,13 +532,15 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
             createdAt: now,
             updatedAt: now,
             ...(matchedConfig?.selectedVenueId ? { venueId: matchedConfig.selectedVenueId } : {}),
+            ...(season?.id ? { seasonId: season.id } : {}),
           };
           return addEvent(event as ScheduledEvent);
         })
       );
       setPublished(true);
+      setPublishedAsDraft(!publishNow);
     } catch {
-      setGenError('Failed to publish some events. Please check the schedule and try again.');
+      setGenError('Failed to save some events. Please check the schedule and try again.');
     } finally {
       setPublishing(false);
     }
@@ -570,7 +558,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
     blackouts: 'Blackout Dates',
     generate: 'Generating…',
     preview: 'Preview',
-    publish: 'Publish',
+    publish: 'Review & Publish',
   };
 
   const steps: Step[] = ['config', 'venues', 'blackouts', 'generate', 'preview', 'publish'];
@@ -609,18 +597,75 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
               <Input label="Match Duration (min)" type="number" min="10" value={matchDuration} onChange={e => setMatchDuration(e.target.value)} />
               <Input label="Buffer Between Games (min)" type="number" min="0" value={bufferMinutes} onChange={e => setBufferMinutes(e.target.value)} />
             </div>
-            <Select
-              label="Format"
-              value={format}
-              onChange={e => setFormat(e.target.value as Format)}
-              options={FORMAT_OPTIONS}
+            <Input
+              label="Games Per Team"
+              type="number"
+              min="1"
+              max="100"
+              value={gamesPerTeam}
+              onChange={e => setGamesPerTeam(e.target.value)}
             />
-            {format === 'group_then_knockout' && (
-              <div className="grid grid-cols-2 gap-3">
-                <Input label="Number of Groups" type="number" min="2" value={groupCount} onChange={e => setGroupCount(e.target.value)} />
-                <Input label="Teams Advancing per Group" type="number" min="1" value={groupAdvance} onChange={e => setGroupAdvance(e.target.value)} />
+
+            {/* Round-down warning */}
+            {(() => {
+              const gpt = parseInt(gamesPerTeam);
+              const teamCount = leagueTeams.length;
+              if (!isNaN(gpt) && gpt > 0 && teamCount > 0 && (gpt * teamCount) % 2 !== 0) {
+                return (
+                  <div className="flex items-start gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-amber-800">
+                    <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+                    <span>
+                      With {teamCount} team{teamCount !== 1 ? 's' : ''} and {gpt} games per team, {teamCount % 2 === 0 ? 'some' : 'all'} teams will play {gpt - 1} games.
+                      The schedule will round down to balance the remainder.
+                    </span>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={homeAwayBalance}
+                onChange={e => setHomeAwayBalance(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <div>
+                <span className="text-sm font-medium text-gray-700">Home/Away Balance</span>
+                <p className="text-xs text-gray-500 mt-0.5">Distribute home and away games evenly across teams.</p>
+              </div>
+            </label>
+
+            {/* Season continuity note */}
+            {season?.priorSeasonId && (
+              <div className="flex items-start gap-2 text-xs bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-blue-800">
+                <Users size={13} className="flex-shrink-0 mt-0.5" />
+                <span>Season-to-season randomization is enabled — opponent sequence will vary from last season.</span>
               </div>
             )}
+
+            {/* About game distribution expander */}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setDistributionExpanded(v => !v)}
+                className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <span className="font-medium">About game distribution</span>
+                <ChevronDown size={14} className={`text-gray-400 transition-transform ${distributionExpanded ? 'rotate-180' : ''}`} />
+              </button>
+              {distributionExpanded && (
+                <div className="px-3 pb-3 pt-1 text-xs text-gray-600 border-t border-gray-100 bg-gray-50">
+                  The scheduler uses a round-robin algorithm to distribute games evenly. Each team plays{' '}
+                  {gamesPerTeam || 'N'} games against{' '}
+                  {leagueTeams.length > 0
+                    ? `up to ${Math.min(leagueTeams.length - 1, parseInt(gamesPerTeam) || 0)} different opponent${Math.min(leagueTeams.length - 1, parseInt(gamesPerTeam) || 0) !== 1 ? 's' : ''}`
+                    : 'various opponents'}.
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <Input label="Min Rest Days Between Games" type="number" min="0" value={minRestDays} onChange={e => setMinRestDays(e.target.value)} />
               <Input label="Max Consecutive Away Games" type="number" min="1" value={maxConsecAway} onChange={e => setMaxConsecAway(e.target.value)} />
@@ -636,6 +681,53 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
         {/* ── Step 2: Venues ── */}
         {step === 'venues' && (
           <div className="space-y-4">
+            {/* Slot coverage progress bar */}
+            {(() => {
+              const gpt = parseInt(gamesPerTeam);
+              const requiredSlots = Math.ceil((gpt * leagueTeams.length) / 2);
+              // Estimate available slots from configured venue windows
+              const availableSlots = venueConfigs.reduce((total, vc) => {
+                if (!seasonStart || !seasonEnd) return total;
+                const startMs = new Date(seasonStart).getTime();
+                const endMs = new Date(seasonEnd).getTime();
+                const weeks = Math.max(1, Math.floor((endMs - startMs) / (7 * 24 * 60 * 60 * 1000)));
+                const windows = vc.availabilityWindows;
+                if (windows.length > 0) {
+                  for (const w of windows) {
+                    const startMins = parseInt(w.startTime.split(':')[0]) * 60 + parseInt(w.startTime.split(':')[1]);
+                    const endMins = parseInt(w.endTime.split(':')[0]) * 60 + parseInt(w.endTime.split(':')[1]);
+                    const slotDuration = Math.max(parseInt(matchDuration) + parseInt(bufferMinutes), 30);
+                    const slotsPerDay = Math.floor((endMins - startMins) / slotDuration);
+                    total += slotsPerDay * vc.concurrentPitches * weeks;
+                  }
+                } else {
+                  const dayCount = vc.availableDays.length;
+                  const startMins = parseInt(vc.availableTimeStart.split(':')[0]) * 60 + parseInt(vc.availableTimeStart.split(':')[1]);
+                  const endMins = parseInt(vc.availableTimeEnd.split(':')[0]) * 60 + parseInt(vc.availableTimeEnd.split(':')[1]);
+                  const slotDuration = Math.max(parseInt(matchDuration) + parseInt(bufferMinutes), 30);
+                  const slotsPerDay = Math.floor((endMins - startMins) / slotDuration);
+                  total += slotsPerDay * vc.concurrentPitches * dayCount * weeks;
+                }
+                return total;
+              }, 0);
+
+              if (requiredSlots === 0) return null;
+              const pct = Math.min(100, Math.round((availableSlots / requiredSlots) * 100));
+              const barColor = pct >= 100 ? 'bg-green-500' : pct >= 75 ? 'bg-amber-400' : 'bg-red-500';
+              const labelColor = pct >= 100 ? 'text-green-700' : pct >= 75 ? 'text-amber-700' : 'text-red-700';
+              return (
+                <div className="rounded-lg border border-gray-200 p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-gray-700">Slot coverage</span>
+                    <span className={`font-medium ${labelColor}`}>{availableSlots} of {requiredSlots} required slots covered</span>
+                  </div>
+                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })()}
+
             {venueConfigs.map((venueConfig, i) => (
               <div key={i} className="border border-gray-200 rounded-xl p-4 space-y-3">
                 {/* Card header */}
@@ -897,28 +989,41 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
           </div>
         )}
 
-        {/* ── Step 6: Publish ── */}
+        {/* ── Step 6: Review & Publish ── */}
         {step === 'publish' && (
           <div className="space-y-4">
             {published ? (
               <div className="flex flex-col items-center justify-center py-10 gap-4 text-center">
                 <CheckCircle2 size={48} className="text-green-500" />
                 <div>
-                  <p className="text-lg font-bold text-gray-900">Schedule Published!</p>
-                  <p className="text-sm text-gray-500 mt-1">{result?.stats.assignedFixtures} fixtures added to the league calendar.</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {publishedAsDraft ? 'Schedule Saved as Draft!' : 'Schedule Published!'}
+                  </p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {publishedAsDraft
+                      ? `${result?.stats.assignedFixtures} games saved as draft. Players will not see the schedule until you publish it from the Season Dashboard.`
+                      : `${result?.stats.assignedFixtures} fixtures added to the league calendar.`}
+                  </p>
                 </div>
                 <Button onClick={onClose}>Done</Button>
               </div>
             ) : (
               <>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-800 flex items-start gap-2">
+                  <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                  <span>
+                    This will save {result?.stats.assignedFixtures} game{result?.stats.assignedFixtures !== 1 ? 's' : ''} as a draft.
+                    Players will not see the schedule until you publish it from the Season Dashboard.
+                  </span>
+                </div>
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-2">
-                  <p className="text-sm font-semibold text-blue-900 flex items-center gap-2"><Wand2 size={15} /> Ready to publish</p>
+                  <p className="text-sm font-semibold text-blue-900 flex items-center gap-2"><Wand2 size={15} /> Ready to save</p>
                   <ul className="text-sm text-blue-800 space-y-1">
                     <li>• {result?.stats.assignedFixtures} fixtures will be added to the league schedule</li>
-                    <li>• Events will appear immediately in team and league calendars</li>
-                    <li>• Coaches and players can view and RSVP right away</li>
+                    <li>• "Save as Draft" — visible only to league managers until published</li>
+                    <li>• "Publish Now" — immediately visible to coaches and players</li>
                     {result && result.stats.unassignedFixtures > 0 && (
-                      <li className="text-amber-700">• {result.stats.unassignedFixtures} fixture{result.stats.unassignedFixtures !== 1 ? 's' : ''} could not be scheduled and will not be published</li>
+                      <li className="text-amber-700">• {result.stats.unassignedFixtures} fixture{result.stats.unassignedFixtures !== 1 ? 's' : ''} could not be scheduled and will not be saved</li>
                     )}
                   </ul>
                 </div>
@@ -949,9 +1054,14 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
                 </Button>
               </div>
             ) : step === 'publish' ? (
-              <Button onClick={handlePublish} disabled={publishing || !canPublish}>
-                {publishing ? <><Loader2 size={14} className="animate-spin" /> Publishing…</> : 'Publish Schedule'}
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => saveFixtures(false)} disabled={publishing || !canPublish}>
+                  {publishing ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : 'Save as Draft'}
+                </Button>
+                <Button onClick={() => saveFixtures(true)} disabled={publishing || !canPublish}>
+                  {publishing ? <><Loader2 size={14} className="animate-spin" /> Publishing…</> : 'Publish Now'}
+                </Button>
+              </div>
             ) : (step as string) !== 'generate' ? (
               <Button onClick={goNext}>
                 {step === 'blackouts' ? <><Wand2 size={15} /> Generate</> : <>Next <ChevronRight size={16} /></>}
