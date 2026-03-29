@@ -532,6 +532,7 @@ export function SeasonDashboard() {
           leagueTeams={leagueTeams}
           season={season}
           currentUserUid={profile?.uid ?? ''}
+          divisionId={divisions.length === 1 ? divisions[0].id : undefined}
         />
       )}
 
