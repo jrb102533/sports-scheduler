@@ -54,7 +54,6 @@ type Format = 'single_round_robin' | 'double_round_robin' | 'single_elimination'
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const DAY_ABBR = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_OPTIONS = DAY_NAMES.map((d, i) => ({ value: String(i), label: d }));
 
 const FORMAT_OPTIONS = [
