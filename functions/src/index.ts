@@ -1413,22 +1413,15 @@ export const checkWeatherAlerts = onSchedule(
         if (status === 'cancelled' || status === 'postponed') continue;
 
         const location: string | undefined = ev['location'];
-        const venueId: string | undefined = ev['venueId'];
-        const venueOwnerUid: string | undefined = ev['venueOwnerUid'];
+        const venueLat: unknown = ev['venueLat'];
+        const venueLng: unknown = ev['venueLng'];
 
-        // Attempt to use pre-geocoded venue lat/lng before falling back to geocoding.
-        // O(1) fast path: venueOwnerUid is stored on the event at publish time alongside
-        // venueId, so we can read users/{venueOwnerUid}/venues/{venueId} in a single
-        // Firestore read instead of iterating teamIds to discover the owner.
+        // Use coordinates stamped directly onto the event at publish time (fast path).
+        // Fall back to text geocoding via the location field if coordinates are absent.
         let coords: { lat: number; lon: number } | null = null;
 
-        if (venueId && venueOwnerUid) {
-          // O(1): direct read using ownerUid stored on the event document at publish time
-          const venueDoc = await db.doc(`users/${venueOwnerUid}/venues/${venueId}`).get();
-          const venueData = venueDoc.data();
-          if (venueData?.['lat'] != null && venueData?.['lng'] != null) {
-            coords = { lat: venueData['lat'] as number, lon: venueData['lng'] as number };
-          }
+        if (typeof venueLat === 'number' && typeof venueLng === 'number') {
+          coords = { lat: venueLat, lon: venueLng };
         }
 
         if (!coords) {
