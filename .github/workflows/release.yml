@@ -9,6 +9,9 @@ name: Release
 #   FIREBASE_TOKEN_PROD — long-lived CI token for first-whistle-prod (set as environment secret on 'production')
 #   GITHUB_TOKEN        — auto-provided by Actions
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   workflow_dispatch:
     inputs:
