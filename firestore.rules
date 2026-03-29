@@ -19,7 +19,10 @@ service cloud.firestore {
       allow update: if (request.auth.uid == uid
           && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['uid', 'mustChangePassword', 'memberships'])
-          && !(['admin', 'league_manager'].hasAny([request.resource.data.role])))
+          && !(['admin', 'league_manager'].hasAny([request.resource.data.role]))
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() >= 1
+          && request.resource.data.displayName.size() <= 100)
         || isAdmin()
         || (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamId']) &&

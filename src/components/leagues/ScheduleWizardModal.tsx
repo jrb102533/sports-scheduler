@@ -359,9 +359,10 @@ interface Props {
   leagueTeams: Team[];
   season?: Season;
   currentUserUid: string;
+  divisionId?: string;
 }
 
-export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season, currentUserUid }: Props) {
+export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season, currentUserUid, divisionId }: Props) {
   const { addEvent } = useEventStore();
   const { createCollection, saveWizardDraft, wizardDraft, activeCollection, responses, loadCollection } = useCollectionStore();
 
@@ -823,6 +824,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             updatedAt: now,
             ...venueFields,
             ...(season?.id ? { seasonId: season.id } : {}),
+            ...(divisionId ? { divisionId } : {}),
           };
           return addEvent(event as ScheduledEvent);
         })

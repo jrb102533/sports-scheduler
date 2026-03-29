@@ -35,6 +35,8 @@ export function ProfilePage() {
   const existingParts = (profile?.displayName ?? '').trim().split(/\s+/);
   const [firstName, setFirstName] = useState(existingParts.slice(0, -1).join(' ') || existingParts[0] || '');
   const [lastName, setLastName] = useState(existingParts.length > 1 ? existingParts[existingParts.length - 1] : '');
+  const [firstNameTouched, setFirstNameTouched] = useState(false);
+  const [lastNameTouched, setLastNameTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [editingRoles, setEditingRoles] = useState(false);
@@ -82,7 +84,15 @@ export function ProfilePage() {
     await updateProfile({ memberships: reordered, activeContext: 0 });
   }
 
+  const firstNameError = firstNameTouched && firstName.trim().length === 0 ? 'First name is required' : undefined;
+  const lastNameError = lastNameTouched && lastName.trim().length === 0 ? 'Last name is required' : undefined;
+
   async function handleSave() {
+    if (firstName.trim().length === 0 || lastName.trim().length === 0) {
+      setFirstNameTouched(true);
+      setLastNameTouched(true);
+      return;
+    }
     setSaving(true);
     const displayName = `${firstName.trim()} ${lastName.trim()}`.trim();
     await updateProfile({ displayName });
@@ -134,6 +144,8 @@ export function ProfilePage() {
             autoComplete="given-name"
             value={firstName}
             onChange={e => setFirstName(e.target.value)}
+            onBlur={() => setFirstNameTouched(true)}
+            error={firstNameError}
           />
           <Input
             label="Last Name"
@@ -141,11 +153,13 @@ export function ProfilePage() {
             autoComplete="family-name"
             value={lastName}
             onChange={e => setLastName(e.target.value)}
+            onBlur={() => setLastNameTouched(true)}
+            error={lastNameError}
           />
         </div>
         <Input label="Email" name="email" autoComplete="email" value={profile.email} disabled className="opacity-60 cursor-not-allowed" />
         <div className="flex gap-3">
-          <Button onClick={handleSave} disabled={saving || `${firstName.trim()} ${lastName.trim()}`.trim() === profile.displayName}>
+          <Button onClick={handleSave} disabled={saving || firstName.trim().length === 0 || lastName.trim().length === 0 || `${firstName.trim()} ${lastName.trim()}`.trim() === profile.displayName}>
             {saving ? 'Saving…' : saved ? 'Saved!' : 'Save Changes'}
           </Button>
         </div>
