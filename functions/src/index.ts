@@ -5,6 +5,7 @@ import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
 import * as nodemailer from 'nodemailer';
 import * as crypto from 'crypto';
+import Anthropic from '@anthropic-ai/sdk';
 
 const APP_URL = 'https://first-whistle-e76f4.web.app';
 const FUNCTIONS_BASE = 'https://us-central1-first-whistle-e76f4.cloudfunctions.net';
@@ -23,6 +24,7 @@ const emailFrom = defineSecret('EMAIL_FROM');
 // HMAC secret for signing/verifying RSVP email links (F-02).
 // Provision with: firebase functions:secrets:set RSVP_HMAC_SECRET
 const rsvpSecret = defineSecret('RSVP_HMAC_SECRET');
+const anthropicKey = defineSecret('ANTHROPIC_API_KEY');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1413,7 +1415,33 @@ export const checkWeatherAlerts = onSchedule(
         if (status === 'cancelled' || status === 'postponed') continue;
 
         const location: string | undefined = ev['location'];
-        if (!location?.trim()) continue;
+        const venueId: string | undefined = ev['venueId'];
+
+        // Attempt to use pre-geocoded venue lat/lng before falling back to geocoding
+        let coords: { lat: number; lon: number } | null = null;
+
+        if (venueId) {
+          // Try each team's coach uid as the potential venue owner
+          const teamIds: string[] = ev['teamIds'] ?? [];
+          for (const teamId of teamIds.slice(0, 5)) {
+            const teamDoc = await db.doc(`teams/${teamId}`).get();
+            const teamData = teamDoc.data();
+            const ownerUid: string | undefined = teamData?.['createdBy'];
+            if (!ownerUid) continue;
+            const venueDoc = await db.doc(`users/${ownerUid}/venues/${venueId}`).get();
+            const venueData = venueDoc.data();
+            if (venueData?.['lat'] != null && venueData?.['lng'] != null) {
+              coords = { lat: venueData['lat'] as number, lon: venueData['lng'] as number };
+              break;
+            }
+          }
+        }
+
+        if (!coords) {
+          if (!location?.trim()) continue;
+          coords = await geocodeLocation(location);
+        }
+        if (!coords) continue;
 
         // Build the event's start datetime in ISO format
         const startTime: string = ev['startTime'] ?? '00:00'; // HH:MM
@@ -1423,15 +1451,11 @@ export const checkWeatherAlerts = onSchedule(
         const eventTs = new Date(`${dateStr}T${startTime}:00Z`).getTime();
         if (eventTs < windowStart.getTime() || eventTs > windowEnd.getTime()) continue;
 
-        // Geocode
-        const coords = await geocodeLocation(location);
-        if (!coords) continue;
-
         // Fetch precipitation probability
         const prob = await getPrecipitationProbability(coords.lat, coords.lon, eventIsoHour);
         if (prob === null) continue;
 
-        console.log(`checkWeatherAlerts: event "${ev['title']}" (${evDoc.id}) location="${location}" prob=${prob}%`);
+        console.log(`checkWeatherAlerts: event "${ev['title']}" (${evDoc.id}) location="${location ?? venueId}" prob=${prob}%`);
 
         if (prob <= RAIN_THRESHOLD) continue;
 
@@ -1720,5 +1744,286 @@ export const migrateSensitivePlayerData = onCall(
     console.log(`migrateSensitivePlayerData: migrated=${migrated}, skipped=${skipped}`);
     return { migrated, skipped };
   }
+);
+
+// ─── Schedule Wizard ──────────────────────────────────────────────────────────
+
+export interface RecurringVenueWindow {
+  dayOfWeek: number;   // 0 = Sunday … 6 = Saturday
+  startTime: string;   // 'HH:MM'
+  endTime: string;     // 'HH:MM'
+}
+
+export interface VenueInput {
+  name: string;
+  concurrentPitches: number;
+  // New format (v2 wizard)
+  availabilityWindows?: RecurringVenueWindow[];
+  fallbackWindows?: RecurringVenueWindow[];
+  // Legacy format (v1 wizard) — kept for backwards compatibility
+  availableDays?: string[];
+  availableTimeStart?: string;
+  availableTimeEnd?: string;
+  blackoutDates?: string[];
+}
+
+export interface TeamInput {
+  id: string;
+  name: string;
+  homeVenue?: string;              // venue name
+  earliestKickOff?: string;        // e.g. '10:00'
+}
+
+export interface ScheduleWizardInput {
+  leagueId: string;
+  leagueName: string;
+  seasonStart: string;             // ISO date
+  seasonEnd: string;               // ISO date
+  matchDurationMinutes: number;
+  bufferMinutes: number;
+  format: 'single_round_robin' | 'double_round_robin' | 'single_elimination' | 'double_elimination' | 'group_then_knockout';
+  teams: TeamInput[];
+  venues: VenueInput[];
+  blackoutDates?: string[];        // season-wide blackout ISO dates
+  minRestDays?: number;            // default 6
+  maxConsecutiveAway?: number;     // default 2
+  groupCount?: number;             // for group_then_knockout
+  groupAdvance?: number;           // top N from each group advance
+}
+
+export interface GeneratedFixture {
+  round: number;
+  homeTeamId: string;
+  homeTeamName: string;
+  awayTeamId: string;
+  awayTeamName: string;
+  date: string;       // ISO date e.g. '2026-04-05'
+  startTime: string;  // e.g. '10:00'
+  venue: string;
+  stage?: string;     // e.g. 'Group A', 'Quarter-final', 'Final'
+}
+
+export interface ScheduleWizardOutput {
+  fixtures: GeneratedFixture[];
+  conflicts: Array<{
+    severity: 'hard' | 'soft';
+    description: string;
+    constraintId?: string;
+  }>;
+  stats: {
+    totalFixtures: number;
+    assignedFixtures: number;
+    unassignedFixtures: number;
+    feasible: boolean;
+  };
+  summary: string;
+}
+
+export const generateLeagueSchedule = onCall(
+  {
+    timeoutSeconds: 300,
+    memory: '512MiB',
+    secrets: [anthropicKey],
+  },
+  async (request): Promise<ScheduleWizardOutput> => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Authentication required.');
+    }
+    const role = await assertAdminOrCoach(request.auth.uid);
+    if (role !== 'admin' && role !== 'league_manager') {
+      throw new HttpsError('permission-denied', 'Only league managers and admins can generate schedules.');
+    }
+
+    await checkRateLimit(request.auth.uid, 'generateSchedule', 5, 60_000);
+
+    const input = request.data as ScheduleWizardInput;
+
+    if (!input.leagueId || !input.seasonStart || !input.seasonEnd || !input.teams?.length || !input.venues?.length) {
+      throw new HttpsError('invalid-argument', 'Missing required schedule inputs.');
+    }
+    if (input.teams.length < 2) {
+      throw new HttpsError('invalid-argument', 'At least 2 teams are required to generate a schedule.');
+    }
+
+    const client = new Anthropic({ apiKey: anthropicKey.value() });
+
+    const DAY_NAMES_CF = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    function venueWindowsText(windows: RecurringVenueWindow[] | undefined | null): string {
+      if (!windows?.length) return 'not specified';
+      return windows.map(w => `${DAY_NAMES_CF[w.dayOfWeek]} ${w.startTime}–${w.endTime}`).join(', ');
+    }
+
+    function venueAvailabilityText(v: VenueInput): string {
+      if (v.availabilityWindows?.length) {
+        const primary = `primary: ${venueWindowsText(v.availabilityWindows)}`;
+        const fallback = v.fallbackWindows?.length ? `; fallback: ${venueWindowsText(v.fallbackWindows)}` : '';
+        return `available ${primary}${fallback}`;
+      }
+      // Legacy format
+      const days = v.availableDays?.join('/') ?? 'unspecified days';
+      const time = v.availableTimeStart && v.availableTimeEnd ? `${v.availableTimeStart}–${v.availableTimeEnd}` : 'unspecified times';
+      return `available ${days} ${time}`;
+    }
+
+    const formatDescriptions: Record<string, string> = {
+      single_round_robin: 'Single round-robin: each pair of teams plays once.',
+      double_round_robin: 'Double round-robin: each pair of teams plays twice (home and away).',
+      single_elimination: 'Single elimination knockout bracket. Teams are seeded. Losers are eliminated immediately. Byes are assigned if the team count is not a power of 2.',
+      double_elimination: 'Double elimination: teams must lose twice to be eliminated. Winners and Losers brackets merge in a Grand Final.',
+      group_then_knockout: `Group stage (${input.groupCount ?? 2} groups, top ${input.groupAdvance ?? 2} advance) followed by single-elimination knockout.`,
+    };
+
+    const systemPrompt = `You are an expert sports scheduling engine. Your job is to produce a complete, valid fixture schedule for a sports league or tournament.
+
+You must output ONLY valid JSON matching the exact schema provided. No explanatory text, no markdown, no code fences — raw JSON only.
+
+Rules you must follow:
+- Hard constraints must NEVER be violated (no double-booking, no team plays twice on same day, venues available on scheduled day/time, no fixtures on blackout dates).
+- Soft constraints should be respected as much as possible (min rest days, home/away balance, max consecutive away).
+- If a complete schedule is infeasible, assign as many fixtures as possible and report the rest as conflicts.
+- Fixture dates must fall between seasonStart and seasonEnd inclusive.
+- Fixture times must fall within venue available hours.
+- Concurrent pitch limits at each venue must be respected.
+- For knockout formats: clearly label the stage (e.g. "Round of 16", "Quarter-final", "Semi-final", "Final").
+- For group+knockout: label group stage fixtures with "Group A", "Group B" etc.`;
+
+    const userMessage = `Generate a complete fixture schedule for the following league/tournament:
+
+**League:** ${input.leagueName}
+**Format:** ${formatDescriptions[input.format] ?? input.format}
+**Season:** ${input.seasonStart} to ${input.seasonEnd}
+**Match duration:** ${input.matchDurationMinutes} minutes + ${input.bufferMinutes} min buffer between games at same venue
+**Minimum rest days between games per team:** ${input.minRestDays ?? 6}
+**Maximum consecutive away games:** ${input.maxConsecutiveAway ?? 2}
+
+**Teams (${input.teams.length}):**
+${input.teams.map((t, i) => `${i + 1}. ${t.name} (id: ${t.id})${t.homeVenue ? `, home venue: ${t.homeVenue}` : ''}${t.earliestKickOff ? `, earliest kick-off: ${t.earliestKickOff}` : ''}`).join('\n')}
+
+**Venues (${input.venues.length}):**
+${input.venues.map(v => `- ${v.name}: ${v.concurrentPitches} pitch(es), ${venueAvailabilityText(v)}${v.blackoutDates?.length ? `, blackout: ${v.blackoutDates.join(', ')}` : ''}`).join('\n')}
+
+**Season-wide blackout dates:** ${input.blackoutDates?.length ? input.blackoutDates.join(', ') : 'None'}
+
+Output JSON with this exact structure:
+{
+  "fixtures": [
+    {
+      "round": 1,
+      "homeTeamId": "<team id>",
+      "homeTeamName": "<team name>",
+      "awayTeamId": "<team id>",
+      "awayTeamName": "<team name>",
+      "date": "YYYY-MM-DD",
+      "startTime": "HH:MM",
+      "venue": "<venue name>",
+      "stage": "<optional: e.g. Group A, Quarter-final>"
+    }
+  ],
+  "conflicts": [
+    {
+      "severity": "hard|soft",
+      "description": "<plain English explanation>",
+      "constraintId": "<optional: HC-01, SC-01, etc.>"
+    }
+  ],
+  "stats": {
+    "totalFixtures": <number>,
+    "assignedFixtures": <number>,
+    "unassignedFixtures": <number>,
+    "feasible": <true|false>
+  },
+  "summary": "<1-2 sentence plain-English summary of the schedule quality and any notable issues>"
+}`;
+
+    let rawContent = '';
+    try {
+      const stream = client.messages.stream({
+        model: 'claude-opus-4-6',
+        max_tokens: 64000,
+        thinking: { type: 'adaptive' },
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      });
+
+      const message = await stream.finalMessage();
+      for (const block of message.content) {
+        if (block.type === 'text') {
+          rawContent = block.text;
+          break;
+        }
+      }
+    } catch (err) {
+      console.error('Anthropic API error:', JSON.stringify(err));
+      throw new HttpsError('internal', 'Schedule generation failed. Please try again.');
+    }
+
+    // Strip any accidental markdown fences
+    const jsonText = rawContent.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+
+    let result: ScheduleWizardOutput;
+    try {
+      result = JSON.parse(jsonText) as ScheduleWizardOutput;
+      if (!Array.isArray(result.fixtures)) {
+        throw new Error('LLM response missing fixtures array');
+      }
+    } catch (err) {
+      console.error('Failed to parse LLM output:', (err as Error).message, jsonText.slice(0, 500));
+      throw new HttpsError('internal', 'Schedule generation returned an unexpected format. Please try again.');
+    }
+
+    return result;
+  }
+);
+
+// ─── Callable: geocode a venue address via Nominatim ─────────────────────────
+
+export const geocodeVenueAddress = onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    const { venueId, address, ownerUid } = request.data as {
+      venueId: string;
+      address: string;
+      ownerUid: string;
+    };
+
+    if (!venueId || !address || !ownerUid) {
+      throw new HttpsError('invalid-argument', 'venueId, address, and ownerUid are required');
+    }
+
+    // Auth check: caller must be the owner
+    if (request.auth?.uid !== ownerUid) {
+      throw new HttpsError('permission-denied', 'Not authorised');
+    }
+
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'FirstWhistle/1.0 (contact@firstwhistle.app)' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) {
+        console.warn(`geocodeVenueAddress: Nominatim HTTP ${res.status} for "${address}"`);
+        return { success: false };
+      }
+      const data = await res.json() as Array<{ lat: string; lon: string }>;
+      const first = data[0];
+      if (!first) {
+        console.log(`geocodeVenueAddress: no result for "${address}"`);
+        return { success: false };
+      }
+      const lat = parseFloat(first.lat);
+      const lng = parseFloat(first.lon);
+      await admin.firestore()
+        .doc(`users/${ownerUid}/venues/${venueId}`)
+        .update({ lat, lng, updatedAt: new Date().toISOString() });
+      console.log(`geocodeVenueAddress: geocoded "${address}" → lat=${lat} lng=${lng}`);
+      return { success: true, lat, lng };
+    } catch (err) {
+      console.warn(`geocodeVenueAddress: failed for "${address}"`, err);
+      return { success: false };
+    }
+  },
 );
 

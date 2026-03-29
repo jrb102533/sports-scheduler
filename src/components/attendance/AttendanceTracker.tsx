@@ -35,11 +35,14 @@ export function AttendanceTracker({ event }: AttendanceTrackerProps) {
 
   const recorded = event.attendance?.length ?? 0;
   const hasNoAttendance = recorded === 0;
-  const yesRsvps = (event.rsvps ?? []).filter(r => r.response === 'yes');
-  const canPrefill = hasNoAttendance && yesRsvps.length > 0;
+  const allRsvps = event.rsvps ?? [];
+  const canPrefill = hasNoAttendance && allRsvps.length > 0;
 
   function handlePrefillFromRsvps() {
-    const attendance = yesRsvps.map(r => ({ playerId: r.playerId, status: 'present' as AttendanceStatus }));
+    const attendance = allRsvps.map(r => ({
+      playerId: r.playerId,
+      status: (r.response === 'yes' ? 'present' : r.response === 'no' ? 'absent' : 'excused') as AttendanceStatus,
+    }));
     updateEvent({ ...event, attendance, attendanceRecorded: true, updatedAt: new Date().toISOString() });
   }
 
