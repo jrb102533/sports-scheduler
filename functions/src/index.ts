@@ -1407,7 +1407,22 @@ export const checkWeatherAlerts = onSchedule(
         if (status === 'cancelled' || status === 'postponed') continue;
 
         const location: string | undefined = ev['location'];
-        if (!location?.trim()) continue;
+        const venueLat: unknown = ev['venueLat'];
+        const venueLng: unknown = ev['venueLng'];
+
+        // Use coordinates stamped directly onto the event at publish time (fast path).
+        // Fall back to text geocoding via the location field if coordinates are absent.
+        let coords: { lat: number; lon: number } | null = null;
+
+        if (typeof venueLat === 'number' && typeof venueLng === 'number') {
+          coords = { lat: venueLat, lon: venueLng };
+        }
+
+        if (!coords) {
+          if (!location?.trim()) continue;
+          coords = await geocodeLocation(location);
+          if (!coords) continue;
+        }
 
         // Build the event's start datetime in ISO format
         const startTime: string = ev['startTime'] ?? '00:00'; // HH:MM
@@ -1417,9 +1432,6 @@ export const checkWeatherAlerts = onSchedule(
         const eventTs = new Date(`${dateStr}T${startTime}:00Z`).getTime();
         if (eventTs < windowStart.getTime() || eventTs > windowEnd.getTime()) continue;
 
-        // Geocode
-        const coords = await geocodeLocation(location);
-        if (!coords) continue;
 
         // Fetch precipitation probability
         const prob = await getPrecipitationProbability(coords.lat, coords.lon, eventIsoHour);
@@ -2097,6 +2109,18 @@ export const requestAvailability = onCall<RequestAvailabilityData, Promise<{ not
 
     const db = admin.firestore();
 
+    // Ownership check: non-admins must manage the league they are acting on.
+    if (callerRole !== 'admin') {
+      const leagueDoc = await admin.firestore().doc(`leagues/${leagueId}`).get();
+      if (!leagueDoc.exists) throw new HttpsError('not-found', 'League not found.');
+      const leagueData = leagueDoc.data()!;
+      const userDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+      const profile = userDoc.data();
+      const ownsLeague = leagueData.managedBy === request.auth.uid
+        || profile?.leagueId === leagueId;
+      if (!ownsLeague) throw new HttpsError('permission-denied', 'You do not manage this league.');
+    }
+
     // Load the league document to get the league name.
     const leagueDoc = await db.doc(`leagues/${leagueId}`).get();
     if (!leagueDoc.exists) throw new HttpsError('not-found', 'League not found.');
@@ -2207,6 +2231,18 @@ export const sendAvailabilityReminder = onCall<SendAvailabilityReminderData, Pro
 
     const db = admin.firestore();
 
+    // Ownership check: non-admins must manage the league they are acting on.
+    if (callerRole !== 'admin') {
+      const leagueDoc = await admin.firestore().doc(`leagues/${leagueId}`).get();
+      if (!leagueDoc.exists) throw new HttpsError('not-found', 'League not found.');
+      const leagueData = leagueDoc.data()!;
+      const userDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+      const profile = userDoc.data();
+      const ownsLeague = leagueData.managedBy === request.auth.uid
+        || profile?.leagueId === leagueId;
+      if (!ownsLeague) throw new HttpsError('permission-denied', 'You do not manage this league.');
+    }
+
     // Verify the collection is still open.
     const collectionRef = db.doc(`leagues/${leagueId}/availabilityCollections/${collectionId}`);
     const collectionDoc = await collectionRef.get();
@@ -2226,9 +2262,7 @@ export const sendAvailabilityReminder = onCall<SendAvailabilityReminderData, Pro
     // Load all existing responses so we know who has already submitted.
     const responsesSnap = await collectionRef.collection('responses').get();
     const respondedCoachIds = new Set<string>(
-      responsesSnap.docs
-        .map(d => d.data()?.coachId as string | undefined)
-        .filter((id): id is string => Boolean(id)),
+      responsesSnap.docs.map(d => d.id)
     );
 
     // Load league name if not stored on the collection document.

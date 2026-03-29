@@ -3,6 +3,6 @@
     "allow": [
       "Bash"
     ],
-    "defaultMode": "bypassPermissions"
+    "defaultMode": "default"
   }
 }

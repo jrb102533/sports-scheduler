@@ -147,7 +147,9 @@ service cloud.firestore {
               getProfile().leagueId == leagueId
               || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
             ));
-          allow create, update: if request.auth.uid == coachUid;
+          allow create, update: if request.auth != null
+            && request.auth.uid == coachUid
+            && request.resource.data.coachUid == request.auth.uid;
           allow delete: if isAdmin();
         }
       }
