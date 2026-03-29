@@ -79,7 +79,11 @@ function signRsvpToken(eventId: string, playerId: string): string {
 /** Verify an RSVP token. Returns false if the secret is not yet provisioned (soft mode). */
 function verifyRsvpToken(eventId: string, playerId: string, token: string): boolean {
   const secret = rsvpSecret.value();
-  if (!secret) return true; // secret not yet provisioned — allow existing links
+  const secretIsProvisioned = typeof secret === 'string' && secret.length >= 16;
+  if (!secretIsProvisioned) return true;
+  if (typeof secret === 'string' && secret.length > 0 && secret.length < 16) {
+    console.warn('verifyRsvpToken: RSVP_HMAC_SECRET is set but too short (< 16 chars) — HMAC verification disabled');
+  }
   const expected = crypto.createHmac('sha256', secret).update(`${eventId}:${playerId}`).digest('hex');
   try {
     return crypto.timingSafeEqual(Buffer.from(token, 'hex'), Buffer.from(expected, 'hex'));
@@ -331,8 +335,8 @@ export const sendInvite = onCall<SendInviteData>(
             <p style="color:white;font-weight:700;font-size:22px;margin:0">First Whistle</p>
             <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px">Game day starts here.</p>
           </div>
-          <p style="color:#111827;font-size:15px">Hi ${playerName},</p>
-          <p style="color:#374151">You've been added to <strong>${teamName}</strong> on First Whistle.</p>
+          <p style="color:#111827;font-size:15px">Hi ${esc(playerName)},</p>
+          <p style="color:#374151">You've been added to <strong>${esc(teamName)}</strong> on First Whistle.</p>
           <p style="color:#374151">Sign up or log in to view your schedule, track attendance, and stay connected with your team.</p>
           <div style="text-align:center;margin:32px 0">
             <a href="${appUrl}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
@@ -413,7 +417,9 @@ export const rsvpEvent = onRequest(
     res.status(403).send('<p>This RSVP link is invalid or has been tampered with.</p>');
     return;
   }
-  if (!token && rsvpSecret.value()) {
+  const _rsvpSecretVal = rsvpSecret.value();
+  const _rsvpSecretProvisioned = typeof _rsvpSecretVal === 'string' && _rsvpSecretVal.length >= 16;
+  if (!token && _rsvpSecretProvisioned) {
     // Secret is provisioned but no token present — link is pre-HMAC; reject.
     res.status(403).send('<p>This RSVP link has expired. Please ask your coach to resend the invite.</p>');
     return;
@@ -670,7 +676,7 @@ export const onEventCreated = onDocumentCreated(
 export const sendEventReminders = onSchedule(
   {
     schedule: '0 8 * * *',
-    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret],
   },
   async () => {
     const tomorrow = new Date();
@@ -799,7 +805,7 @@ export const sendEventReminders = onSchedule(
 export const sendRsvpFollowups = onSchedule(
   {
     schedule: '0 10 * * *',
-    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret],
   },
   async () => {
     const tomorrow = new Date();
@@ -1408,24 +1414,20 @@ export const checkWeatherAlerts = onSchedule(
 
         const location: string | undefined = ev['location'];
         const venueId: string | undefined = ev['venueId'];
+        const venueOwnerUid: string | undefined = ev['venueOwnerUid'];
 
-        // Attempt to use pre-geocoded venue lat/lng before falling back to geocoding
+        // Attempt to use pre-geocoded venue lat/lng before falling back to geocoding.
+        // O(1) fast path: venueOwnerUid is stored on the event at publish time alongside
+        // venueId, so we can read users/{venueOwnerUid}/venues/{venueId} in a single
+        // Firestore read instead of iterating teamIds to discover the owner.
         let coords: { lat: number; lon: number } | null = null;
 
-        if (venueId) {
-          // Try each team's coach uid as the potential venue owner
-          const teamIds: string[] = ev['teamIds'] ?? [];
-          for (const teamId of teamIds.slice(0, 5)) {
-            const teamDoc = await db.doc(`teams/${teamId}`).get();
-            const teamData = teamDoc.data();
-            const ownerUid: string | undefined = teamData?.['createdBy'];
-            if (!ownerUid) continue;
-            const venueDoc = await db.doc(`users/${ownerUid}/venues/${venueId}`).get();
-            const venueData = venueDoc.data();
-            if (venueData?.['lat'] != null && venueData?.['lng'] != null) {
-              coords = { lat: venueData['lat'] as number, lon: venueData['lng'] as number };
-              break;
-            }
+        if (venueId && venueOwnerUid) {
+          // O(1): direct read using ownerUid stored on the event document at publish time
+          const venueDoc = await db.doc(`users/${venueOwnerUid}/venues/${venueId}`).get();
+          const venueData = venueDoc.data();
+          if (venueData?.['lat'] != null && venueData?.['lng'] != null) {
+            coords = { lat: venueData['lat'] as number, lon: venueData['lng'] as number };
           }
         }
 

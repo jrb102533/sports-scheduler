@@ -32,6 +32,10 @@ const leagueNavItems = [
   { to: '/leagues', label: 'Leagues', icon: Layers, end: undefined },
 ];
 
+const venueNavItems = [
+  { to: '/venues', label: 'Venues', icon: MapPin, end: undefined },
+];
+
 const roleColors: Record<string, string> = {
   admin: 'text-purple-300',
   league_manager: 'text-indigo-300',
@@ -65,7 +69,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
     navItems[1], // Calendar
     navItems[2], // Teams
     ...(hasRole(profile, 'admin', 'league_manager') ? leagueNavItems : []),
-    { to: '/venues', label: 'Venues', icon: MapPin },
+    ...(hasRole(profile, 'admin', 'league_manager', 'coach') ? venueNavItems : []),
     navItems[3], // Notifications
     navItems[4], // Messaging
     navItems[5], // Settings

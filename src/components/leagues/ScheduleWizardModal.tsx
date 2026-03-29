@@ -535,7 +535,10 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
             notes: fixture.stage ? `Round ${fixture.round} — ${fixture.stage}` : `Round ${fixture.round}`,
             createdAt: now,
             updatedAt: now,
-            ...(matchedConfig?.selectedVenueId ? { venueId: matchedConfig.selectedVenueId } : {}),
+            ...(matchedConfig?.selectedVenueId ? {
+              venueId: matchedConfig.selectedVenueId,
+              venueOwnerUid: savedVenues.find(v => v.id === matchedConfig.selectedVenueId)?.ownerUid,
+            } : {}),
           };
           return addEvent(event as ScheduledEvent);
         })
