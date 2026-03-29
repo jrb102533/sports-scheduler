@@ -726,8 +726,7 @@ export const sendEventReminders = onSchedule(
           d.parentContact2?.parentEmail,
         ].filter((e: any): e is string => typeof e === 'string' && e.trim().length > 0);
 
-        const reminderToken = signRsvpToken(evDoc.id, p.id);
-        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(evDoc.id)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}&t=${reminderToken}`;
+        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(evDoc.id)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}`;
         const yesUrl = `${base}&r=yes`;
         const noUrl = `${base}&r=no`;
         const maybeUrl = `${base}&r=maybe`;
@@ -800,7 +799,7 @@ export const sendEventReminders = onSchedule(
 export const sendRsvpFollowups = onSchedule(
   {
     schedule: '0 10 * * *',
-    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret],
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
   },
   async () => {
     const tomorrow = new Date();
@@ -861,8 +860,7 @@ export const sendRsvpFollowups = onSchedule(
 
         if (!addrs.length) continue;
 
-        const followupToken = signRsvpToken(eventId, p.id);
-        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}&t=${followupToken}`;
+        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}`;
         const yesUrl = `${base}&r=yes`;
         const noUrl = `${base}&r=no`;
         const maybeUrl = `${base}&r=maybe`;
