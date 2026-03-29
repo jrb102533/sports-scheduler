@@ -2232,6 +2232,12 @@ export const submitGameResult = onCall<SubmitGameResultData, Promise<SubmitGameR
     const ev = eventSnap.data()!;
     if (ev.type !== 'game') throw new HttpsError('failed-precondition', 'Only game events accept results.');
 
+    // CVR-2026-001: Validate caller-supplied leagueId matches the event's stored leagueId.
+    // Prevents cross-league standings corruption via IDOR.
+    if (ev.leagueId && ev.leagueId !== leagueId) {
+      throw new HttpsError('permission-denied', 'leagueId does not match the event.');
+    }
+
     const validStatuses = ['completed', 'in_progress'];
     if (!validStatuses.includes(ev.status as string)) {
       throw new HttpsError('failed-precondition', `Event must be completed or in_progress to submit a result (current status: ${ev.status}).`);
