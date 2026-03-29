@@ -535,14 +535,9 @@ export function generatePairings(input: GenerateScheduleInput): Pairing[] {
   const rotatable = teams.slice(1);
 
   for (let round = 0; round < N - 1; round++) {
-    const fixed = teams[0];
-    const others = [
-      rotatable[(round + rotatable.length - 1) % rotatable.length],
-      ...rotatable.slice(0, round === 0 ? 0 : round).reverse(),
-    ];
-
     // Build this round's pairs using circle method rotation
-    const roundTeams = [fixed, ...rotatable.slice(round).concat(rotatable.slice(0, round))];
+    // teams[0] is fixed; the rest rotate
+    const roundTeams = [teams[0], ...rotatable.slice(round).concat(rotatable.slice(0, round))];
 
     for (let i = 0; i < N / 2; i++) {
       const home = roundTeams[i];
@@ -574,7 +569,7 @@ export function generatePairings(input: GenerateScheduleInput): Pairing[] {
         pairingIndex: pairingIndex++,
       });
     }
-    void others; // suppress unused warning
+
   }
 
   let result = allPairings;

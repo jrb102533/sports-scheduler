@@ -42,7 +42,14 @@ interface GeneratedFixture {
   awayTeamName: string;
   date: string;
   startTime: string;
-  venue: string;
+  endTime: string;
+  venueId: string;
+  venueName: string;
+  isDoubleheader: boolean;
+  doubleheaderSlot?: 1 | 2;
+  isFallbackSlot: boolean;
+  // Legacy compatibility fields
+  venue?: string;
   stage?: string;
   isFallback?: boolean;
   fallbackReason?: string;
@@ -58,9 +65,28 @@ interface FallbackFixtureSummary {
 
 interface ScheduleOutput {
   fixtures: GeneratedFixture[];
+  unassignedPairings?: Array<{
+    homeTeamId: string; homeTeamName: string;
+    awayTeamId: string; awayTeamName: string;
+    reason: string;
+  }>;
   conflicts: Array<{ severity: 'hard' | 'soft'; description: string; constraintId?: string }>;
-  stats: { totalFixtures: number; assignedFixtures: number; unassignedFixtures: number; feasible: boolean };
+  teamStats?: Array<{
+    teamId: string; teamName: string;
+    totalGames: number; homeGames: number; awayGames: number;
+    maxRestGap: number; minRestGap: number;
+    byeRounds: number; byeRound?: number;
+  }>;
+  stats: {
+    totalFixtures?: number;
+    totalFixturesRequired?: number;
+    assignedFixtures: number;
+    unassignedFixtures: number;
+    fallbackSlotsUsed?: number;
+    feasible: boolean;
+  };
   summary: string;
+  warnings?: Array<{ code: string; message: string }>;
   fallbackFixtures?: FallbackFixtureSummary[];
 }
 
@@ -136,7 +162,7 @@ function venueConfigFromSaved(saved: Venue): Partial<WizardVenueConfig> {
   };
 }
 
-const generateScheduleFn = httpsCallable<object, ScheduleOutput>(getFunctions(), 'generateLeagueSchedule');
+const generateScheduleFn = httpsCallable<object, ScheduleOutput>(getFunctions(), 'generateSchedule');
 
 // ─── Quick-Create Venue Modal ─────────────────────────────────────────────────
 
@@ -667,14 +693,17 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
     try {
       await Promise.all(
         result.fixtures.map(fixture => {
-          const [h, m] = fixture.startTime.split(':').map(Number);
-          const endMins = h * 60 + m + durationMins;
-          const endTime = `${String(Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
+          const endTime = fixture.endTime || (() => {
+            const [h, m] = fixture.startTime.split(':').map(Number);
+            const endMins = h * 60 + m + durationMins;
+            return `${String(Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
+          })();
 
           const isPracticeFixture = fixture.awayTeamId === '';
 
           // Attach venue library fields if matched
-          const matchedConfig = venueConfigs.find(vc => vc.name === fixture.venue);
+          const fixtureName = fixture.venueName ?? fixture.venue ?? '';
+          const matchedConfig = venueConfigs.find(vc => vc.name === fixtureName);
           const venueFields = matchedConfig?.selectedVenueId ? (() => {
             const selectedVenue = savedVenues.find(v => v.id === matchedConfig.selectedVenueId);
             return {
@@ -695,7 +724,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
                 startTime: fixture.startTime,
                 endTime,
                 duration: durationMins,
-                location: fixture.venue,
+                location: fixtureName,
                 teamIds: [fixture.homeTeamId],
                 isRecurring: false,
                 notes: fixture.stage ? fixture.stage : undefined,
@@ -711,7 +740,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
                 startTime: fixture.startTime,
                 endTime,
                 duration: durationMins,
-                location: fixture.venue,
+                location: fixtureName,
                 homeTeamId: fixture.homeTeamId,
                 awayTeamId: fixture.awayTeamId,
                 teamIds: [fixture.homeTeamId, fixture.awayTeamId],
@@ -1439,7 +1468,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
                 }
                 <div>
                   <p className={`font-medium ${result.stats.feasible ? 'text-green-800' : 'text-amber-800'}`}>
-                    {result.stats.assignedFixtures}/{result.stats.totalFixtures} {isPracticeMode ? 'sessions' : 'fixtures'} scheduled
+                    {result.stats.assignedFixtures}/{(result.stats.totalFixtures ?? result.stats.totalFixturesRequired ?? result.stats.assignedFixtures)} {isPracticeMode ? 'sessions' : 'fixtures'} scheduled
                     {result.stats.unassignedFixtures > 0 && ` · ${result.stats.unassignedFixtures} unassigned`}
                   </p>
                   <p className="text-gray-600 mt-0.5">{result.summary}</p>
@@ -1470,7 +1499,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={16} className="text-amber-600 flex-shrink-0" />
                   <p className="font-semibold text-amber-800">
-                    {fallbackFixtures.length} of {result.stats.totalFixtures} fixture{result.stats.totalFixtures !== 1 ? 's' : ''} scheduled in fallback time windows
+                    {fallbackFixtures.length} of {(result.stats.totalFixtures ?? result.stats.totalFixturesRequired ?? result.stats.assignedFixtures)} fixture{result.stats.totalFixtures !== 1 ? 's' : ''} scheduled in fallback time windows
                   </p>
                 </div>
                 <p className="text-sm text-amber-700">

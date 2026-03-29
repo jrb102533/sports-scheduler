@@ -163,6 +163,25 @@ service cloud.firestore {
           allow delete: if isAdmin();
         }
       }
+
+      // Schedule fixtures — client writes these when LM publishes from the wizard preview.
+      match /fixtures/{fixtureId} {
+        allow read: if request.auth != null;
+        allow write: if isAdmin()
+          || (isLeagueManager() && getProfile().leagueId == leagueId);
+      }
+
+      // Schedule draft (backlog: async generation storage).
+      match /drafts/{draftId} {
+        allow read, write: if isAdmin()
+          || (isLeagueManager() && getProfile().leagueId == leagueId);
+      }
+
+      // Generation status — written only by Cloud Functions via Admin SDK.
+      match /generationStatus/{doc} {
+        allow read: if request.auth != null;
+        allow write: if false;
+      }
     }
 
     // Invite records — written by Cloud Function (admin SDK), read by invitee only
