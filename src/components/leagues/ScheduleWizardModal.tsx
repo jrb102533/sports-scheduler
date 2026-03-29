@@ -19,6 +19,7 @@ import type { League, Team, ScheduledEvent, WizardMode, WizardVenueInput, Schedu
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
+/** Matches GeneratedFixture from ScheduleAlgorithmOutput (scheduleAlgorithm.ts). */
 interface GeneratedFixture {
   round: number;
   homeTeamId: string;
@@ -27,26 +28,44 @@ interface GeneratedFixture {
   awayTeamName: string;
   date: string;
   startTime: string;
-  venue: string;
-  stage?: string;
-  isFallback?: boolean;
-  fallbackReason?: string;
+  endTime: string;
+  venueId: string;
+  venueName: string;
+  isDoubleheader: boolean;
+  doubleheaderSlot?: 1 | 2;
+  isFallbackSlot: boolean;
 }
 
-interface FallbackFixtureSummary {
-  homeTeamName: string;
-  awayTeamName: string;
-  date: string;
-  startTime: string;
-  reason: string;
-}
-
+/** Matches ScheduleAlgorithmOutput from scheduleAlgorithm.ts. */
 interface ScheduleOutput {
   fixtures: GeneratedFixture[];
-  conflicts: Array<{ severity: 'hard' | 'soft'; description: string; constraintId?: string }>;
-  stats: { totalFixtures: number; assignedFixtures: number; unassignedFixtures: number; feasible: boolean };
+  unassignedPairings: Array<{
+    homeTeamId: string; homeTeamName: string;
+    awayTeamId: string; awayTeamName: string;
+    reason: string;
+  }>;
+  conflicts: Array<{
+    severity: 'hard' | 'soft';
+    constraintId: string;
+    description: string;
+    fixtureIndex?: number;
+    teamId?: string;
+  }>;
+  teamStats: Array<{
+    teamId: string; teamName: string;
+    totalGames: number; homeGames: number; awayGames: number;
+    maxRestGap: number; minRestGap: number;
+    byeRounds: number; byeRound?: number;
+  }>;
+  stats: {
+    totalFixturesRequired: number;
+    assignedFixtures: number;
+    unassignedFixtures: number;
+    fallbackSlotsUsed: number;
+    feasible: boolean;
+  };
   summary: string;
-  fallbackFixtures?: FallbackFixtureSummary[];
+  warnings: Array<{ code: string; message: string }>;
 }
 
 type WizardStep = 'mode' | 'config' | 'teams' | 'cadence' | 'venues' | 'preferences' | 'availability' | 'blackouts' | 'generate' | 'preview' | 'publish';
@@ -102,7 +121,7 @@ function newVenue(): WizardVenueInput {
   };
 }
 
-const generateScheduleFn = httpsCallable<object, ScheduleOutput>(getFunctions(), 'generateLeagueSchedule');
+const generateScheduleFn = httpsCallable<object, ScheduleOutput>(getFunctions(), 'generateSchedule');
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -343,7 +362,6 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
     setStep('generate');
 
     try {
-      const isPractice = mode === 'practice';
       const activeFormat = mode === 'playoff' ? playoffFormat : format;
 
       // Resolve which collection to read responses from.
@@ -360,40 +378,66 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
         coachAvailability = snap.docs.map(d => d.data() as CoachAvailabilityResponse);
       }
 
+      // Map wizard constraint IDs to SoftConstraintId values for the new API.
+      const CONSTRAINT_ID_MAP: Record<string, string> = {
+        'SC-01': 'prefer_weekends',
+        'SC-02': 'respect_coach_availability',
+        'SC-04': 'balance_home_away',
+        'SC-05': 'avoid_practice_conflicts',
+        'SC-06': 'max_consecutive_away',
+        'SC-03': 'min_rest_days',
+        'SC-07': 'minimise_doubleheaders',
+      };
+
+      // Build soft constraint priority list from enabled constraints, sorted by priority.
+      const softConstraintPriority = constraints
+        .filter(c => c.enabled && c.type === 'soft' && CONSTRAINT_ID_MAP[c.id])
+        .sort((a, b) => a.priority - b.priority)
+        .map(c => CONSTRAINT_ID_MAP[c.id] as string);
+
+      // Generate stable venue IDs from names for this call (venue objects are transient in wizard)
+      const venuesWithIds = venues.map((v, i) => ({
+        id: `wizard-venue-${i}`,
+        name: v.name,
+        concurrentPitches: v.concurrentPitches,
+        availabilityWindows: v.availabilityWindows,
+        fallbackWindows: v.fallbackWindows.length > 0 ? v.fallbackWindows : undefined,
+        blackoutDates: v.blackoutDates.length > 0 ? v.blackoutDates : undefined,
+      }));
+
+      // Map coachAvailability to the new schema (strip extra fields like coachName, coachUid)
+      const mappedCoachAvailability = coachAvailability.map(ca => ({
+        teamId: ca.teamId,
+        weeklyWindows: ca.weeklyWindows,
+        dateOverrides: ca.dateOverrides.map(ov => ({
+          start: ov.start,
+          end: ov.end,
+          available: false as const,
+        })),
+      }));
+
       const payload: Record<string, unknown> = {
-        mode: mode ?? 'season',
         leagueId: league.id,
         leagueName: league.name,
-        seasonStart: isPractice ? practiceSeasonStart : seasonStart,
-        seasonEnd: isPractice ? practiceSeasonEnd : seasonEnd,
-        matchDurationMinutes: parseInt(isPractice ? practiceDuration : matchDuration),
-        bufferMinutes: isPractice ? 0 : parseInt(bufferMinutes),
-        format: isPractice ? 'practice' : activeFormat,
-        teams: isPractice
-          ? leagueTeams
-              .filter(t => practiceTeamIds.has(t.id))
-              .map(t => ({ id: t.id, name: t.name }))
-          : leagueTeams.map(t => ({
-              id: t.id,
-              name: t.name,
-              homeVenue: venues.length === 1 ? venues[0].name : undefined,
-            })),
-        venues,
-        blackoutDates: seasonBlackouts,
-        preferences: constraints,
-        coachAvailability,
-        ...(isPractice
-          ? {
-              practiceTimeWindows: practiceTimes,
-              practiceMaxPerWeek: parseInt(practiceMaxPerWeek),
-            }
-          : {
-              minRestDays: parseInt(minRestDays),
-              maxConsecutiveAway: parseInt(maxConsecAway),
-              ...(activeFormat === 'group_then_knockout'
-                ? { groupCount: parseInt(groupCount), groupAdvance: parseInt(groupAdvance) }
-                : {}),
-            }),
+        seasonStart,
+        seasonEnd,
+        matchDurationMinutes: parseInt(matchDuration),
+        bufferMinutes: parseInt(bufferMinutes),
+        format: activeFormat === 'single_round_robin' || activeFormat === 'double_round_robin'
+          ? activeFormat
+          : 'single_round_robin',
+        teams: leagueTeams.map(t => ({
+          id: t.id,
+          name: t.name,
+          // No homeVenueId in wizard — teams don't have assigned home venues yet
+        })),
+        venues: venuesWithIds,
+        blackoutDates: seasonBlackouts.length > 0 ? seasonBlackouts : undefined,
+        softConstraintPriority,
+        coachAvailability: mappedCoachAvailability.length > 0 ? mappedCoachAvailability : undefined,
+        homeAwayMode: 'relaxed',
+        minRestDays: parseInt(minRestDays),
+        maxConsecutiveAway: parseInt(maxConsecAway),
       };
 
       const { data } = await generateScheduleFn(payload);
@@ -419,45 +463,30 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
     try {
       await Promise.all(
         result.fixtures.map(fixture => {
-          const [h, m] = fixture.startTime.split(':').map(Number);
-          const endMins = h * 60 + m + durationMins;
-          const endTime = `${String(Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
+          // New schema provides endTime directly; fall back to computing it for safety
+          const endTime = fixture.endTime || (() => {
+            const [h, m] = fixture.startTime.split(':').map(Number);
+            const endMins = h * 60 + m + durationMins;
+            return `${String(Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
+          })();
 
-          const isPracticeFixture = fixture.awayTeamId === '';
-
-          const event: Omit<ScheduledEvent, 'id'> = isPracticeFixture
-            ? {
-                title: `${fixture.homeTeamName} Practice`,
-                type: 'practice',
-                status: 'scheduled',
-                date: fixture.date,
-                startTime: fixture.startTime,
-                endTime,
-                duration: durationMins,
-                location: fixture.venue,
-                teamIds: [fixture.homeTeamId],
-                isRecurring: false,
-                notes: fixture.stage ? fixture.stage : undefined,
-                createdAt: now,
-                updatedAt: now,
-              }
-            : {
-                title: `${fixture.homeTeamName} vs ${fixture.awayTeamName}`,
-                type: 'game',
-                status: 'scheduled',
-                date: fixture.date,
-                startTime: fixture.startTime,
-                endTime,
-                duration: durationMins,
-                location: fixture.venue,
-                homeTeamId: fixture.homeTeamId,
-                awayTeamId: fixture.awayTeamId,
-                teamIds: [fixture.homeTeamId, fixture.awayTeamId],
-                isRecurring: false,
-                notes: fixture.stage ? `Round ${fixture.round} — ${fixture.stage}` : `Round ${fixture.round}`,
-                createdAt: now,
-                updatedAt: now,
-              };
+          const event: Omit<ScheduledEvent, 'id'> = {
+            title: `${fixture.homeTeamName} vs ${fixture.awayTeamName}`,
+            type: 'game',
+            status: 'scheduled',
+            date: fixture.date,
+            startTime: fixture.startTime,
+            endTime,
+            duration: durationMins,
+            location: fixture.venueName,
+            homeTeamId: fixture.homeTeamId,
+            awayTeamId: fixture.awayTeamId,
+            teamIds: [fixture.homeTeamId, fixture.awayTeamId],
+            isRecurring: false,
+            notes: `Round ${fixture.round}`,
+            createdAt: now,
+            updatedAt: now,
+          };
 
           return addEvent(event as ScheduledEvent);
         })
@@ -599,7 +628,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
 
   const hardConflicts = result?.conflicts.filter(c => c.severity === 'hard') ?? [];
   const softConflicts = result?.conflicts.filter(c => c.severity === 'soft') ?? [];
-  const fallbackFixtures = result?.fallbackFixtures ?? [];
+  // Fallback fixtures: fixtures that used a fallback time window
+  const fallbackFixtures = result?.fixtures.filter(f => f.isFallbackSlot) ?? [];
   const allFallbacksAcknowledged = fallbackFixtures.length === 0 || fallbackFixtures.every((_, i) => acknowledgedFallbacks.has(i));
   const canPublish = result && hardConflicts.length === 0 && allFallbacksAcknowledged;
 
@@ -1215,13 +1245,24 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
               }
               <div>
                 <p className={`font-medium ${result.stats.feasible ? 'text-green-800' : 'text-amber-800'}`}>
-                  {result.stats.assignedFixtures}/{result.stats.totalFixtures} {isPracticeMode ? 'sessions' : 'fixtures'} scheduled
+                  {result.stats.assignedFixtures}/{result.stats.totalFixturesRequired} {isPracticeMode ? 'sessions' : 'fixtures'} scheduled
                   {result.stats.unassignedFixtures > 0 && ` · ${result.stats.unassignedFixtures} unassigned`}
                 </p>
                 <p className="text-gray-600 mt-0.5">{result.summary}</p>
               </div>
             </div>
           </div>
+
+          {result.warnings && result.warnings.length > 0 && (
+            <div className="space-y-1.5">
+              {result.warnings.map((w, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-blue-800">
+                  <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
+                  <span>{w.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {result.conflicts.length > 0 && (
             <div className="space-y-1.5">
@@ -1246,7 +1287,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
               <div className="flex items-center gap-2">
                 <AlertTriangle size={16} className="text-amber-600 flex-shrink-0" />
                 <p className="font-semibold text-amber-800">
-                  {fallbackFixtures.length} of {result.stats.totalFixtures} fixture{result.stats.totalFixtures !== 1 ? 's' : ''} scheduled in fallback time windows
+                  {fallbackFixtures.length} of {result.stats.totalFixturesRequired} fixture{result.stats.totalFixturesRequired !== 1 ? 's' : ''} scheduled in fallback time windows
                 </p>
               </div>
               <p className="text-sm text-amber-700">
@@ -1269,8 +1310,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
                     />
                     <div className="text-sm">
                       <p className="font-medium text-amber-900">{f.homeTeamName} vs {f.awayTeamName}</p>
-                      <p className="text-amber-700">{f.date} at {f.startTime}</p>
-                      <p className="text-amber-600 text-xs mt-0.5">{f.reason}</p>
+                      <p className="text-amber-700">{f.date} at {f.startTime} — {f.venueName}</p>
+                      <p className="text-amber-600 text-xs mt-0.5">Scheduled in a fallback time window</p>
                       <p className="text-amber-700 text-xs font-medium mt-0.5">I acknowledge this fixture</p>
                     </div>
                   </label>
@@ -1314,9 +1355,9 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, curren
                           <td className="px-3 py-2 text-gray-700">{f.awayTeamName}</td>
                         </>
                       )}
-                      <td className="px-3 py-2 text-gray-500 hidden sm:table-cell">{f.venue}</td>
+                      <td className="px-3 py-2 text-gray-500 hidden sm:table-cell">{f.venueName}</td>
                       <td className="px-3 py-2 text-gray-400 hidden sm:table-cell">
-                        {isPracticeMode ? '' : (f.stage ?? `Rd ${f.round}`)}
+                        {isPracticeMode ? '' : `Rd ${f.round}`}
                       </td>
                     </tr>
                   ))}

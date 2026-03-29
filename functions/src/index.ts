@@ -5,7 +5,18 @@ import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
 import * as nodemailer from 'nodemailer';
 import * as crypto from 'crypto';
-import Anthropic from '@anthropic-ai/sdk';
+import {
+  validateInput,
+  feasibilityPreCheck,
+  generateSlots,
+  generatePairings,
+  shufflePairings,
+  fnv32a,
+  assignFixtures,
+  buildOutput,
+  type GenerateScheduleInput,
+  type ScheduleAlgorithmOutput,
+} from './scheduleAlgorithm';
 
 const APP_URL = 'https://first-whistle-e76f4.web.app';
 const FUNCTIONS_BASE = 'https://us-central1-first-whistle-e76f4.cloudfunctions.net';
@@ -24,7 +35,6 @@ const emailFrom = defineSecret('EMAIL_FROM');
 // HMAC secret for signing/verifying RSVP email links (F-02).
 // Provision with: firebase functions:secrets:set RSVP_HMAC_SECRET
 const rsvpSecret = defineSecret('RSVP_HMAC_SECRET');
-const anthropicKey = defineSecret('ANTHROPIC_API_KEY');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1716,360 +1726,6 @@ export const migrateSensitivePlayerData = onCall(
   }
 );
 
-// ─── Schedule Wizard ──────────────────────────────────────────────────────────
-
-export interface RecurringVenueWindow {
-  dayOfWeek: number;    // 0 = Sunday … 6 = Saturday
-  startTime: string;    // 'HH:MM'
-  endTime: string;      // 'HH:MM'
-}
-
-export interface VenueInput {
-  name: string;
-  concurrentPitches: number;
-  availabilityWindows: RecurringVenueWindow[];
-  fallbackWindows?: RecurringVenueWindow[];
-  blackoutDates?: string[];        // ISO date strings e.g. '2026-04-18'
-}
-
-export interface ScheduleConstraint {
-  id: string;
-  label: string;
-  enabled: boolean;
-  priority: number;
-  type: 'hard' | 'soft';
-}
-
-export interface TeamInput {
-  id: string;
-  name: string;
-  homeVenue?: string;
-  earliestKickOff?: string;
-}
-
-export interface CoachAvailabilityResponse {
-  coachUid: string;
-  coachName: string;
-  teamId: string;
-  submittedAt: string;
-  weeklyWindows: {
-    dayOfWeek: number;
-    startTime: string;
-    endTime: string;
-    available: boolean;
-  }[];
-  dateOverrides: {
-    start: string;
-    end: string;
-    available: false;
-    reason?: string;
-  }[];
-}
-
-export interface ScheduleWizardInput {
-  mode?: 'season' | 'practice' | 'playoff';
-  leagueId: string;
-  leagueName: string;
-  seasonStart: string;
-  seasonEnd: string;
-  matchDurationMinutes: number;
-  bufferMinutes: number;
-  format: 'single_round_robin' | 'double_round_robin' | 'single_elimination' | 'double_elimination' | 'group_then_knockout' | 'practice';
-  teams: TeamInput[];
-  venues: VenueInput[];
-  blackoutDates?: string[];
-  preferences?: ScheduleConstraint[];
-  coachAvailability?: CoachAvailabilityResponse[];
-  // Season / playoff
-  minRestDays?: number;
-  maxConsecutiveAway?: number;
-  groupCount?: number;
-  groupAdvance?: number;
-  // Practice
-  practiceTimeWindows?: RecurringVenueWindow[];
-  practiceMaxPerWeek?: number;
-}
-
-export interface GeneratedFixture {
-  round: number;
-  homeTeamId: string;
-  homeTeamName: string;
-  awayTeamId: string;
-  awayTeamName: string;
-  date: string;       // ISO date e.g. '2026-04-05'
-  startTime: string;  // e.g. '10:00'
-  venue: string;
-  stage?: string;     // e.g. 'Group A', 'Quarter-final', 'Final'
-  isFallback?: boolean;
-  fallbackReason?: string;
-}
-
-export interface FallbackFixture {
-  homeTeamName: string;
-  awayTeamName: string;
-  date: string;
-  startTime: string;
-  reason: string;
-}
-
-export interface ScheduleWizardOutput {
-  fixtures: GeneratedFixture[];
-  conflicts: Array<{
-    severity: 'hard' | 'soft';
-    description: string;
-    constraintId?: string;
-  }>;
-  stats: {
-    totalFixtures: number;
-    assignedFixtures: number;
-    unassignedFixtures: number;
-    feasible: boolean;
-  };
-  summary: string;
-  fallbackFixtures?: FallbackFixture[];
-}
-
-export const generateLeagueSchedule = onCall(
-  {
-    timeoutSeconds: 300,
-    memory: '512MiB',
-    secrets: [anthropicKey],
-  },
-  async (request): Promise<ScheduleWizardOutput> => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Authentication required.');
-    }
-    const role = await assertAdminOrCoach(request.auth.uid);
-    if (role !== 'admin' && role !== 'league_manager') {
-      throw new HttpsError('permission-denied', 'Only league managers and admins can generate schedules.');
-    }
-
-    await checkRateLimit(request.auth.uid, 'generateSchedule', 5, 60_000);
-
-    const input = request.data as ScheduleWizardInput;
-
-    if (!input.leagueId || !input.seasonStart || !input.seasonEnd || !input.teams?.length || !input.venues?.length) {
-      throw new HttpsError('invalid-argument', 'Missing required schedule inputs.');
-    }
-    if (input.teams.length < 2) {
-      throw new HttpsError('invalid-argument', 'At least 2 teams are required to generate a schedule.');
-    }
-
-    const client = new Anthropic({ apiKey: anthropicKey.value() });
-
-    const DAY_NAMES_CF = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-    function venueWindowsText(windows: RecurringVenueWindow[]): string {
-      return windows.map(w => `${DAY_NAMES_CF[w.dayOfWeek]} ${w.startTime}–${w.endTime}`).join(', ');
-    }
-
-    function coachAvailabilityText(responses: CoachAvailabilityResponse[]): string {
-      if (!responses.length) return '  None provided.';
-      return responses.map(r => {
-        const unavailableWindows = r.weeklyWindows
-          .filter(w => !w.available)
-          .map(w => `${DAY_NAMES_CF[w.dayOfWeek]} ${w.startTime}–${w.endTime}`);
-        const overrides = r.dateOverrides.map(o =>
-          o.reason ? `${o.start} to ${o.end} (${o.reason})` : `${o.start} to ${o.end}`
-        );
-        const parts: string[] = [];
-        if (unavailableWindows.length) parts.push(`unavailable weekly: ${unavailableWindows.join(', ')}`);
-        if (overrides.length) parts.push(`date blocks: ${overrides.join('; ')}`);
-        return `  - ${r.coachName} (team id: ${r.teamId}): ${parts.length ? parts.join('; ') : 'no restrictions stated'}`;
-      }).join('\n');
-    }
-
-    const isPractice = input.mode === 'practice' || input.format === 'practice';
-
-    const formatDescriptions: Record<string, string> = {
-      single_round_robin: 'Single round-robin: each pair of teams plays once.',
-      double_round_robin: 'Double round-robin: each pair of teams plays twice (home and away).',
-      single_elimination: 'Single elimination knockout bracket. Teams are seeded. Byes assigned if count is not a power of 2.',
-      double_elimination: 'Double elimination: teams must lose twice to be eliminated.',
-      group_then_knockout: `Group stage (${input.groupCount ?? 2} groups, top ${input.groupAdvance ?? 2} advance) followed by single-elimination knockout.`,
-      practice: 'Recurring practice sessions for each team.',
-    };
-
-    const enabledPreferences = input.preferences
-      ?.filter(p => p.enabled && p.type === 'soft')
-      .sort((a, b) => a.priority - b.priority)
-      .map((p, i) => `  ${i + 1}. ${p.label}`)
-      .join('\n') ?? '';
-
-    const systemPrompt = isPractice
-      ? `You are an expert sports scheduling engine. Your job is to produce a complete recurring practice schedule.
-
-You must output ONLY valid JSON matching the exact schema provided. No explanatory text, no markdown, no code fences — raw JSON only.
-
-Rules you must follow:
-- Each practice session is a single-team event: set awayTeamId to "" and awayTeamName to "Practice".
-- No venue is double-booked (concurrent pitch limit applies).
-- Practice sessions must fall within venue availability windows.
-- No sessions on blackout dates.
-- Respect practiceMaxPerWeek per team.
-- Distribute sessions evenly across the season date range.
-- If a complete schedule is infeasible, assign as many sessions as possible and report conflicts.`
-      : `You are an expert sports scheduling engine. Your job is to produce a complete, valid fixture schedule for a sports league or tournament.
-
-You must output ONLY valid JSON matching the exact schema provided. No explanatory text, no markdown, no code fences — raw JSON only.
-
-Rules you must follow:
-- Hard constraints must NEVER be violated (no double-booking, no team plays twice on same day, venues available on scheduled day/time, no fixtures on blackout dates).
-- Soft constraints should be respected in the priority order listed below.
-- If a complete schedule is infeasible, assign as many fixtures as possible and report the rest as conflicts.
-- Fixture dates must fall between seasonStart and seasonEnd inclusive.
-- Fixture times must fall within venue available hours on the correct day of week.
-- Concurrent pitch limits at each venue must be respected.
-- For knockout formats: clearly label the stage (e.g. "Round of 16", "Quarter-final", "Semi-final", "Final").
-- For group+knockout: label group stage fixtures with "Group A", "Group B" etc.`;
-
-    const userMessage = isPractice
-      ? `Generate a complete practice schedule for the following:
-
-**League:** ${input.leagueName}
-**Season:** ${input.seasonStart} to ${input.seasonEnd}
-**Session duration:** ${input.matchDurationMinutes} minutes
-**Max sessions per week per team:** ${input.practiceMaxPerWeek ?? 2}
-
-**Teams (${input.teams.length}):**
-${input.teams.map((t, i) => `${i + 1}. ${t.name} (id: ${t.id})`).join('\n')}
-
-**Preferred practice times:**
-${(input.practiceTimeWindows ?? []).map(w => `- ${DAY_NAMES_CF[w.dayOfWeek]} ${w.startTime}–${w.endTime}`).join('\n')}
-
-**Venues (${input.venues.length}):**
-${input.venues.map(v => `- ${v.name}: ${v.concurrentPitches} court/pitch, available ${venueWindowsText(v.availabilityWindows)}${v.blackoutDates?.length ? `, blackout: ${v.blackoutDates.join(', ')}` : ''}`).join('\n')}
-
-**Season-wide blackout dates:** ${input.blackoutDates?.length ? input.blackoutDates.join(', ') : 'None'}
-
-Output JSON with this exact structure (awayTeamId must be "" and awayTeamName must be "Practice" for all sessions):
-{
-  "fixtures": [
-    {
-      "round": 1,
-      "homeTeamId": "<team id>",
-      "homeTeamName": "<team name>",
-      "awayTeamId": "",
-      "awayTeamName": "Practice",
-      "date": "YYYY-MM-DD",
-      "startTime": "HH:MM",
-      "venue": "<venue name>",
-      "stage": "<optional notes>"
-    }
-  ],
-  "conflicts": [{ "severity": "hard|soft", "description": "<explanation>", "constraintId": "<optional>" }],
-  "stats": { "totalFixtures": <number>, "assignedFixtures": <number>, "unassignedFixtures": <number>, "feasible": <true|false> },
-  "summary": "<1-2 sentence summary>"
-}`
-      : `Generate a complete fixture schedule for the following league/tournament:
-
-**League:** ${input.leagueName}
-**Format:** ${formatDescriptions[input.format] ?? input.format}
-**Season:** ${input.seasonStart} to ${input.seasonEnd}
-**Match duration:** ${input.matchDurationMinutes} minutes + ${input.bufferMinutes} min buffer between games at same venue
-**Minimum rest days between games per team:** ${input.minRestDays ?? 6}
-**Maximum consecutive away games:** ${input.maxConsecutiveAway ?? 2}
-
-**Soft constraint priority (respect in order, relax lowest priority first):**
-${enabledPreferences || '  (default: balance home/away, respect coach availability, avoid weekdays)'}
-
-**Teams (${input.teams.length}):**
-${input.teams.map((t, i) => `${i + 1}. ${t.name} (id: ${t.id})${t.homeVenue ? `, home venue: ${t.homeVenue}` : ''}${t.earliestKickOff ? `, earliest kick-off: ${t.earliestKickOff}` : ''}`).join('\n')}
-
-**Venues (${input.venues.length}):**
-${input.venues.map(v => {
-  const primary = `primary: ${venueWindowsText(v.availabilityWindows)}`;
-  const fallback = v.fallbackWindows?.length ? `; fallback: ${venueWindowsText(v.fallbackWindows)}` : '';
-  return `- ${v.name}: ${v.concurrentPitches} pitch(es), available ${primary}${fallback}${v.blackoutDates?.length ? `, blackout: ${v.blackoutDates.join(', ')}` : ''}`;
-}).join('\n')}
-
-**Season-wide blackout dates:** ${input.blackoutDates?.length ? input.blackoutDates.join(', ') : 'None'}
-
-**Coach availability (soft constraint SC-02 — avoid scheduling games during stated unavailability):**
-${coachAvailabilityText(input.coachAvailability ?? [])}
-
-Output JSON with this exact structure:
-{
-  "fixtures": [
-    {
-      "round": 1,
-      "homeTeamId": "<team id>",
-      "homeTeamName": "<team name>",
-      "awayTeamId": "<team id>",
-      "awayTeamName": "<team name>",
-      "date": "YYYY-MM-DD",
-      "startTime": "HH:MM",
-      "venue": "<venue name>",
-      "stage": "<optional: e.g. Group A, Quarter-final>",
-      "isFallback": false,
-      "fallbackReason": "<omit if isFallback is false; otherwise brief reason e.g. 'No primary window available on this date'>"
-    }
-  ],
-  "conflicts": [
-    {
-      "severity": "hard|soft",
-      "description": "<plain English explanation>",
-      "constraintId": "<optional: HC-01, SC-01, etc.>"
-    }
-  ],
-  "stats": {
-    "totalFixtures": <number>,
-    "assignedFixtures": <number>,
-    "unassignedFixtures": <number>,
-    "feasible": <true|false>
-  },
-  "summary": "<1-2 sentence plain-English summary of the schedule quality and any notable issues>"
-}
-
-Set isFallback to true for any fixture placed in a fallback time window (not a primary window). Set fallbackReason to a brief plain-English explanation of why the fallback was needed.`;
-
-    let rawContent = '';
-    try {
-      const stream = client.messages.stream({
-        model: 'claude-opus-4-6',
-        max_tokens: 64000,
-        thinking: { type: 'adaptive' },
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
-      });
-
-      const message = await stream.finalMessage();
-      for (const block of message.content) {
-        if (block.type === 'text') {
-          rawContent = block.text;
-          break;
-        }
-      }
-    } catch (err) {
-      console.error('Anthropic API error:', err);
-      throw new HttpsError('internal', 'Schedule generation failed. Please try again.');
-    }
-
-    // Strip any accidental markdown fences
-    const jsonText = rawContent.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
-
-    let result: ScheduleWizardOutput;
-    try {
-      result = JSON.parse(jsonText) as ScheduleWizardOutput;
-    } catch {
-      console.error('Failed to parse LLM output:', jsonText.slice(0, 500));
-      throw new HttpsError('internal', 'Schedule generation returned an unexpected format. Please try again.');
-    }
-
-    result.fallbackFixtures = result.fixtures
-      .filter(f => f.isFallback)
-      .map(f => ({
-        homeTeamName: f.homeTeamName,
-        awayTeamName: f.awayTeamName,
-        date: f.date,
-        startTime: f.startTime,
-        reason: f.fallbackReason ?? 'No primary window available',
-      }));
-
-    return result;
-  }
-);
-
 // ─── Availability: request availability from coaches (callable) ───────────────
 //
 // Sends an in-app notification to every coach in the league whose Firebase
@@ -2469,4 +2125,98 @@ export const autoCloseCollections = onSchedule(
       `autoCloseCollections: done — closed=${closed}, warned60=${warned}, expired=${expired}`,
     );
   },
+);
+
+// ─── Callable: deterministic schedule generation ──────────────────────────────
+
+export const generateSchedule = onCall(
+  {
+    timeoutSeconds: 60,
+    memory: '256MiB',
+    enforceAppCheck: false,
+  },
+  async (request): Promise<ScheduleAlgorithmOutput> => {
+    // 1. Auth check
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Authentication required.');
+    }
+
+    // 2. Role check
+    const role = await assertAdminOrCoach(request.auth.uid);
+    if (role !== 'admin' && role !== 'league_manager') {
+      throw new HttpsError(
+        'permission-denied',
+        'Only league managers and admins can generate schedules.'
+      );
+    }
+
+    // 3. Rate limit
+    await checkRateLimit(request.auth.uid, 'generateSchedule', 5, 60_000);
+
+    const input = request.data as GenerateScheduleInput;
+
+    // 4. League ownership check (fixes FINDING-01)
+    if (role !== 'admin') {
+      const leagueDoc = await admin.firestore().doc(`leagues/${input.leagueId}`).get();
+      if (!leagueDoc.exists) {
+        throw new HttpsError('not-found', 'League not found.');
+      }
+      const leagueData = leagueDoc.data()!;
+      const userDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+      const profile = userDoc.data();
+      const ownsLeague =
+        leagueData.managedBy === request.auth.uid ||
+        profile?.leagueId === input.leagueId;
+      if (!ownsLeague) {
+        throw new HttpsError('permission-denied', 'You do not manage this league.');
+      }
+    }
+
+    // 5. Input validation
+    validateInput(input);
+
+    // 6. Feasibility pre-check (zero slots across all venues)
+    const hasSomeSlot = (() => {
+      const seasonBlackouts = new Set(input.blackoutDates ?? []);
+      const start = new Date(input.seasonStart + 'T00:00:00Z');
+      const end = new Date(input.seasonEnd + 'T00:00:00Z');
+      for (const cur = new Date(start); cur <= end; cur.setUTCDate(cur.getUTCDate() + 1)) {
+        const isoDate = cur.toISOString().slice(0, 10);
+        if (seasonBlackouts.has(isoDate)) continue;
+        const dow = cur.getUTCDay();
+        for (const venue of input.venues) {
+          const venueBlackouts = new Set(venue.blackoutDates ?? []);
+          if (venueBlackouts.has(isoDate)) continue;
+          const allWindows = [
+            ...venue.availabilityWindows,
+            ...(venue.fallbackWindows ?? []),
+          ];
+          for (const window of allWindows) {
+            if (window.dayOfWeek === dow) return true;
+          }
+        }
+      }
+      return false;
+    })();
+
+    if (!hasSomeSlot) {
+      throw new HttpsError(
+        'invalid-argument',
+        'No available venue slots in season window after blackouts'
+      );
+    }
+
+    // 7. Capacity feasibility pre-check
+    feasibilityPreCheck(input);
+
+    // 8. Run algorithm
+    const slots = generateSlots(input);
+    const rawPairings = generatePairings(input);
+    const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
+    const shuffled = shufflePairings(rawPairings, seed);
+    const assignmentResult = assignFixtures(shuffled, slots, input);
+    const output = buildOutput(assignmentResult, input);
+
+    return output;
+  }
 );
