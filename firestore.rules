@@ -118,7 +118,7 @@ service cloud.firestore {
 
       // Wizard draft — one per league, owned by the LM who created it.
       // Coaches and players have no access.
-      match /wizardDraft/{doc} {
+      match /wizardDraft/draft {
         allow read, write: if isAdmin()
           || (isLeagueManager() && (
             getProfile().leagueId == leagueId

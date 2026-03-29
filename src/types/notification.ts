@@ -8,6 +8,7 @@ export interface AppNotification {
   relatedEventId?: string;
   relatedTeamId?: string;
   relatedLeagueId?: string;
+  relatedCollectionId?: string;
   isRead: boolean;
   createdAt: string;
 }
