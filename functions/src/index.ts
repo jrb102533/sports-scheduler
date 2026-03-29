@@ -1415,26 +1415,15 @@ export const checkWeatherAlerts = onSchedule(
         if (status === 'cancelled' || status === 'postponed') continue;
 
         const location: string | undefined = ev['location'];
-        const venueId: string | undefined = ev['venueId'];
+        const venueLat: unknown = ev['venueLat'];
+        const venueLng: unknown = ev['venueLng'];
 
-        // Attempt to use pre-geocoded venue lat/lng before falling back to geocoding
+        // Use coordinates stamped directly onto the event at publish time (fast path).
+        // Fall back to text geocoding via the location field if coordinates are absent.
         let coords: { lat: number; lon: number } | null = null;
 
-        if (venueId) {
-          // Try each team's coach uid as the potential venue owner
-          const teamIds: string[] = ev['teamIds'] ?? [];
-          for (const teamId of teamIds.slice(0, 5)) {
-            const teamDoc = await db.doc(`teams/${teamId}`).get();
-            const teamData = teamDoc.data();
-            const ownerUid: string | undefined = teamData?.['createdBy'];
-            if (!ownerUid) continue;
-            const venueDoc = await db.doc(`users/${ownerUid}/venues/${venueId}`).get();
-            const venueData = venueDoc.data();
-            if (venueData?.['lat'] != null && venueData?.['lng'] != null) {
-              coords = { lat: venueData['lat'] as number, lon: venueData['lng'] as number };
-              break;
-            }
-          }
+        if (typeof venueLat === 'number' && typeof venueLng === 'number') {
+          coords = { lat: venueLat, lon: venueLng };
         }
 
         if (!coords) {
@@ -1455,7 +1444,7 @@ export const checkWeatherAlerts = onSchedule(
         const prob = await getPrecipitationProbability(coords.lat, coords.lon, eventIsoHour);
         if (prob === null) continue;
 
-        console.log(`checkWeatherAlerts: event "${ev['title']}" (${evDoc.id}) location="${location ?? venueId}" prob=${prob}%`);
+        console.log(`checkWeatherAlerts: event "${ev['title']}" (${evDoc.id}) location="${location ?? ev['venueId'] ?? '(no venue)'}" prob=${prob}%`);
 
         if (prob <= RAIN_THRESHOLD) continue;
 
@@ -1990,6 +1979,11 @@ export const geocodeVenueAddress = onCall(
     if (!venueId || !address || !ownerUid) {
       throw new HttpsError('invalid-argument', 'venueId, address, and ownerUid are required');
     }
+
+    if (address.length > 500) {
+      throw new HttpsError('invalid-argument', 'Address must be 1–500 characters.');
+    }
+
 
     // Auth check: caller must be the owner
     if (request.auth?.uid !== ownerUid) {

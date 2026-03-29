@@ -17,16 +17,6 @@ import type { League, Team, ScheduledEvent } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-// Legacy type kept for generator payload compat
-interface VenueInput {
-  name: string;
-  concurrentPitches: number;
-  availableDays: string[];
-  availableTimeStart: string;
-  availableTimeEnd: string;
-  blackoutDates: string[];
-}
-
 interface WizardVenueConfig {
   selectedVenueId: string | null; // null = manual entry
   name: string;
@@ -545,7 +535,16 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams }: Prop
             notes: fixture.stage ? `Round ${fixture.round} — ${fixture.stage}` : `Round ${fixture.round}`,
             createdAt: now,
             updatedAt: now,
-            ...(matchedConfig?.selectedVenueId ? { venueId: matchedConfig.selectedVenueId } : {}),
+            ...(matchedConfig?.selectedVenueId ? (() => {
+              const selectedVenue = savedVenues.find(v => v.id === matchedConfig.selectedVenueId);
+              return {
+                venueId: matchedConfig.selectedVenueId,
+                ...(selectedVenue?.lat != null && selectedVenue?.lng != null ? {
+                  venueLat: selectedVenue.lat,
+                  venueLng: selectedVenue.lng,
+                } : {}),
+              };
+            })() : {}),
           };
           return addEvent(event as ScheduledEvent);
         })

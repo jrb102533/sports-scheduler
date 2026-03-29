@@ -48,7 +48,7 @@ export const router = createBrowserRouter([
       { path: 'users', element: <RoleGuard roles={['admin']} redirect><UsersPage /></RoleGuard> },
       { path: 'leagues', element: <LeaguesPage /> },
       { path: 'leagues/:id', element: <LeagueDetailPage /> },
-      { path: 'venues', element: <VenuesPage /> },
+      { path: 'venues', element: <RoleGuard roles={['admin', 'league_manager', 'coach']} redirect><VenuesPage /></RoleGuard> },
     ],
   },
 
