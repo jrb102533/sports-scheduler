@@ -16,6 +16,7 @@ import { UsersPage } from '@/pages/UsersPage';
 import { LeaguesPage } from '@/pages/LeaguesPage';
 import { LeagueDetailPage } from '@/pages/LeagueDetailPage';
 import { CoachAvailabilityPage } from '@/pages/CoachAvailabilityPage';
+import { VenuesPage } from '@/pages/VenuesPage';
 import { PrivacyPolicyPage } from '@/pages/legal/PrivacyPolicyPage';
 import { TermsOfServicePage } from '@/pages/legal/TermsOfServicePage';
 
@@ -49,6 +50,7 @@ export const router = createBrowserRouter([
       { path: 'leagues', element: <LeaguesPage /> },
       { path: 'leagues/:id', element: <LeagueDetailPage /> },
       { path: 'leagues/:leagueId/availability/:collectionId', element: <CoachAvailabilityPage /> },
+      { path: 'venues', element: <RoleGuard roles={['admin', 'league_manager', 'coach']} redirect><VenuesPage /></RoleGuard> },
     ],
   },
 

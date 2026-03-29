@@ -37,11 +37,11 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const [name, setName] = useState(editTeam?.name ?? '');
   const [sportType, setSportType] = useState<SportType>(editTeam?.sportType ?? 'soccer');
   const [color, setColor] = useState(editTeam?.color ?? TEAM_COLORS[0]);
-  const [homeVenue, setHomeVenue] = useState(editTeam?.homeVenue ?? '');
   const [coachName, setCoachName] = useState(editTeam?.coachName ?? '');
   const [coachEmail, setCoachEmail] = useState(editTeam?.coachEmail ?? '');
   const [ageGroup, setAgeGroup] = useState<AgeGroup | ''>(editTeam?.ageGroup ?? '');
   const [divisionLabel, setDivisionLabel] = useState(editTeam?.divisionLabel ?? '');
+  const [homeVenue, setHomeVenue] = useState(editTeam?.homeVenue ?? '');
   const [coachId, setCoachId] = useState(editTeam?.coachId ?? '');
   const [coachUsers, setCoachUsers] = useState<UserProfile[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -156,11 +156,11 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
           color,
           updatedAt: now,
           ...(logoUrl ? { logoUrl } : {}),
-          ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
           ...(coachName.trim() ? { coachName: coachName.trim() } : {}),
           ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}),
           ...(ageGroup ? { ageGroup } : {}),
           ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}),
+          ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
           ...(coachId ? { coachId } : {}),
           attendanceWarningsEnabled,
           ...(parsedThreshold !== undefined && !isNaN(parsedThreshold) ? { attendanceWarningThreshold: parsedThreshold } : {}),
@@ -181,11 +181,11 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         sportType,
         color,
         updatedAt: now,
-        ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
         ...(coachName.trim() ? { coachName: coachName.trim() } : {}),
         ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}),
         ...(ageGroup ? { ageGroup } : {}),
         ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}),
+        ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
         ...(coachId ? { coachId } : {}),
         attendanceWarningsEnabled,
         ...(parsedThreshold2 !== undefined && !isNaN(parsedThreshold2) ? { attendanceWarningThreshold: parsedThreshold2 } : {}),
@@ -280,9 +280,9 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
             {errors.logo && <p className="text-xs text-red-500">{errors.logo}</p>}
           </div>
 
-        <Input label="Home Venue (optional)" value={homeVenue} onChange={e => setHomeVenue(e.target.value)} placeholder="e.g. City Park" />
         <Input label={kidsMode ? 'Head Coach' : 'Coach Name (optional)'} value={coachName} onChange={e => setCoachName(e.target.value)} />
         <Input label="Coach Email (optional)" type="email" value={coachEmail} onChange={e => setCoachEmail(e.target.value)} />
+        <Input label="Home Venue (optional)" value={homeVenue} onChange={e => setHomeVenue(e.target.value)} placeholder="e.g. City Park" />
         {canAssignCoach && coachUsers.length > 0 && (
           <div className="border-t border-gray-100 pt-3">
             <Select

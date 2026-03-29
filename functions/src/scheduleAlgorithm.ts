@@ -569,6 +569,7 @@ export function generatePairings(input: GenerateScheduleInput): Pairing[] {
         pairingIndex: pairingIndex++,
       });
     }
+
   }
 
   let result = allPairings;

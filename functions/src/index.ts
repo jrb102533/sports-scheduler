@@ -89,7 +89,11 @@ function signRsvpToken(eventId: string, playerId: string): string {
 /** Verify an RSVP token. Returns false if the secret is not yet provisioned (soft mode). */
 function verifyRsvpToken(eventId: string, playerId: string, token: string): boolean {
   const secret = rsvpSecret.value();
-  if (!secret) return true; // secret not yet provisioned — allow existing links
+  const secretIsProvisioned = typeof secret === 'string' && secret.length >= 16;
+  if (!secretIsProvisioned) return true;
+  if (typeof secret === 'string' && secret.length > 0 && secret.length < 16) {
+    console.warn('verifyRsvpToken: RSVP_HMAC_SECRET is set but too short (< 16 chars) — HMAC verification disabled');
+  }
   const expected = crypto.createHmac('sha256', secret).update(`${eventId}:${playerId}`).digest('hex');
   try {
     return crypto.timingSafeEqual(Buffer.from(token, 'hex'), Buffer.from(expected, 'hex'));
@@ -341,8 +345,8 @@ export const sendInvite = onCall<SendInviteData>(
             <p style="color:white;font-weight:700;font-size:22px;margin:0">First Whistle</p>
             <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px">Game day starts here.</p>
           </div>
-          <p style="color:#111827;font-size:15px">Hi ${playerName},</p>
-          <p style="color:#374151">You've been added to <strong>${teamName}</strong> on First Whistle.</p>
+          <p style="color:#111827;font-size:15px">Hi ${esc(playerName)},</p>
+          <p style="color:#374151">You've been added to <strong>${esc(teamName)}</strong> on First Whistle.</p>
           <p style="color:#374151">Sign up or log in to view your schedule, track attendance, and stay connected with your team.</p>
           <div style="text-align:center;margin:32px 0">
             <a href="${appUrl}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
@@ -423,7 +427,9 @@ export const rsvpEvent = onRequest(
     res.status(403).send('<p>This RSVP link is invalid or has been tampered with.</p>');
     return;
   }
-  if (!token && rsvpSecret.value()) {
+  const _rsvpSecretVal = rsvpSecret.value();
+  const _rsvpSecretProvisioned = typeof _rsvpSecretVal === 'string' && _rsvpSecretVal.length >= 16;
+  if (!token && _rsvpSecretProvisioned) {
     // Secret is provisioned but no token present — link is pre-HMAC; reject.
     res.status(403).send('<p>This RSVP link has expired. Please ask your coach to resend the invite.</p>');
     return;
@@ -680,7 +686,7 @@ export const onEventCreated = onDocumentCreated(
 export const sendEventReminders = onSchedule(
   {
     schedule: '0 8 * * *',
-    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret],
   },
   async () => {
     const tomorrow = new Date();
@@ -736,7 +742,8 @@ export const sendEventReminders = onSchedule(
           d.parentContact2?.parentEmail,
         ].filter((e: any): e is string => typeof e === 'string' && e.trim().length > 0);
 
-        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(evDoc.id)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}`;
+        const reminderToken = signRsvpToken(evDoc.id, p.id);
+        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(evDoc.id)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}&t=${reminderToken}`;
         const yesUrl = `${base}&r=yes`;
         const noUrl = `${base}&r=no`;
         const maybeUrl = `${base}&r=maybe`;
@@ -809,7 +816,7 @@ export const sendEventReminders = onSchedule(
 export const sendRsvpFollowups = onSchedule(
   {
     schedule: '0 10 * * *',
-    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret],
   },
   async () => {
     const tomorrow = new Date();
@@ -870,7 +877,8 @@ export const sendRsvpFollowups = onSchedule(
 
         if (!addrs.length) continue;
 
-        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}`;
+        const followupToken = signRsvpToken(eventId, p.id);
+        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}&t=${followupToken}`;
         const yesUrl = `${base}&r=yes`;
         const noUrl = `${base}&r=no`;
         const maybeUrl = `${base}&r=maybe`;
@@ -1417,7 +1425,22 @@ export const checkWeatherAlerts = onSchedule(
         if (status === 'cancelled' || status === 'postponed') continue;
 
         const location: string | undefined = ev['location'];
-        if (!location?.trim()) continue;
+        const venueLat: unknown = ev['venueLat'];
+        const venueLng: unknown = ev['venueLng'];
+
+        // Use coordinates stamped directly onto the event at publish time (fast path).
+        // Fall back to text geocoding via the location field if coordinates are absent.
+        let coords: { lat: number; lon: number } | null = null;
+
+        if (typeof venueLat === 'number' && typeof venueLng === 'number') {
+          coords = { lat: venueLat, lon: venueLng };
+        }
+
+        if (!coords) {
+          if (!location?.trim()) continue;
+          coords = await geocodeLocation(location);
+          if (!coords) continue;
+        }
 
         // Build the event's start datetime in ISO format
         const startTime: string = ev['startTime'] ?? '00:00'; // HH:MM
@@ -1427,15 +1450,12 @@ export const checkWeatherAlerts = onSchedule(
         const eventTs = new Date(`${dateStr}T${startTime}:00Z`).getTime();
         if (eventTs < windowStart.getTime() || eventTs > windowEnd.getTime()) continue;
 
-        // Geocode
-        const coords = await geocodeLocation(location);
-        if (!coords) continue;
 
         // Fetch precipitation probability
         const prob = await getPrecipitationProbability(coords.lat, coords.lon, eventIsoHour);
         if (prob === null) continue;
 
-        console.log(`checkWeatherAlerts: event "${ev['title']}" (${evDoc.id}) location="${location}" prob=${prob}%`);
+        console.log(`checkWeatherAlerts: event "${ev['title']}" (${evDoc.id}) location="${location ?? ev['venueId'] ?? '(no venue)'}" prob=${prob}%`);
 
         if (prob <= RAIN_THRESHOLD) continue;
 
@@ -1753,6 +1773,18 @@ export const requestAvailability = onCall<RequestAvailabilityData, Promise<{ not
 
     const db = admin.firestore();
 
+    // Ownership check: non-admins must manage the league they are acting on.
+    if (callerRole !== 'admin') {
+      const leagueDoc = await admin.firestore().doc(`leagues/${leagueId}`).get();
+      if (!leagueDoc.exists) throw new HttpsError('not-found', 'League not found.');
+      const leagueData = leagueDoc.data()!;
+      const userDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+      const profile = userDoc.data();
+      const ownsLeague = leagueData.managedBy === request.auth.uid
+        || profile?.leagueId === leagueId;
+      if (!ownsLeague) throw new HttpsError('permission-denied', 'You do not manage this league.');
+    }
+
     // Load the league document to get the league name.
     const leagueDoc = await db.doc(`leagues/${leagueId}`).get();
     if (!leagueDoc.exists) throw new HttpsError('not-found', 'League not found.');
@@ -1863,6 +1895,18 @@ export const sendAvailabilityReminder = onCall<SendAvailabilityReminderData, Pro
 
     const db = admin.firestore();
 
+    // Ownership check: non-admins must manage the league they are acting on.
+    if (callerRole !== 'admin') {
+      const leagueDoc = await admin.firestore().doc(`leagues/${leagueId}`).get();
+      if (!leagueDoc.exists) throw new HttpsError('not-found', 'League not found.');
+      const leagueData = leagueDoc.data()!;
+      const userDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+      const profile = userDoc.data();
+      const ownsLeague = leagueData.managedBy === request.auth.uid
+        || profile?.leagueId === leagueId;
+      if (!ownsLeague) throw new HttpsError('permission-denied', 'You do not manage this league.');
+    }
+
     // Verify the collection is still open.
     const collectionRef = db.doc(`leagues/${leagueId}/availabilityCollections/${collectionId}`);
     const collectionDoc = await collectionRef.get();
@@ -1882,9 +1926,7 @@ export const sendAvailabilityReminder = onCall<SendAvailabilityReminderData, Pro
     // Load all existing responses so we know who has already submitted.
     const responsesSnap = await collectionRef.collection('responses').get();
     const respondedCoachIds = new Set<string>(
-      responsesSnap.docs
-        .map(d => d.data()?.coachId as string | undefined)
-        .filter((id): id is string => Boolean(id)),
+      responsesSnap.docs.map(d => d.id)
     );
 
     // Load league name if not stored on the collection document.
@@ -2219,4 +2261,59 @@ export const generateSchedule = onCall(
 
     return output;
   }
+);
+
+// ─── Callable: geocode a venue address via Nominatim ─────────────────────────
+
+export const geocodeVenueAddress = onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    const { venueId, address, ownerUid } = request.data as {
+      venueId: string;
+      address: string;
+      ownerUid: string;
+    };
+
+    if (!venueId || !address || !ownerUid) {
+      throw new HttpsError('invalid-argument', 'venueId, address, and ownerUid are required');
+    }
+
+    if (address.length > 500) {
+      throw new HttpsError('invalid-argument', 'Address must be 1–500 characters.');
+    }
+
+    // Auth check: caller must be the owner
+    if (request.auth?.uid !== ownerUid) {
+      throw new HttpsError('permission-denied', 'Not authorised');
+    }
+
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'FirstWhistle/1.0 (contact@firstwhistle.app)' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) {
+        console.warn(`geocodeVenueAddress: Nominatim HTTP ${res.status} for "${address}"`);
+        return { success: false };
+      }
+      const data = await res.json() as Array<{ lat: string; lon: string }>;
+      const first = data[0];
+      if (!first) {
+        console.log(`geocodeVenueAddress: no result for "${address}"`);
+        return { success: false };
+      }
+      const lat = parseFloat(first.lat);
+      const lng = parseFloat(first.lon);
+      await admin.firestore()
+        .doc(`users/${ownerUid}/venues/${venueId}`)
+        .update({ lat, lng, updatedAt: new Date().toISOString() });
+      console.log(`geocodeVenueAddress: geocoded "${address}" → lat=${lat} lng=${lng}`);
+      return { success: true, lat, lng };
+    } catch (err) {
+      console.warn(`geocodeVenueAddress: failed for "${address}"`, err);
+      return { success: false };
+    }
+  },
 );

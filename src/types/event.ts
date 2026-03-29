@@ -68,6 +68,12 @@ export interface ScheduledEvent {
   isOutdoor?: boolean;
   /** Set to true once a weather alert notification has been sent for this event. */
   weatherAlertSent?: boolean;
+  /** References users/{ownerUid}/venues/{venueId} — set on publish if wizard venue is selected from library */
+  venueId?: string;
+  /** Latitude of the venue — stamped directly onto the event at publish time for weather lookups */
+  venueLat?: number;
+  /** Longitude of the venue — stamped directly onto the event at publish time for weather lookups */
+  venueLng?: number;
   createdAt: string;
   updatedAt: string;
 }

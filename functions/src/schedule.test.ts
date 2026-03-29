@@ -13,6 +13,7 @@ import {
   assignFixtures,
   buildOutput,
   daysBetween,
+  scorePenalty,
   type GenerateScheduleInput,
   type Pairing,
 } from './scheduleAlgorithm';
@@ -272,7 +273,6 @@ describe('feasibilityPreCheck', () => {
 
 describe('scorePenalty', () => {
   it('prefer_weekends: weekday slot scores higher than weekend slot', () => {
-    const { scorePenalty } = require('./scheduleAlgorithm');
     const input = baseInput({
       softConstraintPriority: ['prefer_weekends'],
     });
@@ -290,7 +290,6 @@ describe('scorePenalty', () => {
   });
 
   it('linear weights: priority 1 weight > priority 2 weight', () => {
-    const { scorePenalty } = require('./scheduleAlgorithm');
     // With 2 constraints, weights are 3, 2 (priorityCount - i + 1)
     // prefer_weekends (i=0, weight=3) vs balance_home_away (i=1, weight=2)
     const input = baseInput({

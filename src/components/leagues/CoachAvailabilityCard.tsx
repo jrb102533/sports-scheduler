@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarDays } from 'lucide-react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/Button';
 import type { AvailabilityCollection, League, UserProfile } from '@/types';
@@ -55,15 +55,9 @@ export function CoachAvailabilityCard({ profile, leagues, coachTeamLeagueIds }: 
         for (const docSnap of snap.docs) {
           const col = { id: docSnap.id, ...docSnap.data() } as AvailabilityCollection;
 
-          const responseSnap = await getDocs(
-            collection(
-              db,
-              'leagues', leagueId,
-              'availabilityCollections', col.id,
-              'responses'
-            )
-          );
-          const hasResponded = responseSnap.docs.some(d => d.id === profile.uid);
+          const responseRef = doc(db, 'leagues', leagueId, 'availabilityCollections', col.id, 'responses', profile.uid);
+          const responseSnap = await getDoc(responseRef);
+          const hasResponded = responseSnap.exists();
 
           results.push({ collection: col, league, hasResponded });
         }
