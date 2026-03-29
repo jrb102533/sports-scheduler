@@ -1,12 +1,15 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CalendarDays } from 'lucide-react';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { CoachAvailabilityForm } from '@/components/leagues/CoachAvailabilityForm';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useCollectionStore } from '@/store/useCollectionStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { getMemberships } from '@/store/useAuthStore';
+import type { CoachAvailabilityResponse } from '@/types';
 
 export function CoachAvailabilityPage() {
   const { leagueId, collectionId } = useParams<{ leagueId: string; collectionId: string }>();
@@ -15,12 +18,32 @@ export function CoachAvailabilityPage() {
   const leagues = useLeagueStore(s => s.leagues);
   const teams = useTeamStore(s => s.teams);
   const profile = useAuthStore(s => s.profile);
-  const { activeCollection, responses, loadCollection } = useCollectionStore();
+  const { activeCollection, loadCollection } = useCollectionStore();
+
+  // Fetch only the coach's own response via getDoc — coaches do not have
+  // list permission on the responses subcollection, so getDocs would fail
+  // with PERMISSION_DENIED.
+  const [existingResponse, setExistingResponse] = useState<CoachAvailabilityResponse | null>(null);
 
   useEffect(() => {
     if (!leagueId) return;
     return loadCollection(leagueId);
   }, [leagueId, loadCollection]);
+
+  useEffect(() => {
+    if (!leagueId || !collectionId || !profile?.uid) return;
+    const responseRef = doc(
+      db,
+      'leagues', leagueId,
+      'availabilityCollections', collectionId,
+      'responses', profile.uid,
+    );
+    getDoc(responseRef).then(snap => {
+      setExistingResponse(snap.exists() ? (snap.data() as CoachAvailabilityResponse) : null);
+    }).catch(() => {
+      setExistingResponse(null);
+    });
+  }, [leagueId, collectionId, profile?.uid]);
 
   const league = leagues.find(l => l.id === leagueId);
 
@@ -32,8 +55,6 @@ export function CoachAvailabilityPage() {
   });
 
   const collection = activeCollection?.id === collectionId ? activeCollection : null;
-
-  const existingResponse = responses.find(r => r.coachUid === profile?.uid);
 
   if (!league || !collection || !profile || !coachTeam) {
     return (
@@ -94,7 +115,7 @@ export function CoachAvailabilityPage() {
           coachUid={profile.uid}
           coachName={profile.displayName}
           teamId={coachTeam.id}
-          existingResponse={existingResponse}
+          existingResponse={existingResponse ?? undefined}
           onSuccess={() => navigate('/')}
         />
       </div>
