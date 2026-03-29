@@ -732,7 +732,8 @@ export const sendEventReminders = onSchedule(
           d.parentContact2?.parentEmail,
         ].filter((e: any): e is string => typeof e === 'string' && e.trim().length > 0);
 
-        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(evDoc.id)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}`;
+        const reminderToken = signRsvpToken(evDoc.id, p.id);
+        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(evDoc.id)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}&t=${reminderToken}`;
         const yesUrl = `${base}&r=yes`;
         const noUrl = `${base}&r=no`;
         const maybeUrl = `${base}&r=maybe`;
@@ -866,7 +867,8 @@ export const sendRsvpFollowups = onSchedule(
 
         if (!addrs.length) continue;
 
-        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}`;
+        const followupToken = signRsvpToken(eventId, p.id);
+        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}&t=${followupToken}`;
         const yesUrl = `${base}&r=yes`;
         const noUrl = `${base}&r=no`;
         const maybeUrl = `${base}&r=maybe`;
@@ -1981,6 +1983,7 @@ export const geocodeVenueAddress = onCall(
     if (address.length > 500) {
       throw new HttpsError('invalid-argument', 'Address must be 1–500 characters.');
     }
+
 
     // Auth check: caller must be the owner
     if (request.auth?.uid !== ownerUid) {
