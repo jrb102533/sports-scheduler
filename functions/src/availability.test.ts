@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 
 // ─── Firestore mock ───────────────────────────────────────────────────────────
 //
@@ -185,8 +185,22 @@ vi.mock('twilio', () => ({
 
 // ─── Import handlers under test ───────────────────────────────────────────────
 // onCall → handler directly; onSchedule → handler directly.
+// The mocked onCall/onSchedule return the raw async handler (1-arg), so we
+// type these as any to avoid argument-count mismatches from the real signatures.
 
-const { requestAvailability, sendAvailabilityReminder, autoCloseCollections } = await import('./index');
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let requestAvailability: (req: any) => Promise<any>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let sendAvailabilityReminder: (req: any) => Promise<any>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let autoCloseCollections: (event: any) => Promise<any>;
+
+beforeAll(async () => {
+  const mod = await import('./index');
+  requestAvailability = mod.requestAvailability as any;
+  sendAvailabilityReminder = mod.sendAvailabilityReminder as any;
+  autoCloseCollections = mod.autoCloseCollections as any;
+});
 
 // ─── Test utilities ───────────────────────────────────────────────────────────
 
@@ -469,7 +483,7 @@ describe('autoCloseCollections — date threshold logic', () => {
           doc: vi.fn((uid: string) => ({
             ...makeDocRef(`${path}/${uid}`),
             collection: vi.fn((_sub: string) => ({
-              doc: vi.fn(() => ({ id: 'notif', set: notifSetSpy })),
+              doc: vi.fn(() => ({ id: 'notif', set: notifSetSpy, update: vi.fn().mockResolvedValue(undefined) })),
               get: vi.fn().mockResolvedValue({ docs: [] }),
             })),
           })),
