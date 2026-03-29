@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers, X, CalendarClock, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers, MapPin, X, CalendarClock, ChevronDown } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
@@ -30,6 +30,10 @@ const adminNavItems = [
 
 const leagueNavItems = [
   { to: '/leagues', label: 'Leagues', icon: Layers, end: undefined },
+];
+
+const venueNavItems = [
+  { to: '/venues', label: 'Venues', icon: MapPin, end: undefined },
 ];
 
 const roleColors: Record<string, string> = {
@@ -65,6 +69,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
     navItems[1], // Calendar
     navItems[2], // Teams
     ...(hasRole(profile, 'admin', 'league_manager') ? leagueNavItems : []),
+    ...(hasRole(profile, 'admin', 'league_manager', 'coach') ? venueNavItems : []),
     navItems[3], // Notifications
     navItems[4], // Messaging
     navItems[5], // Settings

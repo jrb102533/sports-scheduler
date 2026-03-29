@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send, Copy, AlertTriangle, Bell, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -13,6 +13,7 @@ import { PlayerStatusBadge } from '@/components/roster/PlayerStatusBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { useEventStore } from '@/store/useEventStore';
+import { useVenueStore } from '@/store/useVenueStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
@@ -46,12 +47,23 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const [scoreSaveState, setScoreSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
   const [broadcastOpen, setBroadcastOpen] = useState(false);
 
+  const venues = useVenueStore(s => s.venues);
+  const subscribeVenues = useVenueStore(s => s.subscribe);
+  useEffect(() => {
+    const unsub = subscribeVenues();
+    return unsub;
+  }, [subscribeVenues]);
+
   const canManage = profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach';
   const isReadOnly = profile?.role === 'player' || profile?.role === 'parent';
 
   if (!event) return null;
 
   const currentEvent = event;
+  const eventVenue = event.venueId ? venues.find(v => v.id === event.venueId) : null;
+  const mapsUrl = eventVenue?.lat != null && eventVenue?.lng != null
+    ? `https://www.google.com/maps/search/?api=1&query=${eventVenue.lat},${eventVenue.lng}`
+    : null;
   const homeTeam = teams.find(t => t.id === currentEvent.homeTeamId);
   const awayTeam = teams.find(t => t.id === currentEvent.awayTeamId);
   const primaryTeam = homeTeam ?? awayTeam;
@@ -174,7 +186,17 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
               {event.location && (
                 <div className="flex items-center gap-2">
                   <MapPin size={14} className="text-gray-400" />
-                  {event.location}
+                  <span>{event.location}</span>
+                  {mapsUrl && (
+                    <a
+                      href={mapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline flex-shrink-0"
+                    >
+                      Get directions
+                    </a>
+                  )}
                 </div>
               )}
             </div>

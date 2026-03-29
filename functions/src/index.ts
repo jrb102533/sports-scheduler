@@ -79,7 +79,11 @@ function signRsvpToken(eventId: string, playerId: string): string {
 /** Verify an RSVP token. Returns false if the secret is not yet provisioned (soft mode). */
 function verifyRsvpToken(eventId: string, playerId: string, token: string): boolean {
   const secret = rsvpSecret.value();
-  if (!secret) return true; // secret not yet provisioned — allow existing links
+  const secretIsProvisioned = typeof secret === 'string' && secret.length >= 16;
+  if (!secretIsProvisioned) return true;
+  if (typeof secret === 'string' && secret.length > 0 && secret.length < 16) {
+    console.warn('verifyRsvpToken: RSVP_HMAC_SECRET is set but too short (< 16 chars) — HMAC verification disabled');
+  }
   const expected = crypto.createHmac('sha256', secret).update(`${eventId}:${playerId}`).digest('hex');
   try {
     return crypto.timingSafeEqual(Buffer.from(token, 'hex'), Buffer.from(expected, 'hex'));
@@ -331,8 +335,8 @@ export const sendInvite = onCall<SendInviteData>(
             <p style="color:white;font-weight:700;font-size:22px;margin:0">First Whistle</p>
             <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px">Game day starts here.</p>
           </div>
-          <p style="color:#111827;font-size:15px">Hi ${playerName},</p>
-          <p style="color:#374151">You've been added to <strong>${teamName}</strong> on First Whistle.</p>
+          <p style="color:#111827;font-size:15px">Hi ${esc(playerName)},</p>
+          <p style="color:#374151">You've been added to <strong>${esc(teamName)}</strong> on First Whistle.</p>
           <p style="color:#374151">Sign up or log in to view your schedule, track attendance, and stay connected with your team.</p>
           <div style="text-align:center;margin:32px 0">
             <a href="${appUrl}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
@@ -413,7 +417,9 @@ export const rsvpEvent = onRequest(
     res.status(403).send('<p>This RSVP link is invalid or has been tampered with.</p>');
     return;
   }
-  if (!token && rsvpSecret.value()) {
+  const _rsvpSecretVal = rsvpSecret.value();
+  const _rsvpSecretProvisioned = typeof _rsvpSecretVal === 'string' && _rsvpSecretVal.length >= 16;
+  if (!token && _rsvpSecretProvisioned) {
     // Secret is provisioned but no token present — link is pre-HMAC; reject.
     res.status(403).send('<p>This RSVP link has expired. Please ask your coach to resend the invite.</p>');
     return;
@@ -670,7 +676,7 @@ export const onEventCreated = onDocumentCreated(
 export const sendEventReminders = onSchedule(
   {
     schedule: '0 8 * * *',
-    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret],
   },
   async () => {
     const tomorrow = new Date();
@@ -726,7 +732,8 @@ export const sendEventReminders = onSchedule(
           d.parentContact2?.parentEmail,
         ].filter((e: any): e is string => typeof e === 'string' && e.trim().length > 0);
 
-        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(evDoc.id)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}`;
+        const reminderToken = signRsvpToken(evDoc.id, p.id);
+        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(evDoc.id)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}&t=${reminderToken}`;
         const yesUrl = `${base}&r=yes`;
         const noUrl = `${base}&r=no`;
         const maybeUrl = `${base}&r=maybe`;
@@ -799,7 +806,7 @@ export const sendEventReminders = onSchedule(
 export const sendRsvpFollowups = onSchedule(
   {
     schedule: '0 10 * * *',
-    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret],
   },
   async () => {
     const tomorrow = new Date();
@@ -860,7 +867,8 @@ export const sendRsvpFollowups = onSchedule(
 
         if (!addrs.length) continue;
 
-        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}`;
+        const followupToken = signRsvpToken(eventId, p.id);
+        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}&t=${followupToken}`;
         const yesUrl = `${base}&r=yes`;
         const noUrl = `${base}&r=no`;
         const maybeUrl = `${base}&r=maybe`;
@@ -1437,7 +1445,7 @@ export const checkWeatherAlerts = onSchedule(
         const prob = await getPrecipitationProbability(coords.lat, coords.lon, eventIsoHour);
         if (prob === null) continue;
 
-        console.log(`checkWeatherAlerts: event "${ev['title']}" (${evDoc.id}) location="${location}" prob=${prob}%`);
+        console.log(`checkWeatherAlerts: event "${ev['title']}" (${evDoc.id}) location="${location ?? ev['venueId'] ?? '(no venue)'}" prob=${prob}%`);
 
         if (prob <= RAIN_THRESHOLD) continue;
 
@@ -1739,8 +1747,13 @@ export interface RecurringVenueWindow {
 export interface VenueInput {
   name: string;
   concurrentPitches: number;
-  availabilityWindows: RecurringVenueWindow[];
+  // New format (v2 wizard)
+  availabilityWindows?: RecurringVenueWindow[];
   fallbackWindows?: RecurringVenueWindow[];
+  // Legacy format (v1 wizard) — kept for backwards compatibility
+  availableDays?: string[];
+  availableTimeStart?: string;
+  availableTimeEnd?: string;
   blackoutDates?: string[];        // ISO date strings e.g. '2026-04-18'
 }
 
@@ -1871,8 +1884,21 @@ export const generateLeagueSchedule = onCall(
 
     const DAY_NAMES_CF = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-    function venueWindowsText(windows: RecurringVenueWindow[]): string {
+    function venueWindowsText(windows: RecurringVenueWindow[] | undefined | null): string {
+      if (!windows?.length) return 'not specified';
       return windows.map(w => `${DAY_NAMES_CF[w.dayOfWeek]} ${w.startTime}–${w.endTime}`).join(', ');
+    }
+
+    function venueAvailabilityText(v: VenueInput): string {
+      if (v.availabilityWindows?.length) {
+        const primary = `primary: ${venueWindowsText(v.availabilityWindows)}`;
+        const fallback = v.fallbackWindows?.length ? `; fallback: ${venueWindowsText(v.fallbackWindows)}` : '';
+        return `available ${primary}${fallback}`;
+      }
+      // Legacy format
+      const days = v.availableDays?.join('/') ?? 'unspecified days';
+      const time = v.availableTimeStart && v.availableTimeEnd ? `${v.availableTimeStart}–${v.availableTimeEnd}` : 'unspecified times';
+      return `available ${days} ${time}`;
     }
 
     function coachAvailabilityText(responses: CoachAvailabilityResponse[]): string {
@@ -1896,8 +1922,8 @@ export const generateLeagueSchedule = onCall(
     const formatDescriptions: Record<string, string> = {
       single_round_robin: 'Single round-robin: each pair of teams plays once.',
       double_round_robin: 'Double round-robin: each pair of teams plays twice (home and away).',
-      single_elimination: 'Single elimination knockout bracket. Teams are seeded. Byes assigned if count is not a power of 2.',
-      double_elimination: 'Double elimination: teams must lose twice to be eliminated.',
+      single_elimination: 'Single elimination knockout bracket. Teams are seeded. Losers are eliminated immediately. Byes are assigned if the team count is not a power of 2.',
+      double_elimination: 'Double elimination: teams must lose twice to be eliminated. Winners and Losers brackets merge in a Grand Final.',
       group_then_knockout: `Group stage (${input.groupCount ?? 2} groups, top ${input.groupAdvance ?? 2} advance) followed by single-elimination knockout.`,
       practice: 'Recurring practice sessions for each team.',
     };
@@ -1950,7 +1976,7 @@ ${input.teams.map((t, i) => `${i + 1}. ${t.name} (id: ${t.id})`).join('\n')}
 ${(input.practiceTimeWindows ?? []).map(w => `- ${DAY_NAMES_CF[w.dayOfWeek]} ${w.startTime}–${w.endTime}`).join('\n')}
 
 **Venues (${input.venues.length}):**
-${input.venues.map(v => `- ${v.name}: ${v.concurrentPitches} court/pitch, available ${venueWindowsText(v.availabilityWindows)}${v.blackoutDates?.length ? `, blackout: ${v.blackoutDates.join(', ')}` : ''}`).join('\n')}
+${input.venues.map(v => `- ${v.name}: ${v.concurrentPitches} court/pitch, ${venueAvailabilityText(v)}${v.blackoutDates?.length ? `, blackout: ${v.blackoutDates.join(', ')}` : ''}`).join('\n')}
 
 **Season-wide blackout dates:** ${input.blackoutDates?.length ? input.blackoutDates.join(', ') : 'None'}
 
@@ -1989,11 +2015,7 @@ ${enabledPreferences || '  (default: balance home/away, respect coach availabili
 ${input.teams.map((t, i) => `${i + 1}. ${t.name} (id: ${t.id})${t.homeVenue ? `, home venue: ${t.homeVenue}` : ''}${t.earliestKickOff ? `, earliest kick-off: ${t.earliestKickOff}` : ''}`).join('\n')}
 
 **Venues (${input.venues.length}):**
-${input.venues.map(v => {
-  const primary = `primary: ${venueWindowsText(v.availabilityWindows)}`;
-  const fallback = v.fallbackWindows?.length ? `; fallback: ${venueWindowsText(v.fallbackWindows)}` : '';
-  return `- ${v.name}: ${v.concurrentPitches} pitch(es), available ${primary}${fallback}${v.blackoutDates?.length ? `, blackout: ${v.blackoutDates.join(', ')}` : ''}`;
-}).join('\n')}
+${input.venues.map(v => `- ${v.name}: ${v.concurrentPitches} pitch(es), ${venueAvailabilityText(v)}${v.blackoutDates?.length ? `, blackout: ${v.blackoutDates.join(', ')}` : ''}`).join('\n')}
 
 **Season-wide blackout dates:** ${input.blackoutDates?.length ? input.blackoutDates.join(', ') : 'None'}
 
@@ -2053,7 +2075,7 @@ Set isFallback to true for any fixture placed in a fallback time window (not a p
         }
       }
     } catch (err) {
-      console.error('Anthropic API error:', err);
+      console.error('Anthropic API error:', JSON.stringify(err));
       throw new HttpsError('internal', 'Schedule generation failed. Please try again.');
     }
 
@@ -2063,8 +2085,11 @@ Set isFallback to true for any fixture placed in a fallback time window (not a p
     let result: ScheduleWizardOutput;
     try {
       result = JSON.parse(jsonText) as ScheduleWizardOutput;
-    } catch {
-      console.error('Failed to parse LLM output:', jsonText.slice(0, 500));
+      if (!Array.isArray(result.fixtures)) {
+        throw new Error('LLM response missing fixtures array');
+      }
+    } catch (err) {
+      console.error('Failed to parse LLM output:', (err as Error).message, jsonText.slice(0, 500));
       throw new HttpsError('internal', 'Schedule generation returned an unexpected format. Please try again.');
     }
 
@@ -2502,5 +2527,60 @@ export const autoCloseCollections = onSchedule(
     console.log(
       `autoCloseCollections: done — closed=${closed}, warned60=${warned}, expired=${expired}`,
     );
+  },
+);
+
+// ─── Callable: geocode a venue address via Nominatim ─────────────────────────
+
+export const geocodeVenueAddress = onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    const { venueId, address, ownerUid } = request.data as {
+      venueId: string;
+      address: string;
+      ownerUid: string;
+    };
+
+    if (!venueId || !address || !ownerUid) {
+      throw new HttpsError('invalid-argument', 'venueId, address, and ownerUid are required');
+    }
+
+    if (address.length > 500) {
+      throw new HttpsError('invalid-argument', 'Address must be 1–500 characters.');
+    }
+
+    // Auth check: caller must be the owner
+    if (request.auth?.uid !== ownerUid) {
+      throw new HttpsError('permission-denied', 'Not authorised');
+    }
+
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'FirstWhistle/1.0 (contact@firstwhistle.app)' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) {
+        console.warn(`geocodeVenueAddress: Nominatim HTTP ${res.status} for "${address}"`);
+        return { success: false };
+      }
+      const data = await res.json() as Array<{ lat: string; lon: string }>;
+      const first = data[0];
+      if (!first) {
+        console.log(`geocodeVenueAddress: no result for "${address}"`);
+        return { success: false };
+      }
+      const lat = parseFloat(first.lat);
+      const lng = parseFloat(first.lon);
+      await admin.firestore()
+        .doc(`users/${ownerUid}/venues/${venueId}`)
+        .update({ lat, lng, updatedAt: new Date().toISOString() });
+      console.log(`geocodeVenueAddress: geocoded "${address}" → lat=${lat} lng=${lng}`);
+      return { success: true, lat, lng };
+    } catch (err) {
+      console.warn(`geocodeVenueAddress: failed for "${address}"`, err);
+      return { success: false };
+    }
   },
 );

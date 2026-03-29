@@ -254,6 +254,7 @@ export function LeagueDetailPage() {
         </Modal>
       )}
 
+
       {editOpen && (
         <LeagueForm
           open={editOpen}

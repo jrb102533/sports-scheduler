@@ -13,12 +13,12 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if request.auth != null;
       allow create: if request.auth.uid == uid || isAdmin();
-      // Self-update is allowed ONLY for non-privileged fields.
-      // role, memberships, uid, and mustChangePassword may only be changed by admins
-      // or the Cloud Function admin SDK — never by the user themselves.
+      // Self-update: users may change their own role/memberships as long as they
+      // are not escalating to admin. uid and mustChangePassword remain admin-only.
       allow update: if (request.auth.uid == uid
           && !request.resource.data.diff(resource.data).affectedKeys()
-              .hasAny(['role', 'memberships', 'uid', 'mustChangePassword']))
+              .hasAny(['uid', 'mustChangePassword'])
+          && !(['admin', 'league_manager'].hasAny([request.resource.data.role])))
         || isAdmin()
         || (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamId']) &&
@@ -33,6 +33,10 @@ service cloud.firestore {
       }
       match /config/{doc} {
         allow read, write: if request.auth.uid == uid;
+      }
+      match /venues/{venueId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+        allow read: if request.auth != null && isAdmin();
       }
     }
 
@@ -112,8 +116,14 @@ service cloud.firestore {
 
     match /leagues/{leagueId} {
       allow read: if request.auth != null;
-      allow create, update: if isAdmin()
-        || (isLeagueManager() && getProfile().leagueId == leagueId);
+      // League managers can create any new league (no prior leagueId to match against).
+      allow create: if isAdmin() || isLeagueManager();
+      // League managers can update leagues they own via leagueId profile field or managedBy.
+      allow update: if isAdmin()
+        || (isLeagueManager() && (
+          getProfile().leagueId == leagueId
+          || resource.data.managedBy == request.auth.uid
+        ));
       allow delete: if isAdmin();
 
       // Wizard draft — one per league, owned by the LM who created it.

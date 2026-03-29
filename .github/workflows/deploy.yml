@@ -1,10 +1,10 @@
 name: Deploy to Firebase
 
-# Required GitHub secret:
-#   FIREBASE_TOKEN — a long-lived CI token obtained by running:
-#     firebase login:ci
-#   Copy the printed token and add it in your repository under
-#   Settings → Secrets and variables → Actions → New repository secret.
+# Triggered on every push to main (i.e., after a PR is merged).
+#
+# Required GitHub secrets:
+#   FIREBASE_TOKEN — long-lived CI token from: firebase login:ci
+#   Add at: Settings → Secrets and variables → Actions → New repository secret
 
 on:
   push:
@@ -12,15 +12,14 @@ on:
       - main
 
 jobs:
-  frontend-build:
-    name: Frontend Build
+  # ── Build frontend ────────────────────────────────────────────────────────
+  build-frontend:
+    name: Build Frontend
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
@@ -28,19 +27,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build frontend
+      - name: Build
         run: npm run build
 
-  functions-build:
-    name: Functions Build
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          retention-days: 1
+
+  # ── Build + test Cloud Functions ─────────────────────────────────────────
+  build-functions:
+    name: Build & Test Functions
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        # functions/package.json specifies "engines": { "node": "22" }
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -50,20 +54,31 @@ jobs:
         working-directory: functions
         run: npm ci
 
-      - name: Build functions
+      - name: Build
         working-directory: functions
         run: npm run build
 
-  deploy:
-    name: Deploy
-    runs-on: ubuntu-latest
-    needs: [frontend-build, functions-build]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Test
+        working-directory: functions
+        run: npm test
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Upload functions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: functions-lib
+          path: functions/lib/
+          retention-days: 1
+
+  # ── Deploy ────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Firebase
+    runs-on: ubuntu-latest
+    needs: [build-frontend, build-functions]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
@@ -71,12 +86,13 @@ jobs:
       - name: Install root dependencies
         run: npm ci
 
-      - name: Build frontend
-        run: npm run build
+      - name: Download frontend dist
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
 
-      - name: Set up Node.js for functions
-        # functions/package.json specifies "engines": { "node": "22" }
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -86,9 +102,11 @@ jobs:
         working-directory: functions
         run: npm ci
 
-      - name: Build functions
-        working-directory: functions
-        run: npm run build
+      - name: Download functions lib
+        uses: actions/download-artifact@v4
+        with:
+          name: functions-lib
+          path: functions/lib/
 
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
