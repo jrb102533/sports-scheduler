@@ -11,6 +11,7 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, deleteDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
+import { buildInfo } from '@/lib/buildInfo';
 import { getUserConsents } from '@/lib/consent';
 import { LEGAL_VERSIONS } from '@/legal/versions';
 import type { UserRole, UserProfile, RoleMembership, Team } from '@/types';
@@ -146,6 +147,26 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   signup: async (email, password, displayName, role, teamId, memberships) => {
     set({ error: null });
     try {
+      // On non-production environments, check the sign-up allowlist before creating the account.
+      // system/signupConfig: { open: boolean, allowedEmails: string[], allowedDomains: string[] }
+      if (!buildInfo.isProduction) {
+        const configSnap = await getDoc(doc(db, 'system', 'signupConfig'));
+        if (configSnap.exists()) {
+          const config = configSnap.data() as { open?: boolean; allowedEmails?: string[]; allowedDomains?: string[] };
+          if (!config.open) {
+            const normalizedEmail = email.toLowerCase();
+            const domain = normalizedEmail.split('@')[1] ?? '';
+            const emailAllowed = config.allowedEmails?.map(e => e.toLowerCase()).includes(normalizedEmail);
+            const domainAllowed = config.allowedDomains?.map(d => d.toLowerCase()).includes(domain);
+            if (!emailAllowed && !domainAllowed) {
+              const err = 'This is a test environment. Sign-ups are restricted to authorized testers. Contact the administrator to request access.';
+              set({ error: err });
+              throw new Error(err);
+            }
+          }
+        }
+      }
+
       const { user } = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(user, { displayName });
       const resolvedMemberships: RoleMembership[] = memberships ?? [{

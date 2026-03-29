@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Baby, Bell, MessageSquare, ShieldCheck } from 'lucide-react';
+import { Baby, Bell, Info, MessageSquare, ShieldCheck } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
@@ -8,6 +8,7 @@ import { useSettingsStore } from '@/store/useSettingsStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { getUserConsents } from '@/lib/consent';
 import { FLAGS } from '@/lib/flags';
+import { buildInfo } from '@/lib/buildInfo';
 import type { ConsentRecord } from '@/lib/consent';
 
 export function SettingsPage() {
@@ -166,6 +167,83 @@ export function SettingsPage() {
                 Request data deletion
               </a>
             </div>
+          </div>
+        </Card>
+
+        {/* About */}
+        <Card className="overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+            <Info size={18} className="text-blue-500" />
+            <h2 className="font-semibold text-gray-900">About</h2>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            {buildInfo.isProduction ? (
+              /* Production: version + release date only */
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-500">Version</span>
+                  <span className="text-sm font-mono font-medium text-gray-900">{buildInfo.version}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-500">Released</span>
+                  <span className="text-sm text-gray-900">{buildInfo.releaseDate}</span>
+                </div>
+              </>
+            ) : (
+              /* Non-production: full build info */
+              <>
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wide ${
+                    buildInfo.env === 'staging'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-purple-100 text-purple-800'
+                  }`}>
+                    {buildInfo.env}
+                  </span>
+                  <span className="text-xs text-gray-400">First Whistle</span>
+                </div>
+                <div className="space-y-2 text-sm">
+                  {buildInfo.version !== 'dev' && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">Version</span>
+                      <span className="font-mono text-gray-900">{buildInfo.version}</span>
+                    </div>
+                  )}
+                  {buildInfo.pr && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">Pull Request</span>
+                      <a
+                        href={`https://github.com/jrb102533/sports-scheduler/pull/${buildInfo.pr}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono text-blue-600 hover:underline"
+                      >
+                        #{buildInfo.pr}
+                      </a>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">Branch</span>
+                    <span className="font-mono text-gray-700 text-xs truncate max-w-[200px]">{buildInfo.branch}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">Commit</span>
+                    <a
+                      href={`https://github.com/jrb102533/sports-scheduler/commit/${buildInfo.sha}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-blue-600 hover:underline text-xs"
+                    >
+                      {buildInfo.shortSha}
+                    </a>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">Built</span>
+                    <span className="text-gray-700 text-xs">{buildInfo.buildTimestamp}</span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </Card>
       </div>

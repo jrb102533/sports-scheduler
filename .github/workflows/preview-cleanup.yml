@@ -1,0 +1,27 @@
+name: PR Preview Cleanup
+
+# Deletes the Firebase Hosting preview channel when a PR is closed or merged.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  cleanup:
+    name: Delete Preview Channel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Delete preview channel
+        run: |
+          CHANNEL_ID="pr-${{ github.event.pull_request.number }}"
+          firebase hosting:channel:delete "$CHANNEL_ID" \
+            --token "${{ secrets.FIREBASE_TOKEN }}" \
+            --project first-whistle-e76f4 \
+            --force \
+          || echo "Channel $CHANNEL_ID not found or already deleted — skipping."
