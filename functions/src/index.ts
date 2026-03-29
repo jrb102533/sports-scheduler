@@ -1978,6 +1978,10 @@ export const geocodeVenueAddress = onCall(
       throw new HttpsError('invalid-argument', 'venueId, address, and ownerUid are required');
     }
 
+    if (address.length > 500) {
+      throw new HttpsError('invalid-argument', 'Address must be 1–500 characters.');
+    }
+
     // Auth check: caller must be the owner
     if (request.auth?.uid !== ownerUid) {
       throw new HttpsError('permission-denied', 'Not authorised');
