@@ -48,7 +48,7 @@ jobs:
 
           # Find the highest N for today's date across all matching tags
           LATEST_N=$(git tag --list "v${TODAY}.*" \
-            | grep -oP '(?<=v'"${TODAY/./\\.}"'\.)\d+' \
+            | grep -oP '(?<=v'"${TODAY//./\\.}"'\.)\d+' \
             | sort -n \
             | tail -1)
 
