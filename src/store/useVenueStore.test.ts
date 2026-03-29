@@ -14,11 +14,11 @@ const mockOnSnapshot = vi.fn(() => () => {});
 vi.mock('firebase/firestore', () => ({
   setDoc: (...args: unknown[]) => mockSetDoc(...args),
   updateDoc: (...args: unknown[]) => mockUpdateDoc(...args),
-  doc: (...args: unknown[]) => mockDoc(...args),
+  doc: (...args: unknown[]) => mockDoc(...(args as Parameters<typeof mockDoc>)),
   collection: (...args: unknown[]) => mockCollection(...args),
   orderBy: (...args: unknown[]) => mockOrderBy(...args),
   query: (...args: unknown[]) => mockQuery(...args),
-  onSnapshot: (...args: unknown[]) => mockOnSnapshot(...args),
+  onSnapshot: (...args: unknown[]) => mockOnSnapshot(...(args as Parameters<typeof mockOnSnapshot>)),
 }));
 
 // ── Mock @/lib/firebase ───────────────────────────────────────────────────────
@@ -91,7 +91,7 @@ describe('useVenueStore — addVenue', () => {
   });
 
   it('throws when the user is not authenticated', async () => {
-    mockGetState.mockReturnValue({ user: null });
+    mockGetState.mockReturnValue({ user: null } as unknown as ReturnType<typeof mockGetState>);
     await expect(useVenueStore.getState().addVenue(makeVenue())).rejects.toThrow(
       'Not authenticated',
     );
@@ -122,7 +122,7 @@ describe('useVenueStore — updateVenue', () => {
   });
 
   it('throws when the user is not authenticated', async () => {
-    mockGetState.mockReturnValue({ user: null });
+    mockGetState.mockReturnValue({ user: null } as unknown as ReturnType<typeof mockGetState>);
     await expect(useVenueStore.getState().updateVenue(makeVenue())).rejects.toThrow(
       'Not authenticated',
     );
@@ -169,7 +169,7 @@ describe('useVenueStore — softDeleteVenue', () => {
   });
 
   it('throws when the user is not authenticated', async () => {
-    mockGetState.mockReturnValue({ user: null });
+    mockGetState.mockReturnValue({ user: null } as unknown as ReturnType<typeof mockGetState>);
     await expect(useVenueStore.getState().softDeleteVenue('venue-1')).rejects.toThrow(
       'Not authenticated',
     );
