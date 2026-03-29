@@ -215,12 +215,14 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   return (
     <Modal open={open} onClose={onClose} title={editTeam ? 'Edit Team' : 'New Team'}>
       <div className="space-y-4">
-        <Input label="Team Name" value={name} onChange={e => setName(e.target.value)} error={errors.name} placeholder="e.g. City Hawks" />
+        <Input label="Team Name" name="team-name" autoComplete="off" value={name} onChange={e => setName(e.target.value)} error={errors.name} placeholder="e.g. City Hawks" />
         <Select label="Sport" value={sportType} onChange={e => setSportType(e.target.value as SportType)} options={sportOptions} />
         <Select label="Age Group" value={ageGroup} onChange={e => setAgeGroup(e.target.value as AgeGroup)} options={ageGroupOptions} placeholder="Select age group" />
         <div className="flex flex-col gap-1">
           <Input
             label="Division label (optional)"
+            name="division-label"
+            autoComplete="off"
             value={divisionLabel}
             onChange={e => setDivisionLabel(e.target.value)}
             placeholder="e.g. Little League, Pee Wee, Rep"
@@ -280,9 +282,9 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
             {errors.logo && <p className="text-xs text-red-500">{errors.logo}</p>}
           </div>
 
-        <Input label={kidsMode ? 'Head Coach' : 'Coach Name (optional)'} value={coachName} onChange={e => setCoachName(e.target.value)} />
-        <Input label="Coach Email (optional)" type="email" value={coachEmail} onChange={e => setCoachEmail(e.target.value)} />
-        <Input label="Home Venue (optional)" value={homeVenue} onChange={e => setHomeVenue(e.target.value)} placeholder="e.g. City Park" />
+        <Input label={kidsMode ? 'Head Coach' : 'Coach Name (optional)'} name="coach-name" autoComplete="off" value={coachName} onChange={e => setCoachName(e.target.value)} />
+        <Input label="Coach Email (optional)" type="email" name="coach-email" autoComplete="off" value={coachEmail} onChange={e => setCoachEmail(e.target.value)} />
+        <Input label="Home Venue (optional)" name="home-venue" autoComplete="off" value={homeVenue} onChange={e => setHomeVenue(e.target.value)} placeholder="e.g. City Park" />
         {canAssignCoach && coachUsers.length > 0 && (
           <div className="border-t border-gray-100 pt-3">
             <Select
@@ -312,6 +314,8 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
               <Input
                 label="Minimum players threshold"
                 type="number"
+                name="attendance-threshold"
+                autoComplete="off"
                 min={1}
                 value={attendanceWarningThreshold}
                 onChange={e => setAttendanceWarningThreshold(e.target.value)}

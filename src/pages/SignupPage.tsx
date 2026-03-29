@@ -14,7 +14,8 @@ import type { UserRole, RoleMembership } from '@/types';
 export function SignupPage() {
   const { signup, logout, error, clearError } = useAuthStore();
   const navigate = useNavigate();
-  const [displayName, setDisplayName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -50,7 +51,9 @@ export function SignupPage() {
 
     if (password !== confirm) { setValidationError('Passwords do not match'); return; }
     if (password.length < 6) { setValidationError('Password must be at least 6 characters'); return; }
-    if (!displayName.trim()) { setValidationError('Name is required'); return; }
+    if (!firstName.trim()) { setValidationError('First name is required'); return; }
+    if (!lastName.trim()) { setValidationError('Last name is required'); return; }
+    const displayName = `${firstName.trim()} ${lastName.trim()}`;
 
     // Build memberships from primary + additional roles
     const memberships: RoleMembership[] = [
@@ -60,7 +63,7 @@ export function SignupPage() {
 
     setLoading(true);
     try {
-      await signup(email, password, displayName.trim(), role, undefined, memberships);
+      await signup(email, password, displayName, role, undefined, memberships);
 
       // Account created — show the verification screen immediately.
       // Consent recording and logout are best-effort and must not block or hide this.
@@ -108,10 +111,29 @@ export function SignupPage() {
   return (
     <AuthLayout title="Create account" subtitle="Join First Whistle">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Input label="Full Name" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Jane Smith" required />
-        <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required />
-        <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" required showToggle />
-        <Input label="Confirm Password" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="••••••••" required showToggle />
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="First Name"
+            name="given-name"
+            autoComplete="given-name"
+            value={firstName}
+            onChange={e => setFirstName(e.target.value)}
+            placeholder="Jane"
+            required
+          />
+          <Input
+            label="Last Name"
+            name="family-name"
+            autoComplete="family-name"
+            value={lastName}
+            onChange={e => setLastName(e.target.value)}
+            placeholder="Smith"
+            required
+          />
+        </div>
+        <Input label="Email" type="email" name="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required />
+        <Input label="Password" type="password" name="new-password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" required showToggle />
+        <Input label="Confirm Password" type="password" name="new-password-confirm" autoComplete="new-password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="••••••••" required showToggle />
 
         <div className="border-t border-gray-100 pt-4 space-y-3">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Your Role(s)</p>
