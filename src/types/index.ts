@@ -9,3 +9,5 @@ export type { UserRole, UserProfile, RoleMembership } from './auth';
 export type { JoinRequest } from './joinRequest';
 export type { Opponent } from './opponent';
 export type { Venue, VenueField, RecurringVenueWindow } from './venue';
+export type { SeasonStatus, DistributionType, Season } from './season';
+export type { DivisionScheduleStatus, Division } from './division';

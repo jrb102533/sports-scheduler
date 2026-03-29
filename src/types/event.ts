@@ -1,5 +1,5 @@
 export type EventType = 'game' | 'match' | 'practice' | 'tournament' | 'other';
-export type EventStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'postponed';
+export type EventStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'postponed' | 'draft';
 export type AttendanceStatus = 'present' | 'absent' | 'excused';
 export type RecurrenceFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly';
 
@@ -70,6 +70,10 @@ export interface ScheduledEvent {
   weatherAlertSent?: boolean;
   /** References users/{ownerUid}/venues/{venueId} — set on publish if wizard venue is selected from library */
   venueId?: string;
+  /** References leagues/{leagueId}/seasons/{seasonId} — set when generated via Schedule Wizard */
+  seasonId?: string;
+  /** References leagues/{leagueId}/divisions/{divisionId} — set when generated for a division */
+  divisionId?: string;
   createdAt: string;
   updatedAt: string;
 }
