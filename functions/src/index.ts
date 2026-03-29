@@ -71,7 +71,7 @@ async function assertAdminOrCoach(uid: string): Promise<string> {
   const membershipRoles: string[] = (data?.memberships ?? []).map((m: Record<string, unknown>) => m.role as string);
   const allRoles = new Set([legacyRole, ...membershipRoles]);
   // Return the highest-privilege role so callers can enforce further restrictions.
-  for (const r of ['admin', 'coach', 'league_manager'] as const) {
+  for (const r of ['admin', 'league_manager', 'coach'] as const) {
     if (allRoles.has(r)) {
       console.log(`assertAdminOrCoach: uid=${uid}, effective role=${r}`);
       return r;
@@ -2317,3 +2317,341 @@ export const geocodeVenueAddress = onCall(
     }
   },
 );
+
+// ─── Submit game result (callable) ────────────────────────────────────────────
+
+interface SubmitGameResultData {
+  eventId: string;
+  leagueId: string;
+  homeScore: number;
+  awayScore: number;
+}
+
+interface SubmitGameResultOutput {
+  status: 'pending' | 'confirmed' | 'dispute';
+}
+
+/**
+ * Recalculate standings for a season by scanning all confirmed game results.
+ * Writes a `standings` subcollection under leagues/{leagueId}/seasons/{seasonId}.
+ * Each document is keyed by teamId and contains win/draw/loss/goalsFor/goalsAgainst/points.
+ */
+async function recalculateStandings(leagueId: string, seasonId: string): Promise<void> {
+  const db = admin.firestore();
+
+  // Fetch all events for this season that have a confirmed result
+  const eventsSnap = await db
+    .collection('events')
+    .where('leagueId', '==', leagueId)
+    .where('seasonId', '==', seasonId)
+    .where('type', '==', 'game')
+    .where('status', '==', 'completed')
+    .get();
+
+  const standings: Record<string, {
+    teamId: string;
+    played: number;
+    won: number;
+    drawn: number;
+    lost: number;
+    goalsFor: number;
+    goalsAgainst: number;
+    points: number;
+  }> = {};
+
+  const ensureTeam = (teamId: string) => {
+    if (!standings[teamId]) {
+      standings[teamId] = { teamId, played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, points: 0 };
+    }
+  };
+
+  for (const doc of eventsSnap.docs) {
+    const ev = doc.data();
+    const result = ev.result as { homeScore: number; awayScore: number } | undefined;
+    if (!result) continue;
+
+    const homeId: string = ev.homeTeamId;
+    const awayId: string = ev.awayTeamId;
+    const { homeScore, awayScore } = result;
+
+    ensureTeam(homeId);
+    ensureTeam(awayId);
+
+    standings[homeId].played++;
+    standings[awayId].played++;
+    standings[homeId].goalsFor += homeScore;
+    standings[homeId].goalsAgainst += awayScore;
+    standings[awayId].goalsFor += awayScore;
+    standings[awayId].goalsAgainst += homeScore;
+
+    if (homeScore > awayScore) {
+      standings[homeId].won++;
+      standings[homeId].points += 3;
+      standings[awayId].lost++;
+    } else if (awayScore > homeScore) {
+      standings[awayId].won++;
+      standings[awayId].points += 3;
+      standings[homeId].lost++;
+    } else {
+      standings[homeId].drawn++;
+      standings[homeId].points += 1;
+      standings[awayId].drawn++;
+      standings[awayId].points += 1;
+    }
+  }
+
+  const now = new Date().toISOString();
+  const batch = db.batch();
+  for (const entry of Object.values(standings)) {
+    const ref = db.doc(`leagues/${leagueId}/seasons/${seasonId}/standings/${entry.teamId}`);
+    batch.set(ref, { ...entry, updatedAt: now });
+  }
+  await batch.commit();
+  console.log(`recalculateStandings: updated ${Object.keys(standings).length} team(s) for leagueId=${leagueId} seasonId=${seasonId}`);
+}
+
+export const submitGameResult = onCall<SubmitGameResultData, Promise<SubmitGameResultOutput>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required.');
+
+    const { eventId, leagueId, homeScore, awayScore } = request.data;
+    if (!eventId?.trim()) throw new HttpsError('invalid-argument', 'eventId is required.');
+    if (!leagueId?.trim()) throw new HttpsError('invalid-argument', 'leagueId is required.');
+    if (
+      typeof homeScore !== 'number' || typeof awayScore !== 'number' ||
+      !Number.isFinite(homeScore) || !Number.isFinite(awayScore) ||
+      !Number.isInteger(homeScore) || !Number.isInteger(awayScore)
+    ) {
+      throw new HttpsError('invalid-argument', 'Scores must be finite integers.');
+    }
+    if (homeScore < 0 || awayScore < 0) {
+      throw new HttpsError('invalid-argument', 'Scores cannot be negative.');
+    }
+    if (homeScore > 99 || awayScore > 99) {
+      throw new HttpsError('invalid-argument', 'Score cannot exceed 99.');
+    }
+
+    const uid = request.auth.uid;
+    const db = admin.firestore();
+
+    // Fetch the event
+    const eventRef = db.doc(`events/${eventId}`);
+    const eventSnap = await eventRef.get();
+    if (!eventSnap.exists) throw new HttpsError('not-found', 'Event not found.');
+
+    const ev = eventSnap.data()!;
+    if (ev.type !== 'game') throw new HttpsError('failed-precondition', 'Only game events accept results.');
+
+    // CVR-2026-001: Validate caller-supplied leagueId matches the event's stored leagueId.
+    // Prevents cross-league standings corruption via IDOR.
+    // Guard is unconditional: events without a leagueId are rejected, not silently passed.
+    if (!ev.leagueId || ev.leagueId !== leagueId) {
+      throw new HttpsError('permission-denied', 'leagueId does not match the event.');
+    }
+
+    const validStatuses = ['completed', 'in_progress'];
+    if (!validStatuses.includes(ev.status as string)) {
+      throw new HttpsError('failed-precondition', `Event must be completed or in_progress to submit a result (current status: ${ev.status}).`);
+    }
+
+    // Verify caller is a coach of one of the teams in this event
+    const homeTeamId: string = ev.homeTeamId;
+    const awayTeamId: string = ev.awayTeamId;
+
+    const homeTeamSnap = await db.doc(`teams/${homeTeamId}`).get();
+    const awayTeamSnap = await db.doc(`teams/${awayTeamId}`).get();
+
+    const isHomeCoach = homeTeamSnap.exists && (
+      homeTeamSnap.data()?.coachId === uid || homeTeamSnap.data()?.createdBy === uid
+    );
+    const isAwayCoach = awayTeamSnap.exists && (
+      awayTeamSnap.data()?.coachId === uid || awayTeamSnap.data()?.createdBy === uid
+    );
+
+    if (!isHomeCoach && !isAwayCoach) {
+      throw new HttpsError('permission-denied', 'Only a coach of one of the teams in this event may submit a result.');
+    }
+
+    const callerSide: 'home' | 'away' = isHomeCoach ? 'home' : 'away';
+    const now = new Date().toISOString();
+    const submission = { homeScore, awayScore, submittedBy: uid, submittedAt: now, side: callerSide };
+
+    // Check for an existing pending submission from the OTHER team
+    const pendingRef = db.doc(`leagues/${leagueId}/pendingResults/${eventId}`);
+    const pendingSnap = await pendingRef.get();
+
+    if (!pendingSnap.exists) {
+      // First submission — save as pending
+      await pendingRef.set({ eventId, leagueId, ...submission, createdAt: now, updatedAt: now });
+      console.log(`submitGameResult: saved first pending result for eventId=${eventId} by uid=${uid} (${callerSide})`);
+      return { status: 'pending' };
+    }
+
+    const existing = pendingSnap.data()!;
+    if (existing.side === callerSide) {
+      // Same team submitting again — overwrite
+      await pendingRef.set({ eventId, leagueId, ...submission, createdAt: existing.createdAt as string, updatedAt: now });
+      console.log(`submitGameResult: updated pending result for eventId=${eventId} by uid=${uid} (${callerSide})`);
+      return { status: 'pending' };
+    }
+
+    // Other team has already submitted — compare scores
+    const scoresMatch =
+      (existing.homeScore as number) === homeScore &&
+      (existing.awayScore as number) === awayScore;
+
+    if (scoresMatch) {
+      // Auto-confirm: save result on event and recalculate standings
+      const seasonId: string | undefined = ev.seasonId as string | undefined;
+      await db.runTransaction(async (tx) => {
+        tx.update(eventRef, {
+          result: { homeScore, awayScore, confirmedAt: now },
+          status: 'completed',
+          updatedAt: now,
+        });
+        tx.delete(pendingRef);
+      });
+      if (seasonId) {
+        await recalculateStandings(leagueId, seasonId);
+      }
+      console.log(`submitGameResult: auto-confirmed result for eventId=${eventId} (${homeScore}-${awayScore})`);
+      return { status: 'confirmed' };
+    }
+
+    // Scores don't match — create a dispute record
+    const disputeRef = db.doc(`leagues/${leagueId}/resultDisputes/${eventId}`);
+    await disputeRef.set({
+      eventId,
+      leagueId,
+      firstSubmission: {
+        homeScore: existing.homeScore as number,
+        awayScore: existing.awayScore as number,
+        submittedBy: existing.submittedBy as string,
+        submittedAt: existing.submittedAt as string,
+        side: existing.side as string,
+      },
+      secondSubmission: submission,
+      status: 'open',
+      createdAt: now,
+      updatedAt: now,
+    });
+    await pendingRef.delete();
+    console.log(`submitGameResult: dispute created for eventId=${eventId} — scores ${existing.homeScore}-${existing.awayScore} vs ${homeScore}-${awayScore}`);
+    return { status: 'dispute' };
+  }
+);
+
+// ─── Publish schedule (callable) ──────────────────────────────────────────────
+
+interface PublishScheduleData {
+  leagueId: string;
+  seasonId: string;
+  divisionId?: string;
+}
+
+interface PublishScheduleOutput {
+  publishedCount: number;
+}
+
+export const publishSchedule = onCall<PublishScheduleData, Promise<PublishScheduleOutput>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required.');
+
+    const role = await assertAdminOrCoach(request.auth.uid);
+    if (role !== 'admin' && role !== 'league_manager') {
+      throw new HttpsError('permission-denied', 'Only league managers and admins can publish schedules.');
+    }
+
+    const { leagueId, seasonId, divisionId } = request.data;
+    if (!leagueId?.trim()) throw new HttpsError('invalid-argument', 'leagueId is required.');
+    if (!seasonId?.trim()) throw new HttpsError('invalid-argument', 'seasonId is required.');
+
+    const db = admin.firestore();
+    const uid = request.auth.uid;
+
+    // Verify the caller is a manager of this specific league
+    const leagueSnap = await db.doc(`leagues/${leagueId}`).get();
+    if (!leagueSnap.exists) throw new HttpsError('not-found', 'League not found.');
+
+    const leagueData = leagueSnap.data()!;
+    const userSnap = await db.doc(`users/${uid}`).get();
+    const userData = userSnap.data();
+    const isLeagueManager = role === 'admin'
+      || userData?.leagueId === leagueId
+      || leagueData.managedBy === uid;
+
+    if (!isLeagueManager) {
+      throw new HttpsError('permission-denied', 'You are not a manager of this league.');
+    }
+
+    // Query all draft events for this season (and optionally division)
+    let query: admin.firestore.Query = db
+      .collection('events')
+      .where('leagueId', '==', leagueId)
+      .where('seasonId', '==', seasonId)
+      .where('status', '==', 'draft');
+
+    if (divisionId) {
+      query = query.where('divisionId', '==', divisionId);
+    }
+
+    const draftEventsSnap = await query.get();
+    if (draftEventsSnap.empty) {
+      console.log(`publishSchedule: no draft events found for leagueId=${leagueId} seasonId=${seasonId}${divisionId ? ` divisionId=${divisionId}` : ''}`);
+      return { publishedCount: 0 };
+    }
+
+    const now = new Date().toISOString();
+    const BATCH_SIZE = 490;
+    let batch = db.batch();
+    let ops = 0;
+    let publishedCount = 0;
+
+    const flushBatch = async () => {
+      await batch.commit();
+      batch = db.batch();
+      ops = 0;
+    };
+
+    // Batch-update all draft events to scheduled
+    for (const doc of draftEventsSnap.docs) {
+      batch.update(doc.ref, { status: 'scheduled', updatedAt: now });
+      ops++;
+      publishedCount++;
+      if (ops >= BATCH_SIZE) await flushBatch();
+    }
+
+    // Update the division's scheduleStatus to published
+    if (divisionId) {
+      const divRef = db.doc(`leagues/${leagueId}/divisions/${divisionId}`);
+      batch.update(divRef, { scheduleStatus: 'published', updatedAt: now });
+      ops++;
+      if (ops >= BATCH_SIZE) await flushBatch();
+    }
+
+    if (ops > 0) await flushBatch();
+
+    // Check if ALL divisions for this season are now published — if so, activate the season.
+    const seasonRef = db.doc(`leagues/${leagueId}/seasons/${seasonId}`);
+    const allDivisionsSnap = await db
+      .collection(`leagues/${leagueId}/divisions`)
+      .where('seasonId', '==', seasonId)
+      .get();
+
+    const allPublished = allDivisionsSnap.empty
+      || allDivisionsSnap.docs.every(d => {
+        // The division we just published may not yet be reflected — treat it as published.
+        if (divisionId && d.id === divisionId) return true;
+        return (d.data().scheduleStatus as string) === 'published';
+      });
+
+    if (allPublished) {
+      await seasonRef.update({ status: 'active', updatedAt: now });
+      console.log(`publishSchedule: season ${seasonId} status set to active`);
+    }
+
+    console.log(`publishSchedule: published ${publishedCount} events for leagueId=${leagueId} seasonId=${seasonId}${divisionId ? ` divisionId=${divisionId}` : ''}`);
+    return { publishedCount };
+  }
+);
+

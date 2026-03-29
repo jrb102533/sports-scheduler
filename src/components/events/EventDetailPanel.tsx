@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send, Copy, AlertTriangle, Bell, UserX } from 'lucide-react';
+import { httpsCallable, getFunctions } from 'firebase/functions';
+import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send, Copy, AlertTriangle, Bell, UserX, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
@@ -46,6 +47,12 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const [placement, setPlacement] = useState('');
   const [scoreSaveState, setScoreSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
   const [broadcastOpen, setBroadcastOpen] = useState(false);
+
+  // Submit Result (coach flow)
+  const [submitHomeScore, setSubmitHomeScore] = useState('');
+  const [submitAwayScore, setSubmitAwayScore] = useState('');
+  const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'submitted' | 'error'>('idle');
+  const [submitError, setSubmitError] = useState('');
 
   const venues = useVenueStore(s => s.venues);
   const subscribeVenues = useVenueStore(s => s.subscribe);
@@ -229,6 +236,99 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
                 )}
               </div>
             )}
+
+            {/* Submit Result (coach flow) */}
+            {(() => {
+              const ev = currentEvent;
+              const isCoachOfEventTeam =
+                profile?.role === 'coach' &&
+                profile?.teamId &&
+                ev.teamIds.includes(profile.teamId);
+
+              const showSection =
+                ev.type === 'game' &&
+                (ev.status === 'completed' || ev.status === 'in_progress') &&
+                isCoachOfEventTeam;
+
+              if (!showSection) return null;
+
+              // Result already confirmed — show the existing GameResult display
+              if (ev.result && !('pendingHomeScore' in ev.result) && !('pendingAwayScore' in ev.result)) {
+                return null; // handled by the existing result display above
+              }
+
+              async function handleSubmitResult() {
+                const h = parseInt(submitHomeScore);
+                const a = parseInt(submitAwayScore);
+                if (isNaN(h) || isNaN(a)) return;
+                setSubmitState('submitting');
+                setSubmitError('');
+                try {
+                  const submitFn = httpsCallable(getFunctions(), 'submitGameResult');
+                  await submitFn({
+                    eventId: currentEvent.id,
+                    leagueId: (currentEvent as ScheduledEvent & { leagueId?: string }).leagueId,
+                    homeScore: h,
+                    awayScore: a,
+                  });
+                  setSubmitState('submitted');
+                } catch (err: unknown) {
+                  const msg = (err as { message?: string })?.message ?? 'Failed to submit result.';
+                  setSubmitError(msg);
+                  setSubmitState('error');
+                }
+              }
+
+              const isHomeCoach = homeTeam?.id === profile?.teamId;
+              const otherTeam = isHomeCoach ? awayTeam : homeTeam;
+
+              return (
+                <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+                  <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                    <CheckCircle size={14} className="text-blue-500" /> Submit Result
+                  </h3>
+
+                  {submitState === 'submitted' ? (
+                    <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                      Result submitted{otherTeam ? ` — waiting for ${otherTeam.name} coach to confirm.` : '.'}
+                    </p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          label={homeTeam?.name ?? 'Home'}
+                          type="number"
+                          min="0"
+                          value={submitHomeScore}
+                          onChange={e => setSubmitHomeScore(e.target.value)}
+                          placeholder="0"
+                        />
+                        <Input
+                          label={awayTeam?.name ?? event.opponentName ?? 'Away'}
+                          type="number"
+                          min="0"
+                          value={submitAwayScore}
+                          onChange={e => setSubmitAwayScore(e.target.value)}
+                          placeholder="0"
+                        />
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={handleSubmitResult}
+                        disabled={!submitHomeScore || !submitAwayScore || submitState === 'submitting'}
+                      >
+                        {submitState === 'submitting'
+                          ? <><Loader2 size={13} className="animate-spin" /> Submitting…</>
+                          : 'Submit Result'}
+                      </Button>
+                      {submitState === 'error' && (
+                        <p className="text-xs text-red-600">{submitError || 'Failed to submit result. Please try again.'}</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Tournament Placement */}
             {isTournament && event.status !== 'cancelled' && event.status !== 'completed' && (

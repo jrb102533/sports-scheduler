@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2 } from 'lucide-react';
+import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { EventCard } from '@/components/events/EventCard';
@@ -10,18 +10,20 @@ import { StandingsTable } from '@/components/standings/StandingsTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { LeagueForm } from '@/components/leagues/LeagueForm';
 import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
+import { SeasonCreateModal } from '@/components/seasons/SeasonCreateModal';
 import { AvailabilityStatusPanel } from '@/components/leagues/AvailabilityStatusPanel';
 import type { CoachInfo } from '@/components/leagues/AvailabilityStatusPanel';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useSeasonStore } from '@/store/useSeasonStore';
 import { useCollectionStore } from '@/store/useCollectionStore';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { SPORT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent } from '@/types';
 
-type Tab = 'schedule' | 'standings' | 'teams';
+type Tab = 'schedule' | 'standings' | 'teams' | 'seasons';
 
 export function LeagueDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -40,6 +42,7 @@ export function LeagueDetailPage() {
     .filter(e => e.teamIds.some(tid => leagueTeamIds.includes(tid)))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
+  const { seasons, fetchSeasons } = useSeasonStore();
   const { activeCollection, responses, loadCollection, loadWizardDraft, wizardDraft } = useCollectionStore();
   const [collectionPanelOpen, setCollectionPanelOpen] = useState(false);
 
@@ -49,6 +52,13 @@ export function LeagueDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [seasonCreateOpen, setSeasonCreateOpen] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    const unsub = fetchSeasons(id);
+    return unsub;
+  }, [id, fetchSeasons]);
 
   useEffect(() => {
     if (!id) return;
@@ -100,6 +110,7 @@ export function LeagueDetailPage() {
     { key: 'schedule', label: 'Schedule', icon: <CalendarDays size={14} /> },
     { key: 'standings', label: 'Standings', icon: <Trophy size={14} /> },
     { key: 'teams', label: `Teams (${leagueTeams.length})`, icon: <Users size={14} /> },
+    { key: 'seasons', label: `Seasons (${seasons.length})`, icon: <Layers size={14} /> },
   ];
 
   return (
@@ -230,6 +241,53 @@ export function LeagueDetailPage() {
         </div>
       )}
 
+      {/* Seasons Tab */}
+      {tab === 'seasons' && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm text-gray-500">{seasons.length} {seasons.length === 1 ? 'season' : 'seasons'}</p>
+            {canManage && (
+              <Button size="sm" onClick={() => setSeasonCreateOpen(true)}>
+                <Plus size={14} /> New Season
+              </Button>
+            )}
+          </div>
+          {seasons.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-400">
+              No seasons yet. Create a season to start scheduling.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {seasons.map(season => (
+                <button
+                  key={season.id}
+                  onClick={() => navigate(`/leagues/${id}/seasons/${season.id}`)}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors text-left"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                    <Layers size={15} className="text-indigo-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{season.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {season.startDate} – {season.endDate} · {season.gamesPerTeam} games/team
+                    </p>
+                  </div>
+                  <span className={`text-xs font-medium rounded-full px-2.5 py-1 flex-shrink-0 ${
+                    season.status === 'active' ? 'bg-green-100 text-green-700' :
+                    season.status === 'setup' ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-gray-100 text-gray-600'
+                  }`}>
+                    {season.status === 'active' ? 'Active' : season.status === 'setup' ? 'Setup' : 'Archived'}
+                  </span>
+                  <span className="text-xs text-gray-400 flex-shrink-0">Manage →</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <EventForm open={eventFormOpen} onClose={() => setEventFormOpen(false)} />
       <EventDetailPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} />
 
@@ -264,6 +322,13 @@ export function LeagueDetailPage() {
           onSave={handleSaveLeague}
         />
       )}
+
+      <SeasonCreateModal
+        open={seasonCreateOpen}
+        onClose={() => setSeasonCreateOpen(false)}
+        leagueId={id ?? ''}
+        onCreated={(season) => navigate(`/leagues/${id}/seasons/${season.id}`)}
+      />
 
       <ConfirmDialog
         open={confirmDelete}

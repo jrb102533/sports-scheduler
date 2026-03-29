@@ -1,5 +1,5 @@
 export type EventType = 'game' | 'match' | 'practice' | 'tournament' | 'other';
-export type EventStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'postponed';
+export type EventStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'postponed' | 'draft';
 export type AttendanceStatus = 'present' | 'absent' | 'excused';
 export type RecurrenceFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly';
 
@@ -74,6 +74,10 @@ export interface ScheduledEvent {
   venueLat?: number;
   /** Longitude of the venue — stamped directly onto the event at publish time for weather lookups */
   venueLng?: number;
+  /** References leagues/{leagueId}/seasons/{seasonId} — set when generated via Schedule Wizard */
+  seasonId?: string;
+  /** References leagues/{leagueId}/divisions/{divisionId} — set when generated for a division */
+  divisionId?: string;
   createdAt: string;
   updatedAt: string;
 }

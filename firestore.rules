@@ -104,7 +104,12 @@ service cloud.firestore {
     }
 
     match /events/{eventId} {
-      allow read: if request.auth != null;
+      // Draft schedule events are only visible to league managers, admins, and coaches.
+      // Published and all other statuses are readable by any authenticated user.
+      allow read: if request.auth != null && (
+        resource.data.status != 'draft'
+        || isAdmin() || isLeagueManager() || isCoach()
+      );
       allow create, delete: if isAdmin() || isCoach() || isLeagueManager();
       allow update: if isAdmin() || isCoach() || isLeagueManager();
     }
@@ -182,6 +187,53 @@ service cloud.firestore {
       match /generationStatus/{doc} {
         allow read: if request.auth != null;
         allow write: if false;
+      }
+
+      // Seasons — league managers can read/write; league members can read.
+      match /seasons/{seasonId} {
+        allow read: if request.auth != null && (
+          isAdmin() || isLeagueManager() || isCoach()
+          || getProfile().leagueId == leagueId
+        );
+        allow write: if isAdmin()
+          || (isLeagueManager() && (
+            getProfile().leagueId == leagueId
+            || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
+          ));
+
+        // Standings subcollection — same access as the parent season.
+        match /standings/{standingId} {
+          allow read: if request.auth != null && (
+            isAdmin() || isLeagueManager() || isCoach()
+            || getProfile().leagueId == leagueId
+          );
+          allow write: if false; // written exclusively by Cloud Functions (Admin SDK)
+        }
+      }
+
+      // Divisions — league managers can read/write; league members can read.
+      match /divisions/{divisionId} {
+        allow read: if request.auth != null && (
+          isAdmin() || isLeagueManager() || isCoach()
+          || getProfile().leagueId == leagueId
+        );
+        allow write: if isAdmin()
+          || (isLeagueManager() && (
+            getProfile().leagueId == leagueId
+            || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
+          ));
+      }
+
+      // Pending result submissions — written by callable function, readable by league managers/coaches.
+      match /pendingResults/{eventId} {
+        allow read: if request.auth != null && (isAdmin() || isLeagueManager() || isCoach());
+        allow write: if false; // written exclusively by Cloud Functions (Admin SDK)
+      }
+
+      // Result disputes — written by callable function, readable by league managers.
+      match /resultDisputes/{eventId} {
+        allow read: if request.auth != null && (isAdmin() || isLeagueManager());
+        allow write: if false; // written exclusively by Cloud Functions (Admin SDK)
       }
     }
 
