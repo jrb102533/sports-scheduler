@@ -531,6 +531,7 @@ export function SeasonDashboard() {
           league={league}
           leagueTeams={leagueTeams}
           season={season}
+          currentUserUid={profile?.uid ?? ''}
         />
       )}
 

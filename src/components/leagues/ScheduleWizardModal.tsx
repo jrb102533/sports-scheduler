@@ -9,6 +9,7 @@ import {
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { Select } from '@/components/ui/Select';
 import { db } from '@/lib/firebase';
 import { useEventStore } from '@/store/useEventStore';
 import { useCollectionStore } from '@/store/useCollectionStore';
@@ -100,7 +101,8 @@ const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'S
 
 const generateScheduleFn = httpsCallable<object, ScheduleOutput>(getFunctions(), 'generateSchedule');
 
-const FORMAT_OPTIONS = [
+// FORMAT_OPTIONS is used when mode === 'season' format select is rendered (group_then_knockout path)
+const FORMAT_OPTIONS: { value: string; label: string }[] = [
   { value: 'single_round_robin', label: 'Single Round-Robin (each pair plays once)' },
   { value: 'double_round_robin', label: 'Double Round-Robin (home & away)' },
   { value: 'group_then_knockout', label: 'Group Stage + Knockout' },
@@ -386,6 +388,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   const [homeAwayBalance, setHomeAwayBalance] = useState(season?.homeAwayBalance ?? true);
   const [format, setFormat] = useState<Format>('single_round_robin');
   const [playoffFormat, setPlayoffFormat] = useState<Format>('single_elimination');
+  const [groupCount, setGroupCount] = useState('2');
+  const [groupAdvance, setGroupAdvance] = useState('2');
   const [minRestDays, setMinRestDays] = useState('6');
   const [maxConsecAway, setMaxConsecAway] = useState('2');
   const [distributionExpanded, setDistributionExpanded] = useState(false);
@@ -452,6 +456,14 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   const [configError, setConfigError] = useState('');
   const [practiceTeamError, setPracticeTeamError] = useState('');
   const [practiceCadenceError, setPracticeCadenceError] = useState('');
+
+  // Suppress unused-local warnings — FORMAT_OPTIONS and group/format setters are reserved
+  // for the group_then_knockout and season format flows; removed from UI in games-per-team redesign
+  // but kept for the generator payload and future re-introduction.
+  void FORMAT_OPTIONS;
+  void setFormat;
+  void setGroupCount;
+  void setGroupAdvance;
 
   // ─── Navigation ─────────────────────────────────────────────────────────────
 
@@ -763,6 +775,62 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       setPublished(true);
     } catch {
       setGenError('Failed to publish some events. Please check the schedule and try again.');
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  // ─── Save/publish fixtures (season & playoff) ────────────────────────────────
+
+  async function saveFixtures(publishNow: boolean) {
+    if (!result) return;
+    setPublishing(true);
+    const now = new Date().toISOString();
+    try {
+      await Promise.all(
+        result.fixtures.map(fixture => {
+          const durationMins = parseInt(matchDuration);
+          const [h, m] = fixture.startTime.split(':').map(Number);
+          const endMinutes = h * 60 + m + durationMins;
+          const endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`;
+          const fixtureName = fixture.venueName ?? fixture.venue ?? '';
+          const matchedConfig = venueConfigs.find(vc => vc.name === fixtureName);
+          const venueFields = matchedConfig?.selectedVenueId ? (() => {
+            const selectedVenue = savedVenues.find(v => v.id === matchedConfig.selectedVenueId);
+            return {
+              venueId: matchedConfig.selectedVenueId,
+              ...(selectedVenue?.lat != null && selectedVenue?.lng != null ? {
+                venueLat: selectedVenue.lat,
+                venueLng: selectedVenue.lng,
+              } : {}),
+            };
+          })() : {};
+          const event: Omit<ScheduledEvent, 'id'> = {
+            title: `${fixture.homeTeamName} vs ${fixture.awayTeamName}`,
+            type: 'game',
+            status: publishNow ? 'scheduled' : 'draft',
+            date: fixture.date,
+            startTime: fixture.startTime,
+            endTime,
+            duration: durationMins,
+            location: fixtureName,
+            homeTeamId: fixture.homeTeamId,
+            awayTeamId: fixture.awayTeamId,
+            teamIds: [fixture.homeTeamId, fixture.awayTeamId],
+            isRecurring: false,
+            notes: fixture.stage ? `Round ${fixture.round} — ${fixture.stage}` : `Round ${fixture.round}`,
+            createdAt: now,
+            updatedAt: now,
+            ...venueFields,
+            ...(season?.id ? { seasonId: season.id } : {}),
+          };
+          return addEvent(event as ScheduledEvent);
+        })
+      );
+      setPublished(true);
+      setPublishedAsDraft(!publishNow);
+    } catch {
+      setGenError('Failed to save some events. Please check the schedule and try again.');
     } finally {
       setPublishing(false);
     }
