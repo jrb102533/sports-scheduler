@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { Plus, Search, Upload, X } from 'lucide-react';
 import { EventCard } from '@/components/events/EventCard';
 import { EventForm } from '@/components/events/EventForm';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
-import { ImportEventsModal } from '@/components/events/ImportEventsModal';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -15,6 +14,8 @@ import { todayISO } from '@/lib/dateUtils';
 import { CalendarDays } from 'lucide-react';
 import type { ScheduledEvent } from '@/types';
 import { EVENT_TYPE_LABELS, EVENT_STATUS_LABELS } from '@/constants';
+
+const ImportEventsModal = React.lazy(() => import('@/components/events/ImportEventsModal').then(m => ({ default: m.ImportEventsModal })));
 
 type DateScope = 'upcoming' | 'all' | 'past';
 
@@ -130,7 +131,9 @@ export function EventsPage() {
       )}
 
       <EventForm open={formOpen} onClose={() => setFormOpen(false)} />
-      <ImportEventsModal open={importOpen} onClose={() => setImportOpen(false)} />
+      <Suspense fallback={null}>
+        <ImportEventsModal open={importOpen} onClose={() => setImportOpen(false)} />
+      </Suspense>
       <EventDetailPanel event={selected} onClose={() => setSelected(null)} />
     </div>
   );

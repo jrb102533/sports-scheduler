@@ -37,11 +37,11 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const [name, setName] = useState(editTeam?.name ?? '');
   const [sportType, setSportType] = useState<SportType>(editTeam?.sportType ?? 'soccer');
   const [color, setColor] = useState(editTeam?.color ?? TEAM_COLORS[0]);
-  const [homeVenue, setHomeVenue] = useState(editTeam?.homeVenue ?? '');
   const [coachName, setCoachName] = useState(editTeam?.coachName ?? '');
   const [coachEmail, setCoachEmail] = useState(editTeam?.coachEmail ?? '');
   const [ageGroup, setAgeGroup] = useState<AgeGroup | ''>(editTeam?.ageGroup ?? '');
   const [divisionLabel, setDivisionLabel] = useState(editTeam?.divisionLabel ?? '');
+  const [homeVenue, setHomeVenue] = useState(editTeam?.homeVenue ?? '');
   const [coachId, setCoachId] = useState(editTeam?.coachId ?? '');
   const [coachUsers, setCoachUsers] = useState<UserProfile[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -55,6 +55,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const [logoPreview, setLogoPreview] = useState<string | null>(editTeam?.logoUrl ?? null);
   const [removeLogo, setRemoveLogo] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = profile?.role === 'admin';
@@ -74,13 +75,17 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
     );
   }, [open, editTeam?.logoUrl, editTeam?.attendanceWarningsEnabled, editTeam?.attendanceWarningThreshold]);
 
-  // Auto-fill coach email with current user's email for new teams only
+  // Auto-fill coach fields with current user when they are a coach creating a new team
   useEffect(() => {
     if (!open || editTeam) return;
     if (profile?.email) {
       setCoachEmail(prev => prev || profile.email);
     }
-  }, [open, editTeam, profile?.email]);
+    if (profile?.role === 'coach' && user?.uid) {
+      setCoachId(prev => prev || user.uid);
+      setCoachName(prev => prev || profile.displayName);
+    }
+  }, [open, editTeam, profile?.email, profile?.role, profile?.displayName, user?.uid]);
 
   useEffect(() => {
     if (!open || !canAssignCoach) return;
@@ -151,11 +156,11 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
           color,
           updatedAt: now,
           ...(logoUrl ? { logoUrl } : {}),
-          ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
           ...(coachName.trim() ? { coachName: coachName.trim() } : {}),
           ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}),
           ...(ageGroup ? { ageGroup } : {}),
           ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}),
+          ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
           ...(coachId ? { coachId } : {}),
           attendanceWarningsEnabled,
           ...(parsedThreshold !== undefined && !isNaN(parsedThreshold) ? { attendanceWarningThreshold: parsedThreshold } : {}),
@@ -176,11 +181,11 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         sportType,
         color,
         updatedAt: now,
-        ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
         ...(coachName.trim() ? { coachName: coachName.trim() } : {}),
         ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}),
         ...(ageGroup ? { ageGroup } : {}),
         ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}),
+        ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
         ...(coachId ? { coachId } : {}),
         attendanceWarningsEnabled,
         ...(parsedThreshold2 !== undefined && !isNaN(parsedThreshold2) ? { attendanceWarningThreshold: parsedThreshold2 } : {}),
@@ -196,6 +201,11 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         await addTeam({ id: crypto.randomUUID(), ...base as Omit<Team, 'id' | 'createdBy' | 'ownerName' | 'createdAt'>, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now });
       }
       onClose();
+    } catch (e: unknown) {
+      const msg = (e as { message?: string }).message ?? 'Save failed. Please try again.';
+      setSaveError(msg.includes('Missing or insufficient permissions')
+        ? 'Permission denied. Your role may not allow this action — try refreshing and signing in again.'
+        : msg);
     } finally {
       setUploading(false);
     }
@@ -270,9 +280,9 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
             {errors.logo && <p className="text-xs text-red-500">{errors.logo}</p>}
           </div>
 
-        <Input label="Home Venue (optional)" value={homeVenue} onChange={e => setHomeVenue(e.target.value)} placeholder="e.g. City Park" />
         <Input label={kidsMode ? 'Head Coach' : 'Coach Name (optional)'} value={coachName} onChange={e => setCoachName(e.target.value)} />
         <Input label="Coach Email (optional)" type="email" value={coachEmail} onChange={e => setCoachEmail(e.target.value)} />
+        <Input label="Home Venue (optional)" value={homeVenue} onChange={e => setHomeVenue(e.target.value)} placeholder="e.g. City Park" />
         {canAssignCoach && coachUsers.length > 0 && (
           <div className="border-t border-gray-100 pt-3">
             <Select
@@ -314,6 +324,9 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
           )}
         </div>
 
+        {saveError && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>
+        )}
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button onClick={() => void handleSubmit()} disabled={uploading}>

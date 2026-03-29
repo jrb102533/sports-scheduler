@@ -8,11 +8,11 @@ export interface Absence {
   playerName: string;
   type: AbsenceType;
   status: AbsenceStatus;
-  startDate: string;   // ISO date
-  endDate: string;     // ISO date
-  note?: string;
-  resolvedAt?: string; // ISO timestamp — set when absence is resolved
-  createdBy: string;
-  createdAt: string;
+  startDate: string;   // ISO date yyyy-MM-dd
+  endDate: string;     // Expected return date, ISO date yyyy-MM-dd
+  note?: string;       // Coach-only private note
+  resolvedAt?: string; // ISO datetime — set when absence is resolved / coach closes early
+  createdBy: string;   // Coach uid
+  createdAt: string;   // ISO datetime
   updatedAt: string;
 }

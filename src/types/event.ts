@@ -70,6 +70,10 @@ export interface ScheduledEvent {
   weatherAlertSent?: boolean;
   /** References users/{ownerUid}/venues/{venueId} — set on publish if wizard venue is selected from library */
   venueId?: string;
+  /** Latitude of the venue — stamped directly onto the event at publish time for weather lookups */
+  venueLat?: number;
+  /** Longitude of the venue — stamped directly onto the event at publish time for weather lookups */
+  venueLng?: number;
   /** References leagues/{leagueId}/seasons/{seasonId} — set when generated via Schedule Wizard */
   seasonId?: string;
   /** References leagues/{leagueId}/divisions/{divisionId} — set when generated for a division */

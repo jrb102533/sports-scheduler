@@ -5,7 +5,18 @@ import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
 import * as nodemailer from 'nodemailer';
 import * as crypto from 'crypto';
-import Anthropic from '@anthropic-ai/sdk';
+import {
+  validateInput,
+  feasibilityPreCheck,
+  generateSlots,
+  generatePairings,
+  shufflePairings,
+  fnv32a,
+  assignFixtures,
+  buildOutput,
+  type GenerateScheduleInput,
+  type ScheduleAlgorithmOutput,
+} from './scheduleAlgorithm';
 
 const APP_URL = 'https://first-whistle-e76f4.web.app';
 const FUNCTIONS_BASE = 'https://us-central1-first-whistle-e76f4.cloudfunctions.net';
@@ -24,7 +35,6 @@ const emailFrom = defineSecret('EMAIL_FROM');
 // HMAC secret for signing/verifying RSVP email links (F-02).
 // Provision with: firebase functions:secrets:set RSVP_HMAC_SECRET
 const rsvpSecret = defineSecret('RSVP_HMAC_SECRET');
-const anthropicKey = defineSecret('ANTHROPIC_API_KEY');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1415,33 +1425,22 @@ export const checkWeatherAlerts = onSchedule(
         if (status === 'cancelled' || status === 'postponed') continue;
 
         const location: string | undefined = ev['location'];
-        const venueId: string | undefined = ev['venueId'];
+        const venueLat: unknown = ev['venueLat'];
+        const venueLng: unknown = ev['venueLng'];
 
-        // Attempt to use pre-geocoded venue lat/lng before falling back to geocoding
+        // Use coordinates stamped directly onto the event at publish time (fast path).
+        // Fall back to text geocoding via the location field if coordinates are absent.
         let coords: { lat: number; lon: number } | null = null;
 
-        if (venueId) {
-          // Try each team's coach uid as the potential venue owner
-          const teamIds: string[] = ev['teamIds'] ?? [];
-          for (const teamId of teamIds.slice(0, 5)) {
-            const teamDoc = await db.doc(`teams/${teamId}`).get();
-            const teamData = teamDoc.data();
-            const ownerUid: string | undefined = teamData?.['createdBy'];
-            if (!ownerUid) continue;
-            const venueDoc = await db.doc(`users/${ownerUid}/venues/${venueId}`).get();
-            const venueData = venueDoc.data();
-            if (venueData?.['lat'] != null && venueData?.['lng'] != null) {
-              coords = { lat: venueData['lat'] as number, lon: venueData['lng'] as number };
-              break;
-            }
-          }
+        if (typeof venueLat === 'number' && typeof venueLng === 'number') {
+          coords = { lat: venueLat, lon: venueLng };
         }
 
         if (!coords) {
           if (!location?.trim()) continue;
           coords = await geocodeLocation(location);
+          if (!coords) continue;
         }
-        if (!coords) continue;
 
         // Build the event's start datetime in ISO format
         const startTime: string = ev['startTime'] ?? '00:00'; // HH:MM
@@ -1451,11 +1450,12 @@ export const checkWeatherAlerts = onSchedule(
         const eventTs = new Date(`${dateStr}T${startTime}:00Z`).getTime();
         if (eventTs < windowStart.getTime() || eventTs > windowEnd.getTime()) continue;
 
+
         // Fetch precipitation probability
         const prob = await getPrecipitationProbability(coords.lat, coords.lon, eventIsoHour);
         if (prob === null) continue;
 
-        console.log(`checkWeatherAlerts: event "${ev['title']}" (${evDoc.id}) location="${location ?? venueId}" prob=${prob}%`);
+        console.log(`checkWeatherAlerts: event "${ev['title']}" (${evDoc.id}) location="${location ?? ev['venueId'] ?? '(no venue)'}" prob=${prob}%`);
 
         if (prob <= RAIN_THRESHOLD) continue;
 
@@ -1746,321 +1746,520 @@ export const migrateSensitivePlayerData = onCall(
   }
 );
 
-// ─── Schedule Wizard ──────────────────────────────────────────────────────────
+// ─── Availability: request availability from coaches (callable) ───────────────
+//
+// Sends an in-app notification to every coach in the league whose Firebase
+// Auth account exists, asking them to submit their availability for the given
+// collection.  Returns the count of coaches successfully notified.
 
-export interface RecurringVenueWindow {
-  dayOfWeek: number;   // 0 = Sunday … 6 = Saturday
-  startTime: string;   // 'HH:MM'
-  endTime: string;     // 'HH:MM'
-}
-
-export interface VenueInput {
-  name: string;
-  concurrentPitches: number;
-  // New format (v2 wizard)
-  availabilityWindows?: RecurringVenueWindow[];
-  fallbackWindows?: RecurringVenueWindow[];
-  // Legacy format (v1 wizard) — kept for backwards compatibility
-  availableDays?: string[];
-  availableTimeStart?: string;
-  availableTimeEnd?: string;
-  blackoutDates?: string[];
-}
-
-export interface TeamInput {
-  id: string;
-  name: string;
-  homeVenue?: string;              // venue name
-  earliestKickOff?: string;        // e.g. '10:00'
-}
-
-export interface ScheduleWizardInput {
+interface RequestAvailabilityData {
   leagueId: string;
-  leagueName: string;
-  seasonStart: string;             // ISO date
-  seasonEnd: string;               // ISO date
-  matchDurationMinutes: number;
-  bufferMinutes: number;
-  // New: explicit games-per-team count. Replaces `format` for league scheduling.
-  gamesPerTeam?: number;
-  // Legacy: format picker — kept for backward compatibility. Mapped to gamesPerTeam
-  // at runtime: single_round_robin → N-1, double_round_robin → 2*(N-1).
-  // Elimination formats remain unchanged when gamesPerTeam is not supplied.
-  format?: 'single_round_robin' | 'double_round_robin' | 'single_elimination' | 'double_elimination' | 'group_then_knockout';
-  teams: TeamInput[];
-  venues: VenueInput[];
-  blackoutDates?: string[];        // season-wide blackout ISO dates
-  minRestDays?: number;            // default 6
-  maxConsecutiveAway?: number;     // default 2
-  groupCount?: number;             // for group_then_knockout
-  groupAdvance?: number;           // top N from each group advance
-  // New season/division context fields
-  seasonId?: string;
-  divisionId?: string;
-  homeAwayBalance?: boolean;       // default true; respect home/away symmetry
-  randomNonce?: string;            // UUID used as a seed for deterministic fixture shuffle
+  collectionId: string;
 }
 
-export interface GeneratedFixture {
-  round: number;
-  homeTeamId: string;
-  homeTeamName: string;
-  awayTeamId: string;
-  awayTeamName: string;
-  date: string;       // ISO date e.g. '2026-04-05'
-  startTime: string;  // e.g. '10:00'
-  venue: string;
-  stage?: string;     // e.g. 'Group A', 'Quarter-final', 'Final'
+export const requestAvailability = onCall<RequestAvailabilityData, Promise<{ notified: number }>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+
+    // Only league managers and admins may trigger availability requests.
+    const callerRole = await assertAdminOrCoach(request.auth.uid);
+    if (callerRole !== 'admin' && callerRole !== 'league_manager') {
+      throw new HttpsError('permission-denied', 'Only league managers and admins can request availability.');
+    }
+
+    const { leagueId, collectionId } = request.data;
+    if (!leagueId?.trim()) throw new HttpsError('invalid-argument', 'leagueId is required.');
+    if (!collectionId?.trim()) throw new HttpsError('invalid-argument', 'collectionId is required.');
+
+    const db = admin.firestore();
+
+    // Ownership check: non-admins must manage the league they are acting on.
+    if (callerRole !== 'admin') {
+      const leagueDoc = await admin.firestore().doc(`leagues/${leagueId}`).get();
+      if (!leagueDoc.exists) throw new HttpsError('not-found', 'League not found.');
+      const leagueData = leagueDoc.data()!;
+      const userDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+      const profile = userDoc.data();
+      const ownsLeague = leagueData.managedBy === request.auth.uid
+        || profile?.leagueId === leagueId;
+      if (!ownsLeague) throw new HttpsError('permission-denied', 'You do not manage this league.');
+    }
+
+    // Load the league document to get the league name.
+    const leagueDoc = await db.doc(`leagues/${leagueId}`).get();
+    if (!leagueDoc.exists) throw new HttpsError('not-found', 'League not found.');
+    const leagueName: string = leagueDoc.data()?.name ?? 'Your league';
+
+    // Load the collection document to get the due date (optional field).
+    const collectionDoc = await db
+      .doc(`leagues/${leagueId}/availabilityCollections/${collectionId}`)
+      .get();
+    if (!collectionDoc.exists) throw new HttpsError('not-found', 'Availability collection not found.');
+    const dueDate: string = collectionDoc.data()?.dueDate ?? '';
+
+    // Load all teams in this league.
+    const teamsSnap = await db
+      .collection('teams')
+      .where('leagueId', '==', leagueId)
+      .get();
+
+    if (teamsSnap.empty) {
+      console.log(`requestAvailability: no teams found for leagueId=${leagueId}`);
+      return { notified: 0 };
+    }
+
+    // Collect unique coach UIDs across teams.
+    const coachIds = new Set<string>();
+    for (const teamDoc of teamsSnap.docs) {
+      const coachId: string | undefined = teamDoc.data()?.coachId;
+      if (coachId) coachIds.add(coachId);
+    }
+
+    if (!coachIds.size) {
+      console.log(`requestAvailability: no coaches found for leagueId=${leagueId}`);
+      return { notified: 0 };
+    }
+
+    const now = new Date().toISOString();
+    const dueLine = dueDate ? ` Due ${dueDate}.` : '';
+    const message = `${leagueName} is collecting coach availability.${dueLine}`;
+
+    // Write one notification per coach who has an app account (i.e. exists in
+    // the users collection). Unknown UIDs are silently skipped.
+    let notified = 0;
+    let batch = db.batch();
+    let batchOps = 0;
+
+    for (const coachUid of coachIds) {
+      const userDoc = await db.doc(`users/${coachUid}`).get();
+      if (!userDoc.exists) continue; // Coach has no app account — skip.
+
+      const notifRef = db
+        .collection('users').doc(coachUid)
+        .collection('notifications').doc();
+
+      batch.set(notifRef, {
+        id: notifRef.id,
+        type: 'availability_request',
+        title: 'Game availability requested',
+        message,
+        relatedLeagueId: leagueId,
+        relatedCollectionId: collectionId,
+        isRead: false,
+        createdAt: now,
+      });
+
+      notified++;
+      batchOps++;
+
+      // Firestore batch limit is 500 operations; flush well before that.
+      if (batchOps >= 490) {
+        await batch.commit();
+        batch = db.batch();
+        batchOps = 0;
+      }
+    }
+
+    if (batchOps > 0) await batch.commit();
+
+    console.log(
+      `requestAvailability: notified=${notified} coaches for leagueId=${leagueId} collectionId=${collectionId}`,
+    );
+    return { notified };
+  }
+);
+
+// ─── Availability: send reminders to non-responders (callable) ────────────────
+//
+// Re-notifies coaches who have NOT yet submitted a response for an open
+// availability collection, subject to a 48-hour per-coach cooldown stored at
+// users/{coachUid}/config/reminderCooldown.
+
+interface SendAvailabilityReminderData {
+  leagueId: string;
+  collectionId: string;
 }
 
-export interface ScheduleWizardOutput {
-  fixtures: GeneratedFixture[];
-  conflicts: Array<{
-    severity: 'hard' | 'soft';
-    description: string;
-    constraintId?: string;
-  }>;
-  stats: {
-    totalFixtures: number;
-    assignedFixtures: number;
-    unassignedFixtures: number;
-    feasible: boolean;
-  };
-  summary: string;
-}
+export const sendAvailabilityReminder = onCall<SendAvailabilityReminderData, Promise<{ reminded: number }>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
 
-export const generateLeagueSchedule = onCall(
-  {
-    timeoutSeconds: 300,
-    memory: '512MiB',
-    secrets: [anthropicKey],
+    const callerRole = await assertAdminOrCoach(request.auth.uid);
+    if (callerRole !== 'admin' && callerRole !== 'league_manager') {
+      throw new HttpsError('permission-denied', 'Only league managers and admins can send reminders.');
+    }
+
+    const { leagueId, collectionId } = request.data;
+    if (!leagueId?.trim()) throw new HttpsError('invalid-argument', 'leagueId is required.');
+    if (!collectionId?.trim()) throw new HttpsError('invalid-argument', 'collectionId is required.');
+
+    const db = admin.firestore();
+
+    // Ownership check: non-admins must manage the league they are acting on.
+    if (callerRole !== 'admin') {
+      const leagueDoc = await admin.firestore().doc(`leagues/${leagueId}`).get();
+      if (!leagueDoc.exists) throw new HttpsError('not-found', 'League not found.');
+      const leagueData = leagueDoc.data()!;
+      const userDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+      const profile = userDoc.data();
+      const ownsLeague = leagueData.managedBy === request.auth.uid
+        || profile?.leagueId === leagueId;
+      if (!ownsLeague) throw new HttpsError('permission-denied', 'You do not manage this league.');
+    }
+
+    // Verify the collection is still open.
+    const collectionRef = db.doc(`leagues/${leagueId}/availabilityCollections/${collectionId}`);
+    const collectionDoc = await collectionRef.get();
+    if (!collectionDoc.exists) throw new HttpsError('not-found', 'Availability collection not found.');
+
+    const collectionData = collectionDoc.data()!;
+    if (collectionData.status !== 'open') {
+      throw new HttpsError(
+        'failed-precondition',
+        `Cannot send reminders: collection status is "${collectionData.status}", not "open".`,
+      );
+    }
+
+    const leagueName: string = collectionData.leagueName ?? '';
+    const dueDate: string = collectionData.dueDate ?? '';
+
+    // Load all existing responses so we know who has already submitted.
+    const responsesSnap = await collectionRef.collection('responses').get();
+    const respondedCoachIds = new Set<string>(
+      responsesSnap.docs.map(d => d.id)
+    );
+
+    // Load league name if not stored on the collection document.
+    let resolvedLeagueName = leagueName;
+    if (!resolvedLeagueName) {
+      const leagueDoc = await db.doc(`leagues/${leagueId}`).get();
+      resolvedLeagueName = leagueDoc.data()?.name ?? 'Your league';
+    }
+
+    // Load all teams and collect coach UIDs.
+    const teamsSnap = await db
+      .collection('teams')
+      .where('leagueId', '==', leagueId)
+      .get();
+
+    const coachIds = new Set<string>();
+    for (const teamDoc of teamsSnap.docs) {
+      const coachId: string | undefined = teamDoc.data()?.coachId;
+      if (coachId) coachIds.add(coachId);
+    }
+
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const cooldownMs = 48 * 60 * 60 * 1000; // 48 hours in milliseconds
+    const dueLine = dueDate ? ` Due ${dueDate}.` : '';
+    const message = `${resolvedLeagueName} is still collecting coach availability.${dueLine}`;
+
+    let reminded = 0;
+    let batch = db.batch();
+    let batchOps = 0;
+
+    for (const coachUid of coachIds) {
+      // Skip coaches who have already responded.
+      if (respondedCoachIds.has(coachUid)) continue;
+
+      // Skip coaches without an app account.
+      const userDoc = await db.doc(`users/${coachUid}`).get();
+      if (!userDoc.exists) continue;
+
+      // Enforce 48-hour cooldown.
+      const cooldownRef = db.doc(`users/${coachUid}/config/reminderCooldown`);
+      const cooldownDoc = await cooldownRef.get();
+      if (cooldownDoc.exists) {
+        const lastSentAt: string | undefined = cooldownDoc.data()?.lastReminderSentAt;
+        if (lastSentAt) {
+          const lastSentMs = new Date(lastSentAt).getTime();
+          if (now.getTime() - lastSentMs < cooldownMs) {
+            console.log(`sendAvailabilityReminder: skipping coachUid=${coachUid} — within cooldown`);
+            continue;
+          }
+        }
+      }
+
+      // Write the in-app notification.
+      const notifRef = db
+        .collection('users').doc(coachUid)
+        .collection('notifications').doc();
+
+      batch.set(notifRef, {
+        id: notifRef.id,
+        type: 'availability_request',
+        title: 'Reminder: Game availability due soon',
+        message,
+        relatedLeagueId: leagueId,
+        relatedCollectionId: collectionId,
+        isRead: false,
+        createdAt: nowIso,
+      });
+      batchOps++;
+
+      // Update the cooldown document.
+      batch.set(cooldownRef, { lastReminderSentAt: nowIso }, { merge: true });
+      batchOps++;
+
+      reminded++;
+
+      if (batchOps >= 490) {
+        await batch.commit();
+        batch = db.batch();
+        batchOps = 0;
+      }
+    }
+
+    if (batchOps > 0) await batch.commit();
+
+    console.log(
+      `sendAvailabilityReminder: reminded=${reminded} coaches for leagueId=${leagueId} collectionId=${collectionId}`,
+    );
+    return { reminded };
+  }
+);
+
+// ─── Availability: auto-close overdue collections (scheduled, daily 00:05 UTC) ─
+//
+// Three actions per run:
+//   1. Close any 'open' collections whose dueDate has passed → notify the LM.
+//   2. Warn LMs whose 'closed' collection reached its 60-day retention threshold.
+//   3. Expire 'closed' collections that are 90+ days old.
+
+export const autoCloseCollections = onSchedule(
+  { schedule: '5 0 * * *' }, // 00:05 UTC daily
+  async () => {
+    const db = admin.firestore();
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
+
+    // ── 1. Close open collections whose dueDate has passed ───────────────────
+
+    const openSnap = await db
+      .collectionGroup('availabilityCollections')
+      .where('status', '==', 'open')
+      .where('dueDate', '<', todayStr)
+      .get();
+
+    let closed = 0;
+
+    for (const colDoc of openSnap.docs) {
+      const data = colDoc.data();
+      const leagueId: string = data.leagueId ?? colDoc.ref.parent.parent?.id ?? '';
+      const createdBy: string | undefined = data.createdBy;
+      const nowIso = now.toISOString();
+
+      // Close the collection.
+      await colDoc.ref.update({ status: 'closed', closedAt: nowIso });
+      closed++;
+
+      if (!createdBy) {
+        console.log(`autoCloseCollections: no createdBy on collection ${colDoc.id} — skipping LM notification`);
+        continue;
+      }
+
+      // Resolve league name for the notification message.
+      let leagueName = data.leagueName ?? '';
+      if (!leagueName && leagueId) {
+        const leagueDoc = await db.doc(`leagues/${leagueId}`).get();
+        leagueName = leagueDoc.data()?.name ?? 'your league';
+      }
+
+      const notifRef = db
+        .collection('users').doc(createdBy)
+        .collection('notifications').doc();
+
+      await notifRef.set({
+        id: notifRef.id,
+        type: 'info',
+        title: 'Availability collection closed',
+        message: `Your availability collection for ${leagueName} has closed. Return to the wizard to generate your schedule.`,
+        relatedLeagueId: leagueId,
+        relatedCollectionId: colDoc.id,
+        isRead: false,
+        createdAt: nowIso,
+      });
+
+      console.log(
+        `autoCloseCollections: closed collection ${colDoc.id} for leagueId=${leagueId}, notified createdBy=${createdBy}`,
+      );
+    }
+
+    // ── 2. Warn LMs: collections closed 60 days ago ──────────────────────────
+
+    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgoIso = sixtyDaysAgo.toISOString();
+    // Use a narrow window (±1 day) to avoid re-sending warnings each run.
+    const sixtyOneDaysAgo = new Date(now.getTime() - 61 * 24 * 60 * 60 * 1000).toISOString();
+
+    const warn60Snap = await db
+      .collectionGroup('availabilityCollections')
+      .where('status', '==', 'closed')
+      .where('closedAt', '>=', sixtyOneDaysAgo)
+      .where('closedAt', '<', sixtyDaysAgoIso)
+      .get();
+
+    let warned = 0;
+
+    for (const colDoc of warn60Snap.docs) {
+      const data = colDoc.data();
+      const leagueId: string = data.leagueId ?? colDoc.ref.parent.parent?.id ?? '';
+      const createdBy: string | undefined = data.createdBy;
+
+      if (!createdBy) continue;
+
+      let leagueName = data.leagueName ?? '';
+      if (!leagueName && leagueId) {
+        const leagueDoc = await db.doc(`leagues/${leagueId}`).get();
+        leagueName = leagueDoc.data()?.name ?? 'your league';
+      }
+
+      const notifRef = db
+        .collection('users').doc(createdBy)
+        .collection('notifications').doc();
+
+      await notifRef.set({
+        id: notifRef.id,
+        type: 'info',
+        title: 'Availability data expiring soon',
+        message: `Your availability collection for ${leagueName} will be permanently deleted in 30 days. Export or use the data before it expires.`,
+        relatedLeagueId: leagueId,
+        relatedCollectionId: colDoc.id,
+        isRead: false,
+        createdAt: now.toISOString(),
+      });
+
+      warned++;
+      console.log(
+        `autoCloseCollections: 60-day warning sent for collection ${colDoc.id}, createdBy=${createdBy}`,
+      );
+    }
+
+    // ── 3. Expire collections closed 90+ days ago ────────────────────────────
+
+    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+
+    const expire90Snap = await db
+      .collectionGroup('availabilityCollections')
+      .where('status', '==', 'closed')
+      .where('closedAt', '<', ninetyDaysAgo)
+      .get();
+
+    let expired = 0;
+    let expireBatch = db.batch();
+    let expireBatchOps = 0;
+
+    for (const colDoc of expire90Snap.docs) {
+      expireBatch.update(colDoc.ref, { status: 'expired', expiredAt: now.toISOString() });
+      expireBatchOps++;
+      expired++;
+
+      if (expireBatchOps >= 499) {
+        await expireBatch.commit();
+        expireBatch = db.batch();
+        expireBatchOps = 0;
+      }
+    }
+
+    if (expireBatchOps > 0) await expireBatch.commit();
+
+    console.log(
+      `autoCloseCollections: done — closed=${closed}, warned60=${warned}, expired=${expired}`,
+    );
   },
-  async (request): Promise<ScheduleWizardOutput> => {
+);
+
+// ─── Callable: deterministic schedule generation ──────────────────────────────
+
+export const generateSchedule = onCall(
+  {
+    timeoutSeconds: 60,
+    memory: '256MiB',
+    enforceAppCheck: false,
+  },
+  async (request): Promise<ScheduleAlgorithmOutput> => {
+    // 1. Auth check
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Authentication required.');
     }
+
+    // 2. Role check
     const role = await assertAdminOrCoach(request.auth.uid);
     if (role !== 'admin' && role !== 'league_manager') {
-      throw new HttpsError('permission-denied', 'Only league managers and admins can generate schedules.');
+      throw new HttpsError(
+        'permission-denied',
+        'Only league managers and admins can generate schedules.'
+      );
     }
 
+    // 3. Rate limit
     await checkRateLimit(request.auth.uid, 'generateSchedule', 5, 60_000);
 
-    const input = request.data as ScheduleWizardInput;
+    const input = request.data as GenerateScheduleInput;
 
-    if (!input.leagueId || !input.seasonStart || !input.seasonEnd || !input.teams?.length || !input.venues?.length) {
-      throw new HttpsError('invalid-argument', 'Missing required schedule inputs.');
-    }
-    if (input.teams.length < 2) {
-      throw new HttpsError('invalid-argument', 'At least 2 teams are required to generate a schedule.');
-    }
-
-    // Resolve effective gamesPerTeam from new field or legacy format.
-    // For league formats: single_round_robin → N-1 games, double_round_robin → 2*(N-1).
-    // Elimination formats do not map cleanly to gamesPerTeam and are left to the AI.
-    const n = input.teams.length;
-    let effectiveGamesPerTeam: number | undefined = input.gamesPerTeam;
-    const effectiveFormat = input.format;
-    if (effectiveGamesPerTeam === undefined && effectiveFormat) {
-      if (effectiveFormat === 'single_round_robin') effectiveGamesPerTeam = n - 1;
-      else if (effectiveFormat === 'double_round_robin') effectiveGamesPerTeam = 2 * (n - 1);
-      // Elimination formats: leave undefined — AI infers game count from bracket size
-    }
-
-    const homeAwayBalance = input.homeAwayBalance !== false; // default true
-
-    // Build a deterministic fixture-ordering seed from randomNonce when provided.
-    // We hash the nonce with SHA-256 and convert to a numeric seed so the AI prompt
-    // can reference a stable shuffle order across regenerations.
-    let shuffleSeed: string | undefined;
-    if (input.randomNonce) {
-      shuffleSeed = crypto.createHash('sha256').update(input.randomNonce).digest('hex').slice(0, 16);
-    }
-
-    const client = new Anthropic({ apiKey: anthropicKey.value() });
-
-    const DAY_NAMES_CF = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-    function venueWindowsText(windows: RecurringVenueWindow[] | undefined | null): string {
-      if (!windows?.length) return 'not specified';
-      return windows.map(w => `${DAY_NAMES_CF[w.dayOfWeek]} ${w.startTime}–${w.endTime}`).join(', ');
-    }
-
-    function venueAvailabilityText(v: VenueInput): string {
-      if (v.availabilityWindows?.length) {
-        const primary = `primary: ${venueWindowsText(v.availabilityWindows)}`;
-        const fallback = v.fallbackWindows?.length ? `; fallback: ${venueWindowsText(v.fallbackWindows)}` : '';
-        return `available ${primary}${fallback}`;
+    // 4. League ownership check (fixes FINDING-01)
+    if (role !== 'admin') {
+      const leagueDoc = await admin.firestore().doc(`leagues/${input.leagueId}`).get();
+      if (!leagueDoc.exists) {
+        throw new HttpsError('not-found', 'League not found.');
       }
-      // Legacy format
-      const days = v.availableDays?.join('/') ?? 'unspecified days';
-      const time = v.availableTimeStart && v.availableTimeEnd ? `${v.availableTimeStart}–${v.availableTimeEnd}` : 'unspecified times';
-      return `available ${days} ${time}`;
+      const leagueData = leagueDoc.data()!;
+      const userDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+      const profile = userDoc.data();
+      const ownsLeague =
+        leagueData.managedBy === request.auth.uid ||
+        profile?.leagueId === input.leagueId;
+      if (!ownsLeague) {
+        throw new HttpsError('permission-denied', 'You do not manage this league.');
+      }
     }
 
-    const formatDescriptions: Record<string, string> = {
-      single_round_robin: 'Single round-robin: each pair of teams plays once.',
-      double_round_robin: 'Double round-robin: each pair of teams plays twice (home and away).',
-      single_elimination: 'Single elimination knockout bracket. Teams are seeded. Losers are eliminated immediately. Byes are assigned if the team count is not a power of 2.',
-      double_elimination: 'Double elimination: teams must lose twice to be eliminated. Winners and Losers brackets merge in a Grand Final.',
-      group_then_knockout: `Group stage (${input.groupCount ?? 2} groups, top ${input.groupAdvance ?? 2} advance) followed by single-elimination knockout.`,
-    };
+    // 5. Input validation
+    validateInput(input);
 
-    // Resolve human-readable format description for the prompt
-    let formatDescription: string;
-    if (effectiveGamesPerTeam !== undefined) {
-      formatDescription = `League schedule: each team plays exactly ${effectiveGamesPerTeam} game(s).${homeAwayBalance ? ' Home/away balance must be respected — each team plays approximately half its games at home and half away.' : ''}`;
-    } else if (effectiveFormat) {
-      formatDescription = formatDescriptions[effectiveFormat] ?? effectiveFormat;
-    } else {
-      throw new HttpsError('invalid-argument', 'Either gamesPerTeam or format must be provided.');
-    }
-
-    const systemPrompt = `You are an expert sports scheduling engine. Your job is to produce a complete, valid fixture schedule for a sports league or tournament.
-
-You must output ONLY valid JSON matching the exact schema provided. No explanatory text, no markdown, no code fences — raw JSON only.
-
-Rules you must follow:
-- Hard constraints must NEVER be violated (no double-booking, no team plays twice on same day, venues available on scheduled day/time, no fixtures on blackout dates).
-- Soft constraints should be respected as much as possible (min rest days, home/away balance, max consecutive away).
-- If a complete schedule is infeasible, assign as many fixtures as possible and report the rest as conflicts.
-- Fixture dates must fall between seasonStart and seasonEnd inclusive.
-- Fixture times must fall within venue available hours.
-- Concurrent pitch limits at each venue must be respected.
-- For knockout formats: clearly label the stage (e.g. "Round of 16", "Quarter-final", "Semi-final", "Final").
-- For group+knockout: label group stage fixtures with "Group A", "Group B" etc.`;
-
-    const userMessage = `Generate a complete fixture schedule for the following league/tournament:
-
-**League:** ${input.leagueName}
-**Format:** ${formatDescription}${shuffleSeed ? `\n**Fixture order seed (use this hex value to deterministically vary the fixture sequence across seasons):** ${shuffleSeed}` : ''}
-**Season:** ${input.seasonStart} to ${input.seasonEnd}
-**Match duration:** ${input.matchDurationMinutes} minutes + ${input.bufferMinutes} min buffer between games at same venue
-**Minimum rest days between games per team:** ${input.minRestDays ?? 6}
-**Maximum consecutive away games:** ${input.maxConsecutiveAway ?? 2}
-
-**Teams (${input.teams.length}):**
-${input.teams.map((t, i) => `${i + 1}. ${t.name} (id: ${t.id})${t.homeVenue ? `, home venue: ${t.homeVenue}` : ''}${t.earliestKickOff ? `, earliest kick-off: ${t.earliestKickOff}` : ''}`).join('\n')}
-
-**Venues (${input.venues.length}):**
-${input.venues.map(v => `- ${v.name}: ${v.concurrentPitches} pitch(es), ${venueAvailabilityText(v)}${v.blackoutDates?.length ? `, blackout: ${v.blackoutDates.join(', ')}` : ''}`).join('\n')}
-
-**Season-wide blackout dates:** ${input.blackoutDates?.length ? input.blackoutDates.join(', ') : 'None'}
-
-Output JSON with this exact structure:
-{
-  "fixtures": [
-    {
-      "round": 1,
-      "homeTeamId": "<team id>",
-      "homeTeamName": "<team name>",
-      "awayTeamId": "<team id>",
-      "awayTeamName": "<team name>",
-      "date": "YYYY-MM-DD",
-      "startTime": "HH:MM",
-      "venue": "<venue name>",
-      "stage": "<optional: e.g. Group A, Quarter-final>"
-    }
-  ],
-  "conflicts": [
-    {
-      "severity": "hard|soft",
-      "description": "<plain English explanation>",
-      "constraintId": "<optional: HC-01, SC-01, etc.>"
-    }
-  ],
-  "stats": {
-    "totalFixtures": <number>,
-    "assignedFixtures": <number>,
-    "unassignedFixtures": <number>,
-    "feasible": <true|false>
-  },
-  "summary": "<1-2 sentence plain-English summary of the schedule quality and any notable issues>"
-}`;
-
-    let rawContent = '';
-    try {
-      const stream = client.messages.stream({
-        model: 'claude-opus-4-6',
-        max_tokens: 64000,
-        thinking: { type: 'adaptive' },
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
-      });
-
-      const message = await stream.finalMessage();
-      for (const block of message.content) {
-        if (block.type === 'text') {
-          rawContent = block.text;
-          break;
+    // 6. Feasibility pre-check (zero slots across all venues)
+    const hasSomeSlot = (() => {
+      const seasonBlackouts = new Set(input.blackoutDates ?? []);
+      const start = new Date(input.seasonStart + 'T00:00:00Z');
+      const end = new Date(input.seasonEnd + 'T00:00:00Z');
+      for (const cur = new Date(start); cur <= end; cur.setUTCDate(cur.getUTCDate() + 1)) {
+        const isoDate = cur.toISOString().slice(0, 10);
+        if (seasonBlackouts.has(isoDate)) continue;
+        const dow = cur.getUTCDay();
+        for (const venue of input.venues) {
+          const venueBlackouts = new Set(venue.blackoutDates ?? []);
+          if (venueBlackouts.has(isoDate)) continue;
+          const allWindows = [
+            ...venue.availabilityWindows,
+            ...(venue.fallbackWindows ?? []),
+          ];
+          for (const window of allWindows) {
+            if (window.dayOfWeek === dow) return true;
+          }
         }
       }
-    } catch (err) {
-      console.error('Anthropic API error:', JSON.stringify(err));
-      throw new HttpsError('internal', 'Schedule generation failed. Please try again.');
+      return false;
+    })();
+
+    if (!hasSomeSlot) {
+      throw new HttpsError(
+        'invalid-argument',
+        'No available venue slots in season window after blackouts'
+      );
     }
 
-    // Strip any accidental markdown fences
-    const jsonText = rawContent.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+    // 7. Capacity feasibility pre-check
+    feasibilityPreCheck(input);
 
-    let result: ScheduleWizardOutput;
-    try {
-      result = JSON.parse(jsonText) as ScheduleWizardOutput;
-      if (!Array.isArray(result.fixtures)) {
-        throw new Error('LLM response missing fixtures array');
-      }
-    } catch (err) {
-      console.error('Failed to parse LLM output:', (err as Error).message, jsonText.slice(0, 500));
-      throw new HttpsError('internal', 'Schedule generation returned an unexpected format. Please try again.');
-    }
+    // 8. Run algorithm
+    const slots = generateSlots(input);
+    const rawPairings = generatePairings(input);
+    const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
+    const shuffled = shufflePairings(rawPairings, seed);
+    const assignmentResult = assignFixtures(shuffled, slots, input);
+    const output = buildOutput(assignmentResult, input);
 
-    // Persist generated fixtures as draft ScheduledEvent documents in Firestore.
-    // Draft events are invisible to players until publishSchedule is called.
-    if (result.fixtures.length > 0) {
-      const db = admin.firestore();
-      const now = new Date().toISOString();
-      // Firestore batch limit is 500 operations; chunk if needed.
-      const BATCH_SIZE = 490;
-      let batch = db.batch();
-      let ops = 0;
-
-      for (const fixture of result.fixtures) {
-        const eventRef = db.collection('events').doc();
-        const eventDoc: Record<string, unknown> = {
-          type: 'game',
-          status: 'draft',
-          leagueId: input.leagueId,
-          round: fixture.round,
-          homeTeamId: fixture.homeTeamId,
-          homeTeamName: fixture.homeTeamName,
-          awayTeamId: fixture.awayTeamId,
-          awayTeamName: fixture.awayTeamName,
-          date: fixture.date,
-          startTime: fixture.startTime,
-          location: fixture.venue,
-          createdAt: now,
-          updatedAt: now,
-        };
-        if (fixture.stage) eventDoc.stage = fixture.stage;
-        if (input.seasonId) eventDoc.seasonId = input.seasonId;
-        if (input.divisionId) eventDoc.divisionId = input.divisionId;
-
-        batch.set(eventRef, eventDoc);
-        ops++;
-
-        if (ops >= BATCH_SIZE) {
-          await batch.commit();
-          batch = db.batch();
-          ops = 0;
-        }
-      }
-
-      if (ops > 0) await batch.commit();
-
-      console.log(`generateLeagueSchedule: persisted ${result.fixtures.length} draft events for leagueId=${input.leagueId}${input.seasonId ? `, seasonId=${input.seasonId}` : ''}${input.divisionId ? `, divisionId=${input.divisionId}` : ''}`);
-    }
-
-    return result;
+    return output;
   }
 );
 
@@ -2077,6 +2276,10 @@ export const geocodeVenueAddress = onCall(
 
     if (!venueId || !address || !ownerUid) {
       throw new HttpsError('invalid-argument', 'venueId, address, and ownerUid are required');
+    }
+
+    if (address.length > 500) {
+      throw new HttpsError('invalid-argument', 'Address must be 1–500 characters.');
     }
 
     // Auth check: caller must be the owner

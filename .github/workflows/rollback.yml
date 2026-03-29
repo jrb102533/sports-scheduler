@@ -1,0 +1,126 @@
+name: Rollback
+
+# One-click rollback: downloads a previously released artifact set from GitHub
+# Releases and re-deploys it to Firebase without rebuilding from source.
+#
+# This provides a fast, deterministic rollback — the exact same compiled
+# artifacts that were deployed in the original release are re-used.
+#
+# Required GitHub secrets:
+#   FIREBASE_TOKEN_PROD — long-lived CI token for first-whistle-prod (set as environment secret on 'production')
+#   GITHUB_TOKEN        — auto-provided by Actions (used by gh CLI to download release assets)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'CalVer tag to roll back to (e.g. v2026.03.29.1)'
+        type: string
+        required: true
+      reason:
+        description: 'Reason for rollback (recorded in audit comment)'
+        type: string
+        required: false
+
+jobs:
+  rollback:
+    name: Rollback
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: write   # needed to read releases and post a release comment
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Validate the tag exists ──────────────────────────────────────────
+      - name: Validate tag exists in GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            echo "::error::Release '$TAG' not found. Check the tag name and try again."
+            echo "::notice::Available recent releases:"
+            gh release list --repo "${{ github.repository }}" --limit 10
+            exit 1
+          fi
+          echo "Release '$TAG' found. Proceeding with rollback."
+
+      # ── Download release artifacts ───────────────────────────────────────
+      - name: Download release artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh release download "$TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern "frontend-dist.tar.gz" \
+            --pattern "functions-lib.tar.gz" \
+            --dir ./release-artifacts
+
+      # ── Extract artifacts ────────────────────────────────────────────────
+      - name: Extract frontend dist
+        run: |
+          mkdir -p dist
+          tar -xzf ./release-artifacts/frontend-dist.tar.gz -C dist
+
+      - name: Extract functions lib
+        run: |
+          mkdir -p functions/lib
+          tar -xzf ./release-artifacts/functions-lib.tar.gz -C functions/lib
+
+      # ── Install deps needed by Firebase for functions deployment ─────────
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      # ── Deploy ───────────────────────────────────────────────────────────
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools@15.12.0
+
+      - name: Deploy to Firebase (production)
+        run: firebase deploy --token "${{ secrets.FIREBASE_TOKEN_PROD }}" --project first-whistle-prod --non-interactive
+
+      # ── Audit trail ──────────────────────────────────────────────────────
+      - name: Record rollback in release notes
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          REASON: ${{ inputs.reason }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          NOTE="---"$'\n'"**Rollback deployed** by \`${ACTOR}\` at \`${TIMESTAMP}\`"
+          if [ -n "$REASON" ]; then
+            NOTE="${NOTE}"$'\n'"**Reason:** ${REASON}"
+          fi
+          NOTE="${NOTE}"$'\n'"**Workflow run:** ${RUN_URL}"
+
+          # Append a rollback event note to the original release
+          CURRENT_NOTES=$(gh release view "$TAG" \
+            --repo "${{ github.repository }}" \
+            --json body \
+            --jq '.body')
+
+          gh release edit "$TAG" \
+            --repo "${{ github.repository }}" \
+            --notes "${CURRENT_NOTES}"$'\n\n'"${NOTE}"
+
+          echo "Audit comment appended to release $TAG."

@@ -1,0 +1,113 @@
+name: PR Preview
+
+# Deploys a Firebase Hosting preview channel on every PR to main.
+# Posts the preview URL as a PR comment.
+# Channel expires after 7 days.
+#
+# Required GitHub secrets:
+#   FIREBASE_TOKEN — same token used for deploy.yml
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  preview:
+    name: Deploy Preview Channel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        env:
+          VITE_APP_VERSION: pr-${{ github.event.pull_request.number }}
+          VITE_BUILD_SHA: ${{ github.sha }}
+          VITE_BUILD_TIME: ${{ github.event.pull_request.updated_at }}
+          VITE_BUILD_BRANCH: ${{ github.head_ref }}
+          VITE_BUILD_PR: ${{ github.event.pull_request.number }}
+          VITE_APP_ENV: staging
+        run: npm run build
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Deploy to preview channel
+        id: deploy
+        run: |
+          CHANNEL_ID="pr-${{ github.event.pull_request.number }}"
+          OUTPUT=$(firebase hosting:channel:deploy "$CHANNEL_ID" \
+            --token "${{ secrets.FIREBASE_TOKEN }}" \
+            --project first-whistle-e76f4 \
+            --expires 7d \
+            --json 2>&1)
+          echo "$OUTPUT"
+          # Extract the preview URL from the JSON output
+          PREVIEW_URL=$(echo "$OUTPUT" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          channels = data.get('result', {}).get('first-whistle-e76f4', {})
+          url = list(channels.values())[0].get('url', '') if channels else ''
+          print(url)
+          " 2>/dev/null || echo "")
+          echo "preview_url=$PREVIEW_URL" >> $GITHUB_OUTPUT
+
+      - name: Post preview URL comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const previewUrl = '${{ steps.deploy.outputs.preview_url }}';
+            const sha = '${{ github.sha }}'.slice(0, 7);
+            const body = [
+              '## Preview Deployed',
+              '',
+              previewUrl
+                ? `**URL:** ${previewUrl}`
+                : '_Preview URL unavailable — check the deploy step logs._',
+              '',
+              `**Branch:** \`${{ github.head_ref }}\`  `,
+              `**Commit:** \`${sha}\`  `,
+              `**Expires:** 7 days after last update`,
+              '',
+              '---',
+              '_This preview will be cleaned up automatically when the PR is closed._',
+            ].join('\n');
+
+            // Find and update an existing preview comment if one exists
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c =>
+              c.user.login === 'github-actions[bot]' && c.body.includes('## Preview Deployed')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

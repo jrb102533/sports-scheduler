@@ -8,6 +8,8 @@ export type { AppSettings } from './settings';
 export type { UserRole, UserProfile, RoleMembership } from './auth';
 export type { JoinRequest } from './joinRequest';
 export type { Opponent } from './opponent';
+export type { WizardMode, WizardVenueInput, ScheduleConstraint, CoachAvailabilityInput, CollectionStatus, AvailabilityCollection, CoachAvailabilityResponse, WizardDraft } from './wizard';
+export { DEFAULT_CONSTRAINTS } from './wizard';
 export type { Venue, VenueField, RecurringVenueWindow } from './venue';
 export type { SeasonStatus, DistributionType, Season } from './season';
 export type { DivisionScheduleStatus, Division } from './division';

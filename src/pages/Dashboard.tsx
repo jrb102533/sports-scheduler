@@ -6,6 +6,7 @@ import { EventCard } from '@/components/events/EventCard';
 import { EventForm } from '@/components/events/EventForm';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
 import { ComposeMessageModal } from '@/components/messaging/ComposeMessageModal';
+import { CoachAvailabilityCard } from '@/components/leagues/CoachAvailabilityCard';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useEventStore } from '@/store/useEventStore';
@@ -73,6 +74,19 @@ export function Dashboard() {
   const [seeding, setSeeding] = useState(false);
 
   const isManager = profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach';
+
+  const isCoach = hasRole(profile, 'coach');
+  const coachTeamLeagueIds = isCoach
+    ? [...new Set(
+        allTeams
+          .filter(t =>
+            t.leagueId &&
+            (t.coachId === profile?.uid ||
+              getMemberships(profile).some(m => m.role === 'coach' && m.teamId === t.id))
+          )
+          .map(t => t.leagueId!)
+      )]
+    : [];
 
   // Absent/injured players — visible to coaches/admins only
   const todayStr = todayISO();
@@ -259,6 +273,15 @@ export function Dashboard() {
             </button>
           ))}
         </div>
+      )}
+
+      {/* Coach availability card */}
+      {isCoach && profile && coachTeamLeagueIds.length > 0 && (
+        <CoachAvailabilityCard
+          profile={profile}
+          leagues={leagues}
+          coachTeamLeagueIds={coachTeamLeagueIds}
+        />
       )}
 
       {/* League card — league managers only */}

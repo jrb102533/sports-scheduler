@@ -6,6 +6,14 @@ import path from 'path'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: {
+    __APP_VERSION__:  JSON.stringify(process.env.VITE_APP_VERSION  ?? 'dev'),
+    __BUILD_SHA__:    JSON.stringify(process.env.VITE_BUILD_SHA    ?? 'local'),
+    __BUILD_TIME__:   JSON.stringify(process.env.VITE_BUILD_TIME   ?? new Date().toISOString()),
+    __BUILD_BRANCH__: JSON.stringify(process.env.VITE_BUILD_BRANCH ?? 'local'),
+    __BUILD_PR__:     JSON.stringify(process.env.VITE_BUILD_PR     ?? null),
+    __APP_ENV__:      JSON.stringify(process.env.VITE_APP_ENV      ?? 'development'),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
