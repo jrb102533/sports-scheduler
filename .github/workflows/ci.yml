@@ -6,8 +6,8 @@ on:
       - main
 
 jobs:
-  frontend-build:
-    name: Frontend Build
+  frontend:
+    name: Frontend — Build, Lint & Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -25,8 +25,17 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-  functions-build:
-    name: Functions Build
+      - name: Lint
+        # Runs ESLint. New errors introduced by this PR will fail the build.
+        # Pre-existing errors are tracked in GitHub issue #92 (TD sprint).
+        # Once issue #92 is resolved, replace with: npm run lint -- --max-warnings 0
+        run: npm run lint -- --max-warnings 600
+
+      - name: Run frontend tests
+        run: npm test
+
+  functions:
+    name: Functions — Build & Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -48,24 +57,6 @@ jobs:
         working-directory: functions
         run: npm run build
 
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      # The root package.json defines a "test" script (vitest run).
-      # If the script is removed in the future, this step will fail loudly —
-      # update the condition below or remove the step accordingly.
-      - name: Run tests
+      - name: Run functions tests
+        working-directory: functions
         run: npm test
