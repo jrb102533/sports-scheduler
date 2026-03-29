@@ -24,7 +24,7 @@ on:
 
 jobs:
   rollback:
-    name: Rollback to ${{ inputs.tag }}
+    name: Rollback
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -91,7 +91,7 @@ jobs:
 
       # ── Deploy ───────────────────────────────────────────────────────────
       - name: Install Firebase CLI
-        run: npm install -g firebase-tools
+        run: npm install -g firebase-tools@15.12.0
 
       - name: Deploy to Firebase (production)
         run: firebase deploy --token "${{ secrets.FIREBASE_TOKEN_PROD }}" --project first-whistle-prod --non-interactive
