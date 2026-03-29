@@ -32,7 +32,9 @@ export function ProfilePage() {
   const teams = useTeamStore(s => s.teams);
   const leagues = useLeagueStore(s => s.leagues);
   const players = usePlayerStore(s => s.players);
-  const [displayName, setDisplayName] = useState(profile?.displayName ?? '');
+  const existingParts = (profile?.displayName ?? '').trim().split(/\s+/);
+  const [firstName, setFirstName] = useState(existingParts.slice(0, -1).join(' ') || existingParts[0] || '');
+  const [lastName, setLastName] = useState(existingParts.length > 1 ? existingParts[existingParts.length - 1] : '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [editingRoles, setEditingRoles] = useState(false);
@@ -82,6 +84,7 @@ export function ProfilePage() {
 
   async function handleSave() {
     setSaving(true);
+    const displayName = `${firstName.trim()} ${lastName.trim()}`.trim();
     await updateProfile({ displayName });
     setSaving(false);
     setSaved(true);
@@ -124,10 +127,25 @@ export function ProfilePage() {
 
       <Card className="p-4 sm:p-6 space-y-4">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2"><User size={16} /> Edit Profile</h3>
-        <Input label="Display Name" value={displayName} onChange={e => setDisplayName(e.target.value)} />
-        <Input label="Email" value={profile.email} disabled className="opacity-60 cursor-not-allowed" />
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="First Name"
+            name="given-name"
+            autoComplete="given-name"
+            value={firstName}
+            onChange={e => setFirstName(e.target.value)}
+          />
+          <Input
+            label="Last Name"
+            name="family-name"
+            autoComplete="family-name"
+            value={lastName}
+            onChange={e => setLastName(e.target.value)}
+          />
+        </div>
+        <Input label="Email" name="email" autoComplete="email" value={profile.email} disabled className="opacity-60 cursor-not-allowed" />
         <div className="flex gap-3">
-          <Button onClick={handleSave} disabled={saving || displayName === profile.displayName}>
+          <Button onClick={handleSave} disabled={saving || `${firstName.trim()} ${lastName.trim()}`.trim() === profile.displayName}>
             {saving ? 'Saving…' : saved ? 'Saved!' : 'Save Changes'}
           </Button>
         </div>

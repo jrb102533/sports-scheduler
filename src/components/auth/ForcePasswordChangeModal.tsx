@@ -48,6 +48,8 @@ export function ForcePasswordChangeModal() {
             <Input
               label="New Password"
               type="password"
+              name="new-password"
+              autoComplete="new-password"
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
               placeholder="At least 8 characters"
@@ -59,6 +61,8 @@ export function ForcePasswordChangeModal() {
             <Input
               label="Confirm Password"
               type="password"
+              name="new-password-confirm"
+              autoComplete="new-password"
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
               placeholder="Re-enter your new password"

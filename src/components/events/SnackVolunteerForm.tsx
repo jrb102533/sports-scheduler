@@ -98,11 +98,15 @@ export function SnackVolunteerForm({ event }: SnackVolunteerFormProps) {
       {signupOpen && (
         <div className="bg-white rounded-lg p-3 space-y-2 border border-orange-200">
           <Input
+            name="snack-volunteer-name"
+            autoComplete="off"
             placeholder="Your name"
             value={name}
             onChange={e => { setName(e.target.value); setError(''); }}
           />
           <Input
+            name="snack-item"
+            autoComplete="off"
             placeholder={event.snackItem ? `e.g. ${event.snackItem}` : "What you're bringing"}
             value={bringing}
             onChange={e => { setBringing(e.target.value); setError(''); }}

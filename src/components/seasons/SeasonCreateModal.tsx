@@ -76,6 +76,8 @@ export function SeasonCreateModal({ open, onClose, leagueId, onCreated }: Season
       <div className="space-y-4">
         <Input
           label="Season Name"
+          name="season-name"
+          autoComplete="off"
           value={name}
           onChange={e => setName(e.target.value)}
           placeholder="e.g. Spring 2026"
@@ -87,6 +89,8 @@ export function SeasonCreateModal({ open, onClose, leagueId, onCreated }: Season
           <Input
             label="Start Date"
             type="date"
+            name="season-start-date"
+            autoComplete="off"
             value={startDate}
             onChange={e => setStartDate(e.target.value)}
             error={errors.startDate}
@@ -94,6 +98,8 @@ export function SeasonCreateModal({ open, onClose, leagueId, onCreated }: Season
           <Input
             label="End Date"
             type="date"
+            name="season-end-date"
+            autoComplete="off"
             value={endDate}
             onChange={e => setEndDate(e.target.value)}
             error={errors.endDate}
@@ -103,6 +109,8 @@ export function SeasonCreateModal({ open, onClose, leagueId, onCreated }: Season
         <Input
           label="Games Per Team"
           type="number"
+          name="games-per-team"
+          autoComplete="off"
           min="1"
           max="50"
           value={gamesPerTeam}

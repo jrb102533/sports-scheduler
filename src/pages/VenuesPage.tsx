@@ -186,6 +186,8 @@ function VenueFormModal({ open, onClose, editVenue, onSave }: VenueFormModalProp
         {/* Name */}
         <Input
           label="Name"
+          name="venue-name"
+          autoComplete="off"
           value={form.name}
           onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
           error={errors.name}
@@ -195,6 +197,8 @@ function VenueFormModal({ open, onClose, editVenue, onSave }: VenueFormModalProp
         {/* Address */}
         <Input
           label="Address"
+          name="street-address"
+          autoComplete="street-address"
           value={form.address}
           onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
           error={errors.address}
@@ -236,6 +240,8 @@ function VenueFormModal({ open, onClose, editVenue, onSave }: VenueFormModalProp
           <div className="flex items-center gap-3">
             <Input
               type="number"
+              name="field-count"
+              autoComplete="off"
               placeholder="Number of fields"
               value={fieldCount}
               onChange={e => handleFieldCountChange(e.target.value)}
@@ -252,6 +258,8 @@ function VenueFormModal({ open, onClose, editVenue, onSave }: VenueFormModalProp
                 <div key={fld.id} className="flex items-center gap-2">
                   <input
                     type="text"
+                    name="field-name"
+                    autoComplete="off"
                     value={fld.name}
                     onChange={e => updateFieldName(fld.id, e.target.value)}
                     className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -354,6 +362,8 @@ function VenueFormModal({ open, onClose, editVenue, onSave }: VenueFormModalProp
         {/* Notes */}
         <Textarea
           label="Notes (optional)"
+          name="venue-notes"
+          autoComplete="off"
           value={form.notes}
           onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
           placeholder="Parking instructions, access codes, special rules..."

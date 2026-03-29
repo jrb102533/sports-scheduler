@@ -313,7 +313,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   return (
     <Modal open={open} onClose={onClose} title={editEvent ? 'Edit Event' : 'New Event'} size="md">
       <div className="space-y-4">
-        <Input label="Title" value={title} onChange={e => setTitle(e.target.value)} error={errors.title} placeholder="e.g. Championship Game" />
+        <Input label="Title" name="event-title" autoComplete="off" value={title} onChange={e => setTitle(e.target.value)} error={errors.title} placeholder="e.g. Championship Game" />
         <Select label="Type" value={type} onChange={e => setType(e.target.value as EventType)} options={typeOptions} />
         <div className="grid grid-cols-2 gap-3">
           <Input label="Date" type="date" value={date} onChange={e => setDate(e.target.value)} error={errors.date} />
@@ -328,12 +328,14 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
         <Input
           label="Duration (minutes)"
           type="number"
+          name="event-duration"
+          autoComplete="off"
           value={String(duration)}
           onChange={e => setDuration(Math.max(1, parseInt(e.target.value, 10) || 0))}
           error={errors.duration}
           placeholder="e.g. 90"
         />
-        <Input label="Location (optional)" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. City Park Field 1" />
+        <Input label="Location (optional)" name="event-location" autoComplete="off" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. City Park Field 1" />
 
         {/* Outdoor toggle */}
         <label className="flex items-center gap-3 cursor-pointer select-none">
@@ -449,6 +451,8 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           (selectedTeamId && allTeams.find(t => t.id === selectedTeamId)?.createdBy === user?.uid)) && (
           <Input
             label="Snack Request (optional)"
+            name="snack-request"
+            autoComplete="off"
             value={snackItem}
             onChange={e => setSnackItem(e.target.value)}
             placeholder="e.g. Orange slices and juice boxes"
@@ -459,6 +463,8 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
                 <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-gray-700">Notes (optional)</label>
           <textarea
+            name="event-notes"
+            autoComplete="off"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             rows={3}
             value={notes}

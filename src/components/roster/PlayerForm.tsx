@@ -54,9 +54,9 @@ function ParentFields({
     <div className="border-t border-gray-100 pt-3">
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{label}</p>
       <div className="space-y-3">
-        <Input label="Name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Jane Smith" />
-        <Input label="Phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 555-123-4567" />
-        <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="e.g. jane@example.com" error={emailError} />
+        <Input label="Name" name="parent-name" autoComplete="off" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Jane Smith" />
+        <Input label="Phone" type="tel" name="parent-phone" autoComplete="off" value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 555-123-4567" />
+        <Input label="Email" type="email" name="parent-email" autoComplete="off" value={email} onChange={e => setEmail(e.target.value)} placeholder="e.g. jane@example.com" error={emailError} />
       </div>
     </div>
   );
@@ -195,12 +195,12 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
     <Modal open={open} onClose={onClose} title={editPlayer ? 'Edit Player' : 'Add Player'}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          <Input label="First Name" value={firstName} onChange={e => setFirstName(e.target.value)} error={errors.firstName} />
-          <Input label="Last Name" value={lastName} onChange={e => setLastName(e.target.value)} error={errors.lastName} />
+          <Input label="First Name" name="given-name" autoComplete="given-name" value={firstName} onChange={e => setFirstName(e.target.value)} error={errors.firstName} />
+          <Input label="Last Name" name="family-name" autoComplete="family-name" value={lastName} onChange={e => setLastName(e.target.value)} error={errors.lastName} />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Jersey #" type="number" min="0" value={jerseyNumber} onChange={e => setJerseyNumber(e.target.value)} />
-          <Input label="Position" value={position} onChange={e => setPosition(e.target.value)} placeholder="e.g. Forward" />
+          <Input label="Jersey #" type="number" name="jersey-number" autoComplete="off" min="0" value={jerseyNumber} onChange={e => setJerseyNumber(e.target.value)} />
+          <Input label="Position" name="position" autoComplete="off" value={position} onChange={e => setPosition(e.target.value)} placeholder="e.g. Forward" />
         </div>
         <Select label="Status" value={status} onChange={e => setStatus(e.target.value as PlayerStatus)} options={statusOptions} />
         <Input
@@ -270,6 +270,8 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
         <Input
           label={editPlayer ? 'Player Email' : 'Player Email'}
           type="email"
+          name="player-email"
+          autoComplete="off"
           value={email}
           onChange={e => setEmail(e.target.value)}
           placeholder="player@example.com"
@@ -311,9 +313,9 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Emergency Contact</p>
           <p className="text-xs text-gray-400 mb-3">(Optional)</p>
           <div className="space-y-3">
-            <Input label="Name" value={ecName} onChange={e => setEcName(e.target.value)} placeholder="Full name" />
-            <Input label="Phone" type="tel" value={ecPhone} onChange={e => setEcPhone(e.target.value)} placeholder="Phone number" />
-            <Input label="Relationship" value={ecRelationship} onChange={e => setEcRelationship(e.target.value)} placeholder="e.g. Grandmother, Uncle — optional" />
+            <Input label="Name" name="ec-name" autoComplete="off" value={ecName} onChange={e => setEcName(e.target.value)} placeholder="Full name" />
+            <Input label="Phone" type="tel" name="ec-phone" autoComplete="off" value={ecPhone} onChange={e => setEcPhone(e.target.value)} placeholder="Phone number" />
+            <Input label="Relationship" name="ec-relationship" autoComplete="off" value={ecRelationship} onChange={e => setEcRelationship(e.target.value)} placeholder="e.g. Grandmother, Uncle — optional" />
           </div>
         </div>
 

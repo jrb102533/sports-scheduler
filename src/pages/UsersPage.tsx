@@ -118,6 +118,8 @@ export function UsersPage() {
                         {isEditingName ? (
                           <div className="flex items-center gap-1">
                             <input
+                              name="display-name"
+                              autoComplete="off"
                               className="border border-gray-300 rounded px-2 py-0.5 text-sm w-36 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               value={editingNameValue}
                               onChange={e => setEditingNameValue(e.target.value)}
@@ -226,7 +228,8 @@ function generatePassword(): string {
 }
 
 function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
-  const [displayName, setDisplayName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [tempPassword, setTempPassword] = useState('');
   const [role, setRole] = useState<UserRole>('coach');
@@ -236,7 +239,7 @@ function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
   const [copied, setCopied] = useState(false);
 
   function reset() {
-    setDisplayName(''); setEmail(''); setTempPassword(''); setRole('coach');
+    setFirstName(''); setLastName(''); setEmail(''); setTempPassword(''); setRole('coach');
     setError(''); setCreatedPassword(null); setCopied(false);
   }
 
@@ -256,9 +259,12 @@ function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    if (!firstName.trim()) { setError('First name is required'); return; }
+    if (!lastName.trim()) { setError('Last name is required'); return; }
     if (tempPassword.length < 8) { setError('Temporary password must be at least 8 characters'); return; }
 
     setLoading(true);
+    const displayName = `${firstName.trim()} ${lastName.trim()}`.trim();
     try {
       const fn = httpsCallable<
         { email: string; displayName: string; role: string; tempPassword: string },
@@ -327,14 +333,35 @@ function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
   return (
     <Modal open={open} onClose={handleClose} title="Add User">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Input label="Full Name" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Jane Smith" required />
-        <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required />
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="First Name"
+            name="given-name"
+            autoComplete="given-name"
+            value={firstName}
+            onChange={e => setFirstName(e.target.value)}
+            placeholder="Jane"
+            required
+          />
+          <Input
+            label="Last Name"
+            name="family-name"
+            autoComplete="family-name"
+            value={lastName}
+            onChange={e => setLastName(e.target.value)}
+            placeholder="Smith"
+            required
+          />
+        </div>
+        <Input label="Email" type="email" name="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required />
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-gray-700">Temporary Password</label>
           <div className="flex gap-2">
             <div className="relative flex-1">
               <input
                 type="text"
+                name="temp-password"
+                autoComplete="off"
                 value={tempPassword}
                 onChange={e => setTempPassword(e.target.value)}
                 placeholder="At least 8 characters"

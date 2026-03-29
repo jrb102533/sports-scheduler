@@ -80,6 +80,8 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
       <div className="space-y-4">
         <Input
           label="League Name"
+          name="league-name"
+          autoComplete="off"
           value={name}
           onChange={e => setName(e.target.value)}
           placeholder="e.g. Metro Youth Soccer League"
@@ -88,6 +90,8 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
         <div className="grid grid-cols-2 gap-3">
           <Input
             label="Season"
+            name="league-season"
+            autoComplete="off"
             value={season}
             onChange={e => setSeason(e.target.value)}
             placeholder="e.g. Spring 2025"
@@ -101,6 +105,8 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
         </div>
         <Input
           label="Description"
+          name="league-description"
+          autoComplete="off"
           value={description}
           onChange={e => setDescription(e.target.value)}
           placeholder="Optional notes about this league"
