@@ -17,16 +17,6 @@ import type { League, Team, ScheduledEvent } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-// Legacy type kept for generator payload compat
-interface VenueInput {
-  name: string;
-  concurrentPitches: number;
-  availableDays: string[];
-  availableTimeStart: string;
-  availableTimeEnd: string;
-  blackoutDates: string[];
-}
-
 interface WizardVenueConfig {
   selectedVenueId: string | null; // null = manual entry
   name: string;

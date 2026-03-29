@@ -454,7 +454,6 @@ export function TeamDetailPage() {
               </span>
             </div>
           )}
-          {team.homeVenue && <div><span className="font-medium text-gray-700">Home Venue:</span> <span className="text-gray-600 ml-2">{team.homeVenue}</span></div>}
           {team.coachName && <div><span className="font-medium text-gray-700">Coach:</span> <span className="text-gray-600 ml-2">{team.coachName}</span></div>}
           {team.coachEmail && <div><span className="font-medium text-gray-700">Email:</span> <span className="text-gray-600 ml-2">{team.coachEmail}</span></div>}
           {league && <div><span className="font-medium text-gray-700">League:</span> <span className="text-gray-600 ml-2">{league.name}</span></div>}
