@@ -7,9 +7,8 @@ name: Rollback
 # artifacts that were deployed in the original release are re-used.
 #
 # Required GitHub secrets:
-#   FIREBASE_TOKEN     — long-lived CI token for the staging project (first-whistle-e76f4)
-#   FIREBASE_TOKEN_PROD — (not yet created) token for first-whistle-prod; add when prod project exists
-#   GITHUB_TOKEN       — auto-provided by Actions (used by gh CLI to download release assets)
+#   FIREBASE_TOKEN_PROD — long-lived CI token for first-whistle-prod (set as environment secret on 'production')
+#   GITHUB_TOKEN        — auto-provided by Actions (used by gh CLI to download release assets)
 
 on:
   workflow_dispatch:
@@ -94,11 +93,8 @@ jobs:
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
 
-      # TODO: Switch to first-whistle-prod and FIREBASE_TOKEN_PROD once the
-      #       production Firebase project has been created. Until then this
-      #       deploys rollbacks to the staging project as a proxy.
-      - name: Deploy to Firebase (staging — prod project pending)
-        run: firebase deploy --token "${{ secrets.FIREBASE_TOKEN }}" --project first-whistle-e76f4 --non-interactive
+      - name: Deploy to Firebase (production)
+        run: firebase deploy --token "${{ secrets.FIREBASE_TOKEN_PROD }}" --project first-whistle-prod --non-interactive
 
       # ── Audit trail ──────────────────────────────────────────────────────
       - name: Record rollback in release notes
