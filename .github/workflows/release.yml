@@ -1,0 +1,230 @@
+name: Release
+
+# Creates a CalVer-tagged GitHub Release with build artifacts and deploys to Firebase.
+#
+# CalVer format: vYYYY.MM.DD.N  (N increments if multiple releases on the same day)
+# Example: v2026.03.29.1, v2026.03.29.2
+#
+# Required GitHub secrets:
+#   FIREBASE_TOKEN     — long-lived CI token for the staging project (first-whistle-e76f4)
+#   FIREBASE_TOKEN_PROD — (not yet created) token for first-whistle-prod; add when prod project exists
+#   GITHUB_TOKEN       — auto-provided by Actions
+
+on:
+  workflow_dispatch:
+    inputs:
+      increment:
+        description: 'CalVer increment (always increments N for same-day releases)'
+        type: choice
+        required: true
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      notes:
+        description: 'Release notes (optional)'
+        type: string
+        required: false
+
+jobs:
+  # ── Compute CalVer tag ─────────────────────────────────────────────────────
+  compute-tag:
+    name: Compute CalVer Tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.calver.outputs.tag }}
+      version: ${{ steps.calver.outputs.version }}
+      build_time: ${{ steps.calver.outputs.build_time }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Full history required to read all existing tags
+
+      - name: Compute next CalVer tag
+        id: calver
+        run: |
+          TODAY=$(date -u '+%Y.%m.%d')
+          BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+          # Find the highest N for today's date across all matching tags
+          LATEST_N=$(git tag --list "v${TODAY}.*" \
+            | grep -oP '(?<=v'"${TODAY/./\\.}"'\.)\d+' \
+            | sort -n \
+            | tail -1)
+
+          if [ -z "$LATEST_N" ]; then
+            N=1
+          else
+            N=$(( LATEST_N + 1 ))
+          fi
+
+          TAG="v${TODAY}.${N}"
+          VERSION="${TODAY}.${N}"
+
+          echo "tag=$TAG"         >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "build_time=$BUILD_TIME" >> $GITHUB_OUTPUT
+          echo "Computed tag: $TAG"
+
+  # ── Build frontend ─────────────────────────────────────────────────────────
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    needs: compute-tag
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        env:
+          VITE_APP_VERSION: ${{ needs.compute-tag.outputs.version }}
+          VITE_BUILD_SHA: ${{ github.sha }}
+          VITE_BUILD_TIME: ${{ needs.compute-tag.outputs.build_time }}
+          VITE_BUILD_BRANCH: main
+          VITE_APP_ENV: production
+        run: npm run build
+
+      - name: Create frontend artifact archive
+        run: tar -czf frontend-dist.tar.gz -C dist .
+
+      - name: Upload frontend archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend-dist.tar.gz
+          retention-days: 7
+
+  # ── Build + test Cloud Functions ───────────────────────────────────────────
+  build-functions:
+    name: Build & Test Functions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Build
+        working-directory: functions
+        run: npm run build
+
+      - name: Test
+        working-directory: functions
+        run: npm test
+
+      - name: Create functions artifact archive
+        run: tar -czf functions-lib.tar.gz -C functions/lib .
+
+      - name: Upload functions archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: functions-lib
+          path: functions-lib.tar.gz
+          retention-days: 7
+
+  # ── Create GitHub Release ──────────────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [compute-tag, build-frontend, build-functions]
+    permissions:
+      contents: write
+    steps:
+      - name: Download frontend archive
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+
+      - name: Download functions archive
+        uses: actions/download-artifact@v4
+        with:
+          name: functions-lib
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.compute-tag.outputs.tag }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          BODY="## Release ${TAG}"$'\n\n'
+          if [ -n "$NOTES" ]; then
+            BODY="${BODY}${NOTES}"$'\n\n'
+          fi
+          BODY="${BODY}**Built from:** \`${{ github.sha }}\`  "$'\n'
+          BODY="${BODY}**Build time:** \`${{ needs.compute-tag.outputs.build_time }}\`  "$'\n'
+          BODY="${BODY}**Triggered by:** \`${{ github.actor }}\`"
+
+          gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --title "Release ${TAG}" \
+            --notes "$BODY" \
+            --latest \
+            frontend-dist.tar.gz \
+            functions-lib.tar.gz
+
+  # ── Deploy ─────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Firebase
+    runs-on: ubuntu-latest
+    needs: [compute-tag, build-frontend, build-functions, release]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Download frontend archive
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+
+      - name: Extract frontend dist
+        run: mkdir -p dist && tar -xzf frontend-dist.tar.gz -C dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Download functions archive
+        uses: actions/download-artifact@v4
+        with:
+          name: functions-lib
+
+      - name: Extract functions lib
+        run: mkdir -p functions/lib && tar -xzf functions-lib.tar.gz -C functions/lib
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      # TODO: Switch to first-whistle-prod and FIREBASE_TOKEN_PROD once the
+      #       production Firebase project has been created. Until then this
+      #       deploys the release build to the staging project as a proxy.
+      - name: Deploy to Firebase (staging — prod project pending)
+        run: firebase deploy --token "${{ secrets.FIREBASE_TOKEN }}" --project first-whistle-e76f4 --non-interactive
