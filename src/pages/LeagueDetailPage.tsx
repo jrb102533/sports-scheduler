@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
 import { EventCard } from '@/components/events/EventCard';
 import { EventForm } from '@/components/events/EventForm';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
@@ -9,10 +10,13 @@ import { StandingsTable } from '@/components/standings/StandingsTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { LeagueForm } from '@/components/leagues/LeagueForm';
 import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
+import { AvailabilityStatusPanel } from '@/components/leagues/AvailabilityStatusPanel';
+import type { CoachInfo } from '@/components/leagues/AvailabilityStatusPanel';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useCollectionStore } from '@/store/useCollectionStore';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { SPORT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent } from '@/types';
@@ -36,12 +40,34 @@ export function LeagueDetailPage() {
     .filter(e => e.teamIds.some(tid => leagueTeamIds.includes(tid)))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
+  const { activeCollection, responses, loadCollection, loadWizardDraft, wizardDraft } = useCollectionStore();
+  const [collectionPanelOpen, setCollectionPanelOpen] = useState(false);
+
   const [tab, setTab] = useState<Tab>('schedule');
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    const unsub1 = loadCollection(id);
+    const unsub2 = loadWizardDraft(id);
+    return () => { unsub1(); unsub2(); };
+  }, [id, loadCollection, loadWizardDraft]);
+
+  const hasActiveCollection = activeCollection?.status === 'open';
+  const respondedCount = responses.length;
+  const totalCoaches = leagueTeams.filter(t => t.coachId).length;
+
+  const coaches: CoachInfo[] = leagueTeams.map(team => ({
+    uid: team.coachId ?? team.id,
+    name: team.coachName ?? team.name,
+    teamId: team.id,
+    teamName: team.name,
+    hasAccount: !!team.coachId,
+  }));
 
   const isAdmin = profile?.role === 'admin';
   const canManage = isAdmin || (profile?.role === 'league_manager' && profile?.leagueId === id);
@@ -123,11 +149,27 @@ export function LeagueDetailPage() {
       {tab === 'schedule' && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm text-gray-500">{leagueEvents.length} {leagueEvents.length === 1 ? 'event' : 'events'}</p>
+            <div className="flex flex-col gap-1">
+              <p className="text-sm text-gray-500">{leagueEvents.length} {leagueEvents.length === 1 ? 'event' : 'events'}</p>
+              {hasActiveCollection && canManage && (
+                <button
+                  onClick={() => setCollectionPanelOpen(true)}
+                  className="text-xs text-blue-600 underline text-left"
+                >
+                  View availability collection →
+                </button>
+              )}
+            </div>
             <div className="flex gap-2">
               {canManage && leagueTeams.length >= 2 && (
                 <Button size="sm" variant="secondary" onClick={() => setWizardOpen(true)}>
-                  <Wand2 size={14} /> Schedule Wizard
+                  <Wand2 size={14} />
+                  {wizardDraft ? 'Continue Schedule' : 'Schedule Wizard'}
+                  {hasActiveCollection && (
+                    <span className="ml-1 text-xs bg-blue-100 text-blue-700 rounded-full px-1.5">
+                      {respondedCount}/{totalCoaches}
+                    </span>
+                  )}
                 </Button>
               )}
               <RoleGuard roles={['admin', 'league_manager', 'coach']}>
@@ -197,8 +239,21 @@ export function LeagueDetailPage() {
           onClose={() => setWizardOpen(false)}
           league={league}
           leagueTeams={leagueTeams}
+          currentUserUid={profile?.uid ?? ''}
         />
       )}
+
+      {collectionPanelOpen && (
+        <Modal open onClose={() => setCollectionPanelOpen(false)} title="Availability Collection">
+          <AvailabilityStatusPanel
+            leagueId={id!}
+            coaches={coaches}
+            onSendReminder={async () => { /* wire to Cloud Function later */ }}
+            onClose={() => setCollectionPanelOpen(false)}
+          />
+        </Modal>
+      )}
+
 
       {editOpen && (
         <LeagueForm

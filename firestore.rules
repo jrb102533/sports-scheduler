@@ -125,6 +125,44 @@ service cloud.firestore {
           || resource.data.managedBy == request.auth.uid
         ));
       allow delete: if isAdmin();
+
+      // Wizard draft — one per league, owned by the LM who created it.
+      // Coaches and players have no access.
+      match /wizardDraft/draft {
+        allow read, write: if isAdmin()
+          || (isLeagueManager() && (
+            getProfile().leagueId == leagueId
+            || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
+          ));
+      }
+
+      // Availability collections — created/managed by LM; coaches read their own response only.
+      match /availabilityCollections/{collectionId} {
+        allow read: if isAdmin()
+          || (isLeagueManager() && (
+            getProfile().leagueId == leagueId
+            || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
+          ));
+        allow create, update, delete: if isAdmin()
+          || (isLeagueManager() && (
+            getProfile().leagueId == leagueId
+            || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
+          ));
+
+        // Coach responses — coaches read/write only their own; LM reads all.
+        match /responses/{coachUid} {
+          allow read: if isAdmin()
+            || request.auth.uid == coachUid
+            || (isLeagueManager() && (
+              getProfile().leagueId == leagueId
+              || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
+            ));
+          allow create, update: if request.auth != null
+            && request.auth.uid == coachUid
+            && request.resource.data.coachUid == request.auth.uid;
+          allow delete: if isAdmin();
+        }
+      }
     }
 
     // Invite records — written by Cloud Function (admin SDK), read by invitee only
