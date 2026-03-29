@@ -10,7 +10,8 @@ export interface Team {
   sportType: SportType;
   color: string;
   logoUrl?: string;
-coachName?: string;
+  homeVenue?: string;
+  coachName?: string;
   coachEmail?: string;
   coachPhone?: string;
   ageGroup?: AgeGroup;

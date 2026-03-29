@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import {
-  collection, onSnapshot, doc, setDoc, updateDoc, query, orderBy, where,
+  collection, onSnapshot, doc, setDoc, updateDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuthStore } from './useAuthStore';
@@ -25,13 +25,8 @@ export const useVenueStore = create<VenueStore>((set) => ({
       set({ venues: [], loading: false });
       return () => {};
     }
-    const q = query(
-      collection(db, 'users', uid, 'venues'),
-      where('deletedAt', '==', null),
-      orderBy('createdAt'),
-    );
-    // Note: Firestore where('deletedAt', '==', null) won't match absent field.
-    // Use a real-time listener and filter client-side for absent deletedAt too.
+    // Firestore where('deletedAt', '==', null) won't match absent field,
+    // so we filter client-side after fetching all docs.
     const unsub = onSnapshot(
       collection(db, 'users', uid, 'venues'),
       (snap) => {

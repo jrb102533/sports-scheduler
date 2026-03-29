@@ -11,3 +11,4 @@ export type { Opponent } from './opponent';
 export type { Venue, VenueField, RecurringVenueWindow } from './venue';
 export type { SeasonStatus, DistributionType, Season } from './season';
 export type { DivisionScheduleStatus, Division } from './division';
+export type { AbsenceType, AbsenceStatus, Absence } from './absence';
