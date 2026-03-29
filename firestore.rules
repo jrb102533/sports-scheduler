@@ -189,5 +189,12 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.token.email == email;
       allow write: if false;
     }
+
+    // System config — read by unauthenticated clients (e.g. pre-signup allowlist check),
+    // written exclusively via Admin SDK (Cloud Functions / console).
+    match /system/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
   }
 }
