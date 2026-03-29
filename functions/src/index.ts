@@ -71,7 +71,7 @@ async function assertAdminOrCoach(uid: string): Promise<string> {
   const membershipRoles: string[] = (data?.memberships ?? []).map((m: Record<string, unknown>) => m.role as string);
   const allRoles = new Set([legacyRole, ...membershipRoles]);
   // Return the highest-privilege role so callers can enforce further restrictions.
-  for (const r of ['admin', 'coach', 'league_manager'] as const) {
+  for (const r of ['admin', 'league_manager', 'coach'] as const) {
     if (allRoles.has(r)) {
       console.log(`assertAdminOrCoach: uid=${uid}, effective role=${r}`);
       return r;
@@ -2417,11 +2417,18 @@ export const submitGameResult = onCall<SubmitGameResultData, Promise<SubmitGameR
     const { eventId, leagueId, homeScore, awayScore } = request.data;
     if (!eventId?.trim()) throw new HttpsError('invalid-argument', 'eventId is required.');
     if (!leagueId?.trim()) throw new HttpsError('invalid-argument', 'leagueId is required.');
-    if (typeof homeScore !== 'number' || typeof awayScore !== 'number') {
-      throw new HttpsError('invalid-argument', 'homeScore and awayScore must be numbers.');
+    if (
+      typeof homeScore !== 'number' || typeof awayScore !== 'number' ||
+      !Number.isFinite(homeScore) || !Number.isFinite(awayScore) ||
+      !Number.isInteger(homeScore) || !Number.isInteger(awayScore)
+    ) {
+      throw new HttpsError('invalid-argument', 'Scores must be finite integers.');
     }
     if (homeScore < 0 || awayScore < 0) {
       throw new HttpsError('invalid-argument', 'Scores cannot be negative.');
+    }
+    if (homeScore > 99 || awayScore > 99) {
+      throw new HttpsError('invalid-argument', 'Score cannot exceed 99.');
     }
 
     const uid = request.auth.uid;
@@ -2437,7 +2444,8 @@ export const submitGameResult = onCall<SubmitGameResultData, Promise<SubmitGameR
 
     // CVR-2026-001: Validate caller-supplied leagueId matches the event's stored leagueId.
     // Prevents cross-league standings corruption via IDOR.
-    if (ev.leagueId && ev.leagueId !== leagueId) {
+    // Guard is unconditional: events without a leagueId are rejected, not silently passed.
+    if (!ev.leagueId || ev.leagueId !== leagueId) {
       throw new HttpsError('permission-denied', 'leagueId does not match the event.');
     }
 
