@@ -77,7 +77,11 @@ function signRsvpToken(eventId: string, playerId: string): string {
 /** Verify an RSVP token. Returns false if the secret is not yet provisioned (soft mode). */
 function verifyRsvpToken(eventId: string, playerId: string, token: string): boolean {
   const secret = rsvpSecret.value();
-  if (!secret) return true; // secret not yet provisioned — allow existing links
+  const secretIsProvisioned = typeof secret === 'string' && secret.length >= 16;
+  if (!secretIsProvisioned) return true;
+  if (typeof secret === 'string' && secret.length > 0 && secret.length < 16) {
+    console.warn('verifyRsvpToken: RSVP_HMAC_SECRET is set but too short (< 16 chars) — HMAC verification disabled');
+  }
   const expected = crypto.createHmac('sha256', secret).update(`${eventId}:${playerId}`).digest('hex');
   try {
     return crypto.timingSafeEqual(Buffer.from(token, 'hex'), Buffer.from(expected, 'hex'));
@@ -329,8 +333,8 @@ export const sendInvite = onCall<SendInviteData>(
             <p style="color:white;font-weight:700;font-size:22px;margin:0">First Whistle</p>
             <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px">Game day starts here.</p>
           </div>
-          <p style="color:#111827;font-size:15px">Hi ${playerName},</p>
-          <p style="color:#374151">You've been added to <strong>${teamName}</strong> on First Whistle.</p>
+          <p style="color:#111827;font-size:15px">Hi ${esc(playerName)},</p>
+          <p style="color:#374151">You've been added to <strong>${esc(teamName)}</strong> on First Whistle.</p>
           <p style="color:#374151">Sign up or log in to view your schedule, track attendance, and stay connected with your team.</p>
           <div style="text-align:center;margin:32px 0">
             <a href="${appUrl}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
@@ -411,7 +415,9 @@ export const rsvpEvent = onRequest(
     res.status(403).send('<p>This RSVP link is invalid or has been tampered with.</p>');
     return;
   }
-  if (!token && rsvpSecret.value()) {
+  const _rsvpSecretVal = rsvpSecret.value();
+  const _rsvpSecretProvisioned = typeof _rsvpSecretVal === 'string' && _rsvpSecretVal.length >= 16;
+  if (!token && _rsvpSecretProvisioned) {
     // Secret is provisioned but no token present — link is pre-HMAC; reject.
     res.status(403).send('<p>This RSVP link has expired. Please ask your coach to resend the invite.</p>');
     return;
@@ -668,7 +674,7 @@ export const onEventCreated = onDocumentCreated(
 export const sendEventReminders = onSchedule(
   {
     schedule: '0 8 * * *',
-    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret],
   },
   async () => {
     const tomorrow = new Date();
