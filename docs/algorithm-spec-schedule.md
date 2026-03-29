@@ -1,8 +1,8 @@
 # Deterministic Schedule Algorithm — Specification
 
-**Version:** 1.0
+**Version:** 1.1
 **Date:** 2026-03-28
-**Status:** Draft — awaiting PM approval
+**Status:** Draft — 14 PM-approved amendments applied (review session 2026-03-28)
 **Author:** Architect (Claude Sonnet 4.6)
 **Replaces:** `generateLeagueSchedule` (LLM-based Cloud Function)
 **Locked decisions source:** `docs/adr/ADR-005-deterministic-schedule-algorithm.md`
@@ -124,8 +124,46 @@ export interface GenerateScheduleInput {
   // Doubleheader opt-in
   doubleheader?: DoubleheaderConfig;
 
+  // Home/away venue mode (Amendment 6)
+  homeAwayMode: 'strict' | 'relaxed';  // default: 'relaxed'
+  // 'relaxed': home/away roles are used for display/stats only; no venue matching attempted;
+  //            'balance_home_away' soft constraint applies normally.
+  // 'strict':  home team plays at their homeVenueId (soft enforcement by default per Amendment 2);
+  //            'balance_home_away' soft constraint gets doubled weight.
+  // Note: baseball/softball typically use 'strict'; most other sports use 'relaxed'.
+
+  // Home venue enforcement mode when homeAwayMode = 'strict' (Amendment 7)
+  homeVenueEnforcement?: 'hard' | 'soft';  // only relevant when homeAwayMode = 'strict'; default: 'soft'
+  // 'soft' (default for strict mode): home venue mismatch is a soft conflict in preview —
+  //   LM can publish with warnings.
+  // 'hard': home venue mismatch is a hard conflict — fixture goes to unassignedPairings if
+  //   home venue has no slot; blocks publish.
+  // When homeAwayMode = 'relaxed', this field is ignored.
+
+  // Practice events (Amendment 8) — separate from coachAvailability
+  practiceEvents?: Array<{
+    teamId: string;
+    date: string;       // ISO date
+    startTime: string;  // "HH:MM"
+    endTime: string;    // "HH:MM"
+    reschedulable: boolean;  // true = LM can schedule game here; flagged as soft conflict
+                             // false = treat as unavailable (soft penalty)
+  }>;
+  // Amendment 14 — Opt-in toggle:
+  // The wizard only passes practiceEvents when the LM has 'avoid_practice_conflicts'
+  // enabled in their soft constraint priority list. When the toggle is off, practiceEvents
+  // is omitted from the call entirely (treated as absent/empty by the algorithm).
+  // The wizard fetches practice events from Firestore
+  //   (scheduledEvents where type = 'practice' AND teamId in enrolledTeams
+  //    AND date between seasonStart and seasonEnd)
+  // only when the toggle is on. This avoids unnecessary Firestore reads for leagues
+  // that do not use practice conflict avoidance.
+
   // Soft constraint fine-tuning
   maxConsecutiveAway?: number;  // default 3; max consecutive away fixtures before penalty
+
+  // Partial round-robin (Amendment 10)
+  gamesPerTeam?: number;  // if absent, defaults to full round-robin for the chosen format
 }
 ```
 
@@ -152,6 +190,10 @@ These are enforced before the algorithm runs. Violations return an `invalid-argu
 | Venue IDs must be unique | — | `"duplicate venue id: {id}"` |
 | `homeVenueId` on a team must reference a venue ID in the `venues` array | — | `"team {name} homeVenueId references unknown venue {id}"` |
 | `format` must be `single_round_robin` or `double_round_robin` | — | `"unsupported format: {format}"` |
+| `gamesPerTeam` for `single_round_robin` | 1 ≤ value ≤ N−1 | `"gamesPerTeam {value} exceeds maximum {max} for {format} with {N} teams"` |
+| `gamesPerTeam` for `double_round_robin` | 1 ≤ value ≤ 2(N−1) | `"gamesPerTeam {value} exceeds maximum {max} for {format} with {N} teams"` |
+| `homeVenueEnforcement` is only meaningful when `homeAwayMode = 'strict'` | — | Silently ignored when `homeAwayMode = 'relaxed'` |
+| `doubleheader.enabled = true` requires `format = 'double_round_robin'` | — | `"doubleheaders require format = double_round_robin"` |
 
 ---
 
@@ -194,6 +236,7 @@ export interface TeamScheduleStats {
   maxRestGap:     number;  // longest gap in days between consecutive games
   minRestGap:     number;  // shortest gap in days between consecutive games
   byeRounds:      number;  // rounds where this team has no game (odd-N only)
+  byeRound?:      number;  // the specific round number in which this team has a bye (absent if N is even)
 }
 
 /** Top-level output. */
@@ -215,7 +258,16 @@ export interface ScheduleAlgorithmOutput {
     fallbackSlotsUsed:      number;
     feasible:               boolean; // true only when unassignedFixtures === 0
   };
-  summary: string;  // one-sentence human summary for wizard preview banner
+  summary: string;  // human summary for wizard preview banner
+  // When N is odd, summary must mention bye rounds, e.g.:
+  //   "7-team league: each team has 1 bye round. Team bye assignments: [Team A: Round 3, ...]"
+  warnings: Array<{
+    code: string;
+    message: string;  // human-readable; shown as banner in wizard preview
+  }>;
+  // When N is odd, warnings always includes:
+  //   { code: 'ODD_TEAM_COUNT', message: "You have {N} teams. Each team will have 1 bye round
+  //     with no game scheduled. See team stats for details." }
 }
 ```
 
@@ -226,6 +278,43 @@ export interface ScheduleAlgorithmOutput {
 The algorithm is a **greedy slot-assignment with soft-constraint scoring**. There is no backtracking in the base implementation. The assignment order is deterministic (sorted inputs produce the same output every run).
 
 If the greedy pass leaves unassigned fixtures, the output is a partial schedule plus a conflict list — it is never a hard function failure (see §8 for the exception list).
+
+### Step 0: Feasibility Pre-Check
+
+**Goal:** Fast upfront check before any slots are generated. Catches grossly under-resourced configurations before expensive computation.
+
+```
+function feasibilityPreCheck(input: GenerateScheduleInput): void {
+  // Calculate required fixtures from the round-robin formula (§4.1)
+  N = input.teams.length
+  if N % 2 === 1: N += 1  // virtual bye team
+  requiredFixtures = (input.format === 'single_round_robin')
+    ? (N * (N - 1)) / 2
+    : N * (N - 1)
+
+  // Raw slot capacity: sum all time slots across all venues in the season window
+  // before any constraint filtering — just calendar × windows × pitches
+  totalAvailableSlots = 0
+  for date in dateRange(input.seasonStart, input.seasonEnd):
+    dow = date.dayOfWeek()
+    for venue in input.venues:
+      for window in ([...venue.availabilityWindows, ...(venue.fallbackWindows ?? [])]):
+        if window.dayOfWeek !== dow: continue
+        slotsInWindow = floor(windowDurationMinutes / (matchDurationMinutes + bufferMinutes))
+        totalAvailableSlots += slotsInWindow * venue.concurrentPitches
+
+  // Threshold: if raw capacity is less than 50% of required, reject immediately
+  if totalAvailableSlots < requiredFixtures * 0.5:
+    throw new HttpsError(
+      'invalid-argument',
+      `Season configuration is infeasible: only ${totalAvailableSlots} slots available ` +
+      `for ${requiredFixtures} required fixtures. Extend the season window, add venues, ` +
+      `or reduce team count.`
+    )
+}
+```
+
+This check fires **before** slot generation or assignment. It is a fast O(D × V × W) scan — the same order as slot generation, but much lighter. It does **not** guarantee feasibility; it only rejects obviously impossible configurations (< 50% raw capacity).
 
 ### Step 1: Slot Generation
 
@@ -297,6 +386,25 @@ function assignFixtures(pairings: Pairing[], slots: Slot[], input): Assignment[]
   assigned   = []
   unassigned = []
 
+  // ── Seed-based shuffle (Amendment 1) ────────────────────────────────────────
+  // Pairings arrive sorted by round then pairingIndex (deterministic base order).
+  // Apply a Fisher-Yates shuffle using a fixed seed so that no round has systematic
+  // priority in slot selection, while retaining full determinism for same inputs.
+  //
+  // Seed derivation:
+  //   seedInput = input.leagueId + "|" + input.seasonStart
+  //   seed (uint32) = fnv32a(seedInput)   // FNV-1a 32-bit hash
+  //
+  // Fisher-Yates with seeded PRNG (e.g., mulberry32 from seed):
+  //   rng = mulberry32(seed)
+  //   for i from pairings.length - 1 downto 1:
+  //     j = floor(rng() * (i + 1))
+  //     swap(pairings[i], pairings[j])
+  //
+  // Same leagueId + seasonStart always produce the same shuffle.
+  pairings = seededShuffle(pairings, deriveScheduleSeed(input.leagueId, input.seasonStart))
+  // ─────────────────────────────────────────────────────────────────────────────
+
   // Track per-team state for constraint checking
   teamState: Map<teamId, {
     lastGameDate: Date | null,
@@ -332,9 +440,13 @@ function assignFixtures(pairings: Pairing[], slots: Slot[], input): Assignment[]
       if away.lastGameDate != null:
         if daysBetween(away.lastGameDate, slot.date) < input.minRestDays: continue
 
-      // 4. Home team must play at their homeVenueId when scheduled as home
-      //    (if they have one). Skip slot if venue doesn't match.
-      if home.homeVenueId != null && slot.venueId != home.homeVenueId: continue
+      // 4. Home venue is a SOFT constraint (Amendment 2).
+      //    No slot is skipped based on venue. Instead, a penalty is applied below
+      //    when the slot is not at the home team's preferred venue.
+      //    If homeAwayMode = 'strict' AND homeVenueEnforcement = 'hard', then
+      //    a slot at the wrong venue is hard-blocked:
+      if input.homeAwayMode === 'strict' && input.homeVenueEnforcement === 'hard':
+        if home.homeVenueId != null && slot.venueId != home.homeVenueId: continue
 
       // ── Soft constraint scoring ─────────────────────────────────
       penalty = scorePenalty(slot, pairing, home, away, input)
@@ -368,7 +480,14 @@ function assignFixtures(pairings: Pairing[], slots: Slot[], input): Assignment[]
 }
 ```
 
-**Home venue constraint detail:** When a team has a `homeVenueId`, they always play at that venue when scheduled as the home team. If the home venue has no available slots for a given pairing, the algorithm attempts to swap home/away roles for that pairing (see §5.3). If neither assignment works, the fixture is recorded as unassigned.
+**Home venue constraint detail (Amendment 2):** Home venue matching is a **soft constraint** by default. When a slot is not at the home team's `homeVenueId`, the `scorePenalty` function adds a low penalty, making same-venue slots preferred. If no same-venue slot exists, the best available slot at any venue is used and a soft conflict is recorded:
+
+```
+{ constraintId: 'home_venue_mismatch', severity: 'soft',
+  description: "Team {name} playing home game away from their registered home venue" }
+```
+
+The exception is when `homeAwayMode = 'strict'` AND `homeVenueEnforcement = 'hard'`: in that case the venue check is a hard gate (slot skipped if wrong venue), and a failed pairing goes to `unassignedPairings`. See §5 and §1.1 for full details. The home/away swap fallback (formerly §5.3) has been removed; it was only needed for the hard constraint.
 
 ### Step 4: Soft Constraint Scoring
 
@@ -379,9 +498,15 @@ function scorePenalty(slot, pairing, home, away, input): number {
   penalty = 0
 
   // Iterate the priority list from highest to lowest priority.
-  // Higher-priority constraints have exponentially larger weights.
+  // Higher-priority constraints have linearly larger weights (Amendment 4).
+  // Rationale: linear weights keep lower-priority constraints in dialogue with
+  // higher ones. Exponential weights would make the top constraint dominate
+  // overwhelmingly, effectively ignoring everything below it.
+  //
+  // Example with 7 constraints: weights are 7, 6, 5, 4, 3, 2, 1
+  priorityCount = input.softConstraintPriority.length
   for (i, constraintId) in enumerate(input.softConstraintPriority):
-    weight = 2 ^ (priorityCount - i)   // e.g., 8 constraints → weights 256, 128, 64, …
+    weight = priorityCount - i + 1   // e.g., 7 constraints → weights 7, 6, 5, 4, 3, 2, 1
 
     switch constraintId:
 
@@ -417,15 +542,29 @@ function scorePenalty(slot, pairing, home, away, input): number {
         if away.consecutiveAway >= maxAway: penalty += weight * away.consecutiveAway
 
       case 'avoid_practice_conflicts':
-        // Treated the same as coach availability — passed in coachAvailability
-        // with practice sessions as unavailable blocks
-        pass  // handled inside computeCoachAvailabilityPenalty
+        // practiceEvents is a separate input field (Amendment 8).
+        // coachAvailability is for personal coach availability only.
+        for practiceEvent in (input.practiceEvents ?? []):
+          if practiceEvent.teamId !== pairing.homeTeamId
+            && practiceEvent.teamId !== pairing.awayTeamId: continue
+          if slot.date !== practiceEvent.date: continue
+          if timesOverlap(slot, practiceEvent):
+            if practiceEvent.reschedulable === false:
+              penalty += weight   // full penalty; treat as unavailable
+            // reschedulable === true: no penalty (slot is usable), but after
+            // assignment a soft conflict is added:
+            //   { constraintId: 'practice_rescheduled', severity: 'soft',
+            //     description: "Team {name} has a practice on this date —
+            //                   practice will need rescheduling" }
+            // That post-assignment step is handled in the commit block above.
 
   return penalty
 }
 ```
 
-**Coach availability penalty:** For each team in a pairing, query `coachAvailability` for that team's `weeklyWindows` and `dateOverrides`. If the proposed slot falls in an unavailable window for either team's coach, add weight. The penalty is additive — both coaches unavailable = 2× the weight.
+**Coach availability penalty:** For each team in a pairing, query `coachAvailability` for that team's `weeklyWindows` and `dateOverrides`. If the proposed slot falls in an unavailable window for either team's coach, add weight. The penalty is additive — both coaches unavailable = 2× the weight. `coachAvailability` is for personal coach schedules only; practice sessions are handled via the separate `practiceEvents` field (Amendment 8).
+
+**Home venue mismatch penalty (Amendment 2):** When `homeAwayMode = 'relaxed'`, or `homeAwayMode = 'strict'` with `homeVenueEnforcement = 'soft'`, add a low fixed penalty when the slot's `venueId` does not match the home team's `homeVenueId`. This makes same-venue slots preferred without hard-blocking other venues. Suggested penalty coefficient: `weight_of_lowest_priority_constraint` (i.e., 1 × the lowest weight in the list).
 
 ### Step 5: Infeasibility Handling
 
@@ -468,6 +607,14 @@ With N = 5 (odd), the scheduler adds a bye to make N = 6, generating 6 × 5 / 2 
 
 With N = 5 and double round-robin: 6 × 5 = 30 pairings, 10 with bye dropped. Final = 20 fixtures.
 
+**Output requirements when N is odd (Amendment 5):**
+
+- Each `TeamScheduleStats` entry includes `byeRound: number` — the specific round in which that team is paired with the bye.
+- The `summary` string must mention bye rounds, e.g.:
+  `"7-team league: each team has 1 bye round. Team bye assignments: [Team A: Round 3, Team B: Round 1, ...]"`
+- `ScheduleAlgorithmOutput.warnings` must include:
+  `{ code: 'ODD_TEAM_COUNT', message: "You have 7 teams. Each team will have 1 bye round with no game scheduled. See team stats for details." }`
+
 ### 4.3 Partial Round-Robin
 
 A partial round-robin applies when the LM's requested game count per team is less than the full `N − 1` rounds required for everyone to play everyone once.
@@ -485,7 +632,16 @@ if gamesPerTeam < maxGamesPerTeam:
   // Ensure no team is over-represented in the truncated set.
 ```
 
-If `gamesPerTeam` is not provided by the wizard, the algorithm defaults to a full round-robin for the chosen format. The wizard's config step is responsible for deriving `gamesPerTeam` from the LM's inputs before calling the Cloud Function.
+**Validation (Amendment 10):**
+
+| Format | Valid range for `gamesPerTeam` |
+|---|---|
+| `single_round_robin` | 1 ≤ `gamesPerTeam` ≤ N − 1 |
+| `double_round_robin` | 1 ≤ `gamesPerTeam` ≤ 2(N − 1) |
+
+Error message when exceeded: `"gamesPerTeam {value} exceeds maximum {max} for {format} with {N} teams"`
+
+If `gamesPerTeam` is absent, the algorithm defaults to a full round-robin for the chosen format. The wizard's config step is responsible for deriving `gamesPerTeam` from the LM's inputs before calling the Cloud Function.
 
 ---
 
@@ -502,22 +658,22 @@ For each round r in [1 … N−1]:
 
 This produces the most balanced home/away split possible given N.
 
-### 5.2 Using homeVenueId
+### 5.2 Using homeVenueId (Amendment 2)
 
-When a team is assigned the home role in a pairing:
-1. The algorithm looks up `team.homeVenueId` in the `venues` array.
-2. If found, the fixture is constrained to that venue (slot search is filtered to that venueId only).
-3. The fixture's `venueId` and `venueName` are set from the home team's venue.
+Home venue is a **soft constraint**. The algorithm does not filter slots to the home team's venue; instead, it applies a penalty in `scorePenalty` when the slot is not at the `homeVenueId`. This means:
 
-When a team is assigned the away role:
-- Their `homeVenueId` is irrelevant. The fixture's venue is the home team's venue.
+1. If the home venue has available slots, they will be preferred (lower penalty).
+2. If the home venue has no available slots, any other venue is used and a soft conflict is added:
+   `{ constraintId: 'home_venue_mismatch', severity: 'soft', description: "Team {name} playing home game away from their registered home venue" }`
+3. The fixture's `venueId` and `venueName` reflect whichever venue was actually used.
 
-### 5.3 Home/Away Swap for Infeasibility Recovery
+**Exception — `homeVenueEnforcement: 'hard'` (Amendment 7):** When `homeAwayMode = 'strict'` and `homeVenueEnforcement = 'hard'`, home venue matching becomes a hard gate again: any slot not at the home team's `homeVenueId` is skipped. If no slot is found at the home venue, the pairing goes to `unassignedPairings` with reason `HOME_VENUE_NO_SLOT`.
 
-If no slot can be found at the home team's venue for a given pairing:
-1. Attempt to swap roles: try the pairing with the away team acting as home (at their `homeVenueId`).
-2. If the swap succeeds, note the swap as a soft-constraint violation on the `balance_home_away` constraint (it will show in the conflict list as a warning, not a hard block).
-3. If neither assignment works, mark the pairing unassigned.
+When a team is assigned the away role, their `homeVenueId` is irrelevant. The fixture's venue is determined by the slot selected.
+
+### 5.3 Home/Away Swap — Removed
+
+The home/away swap fallback (swap roles when home venue has no slot) has been removed. It was only necessary under the old hard-constraint model. With the soft-constraint model (Amendment 2), any venue can be used and the mismatch is surfaced as a warning rather than causing an unassigned fixture.
 
 ### 5.4 Team with No homeVenueId
 
@@ -530,11 +686,17 @@ If a team has no `homeVenueId`:
 
 ## 6. Doubleheader Logic
 
-### 6.1 Activation
+### 6.1 Definition (Amendment 9)
+
+A doubleheader means **the same two teams play twice on the same day at the same venue**, with games separated by `doubleheader.bufferMinutes`. This is **not** two different matchups sharing a venue on the same day — that is normal venue scheduling handled by `concurrentPitches`.
+
+Doubleheaders require `format = 'double_round_robin'`. In a double round-robin, each pair of teams meets twice; a doubleheader schedules both legs on the same day rather than spreading them across the season. When `doubleheader.enabled = true` and `format ≠ 'double_round_robin'`, validation rejects the input with: `"doubleheaders require format = double_round_robin"`.
+
+### 6.2 Activation
 
 Doubleheaders are only scheduled when `input.doubleheader.enabled === true`. When disabled, the `minimise_doubleheaders` soft constraint discourages (but does not hard-block) same-day games for a team.
 
-### 6.2 Slot Structure for Doubleheaders
+### 6.3 Slot Structure for Doubleheaders
 
 A doubleheader is two fixtures at the **same venue** on the **same date**, involving the **same two teams**, back-to-back with a configurable buffer.
 
@@ -549,7 +711,7 @@ Both games must fit within a single venue availability window:
 S + 2 × matchDurationMinutes + bufferMinutes ≤ window.endTime
 ```
 
-### 6.3 Home/Away Alternation
+### 6.4 Home/Away Alternation
 
 Within a doubleheader pair:
 - Game 1: Team A is home, Team B is away.
@@ -557,7 +719,7 @@ Within a doubleheader pair:
 
 The team that is home in Game 1 is determined by the circle-method assignment for that pairing's round. The swap for Game 2 is automatic.
 
-### 6.4 Assignment Loop Modification for Doubleheaders
+### 6.5 Assignment Loop Modification for Doubleheaders
 
 When doubleheaders are enabled, the assignment loop processes doubleheader pairings in pairs:
 
@@ -590,7 +752,7 @@ Hard constraints:
 1. Venue capacity (no double-booking beyond `concurrentPitches`)
 2. No same-day game for either team (each team plays at most once per calendar day, unless doubleheaders are enabled)
 3. Minimum rest days (`minRestDays`)
-4. Home venue assignment (when `homeVenueId` is set)
+4. Home venue assignment — only when `homeAwayMode = 'strict'` AND `homeVenueEnforcement = 'hard'` (Amendment 2/7); soft by default
 
 Soft constraints are applied as scoring penalties (Step 4). A slot that incurs soft penalties is still used if no lower-penalty slot exists.
 
@@ -608,7 +770,26 @@ For example, if the LM orders:
 ```
 The algorithm will schedule weekday games before it creates home/away imbalances, and tolerate rest gaps before accepting imbalance.
 
-### 7.3 Disabled Constraints
+### 7.3 Weight Formula (Amendment 4)
+
+Weights are **linear**, not exponential:
+
+```
+weight(i) = priorityCount - i + 1
+```
+
+Example with 7 constraints: weights are 7, 6, 5, 4, 3, 2, 1.
+
+**Rationale:** Linear weights keep lower-priority constraints in dialogue with higher-priority ones. An exponential formula (2^n) would make the top constraint dominate overwhelmingly — effectively reducing the system to a single-constraint model. Linear weights mean the top constraint is only 7× more influential than the bottom one, preserving meaningful trade-offs.
+
+**Special case — `homeAwayMode: 'strict'` (Amendment 6):** When `homeAwayMode = 'strict'`, the `balance_home_away` soft constraint receives double its computed weight:
+
+```
+if input.homeAwayMode === 'strict' && constraintId === 'balance_home_away':
+  effectiveWeight = weight * 2
+```
+
+### 7.4 Disabled Constraints
 
 A `SoftConstraintId` not present in `softConstraintPriority` is disabled: its penalty weight is 0. The algorithm treats disabled constraints as satisfied regardless of the slot.
 
@@ -696,7 +877,14 @@ export const generateSchedule = onCall(
 );
 ```
 
-The old `generateLeagueSchedule` function is **removed** in the same PR that introduces this function. Both must not coexist after the migration.
+### 10.1a Deprecation of `generateLeagueSchedule` (Amendment 11)
+
+The old LLM-based `generateLeagueSchedule` function is **deleted** in the same PR that ships `generateSchedule`. Specifically:
+
+- `generateLeagueSchedule` is removed from the Cloud Functions codebase entirely.
+- The wizard UI is updated to call `generateSchedule` in the same PR.
+- There is **no** disable-then-delete transition period; the two functions must not coexist.
+- This deletion eliminates **FINDING-01**, **FINDING-02**, and **FINDING-03** from the security audit.
 
 ### 10.2 Auth Requirements
 
@@ -742,10 +930,17 @@ Validation runs in this order before the algorithm starts. The first failure thr
 6. Domain validation: team count, venue count, date formats, time formats, numeric ranges (§1.2)
 7. Referential integrity: `homeVenueId` references, team ID uniqueness, venue ID uniqueness
 8. Feasibility pre-check: at least one venue has at least one window day within the season range that is not blacked out; if not, throw `invalid-argument` immediately (do not run the algorithm)
+9. §3 Step 0 feasibility pre-check (Amendment 3): raw slot capacity ≥ 50% of required fixtures
 
-### 10.4 Return Format
+**Wizard pre-call responsibility — practice events (Amendment 14):** Before calling `generateSchedule`, the wizard checks whether `avoid_practice_conflicts` is in the LM's enabled soft constraint list. If yes, the wizard queries Firestore (`scheduledEvents` where `type = 'practice'` AND `teamId in enrolledTeams` AND `date between seasonStart and seasonEnd`) and populates `practiceEvents` in the call. If the toggle is off, `practiceEvents` is omitted entirely. The Cloud Function does not fetch practice events itself.
 
-On success, return `ScheduleAlgorithmOutput` directly (see §2). The Cloud Function wrapper does not wrap this in an additional envelope.
+### 10.4 Return Format (Amendment 12)
+
+On success, return `ScheduleAlgorithmOutput` directly to the caller (see §2). The Cloud Function wrapper does not wrap this in an additional envelope.
+
+**No Firestore writes from the Cloud Function.** The function computes and returns the schedule; it does not persist anything to Firestore. Fixtures are written to Firestore by the **client** when the LM explicitly publishes the schedule in the wizard.
+
+> **Backlog note:** Async generation with Firestore draft storage (`leagues/{leagueId}/drafts/{draftId}`) is a long-term backlog item for when schedule generation might approach Cloud Function timeout limits. Under current performance estimates (< 1 s), this is not needed.
 
 On error, throw `HttpsError` with the appropriate gRPC status code:
 
@@ -758,7 +953,29 @@ On error, throw `HttpsError` with the appropriate gRPC status code:
 | League not found | `not-found` |
 | Unexpected algorithm error | `internal` |
 
-### 10.5 Removal of anthropicKey Secret
+### 10.5 Required Firestore Rules (Amendment 13)
+
+The following Firestore security rules **must be deployed in the same PR** as the Cloud Function — not in a follow-up PR.
+
+```
+match /leagues/{leagueId}/fixtures/{fixtureId} {
+  allow read: if request.auth != null;
+  allow write: if isAdmin()
+    || (isLeagueManager() && getProfile().leagueId == leagueId);
+}
+match /leagues/{leagueId}/drafts/{draftId} {
+  allow read, write: if isAdmin()
+    || (isLeagueManager() && getProfile().leagueId == leagueId);
+}
+match /leagues/{leagueId}/generationStatus/{doc} {
+  allow read: if request.auth != null;
+  allow write: if false;
+}
+```
+
+`/drafts/` and `/generationStatus/` rules are included now even though these paths are not yet used, to prevent accidental open writes if they are created as part of exploratory work before the async backlog item is built.
+
+### 10.6 Removal of anthropicKey Secret
 
 Because the new function makes no external API calls, the `anthropicKey` secret must be removed from this function's configuration. The `ANTHROPIC_API_KEY` secret itself is retained if other functions still use it; only the reference in this function's `onCall` options is removed.
 
@@ -777,9 +994,14 @@ Because the new function makes no external API calls, the `anthropicKey` secret 
 | `groupCount`, `groupAdvance` | Present | Removed | Group format removed from scope |
 | `blackoutDates` | Season-wide only | Season-wide + per-venue | Per-venue blackouts now in `venues[].blackoutDates` |
 | `softConstraintPriority` | Absent | Present (ordered list) | New in v2 |
-| `coachAvailability` | Absent | Present (optional) | New in v2 |
-| `doubleheader` | Absent | Present (optional) | New in v2 |
+| `coachAvailability` | Absent | Present (optional) | New in v2; personal coach schedules only |
+| `doubleheader` | Absent | Present (optional) | New in v2; requires `double_round_robin` |
+| `homeAwayMode` | Absent | Present (required, default `'relaxed'`) | New in v2 (Amendment 6) |
+| `homeVenueEnforcement` | Absent | Present (optional, default `'soft'` when strict) | New in v2 (Amendment 7) |
+| `practiceEvents` | Absent | Present (optional, wizard-populated) | New in v2 (Amendment 8); separate from coachAvailability |
+| `gamesPerTeam` | Absent | Present (optional) | New in v2 (Amendment 10) |
 | Output `summary` | Present (LLM-written) | Present (template-generated) | Format: `"32 of 32 fixtures scheduled across 3 venues. 2 fallback slots used."` |
+| Output `warnings` | Absent | Present (array) | New in v2 (Amendment 5); bye round banners etc. |
 
 ---
 
