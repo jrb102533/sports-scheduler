@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { buildInfo } from '@/lib/buildInfo';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { NotificationPanel } from '@/components/layout/NotificationPanel';
@@ -82,6 +83,24 @@ export function MainLayout() {
         <main className="flex-1 overflow-y-auto">
           <Outlet />
         </main>
+        {/* Build indicator — full info on non-prod, version only on prod */}
+        <div className="px-4 py-1.5 border-t border-gray-100 bg-gray-50 flex items-center justify-end gap-2">
+          {!buildInfo.isProduction && (
+            <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+              buildInfo.env === 'staging' ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'
+            }`}>
+              {buildInfo.env}
+            </span>
+          )}
+          <span className="text-[10px] text-gray-400 font-mono">
+            {buildInfo.isProduction
+              ? `v${buildInfo.version}`
+              : buildInfo.pr
+                ? `PR #${buildInfo.pr} · ${buildInfo.shortSha}`
+                : `${buildInfo.branch} · ${buildInfo.shortSha}`
+            }
+          </span>
+        </div>
       </div>
       <NotificationPanel />
     </div>
