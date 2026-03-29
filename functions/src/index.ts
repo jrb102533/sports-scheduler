@@ -2252,14 +2252,19 @@ export const generateSchedule = onCall(
     feasibilityPreCheck(input);
 
     // 8. Run algorithm
-    const slots = generateSlots(input);
-    const rawPairings = generatePairings(input);
-    const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
-    const shuffled = shufflePairings(rawPairings, seed);
-    const assignmentResult = assignFixtures(shuffled, slots, input);
-    const output = buildOutput(assignmentResult, input);
-
-    return output;
+    try {
+      const slots = generateSlots(input);
+      const rawPairings = generatePairings(input);
+      const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
+      const shuffled = shufflePairings(rawPairings, seed);
+      const assignmentResult = assignFixtures(shuffled, slots, input);
+      const output = buildOutput(assignmentResult, input);
+      return output;
+    } catch (err: unknown) {
+      const raw = err instanceof Error ? err.message : String(err);
+      console.error('generateSchedule algorithm error', { raw });
+      throw new HttpsError('internal', 'Schedule generation failed. Check your team count, venue availability, and date range, then try again.');
+    }
   }
 );
 
