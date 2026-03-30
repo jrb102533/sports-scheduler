@@ -2284,9 +2284,10 @@ async function generateScheduleImpl(request: CallableRequest): Promise<ScheduleA
       const output = buildOutput(assignmentResult, input);
       return output;
     } catch (err: unknown) {
-      const raw = err instanceof Error ? err.message : String(err);
+      const raw = err instanceof Error ? `${err.message} | ${err.stack ?? ''}` : String(err);
       console.error('generateSchedule algorithm error', { raw });
-      throw new HttpsError('internal', 'Schedule generation failed. Check your team count, venue availability, and date range, then try again.');
+      // DEBUG: expose real error — revert after root cause identified
+      throw new HttpsError('failed-precondition', `DEBUG: ${raw}`);
     }
 }
 
