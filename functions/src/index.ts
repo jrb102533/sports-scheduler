@@ -2336,13 +2336,123 @@ interface SubmitGameResultOutput {
   status: 'pending' | 'confirmed' | 'dispute';
 }
 
+// ─── Tiebreaker types (mirrors src/types/season.ts — kept local to avoid cross-package imports) ──
+
+interface TiebreakerConfig {
+  twoTeam: ('winPct' | 'headToHead' | 'pointsAllowed')[];
+  threeOrMore: ('winPct' | 'pointsAllowed')[];
+}
+
+const DEFAULT_TIEBREAKER_CONFIG: TiebreakerConfig = {
+  twoTeam: ['winPct', 'headToHead', 'pointsAllowed'],
+  threeOrMore: ['winPct', 'pointsAllowed'],
+};
+
+interface StandingsEntry {
+  teamId: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  points: number;
+  winPct: number;
+  rank: number;
+}
+
+/**
+ * Resolve a two-team tie using the configured twoTeam criteria in order.
+ * Returns negative if a should rank higher, positive if b should, 0 if still tied.
+ * completedDocs is the raw Firestore snapshot array used for head-to-head lookup.
+ */
+function resolveTwoTeamTie(
+  a: StandingsEntry,
+  b: StandingsEntry,
+  criteria: ('winPct' | 'headToHead' | 'pointsAllowed')[],
+  completedDocs: FirebaseFirestore.QueryDocumentSnapshot[],
+): number {
+  for (const criterion of criteria) {
+    if (criterion === 'winPct') {
+      if (a.winPct !== b.winPct) return b.winPct - a.winPct; // higher winPct ranks first
+    } else if (criterion === 'headToHead') {
+      // Find all games directly between a and b (in either home/away orientation)
+      let aWins = 0;
+      let bWins = 0;
+      for (const doc of completedDocs) {
+        const ev = doc.data();
+        const result = ev.result as { homeScore: number; awayScore: number } | undefined;
+        if (!result) continue;
+        const isAHome = ev.homeTeamId === a.teamId && ev.awayTeamId === b.teamId;
+        const isBHome = ev.homeTeamId === b.teamId && ev.awayTeamId === a.teamId;
+        if (!isAHome && !isBHome) continue;
+        const { homeScore, awayScore } = result;
+        if (isAHome) {
+          if (homeScore > awayScore) aWins++;
+          else if (awayScore > homeScore) bWins++;
+          // draws don't count toward head-to-head advantage
+        } else {
+          // b is home
+          if (homeScore > awayScore) bWins++;
+          else if (awayScore > homeScore) aWins++;
+        }
+      }
+      // Only apply if there is a clear winner; a split (or no games) falls through to next criterion
+      if (aWins > bWins) return -1;
+      if (bWins > aWins) return 1;
+    } else if (criterion === 'pointsAllowed') {
+      // Fewer goalsAgainst ranks higher
+      if (a.goalsAgainst !== b.goalsAgainst) return a.goalsAgainst - b.goalsAgainst;
+    }
+  }
+  return 0; // still tied after all criteria
+}
+
+/**
+ * Resolve a group of 3+ tied teams using the configured threeOrMore criteria in order.
+ * Returns a comparator result: negative if a should rank higher, positive if b should, 0 if tied.
+ * headToHead is intentionally not valid for 3+ teams (circular results are ambiguous).
+ */
+function resolveMultiTeamTie(
+  a: StandingsEntry,
+  b: StandingsEntry,
+  criteria: ('winPct' | 'pointsAllowed')[],
+): number {
+  for (const criterion of criteria) {
+    if (criterion === 'winPct') {
+      if (a.winPct !== b.winPct) return b.winPct - a.winPct;
+    } else if (criterion === 'pointsAllowed') {
+      if (a.goalsAgainst !== b.goalsAgainst) return a.goalsAgainst - b.goalsAgainst;
+    }
+  }
+  return 0;
+}
+
 /**
  * Recalculate standings for a season by scanning all confirmed game results.
  * Writes a `standings` subcollection under leagues/{leagueId}/seasons/{seasonId}.
- * Each document is keyed by teamId and contains win/draw/loss/goalsFor/goalsAgainst/points.
+ * Each document is keyed by teamId and contains:
+ *   played, won, drawn, lost, goalsFor, goalsAgainst, points, winPct, rank
+ *
+ * Ranking logic:
+ *   1. Sort by points (descending).
+ *   2. Group teams sharing the same points total.
+ *   3. For a group of exactly 2: apply season.tiebreakerConfig.twoTeam criteria in order.
+ *   4. For a group of 3+: apply season.tiebreakerConfig.threeOrMore criteria in order.
+ *   5. Any remaining ties are broken alphabetically by teamId (stable fallback).
+ *
+ * Season-creation note: when a new season is created for a league the UI should
+ * copy tiebreakerConfig from the most recent prior season. The copy lives in the
+ * season-creation flow — not enforced here.
  */
 async function recalculateStandings(leagueId: string, seasonId: string): Promise<void> {
   const db = admin.firestore();
+
+  // Fetch season document to read tiebreakerConfig (1 read — cost: negligible)
+  const seasonSnap = await db.doc(`leagues/${leagueId}/seasons/${seasonId}`).get();
+  const seasonData = seasonSnap.data();
+  const tiebreakerConfig: TiebreakerConfig =
+    (seasonData?.tiebreakerConfig as TiebreakerConfig | undefined) ?? DEFAULT_TIEBREAKER_CONFIG;
 
   // Fetch all events for this season that have a confirmed result
   const eventsSnap = await db
@@ -2353,20 +2463,22 @@ async function recalculateStandings(leagueId: string, seasonId: string): Promise
     .where('status', '==', 'completed')
     .get();
 
-  const standings: Record<string, {
-    teamId: string;
-    played: number;
-    won: number;
-    drawn: number;
-    lost: number;
-    goalsFor: number;
-    goalsAgainst: number;
-    points: number;
-  }> = {};
+  const standings: Record<string, StandingsEntry> = {};
 
   const ensureTeam = (teamId: string) => {
     if (!standings[teamId]) {
-      standings[teamId] = { teamId, played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, points: 0 };
+      standings[teamId] = {
+        teamId,
+        played: 0,
+        won: 0,
+        drawn: 0,
+        lost: 0,
+        goalsFor: 0,
+        goalsAgainst: 0,
+        points: 0,
+        winPct: 0,
+        rank: 0, // assigned after sorting
+      };
     }
   };
 
@@ -2405,14 +2517,103 @@ async function recalculateStandings(leagueId: string, seasonId: string): Promise
     }
   }
 
+  // Compute winPct for each team (0 when no games played — avoids division by zero)
+  for (const entry of Object.values(standings)) {
+    entry.winPct = entry.played > 0 ? entry.won / entry.played : 0;
+  }
+
+  // ── Sort and assign ranks ────────────────────────────────────────────────────
+  //
+  // Strategy:
+  //   - Sort entire list by points desc first.
+  //   - Identify contiguous groups of teams that share the same points total.
+  //   - Within each group, apply the appropriate tiebreaker comparator, then
+  //     fall back to alphabetical teamId for a fully stable, deterministic order.
+  //   - Assign 1-based rank. Teams that remain tied after all criteria share the
+  //     same rank (e.g., two teams both at rank 2 → next team is rank 4).
+
+  const entries = Object.values(standings);
+
+  // Edge case: no teams have any games yet — nothing to rank, skip batch write
+  if (entries.length === 0) {
+    console.log(`recalculateStandings: no teams found for leagueId=${leagueId} seasonId=${seasonId}`);
+    return;
+  }
+
+  // Group by points
+  const pointsGroups: Map<number, StandingsEntry[]> = new Map();
+  for (const entry of entries) {
+    const group = pointsGroups.get(entry.points) ?? [];
+    group.push(entry);
+    pointsGroups.set(entry.points, group);
+  }
+
+  // Sort each group internally using tiebreaker rules
+  for (const group of pointsGroups.values()) {
+    if (group.length === 1) continue; // no tie to resolve
+
+    if (group.length === 2) {
+      group.sort((a, b) => {
+        const tiebreakerResult = resolveTwoTeamTie(
+          a, b, tiebreakerConfig.twoTeam, eventsSnap.docs,
+        );
+        if (tiebreakerResult !== 0) return tiebreakerResult;
+        return a.teamId.localeCompare(b.teamId); // stable alphabetical fallback
+      });
+    } else {
+      // 3+ teams tied on points
+      group.sort((a, b) => {
+        const tiebreakerResult = resolveMultiTeamTie(a, b, tiebreakerConfig.threeOrMore);
+        if (tiebreakerResult !== 0) return tiebreakerResult;
+        return a.teamId.localeCompare(b.teamId); // stable alphabetical fallback
+      });
+    }
+  }
+
+  // Build final sorted list (groups ordered by points descending, entries within each group already sorted)
+  const sortedPointsDesc = Array.from(pointsGroups.keys()).sort((a, b) => b - a);
+  const sorted: StandingsEntry[] = [];
+  for (const pts of sortedPointsDesc) {
+    sorted.push(...(pointsGroups.get(pts) as StandingsEntry[]));
+  }
+
+  // Assign 1-based ranks; teams still tied after all criteria receive the same rank
+  // and the subsequent rank skips accordingly (competition ranking / "1224" style)
+  let currentRank = 1;
+  for (let i = 0; i < sorted.length; i++) {
+    if (i === 0) {
+      sorted[i].rank = currentRank;
+    } else {
+      const prev = sorted[i - 1];
+      const curr = sorted[i];
+      // Two entries are "still tied" if they share points AND the tiebreaker comparator
+      // returns 0 between them. We check points equality as a fast guard — the tiebreaker
+      // comparators already ran during sort so if they are adjacent with equal points they
+      // are genuinely tied.
+      const sameTier =
+        prev.points === curr.points &&
+        (prev.points === curr.points
+          ? (sorted.length === 2
+            ? resolveTwoTeamTie(prev, curr, tiebreakerConfig.twoTeam, eventsSnap.docs) === 0
+            : resolveMultiTeamTie(prev, curr, tiebreakerConfig.threeOrMore) === 0)
+          : false);
+      if (sameTier) {
+        curr.rank = prev.rank; // share rank
+      } else {
+        currentRank = i + 1; // competition ranking — skip consumed positions
+        curr.rank = currentRank;
+      }
+    }
+  }
+
   const now = new Date().toISOString();
   const batch = db.batch();
-  for (const entry of Object.values(standings)) {
+  for (const entry of sorted) {
     const ref = db.doc(`leagues/${leagueId}/seasons/${seasonId}/standings/${entry.teamId}`);
     batch.set(ref, { ...entry, updatedAt: now });
   }
   await batch.commit();
-  console.log(`recalculateStandings: updated ${Object.keys(standings).length} team(s) for leagueId=${leagueId} seasonId=${seasonId}`);
+  console.log(`recalculateStandings: updated ${sorted.length} team(s) for leagueId=${leagueId} seasonId=${seasonId}`);
 }
 
 export const submitGameResult = onCall<SubmitGameResultData, Promise<SubmitGameResultOutput>>(
@@ -2445,7 +2646,14 @@ export const submitGameResult = onCall<SubmitGameResultData, Promise<SubmitGameR
     if (!eventSnap.exists) throw new HttpsError('not-found', 'Event not found.');
 
     const ev = eventSnap.data()!;
-    if (ev.type !== 'game') throw new HttpsError('failed-precondition', 'Only game events accept results.');
+    if (ev.type !== 'game' && ev.type !== 'match') throw new HttpsError('failed-precondition', 'Only game or match events accept results.');
+
+    // SEC-03: Reject result submissions for future events.
+    const eventDate = ev.date as string; // 'YYYY-MM-DD'
+    const today = new Date().toISOString().split('T')[0];
+    if (eventDate > today) {
+      throw new HttpsError('failed-precondition', 'Results cannot be submitted for future games.');
+    }
 
     // CVR-2026-001: Validate caller-supplied leagueId matches the event's stored leagueId.
     // Prevents cross-league standings corruption via IDOR.
@@ -2657,6 +2865,186 @@ export const publishSchedule = onCall<PublishScheduleData, Promise<PublishSchedu
 
     console.log(`publishSchedule: published ${publishedCount} events for leagueId=${leagueId} seasonId=${seasonId}${divisionId ? ` divisionId=${divisionId}` : ''}`);
     return { publishedCount };
+  }
+);
+
+// ─── Resolve dispute (callable) ───────────────────────────────────────────────
+
+interface ResolveDisputeData {
+  eventId: string;
+  leagueId: string;
+  chosenSubmission: 'first' | 'second'; // which submission the LM is confirming
+}
+
+interface ResolveDisputeOutput {
+  status: 'resolved';
+}
+
+export const resolveDispute = onCall<ResolveDisputeData, Promise<ResolveDisputeOutput>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required.');
+
+    const role = await assertAdminOrCoach(request.auth.uid);
+    if (role !== 'admin' && role !== 'league_manager') {
+      throw new HttpsError('permission-denied', 'Only league managers and admins can resolve disputes.');
+    }
+
+    const { eventId, leagueId, chosenSubmission } = request.data;
+    if (!eventId?.trim()) throw new HttpsError('invalid-argument', 'eventId is required.');
+    if (!leagueId?.trim()) throw new HttpsError('invalid-argument', 'leagueId is required.');
+    if (chosenSubmission !== 'first' && chosenSubmission !== 'second') {
+      throw new HttpsError('invalid-argument', 'chosenSubmission must be "first" or "second".');
+    }
+
+    const db = admin.firestore();
+    const uid = request.auth.uid;
+
+    // Verify the caller manages this specific league
+    const leagueSnap = await db.doc(`leagues/${leagueId}`).get();
+    if (!leagueSnap.exists) throw new HttpsError('not-found', 'League not found.');
+
+    const leagueData = leagueSnap.data()!;
+    const userSnap = await db.doc(`users/${uid}`).get();
+    const userData = userSnap.data();
+    const isAuthorized = role === 'admin'
+      || userData?.leagueId === leagueId
+      || leagueData.managedBy === uid;
+
+    if (!isAuthorized) {
+      throw new HttpsError('permission-denied', 'You are not a manager of this league.');
+    }
+
+    const disputeRef = db.doc(`leagues/${leagueId}/resultDisputes/${eventId}`);
+    const eventRef = db.doc(`events/${eventId}`);
+
+    // Read dispute doc (outside transaction — used for data extraction only)
+    const disputeSnap = await disputeRef.get();
+    if (!disputeSnap.exists) throw new HttpsError('not-found', 'Dispute not found.');
+
+    const dispute = disputeSnap.data()!;
+    if ((dispute.status as string) !== 'open') {
+      throw new HttpsError('failed-precondition', 'Dispute is not open.');
+    }
+
+    const chosen = chosenSubmission === 'first'
+      ? (dispute.firstSubmission as { homeScore: number; awayScore: number })
+      : (dispute.secondSubmission as { homeScore: number; awayScore: number });
+
+    const { homeScore, awayScore } = chosen;
+    const now = new Date().toISOString();
+
+    // Atomically: confirm result on event, delete dispute doc
+    await db.runTransaction(async (tx) => {
+      // Re-read inside transaction to guard against TOCTOU
+      const disputeSnapTx = await tx.get(disputeRef);
+      if (!disputeSnapTx.exists || (disputeSnapTx.data()!.status as string) !== 'open') {
+        throw new HttpsError('failed-precondition', 'Dispute is no longer open.');
+      }
+
+      tx.update(eventRef, {
+        result: { homeScore, awayScore, confirmedAt: now },
+        status: 'completed',
+        updatedAt: now,
+        disputeStatus: admin.firestore.FieldValue.delete(),
+      });
+      tx.delete(disputeRef);
+    });
+
+    // Recalculate standings if the event belongs to a season
+    const eventSnap = await eventRef.get();
+    const seasonId: string | undefined = eventSnap.data()?.seasonId as string | undefined;
+    if (seasonId) {
+      await recalculateStandings(leagueId, seasonId);
+    }
+
+    console.log(`resolveDispute: dispute resolved for eventId=${eventId} leagueId=${leagueId} chosenSubmission=${chosenSubmission} by uid=${uid}`);
+    return { status: 'resolved' };
+  }
+);
+
+// ─── Override standing rank (callable) ────────────────────────────────────────
+
+interface OverrideStandingRankData {
+  leagueId: string;
+  seasonId: string;
+  teamId: string;
+  override: {
+    rank: number;
+    note: string;        // required, non-empty
+    scope: 'display' | 'seeding';
+  } | null; // null = clear the override
+}
+
+interface OverrideStandingRankOutput {
+  status: 'ok';
+}
+
+export const overrideStandingRank = onCall<OverrideStandingRankData, Promise<OverrideStandingRankOutput>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required.');
+
+    const role = await assertAdminOrCoach(request.auth.uid);
+    if (role !== 'admin' && role !== 'league_manager') {
+      throw new HttpsError('permission-denied', 'Only league managers and admins can override standing ranks.');
+    }
+
+    const { leagueId, seasonId, teamId, override } = request.data;
+    if (!leagueId?.trim()) throw new HttpsError('invalid-argument', 'leagueId is required.');
+    if (!seasonId?.trim()) throw new HttpsError('invalid-argument', 'seasonId is required.');
+    if (!teamId?.trim()) throw new HttpsError('invalid-argument', 'teamId is required.');
+
+    if (override !== null && override !== undefined) {
+      if (!override.note?.trim()) {
+        throw new HttpsError('invalid-argument', 'override.note is required and must be non-empty.');
+      }
+      if (
+        typeof override.rank !== 'number' ||
+        !Number.isInteger(override.rank) ||
+        override.rank < 1
+      ) {
+        throw new HttpsError('invalid-argument', 'override.rank must be a positive integer.');
+      }
+      if (override.scope !== 'display' && override.scope !== 'seeding') {
+        throw new HttpsError('invalid-argument', 'override.scope must be "display" or "seeding".');
+      }
+    }
+
+    const db = admin.firestore();
+    const uid = request.auth.uid;
+
+    // Verify the caller manages this specific league
+    const leagueSnap = await db.doc(`leagues/${leagueId}`).get();
+    if (!leagueSnap.exists) throw new HttpsError('not-found', 'League not found.');
+
+    const leagueData = leagueSnap.data()!;
+    const userSnap = await db.doc(`users/${uid}`).get();
+    const userData = userSnap.data();
+    const isAuthorized = role === 'admin'
+      || userData?.leagueId === leagueId
+      || leagueData.managedBy === uid;
+
+    if (!isAuthorized) {
+      throw new HttpsError('permission-denied', 'You are not a manager of this league.');
+    }
+
+    const standingRef = db.doc(`leagues/${leagueId}/seasons/${seasonId}/standings/${teamId}`);
+
+    if (override === null || override === undefined) {
+      // Clear the override field
+      await standingRef.update({ manualRankOverride: admin.firestore.FieldValue.delete() });
+      console.log(`overrideStandingRank: cleared override for teamId=${teamId} seasonId=${seasonId} leagueId=${leagueId} by uid=${uid}`);
+    } else {
+      await standingRef.update({
+        manualRankOverride: {
+          ...override,
+          overriddenBy: request.auth.uid,
+          overriddenAt: new Date().toISOString(),
+        },
+      });
+      console.log(`overrideStandingRank: set override rank=${override.rank} scope=${override.scope} for teamId=${teamId} seasonId=${seasonId} leagueId=${leagueId} by uid=${uid}`);
+    }
+
+    return { status: 'ok' };
   }
 );
 

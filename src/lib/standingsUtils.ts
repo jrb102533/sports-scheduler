@@ -1,4 +1,25 @@
-import type { ScheduledEvent, Team, TeamStandingRow } from '@/types';
+import type { ScheduledEvent, StandingsDocument, Team, TeamStandingRow } from '@/types';
+
+export function firestoreToStandingRow(
+  doc: StandingsDocument,
+  teamName: string,
+  teamColor: string,
+): TeamStandingRow {
+  return {
+    teamId: doc.teamId,
+    teamName,
+    teamColor,
+    gamesPlayed: doc.played,
+    wins: doc.won,
+    losses: doc.lost,
+    ties: doc.drawn,
+    pointsFor: doc.goalsFor,
+    pointsAgainst: doc.goalsAgainst,
+    pointsDiff: doc.goalsFor - doc.goalsAgainst,
+    points: doc.points,
+    winPercentage: doc.winPct,
+  };
+}
 
 export function computeStandings(events: ScheduledEvent[], teams: Team[]): TeamStandingRow[] {
   const rows: Record<string, TeamStandingRow> = {};

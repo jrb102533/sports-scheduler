@@ -78,6 +78,8 @@ export interface ScheduledEvent {
   seasonId?: string;
   /** References leagues/{leagueId}/divisions/{divisionId} — set when generated for a division */
   divisionId?: string;
+  /** Set to 'open' when coaches submit mismatching scores. Cleared on resolution. */
+  disputeStatus?: 'open';
   createdAt: string;
   updatedAt: string;
 }
