@@ -2263,7 +2263,8 @@ export const generateSchedule = onCall(
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : String(err);
       console.error('generateSchedule algorithm error', { raw });
-      throw new HttpsError('internal', 'Schedule generation failed. Check your team count, venue availability, and date range, then try again.');
+      // Temporarily expose raw error for debugging (revert after root cause identified)
+      throw new HttpsError('failed-precondition', `DEBUG: ${raw}`);
     }
   }
 );
