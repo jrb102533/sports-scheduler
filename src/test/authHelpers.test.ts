@@ -1,4 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Prevent Firebase SDK initialization during pure helper tests
+vi.mock('@/lib/firebase', () => ({ db: {}, auth: {}, app: {} }));
+vi.mock('firebase/auth', () => ({
+  onAuthStateChanged: vi.fn(),
+  signOut: vi.fn(),
+}));
+vi.mock('@/lib/buildInfo', () => ({
+  buildInfo: { version: 'test', sha: 'test', time: '', branch: '', pr: null, env: 'development' },
+}));
+
 import { hasRole, canEdit, isReadOnly, getAccessibleTeamIds, getMemberships, getActiveMembership } from '@/store/useAuthStore';
 import type { UserProfile, Team } from '@/types';
 

@@ -116,7 +116,23 @@ const mockFetchSeasons = vi.fn(() => () => {});
 const mockFetchDivisions = vi.fn(() => () => {});
 const mockSubscribeVenues = vi.fn(() => () => {});
 
-// ── Module mocks ──────────────────────────────────────────────────────────────
+// ── Firebase mocks (prevent real Firebase init in CI) ─────────────────────────
+
+vi.mock('@/lib/firebase', () => ({ db: {}, auth: {}, app: {} }));
+
+vi.mock('firebase/firestore', () => ({
+  collection: vi.fn(),
+  onSnapshot: vi.fn(() => () => {}),
+  doc: vi.fn(),
+  setDoc: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('firebase/functions', () => ({
+  getFunctions: vi.fn(),
+  httpsCallable: vi.fn(),
+}));
+
+// ── Store mocks ──────────────────────────────────────────────────────────────
 // Note the call pattern differences:
 //   useSeasonStore()  → no selector, returns state object
 //   useDivisionStore() → no selector, returns state object
@@ -177,7 +193,7 @@ vi.mock('@/components/leagues/ScheduleWizardModal', () => ({
 
 // ── Render helper ─────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+ 
 let SeasonDashboard: typeof import('@/pages/SeasonDashboard').SeasonDashboard;
 
 beforeEach(async () => {

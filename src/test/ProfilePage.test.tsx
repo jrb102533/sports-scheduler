@@ -72,7 +72,7 @@ vi.mock('@/components/auth/RoleCardPicker', () => ({
 
 // ── Render helper ─────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+ 
 let ProfilePage: typeof import('@/pages/ProfilePage').ProfilePage;
 
 beforeEach(async () => {
