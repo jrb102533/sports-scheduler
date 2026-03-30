@@ -147,7 +147,7 @@ export function CoachAvailabilityModal({
         dateOverrides,
       });
       onClose();
-    } catch (e) {
+    } catch {
       setError('Failed to save. Please try again.');
     } finally {
       setSaving(false);

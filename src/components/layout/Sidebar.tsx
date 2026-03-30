@@ -46,7 +46,8 @@ const roleColors: Record<string, string> = {
 
 function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   const unread = useNotificationStore(s => s.notifications.filter(n => !n.isRead).length);
-  const kidsMode = FLAGS.KIDS_MODE && useSettingsStore(s => s.settings.kidsSportsMode);
+  const kidsSetting = useSettingsStore(s => s.settings.kidsSportsMode);
+  const kidsMode = FLAGS.KIDS_MODE && kidsSetting;
   const { user, profile, logout, updateProfile } = useAuthStore();
   const navigate = useNavigate();
   const [contextOpen, setContextOpen] = useState(false);
