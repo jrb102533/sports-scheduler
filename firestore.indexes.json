@@ -16,6 +16,32 @@
         { "fieldPath": "seasonId", "order": "ASCENDING" },
         { "fieldPath": "scheduleStatus", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "practiceSlotSignups",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "windowId", "order": "ASCENDING" },
+        { "fieldPath": "occurrenceDate", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "practiceSlotSignups",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" },
+        { "fieldPath": "occurrenceDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "practiceSlotSignups",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "windowId", "order": "ASCENDING" },
+        { "fieldPath": "occurrenceDate", "order": "ASCENDING" },
+        { "fieldPath": "signedUpAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -225,6 +225,34 @@ service cloud.firestore {
               || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
             ));
         }
+
+        // Practice slot windows — LM creates/manages; all league members read.
+        match /practiceSlotWindows/{windowId} {
+          allow read: if request.auth != null && (
+            isAdmin() || isLeagueManager() || isCoach()
+            || getProfile().leagueId == leagueId
+          );
+          allow write: if isAdmin()
+            || (isLeagueManager() && (
+              getProfile().leagueId == leagueId
+              || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
+            ));
+        }
+
+        // Practice slot signups — written exclusively by Cloud Functions (Admin SDK)
+        // to enforce FCFS atomicity. Direct client writes are blocked.
+        // LM can read all; coaches can read their own signups only.
+        match /practiceSlotSignups/{signupId} {
+          allow read: if request.auth != null && (
+            isAdmin()
+            || (isLeagueManager() && (
+              getProfile().leagueId == leagueId
+              || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
+            ))
+            || (isCoach() && resource.data.coachUid == request.auth.uid)
+          );
+          allow write: if false; // written exclusively by Cloud Functions (Admin SDK)
+        }
       }
 
       // Divisions — league managers can read/write; league members can read.
