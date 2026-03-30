@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
+import { StandingsTable } from '@/components/standings/StandingsTable';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useDivisionStore } from '@/store/useDivisionStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
@@ -343,6 +344,7 @@ export function SeasonDashboard() {
 
   const isAdmin = profile?.role === 'admin';
   const canManage = isAdmin || (profile?.role === 'league_manager' && profile?.leagueId === leagueId);
+  const hasPublishedDivision = divisions.some(d => d.scheduleStatus === 'published');
 
   if (!leagueId || !seasonId) return null;
   if (!league) return <div className="p-4 sm:p-6 text-gray-500">League not found.</div>;
@@ -496,6 +498,16 @@ export function SeasonDashboard() {
               ))}
             </div>
           )}
+        </section>
+      )}
+
+      {/* ── Standings ── */}
+      {hasPublishedDivision && (
+        <section className="mb-8">
+          <h2 className="text-base font-semibold text-gray-800 mb-3">Standings</h2>
+          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+            <StandingsTable leagueId={leagueId} seasonId={seasonId} />
+          </div>
         </section>
       )}
 

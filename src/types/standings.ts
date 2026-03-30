@@ -1,5 +1,28 @@
 import type { SportType } from './team';
 
+export interface ManualRankOverride {
+  rank: number;
+  note: string;
+  scope: 'display' | 'seeding';
+  overriddenBy: string;
+  overriddenAt: string;
+}
+
+export interface StandingsDocument {
+  teamId: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  points: number;
+  winPct: number;
+  rank: number;
+  updatedAt: string;
+  manualRankOverride?: ManualRankOverride;
+}
+
 export interface TeamStandingRow {
   teamId: string;
   teamName: string;

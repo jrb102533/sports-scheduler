@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { MapPin, Clock } from 'lucide-react';
+import { MapPin, Clock, AlertTriangle } from 'lucide-react';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
 import { EventStatusBadge } from './EventStatusBadge';
 import { formatDate, formatTime } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, EVENT_TYPE_BADGE_CLASSES } from '@/constants';
@@ -196,6 +197,12 @@ export function EventCard({ event, teams, onClick }: EventCardProps) {
                   {EVENT_TYPE_LABELS[event.type]}
                 </span>
                 <EventStatusBadge status={event.status} />
+                {event.disputeStatus === 'open' && (
+                  <Badge className="bg-red-100 text-red-700 shrink-0">
+                    <AlertTriangle size={10} className="mr-1" />
+                    Dispute
+                  </Badge>
+                )}
               </div>
               <h3 className="font-semibold text-gray-900 truncate">{event.title}</h3>
 

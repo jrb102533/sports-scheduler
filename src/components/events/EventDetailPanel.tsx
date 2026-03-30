@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { httpsCallable, getFunctions } from 'firebase/functions';
-import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send, Copy, AlertTriangle, Bell, UserX, Loader2 } from 'lucide-react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send, Copy, AlertTriangle, Bell, UserX, Loader2, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
@@ -53,6 +55,64 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const [submitAwayScore, setSubmitAwayScore] = useState('');
   const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'submitted' | 'error'>('idle');
   const [submitError, setSubmitError] = useState('');
+
+  // Dispute resolution state (LM / admin only)
+  interface DisputeSubmission {
+    homeScore: number;
+    awayScore: number;
+    submittedBy: string;
+    submittedAt: string;
+    side: string;
+  }
+  interface DisputeRecord {
+    firstSubmission: DisputeSubmission;
+    secondSubmission: DisputeSubmission;
+    status: 'open';
+    createdAt: string;
+    updatedAt: string;
+  }
+
+  const isLMOrAdmin = profile?.role === 'admin' || profile?.role === 'league_manager';
+  const eventLeagueId = (event as (ScheduledEvent & { leagueId?: string }) | null)?.leagueId;
+  const eventId = event?.id ?? '';
+
+  const [dispute, setDispute] = useState<DisputeRecord | null>(null);
+  const [disputeResolveState, setDisputeResolveState] = useState<'idle' | 'resolving' | 'error'>('idle');
+  const [disputeResolveError, setDisputeResolveError] = useState('');
+
+  useEffect(() => {
+    if (!isLMOrAdmin || !eventLeagueId || !eventId) return;
+    const disputeRef = doc(db, 'leagues', eventLeagueId, 'resultDisputes', eventId);
+    const unsub = onSnapshot(disputeRef, (snap) => {
+      if (snap.exists() && (snap.data() as DisputeRecord).status === 'open') {
+        setDispute(snap.data() as DisputeRecord);
+      } else {
+        setDispute(null);
+      }
+    });
+    return unsub;
+  }, [isLMOrAdmin, eventLeagueId, eventId]);
+
+  async function handleResolveDispute(submission: DisputeSubmission) {
+    if (!eventLeagueId || !eventId || !dispute) return;
+    setDisputeResolveState('resolving');
+    setDisputeResolveError('');
+    try {
+      const chosenSubmission: 'first' | 'second' =
+        submission === dispute.firstSubmission ? 'first' : 'second';
+      const resolveDisputeFn = httpsCallable<
+        { eventId: string; leagueId: string; chosenSubmission: 'first' | 'second' },
+        { status: string }
+      >(getFunctions(), 'resolveDispute');
+      await resolveDisputeFn({ eventId, leagueId: eventLeagueId, chosenSubmission });
+      setDispute(null);
+      setDisputeResolveState('idle');
+    } catch (err: unknown) {
+      const msg = (err as { message?: string })?.message ?? 'Failed to resolve dispute.';
+      setDisputeResolveError(msg);
+      setDisputeResolveState('error');
+    }
+  }
 
   const venues = useVenueStore(s => s.venues);
   const subscribeVenues = useVenueStore(s => s.subscribe);
@@ -245,9 +305,13 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
                 profile?.teamId &&
                 ev.teamIds.includes(profile.teamId);
 
+              const today = new Date().toISOString().split('T')[0];
+              const gameHasOccurred = ev.date <= today;
+
               const showSection =
-                ev.type === 'game' &&
-                (ev.status === 'completed' || ev.status === 'in_progress') &&
+                (ev.type === 'game' || ev.type === 'match') &&
+                gameHasOccurred &&
+                ev.status !== 'cancelled' &&
                 isCoachOfEventTeam;
 
               if (!showSection) return null;
@@ -329,6 +393,44 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
                 </div>
               );
             })()}
+
+            {/* Score Dispute (LM / Admin only) */}
+            {isLMOrAdmin && dispute && (
+              <div className="border border-red-200 bg-red-50/40 rounded-xl p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                  <ShieldAlert size={14} className="text-red-500" />
+                  Score Dispute
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Two different scores were submitted. Confirm the correct result below.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {([dispute.firstSubmission, dispute.secondSubmission] as DisputeSubmission[]).map((sub, idx) => (
+                    <div key={idx} className="bg-white border border-red-200 rounded-lg p-3 flex flex-col gap-2">
+                      <p className="text-xs font-medium text-gray-700 capitalize">
+                        {sub.side} coach submitted:
+                      </p>
+                      <p className="text-sm font-bold text-gray-900">
+                        {homeTeam?.name ?? 'Home'} {sub.homeScore} &ndash; {sub.awayScore} {awayTeam?.name ?? 'Away'}
+                      </p>
+                      <button
+                        onClick={() => void handleResolveDispute(sub)}
+                        disabled={disputeResolveState === 'resolving'}
+                        className="mt-1 w-full inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        aria-label={`Confirm score: Home ${sub.homeScore} Away ${sub.awayScore}`}
+                      >
+                        {disputeResolveState === 'resolving'
+                          ? <><Loader2 size={12} className="animate-spin" /> Saving…</>
+                          : 'Confirm this score'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {disputeResolveState === 'error' && (
+                  <p className="text-xs text-red-600">{disputeResolveError}</p>
+                )}
+              </div>
+            )}
 
             {/* Tournament Placement */}
             {isTournament && event.status !== 'cancelled' && event.status !== 'completed' && (
