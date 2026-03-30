@@ -8,7 +8,6 @@
  * so the mock returns the state object directly.
  */
 
-import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import type { ScheduledEvent, Team } from '@/types';
