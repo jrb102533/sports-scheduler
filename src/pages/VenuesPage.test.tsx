@@ -134,8 +134,7 @@ describe('VenueFormModal — save error display', () => {
   });
 
   it('shows a generic fallback message for unknown errors', async () => {
-    // Any error that doesn't match a known pattern falls through to the
-    // generic "Save failed" message.
+    // Unknown errors show "Save failed: <message>" so the user can see the cause.
     const user = userEvent.setup();
     mockAddVenue.mockRejectedValue(new Error('Network request failed'));
 
@@ -145,14 +144,14 @@ describe('VenueFormModal — save error display', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/save failed\. please try again\./i),
+        screen.getByText(/save failed: network request failed/i),
       ).toBeInTheDocument();
     });
   });
 
   it('shows a generic fallback when the thrown value has no message property', async () => {
     const user = userEvent.setup();
-    // Throw a non-Error object so .message is undefined
+    // Throw a non-Error object so .message is undefined — falls back to String(e)
     mockAddVenue.mockRejectedValue({});
 
     render(<VenuesPage />);
@@ -161,7 +160,7 @@ describe('VenueFormModal — save error display', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/save failed\. please try again\./i),
+        screen.getByText(/save failed:/i),
       ).toBeInTheDocument();
     });
   });
