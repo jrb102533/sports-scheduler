@@ -734,10 +734,27 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
       // Map venueConfigs to the generator payload format
       const venuesPayload = venueConfigs.map(vc => {
-        const days = vc.availabilityWindows.length > 0
-          ? [...new Set(vc.availabilityWindows.map(w => DAY_NAMES[w.dayOfWeek]))]
+        // Synthesize availabilityWindows from availableDays + time fields when the
+        // user configured availability via the day-picker checkboxes rather than
+        // explicit RecurringVenueWindow entries. The algorithm requires at least one
+        // window per venue, so an empty array will fail validateInput.
+        // Note: availableDays stores names sourced from the DAYS_OF_WEEK constant
+        // (day-picker UI only), so indexOf against DAY_NAMES (Sunday-first) always
+        // produces a valid 0–6 integer. The filter guards against any stale persisted
+        // state that might contain an unrecognized string.
+        const resolvedWindows: RecurringVenueWindow[] = vc.availabilityWindows.length > 0
+          ? vc.availabilityWindows
+          : vc.availableDays
+              .filter(dayName => DAY_NAMES.includes(dayName))
+              .map(dayName => ({
+                dayOfWeek: DAY_NAMES.indexOf(dayName),
+                startTime: vc.availableTimeStart,
+                endTime: vc.availableTimeEnd,
+              }));
+        const days = resolvedWindows.length > 0
+          ? [...new Set(resolvedWindows.map(w => DAY_NAMES[w.dayOfWeek]))]
           : vc.availableDays;
-        const firstWindow = vc.availabilityWindows[0];
+        const firstWindow = resolvedWindows[0];
         return {
           // id is required by the algorithm for duplicate-detection; use the saved
           // venue id when available, otherwise fall back to the manual entry name.
@@ -747,7 +764,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
           availableDays: days,
           availableTimeStart: firstWindow?.startTime ?? vc.availableTimeStart,
           availableTimeEnd: firstWindow?.endTime ?? vc.availableTimeEnd,
-          availabilityWindows: vc.availabilityWindows,
+          availabilityWindows: resolvedWindows,
           blackoutDates: vc.blackoutDates,
         };
       });
