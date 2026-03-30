@@ -44,8 +44,6 @@ interface OverrideModalProps {
 }
 
 function OverrideModal({ state, leagueId, seasonId, onClose }: OverrideModalProps) {
-  const uid = useAuthStore(s => s.profile?.uid ?? '');
-
   const [rankValue, setRankValue] = useState<string>(
     state.currentOverride ? String(state.currentOverride.rank) : ''
   );

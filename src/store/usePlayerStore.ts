@@ -10,7 +10,7 @@ import type { Player, SensitivePlayerData } from '@/types';
 // Module-level caches — shared across the singleton store instance.
 // Updated by onSnapshot callbacks and merged before storing in Zustand state.
 let _basePlayers: Player[] = [];
-let _sensitiveMap: Record<string, SensitivePlayerData> = {};
+const _sensitiveMap: Record<string, SensitivePlayerData> = {};
 
 function buildMergedPlayers(isPrivileged: boolean): Player[] {
   return _basePlayers.map(p => {
@@ -86,7 +86,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
 
   addPlayer: async (player) => {
     // Write only non-sensitive fields to the main player doc.
-    const { dateOfBirth, parentContact, parentContact2, emergencyContact, ...mainFields } = player;
+    const { dateOfBirth: _dob, parentContact: _pc, parentContact2: _pc2, emergencyContact: _ec, ...mainFields } = player;
     await setDoc(doc(db, 'players', player.id), mainFields);
   },
 
@@ -97,7 +97,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   },
 
   updatePlayer: async (player) => {
-    const { dateOfBirth, parentContact, parentContact2, emergencyContact, ...mainFields } = player;
+    const { dateOfBirth: _dob, parentContact: _pc, parentContact2: _pc2, emergencyContact: _ec, ...mainFields } = player;
     await setDoc(doc(db, 'players', player.id), mainFields);
   },
 

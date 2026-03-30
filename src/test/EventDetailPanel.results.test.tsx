@@ -18,7 +18,6 @@
  * individual tests push a snapshot into the running component.
  */
 
-import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import type { ScheduledEvent, Team, Venue } from '@/types';
@@ -282,9 +281,6 @@ const NO_DISPUTE_SNAP = { exists: () => false, data: () => null };
 
 // Helpers that fire the module-level __snapshotCb directly.
 // Use these in tests where you don't need the local-capture pattern.
-function triggerOpenDispute() { __snapshotCb?.(OPEN_DISPUTE_SNAP); }
-function triggerNoDispute() { __snapshotCb?.(NO_DISPUTE_SNAP); }
-
 function makeEventWithLeague(): ScheduledEvent {
   return {
     ...makeEvent({ date: '2026-03-20', status: 'completed', disputeStatus: 'open' }),

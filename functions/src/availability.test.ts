@@ -188,11 +188,11 @@ vi.mock('twilio', () => ({
 // The mocked onCall/onSchedule return the raw async handler (1-arg), so we
 // type these as any to avoid argument-count mismatches from the real signatures.
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 let requestAvailability: (req: any) => Promise<any>;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 let sendAvailabilityReminder: (req: any) => Promise<any>;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 let autoCloseCollections: (event: any) => Promise<any>;
 
 beforeAll(async () => {

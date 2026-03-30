@@ -14,11 +14,10 @@
  * snapshot into the running component via onSnapshot.
  */
 
-import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Team, Venue } from '@/types';
+import type { Venue } from '@/types';
 import type { StandingsDocument } from '@/types/standings';
 import type { UserProfile } from '@/types';
 
@@ -91,24 +90,6 @@ vi.mock('@/store/useVenueStore', () => {
 });
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
-
-function makeTeam(id: string): Team {
-  return {
-    id,
-    name: `Team ${id}`,
-    sportType: 'soccer',
-    color: '#3b82f6',
-    homeVenue: '',
-    coachName: '',
-    coachEmail: '',
-    coachPhone: '',
-    ageGroup: 'U12',
-    createdBy: 'user1',
-    isDeleted: false,
-    createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-01-01T00:00:00.000Z',
-  } as Team;
-}
 
 function makeDoc(teamId: string, rank: number, points: number): StandingsDocument {
   return {
