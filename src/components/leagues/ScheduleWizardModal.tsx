@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { httpsCallable, getFunctions } from 'firebase/functions';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, setDoc, doc, query, orderBy, limit } from 'firebase/firestore';
 import {
   Calendar, MapPin, Users, Wand2, CheckCircle2, AlertTriangle,
   AlertCircle, ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
@@ -19,6 +19,7 @@ import { DEFAULT_CONSTRAINTS } from '@/types/wizard';
 import { getTopCoverageSlots } from '@/lib/coverageUtils';
 import type { Venue, RecurringVenueWindow } from '@/types/venue';
 import type { League, Team, ScheduledEvent, Season, WizardMode, ScheduleConstraint, CoachAvailabilityResponse } from '@/types';
+import type { ScheduleConfig, ScheduleVenueConfig } from '@/types/scheduleConfig';
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -148,20 +149,10 @@ function newVenueConfig(): WizardVenueConfig {
 }
 
 function venueConfigFromSaved(saved: Venue): Partial<WizardVenueConfig> {
-  const windows = saved.defaultAvailabilityWindows ?? [];
-  const days = windows.length > 0
-    ? [...new Set(windows.map(w => DAY_NAMES[w.dayOfWeek]))]
-    : ['Saturday', 'Sunday'];
-  const firstWindow = windows[0];
   return {
     selectedVenueId: saved.id,
     name: saved.name,
     concurrentPitches: saved.fields?.length ?? 1,
-    availableDays: days,
-    availableTimeStart: firstWindow?.startTime ?? '09:00',
-    availableTimeEnd: firstWindow?.endTime ?? '17:00',
-    blackoutDates: saved.defaultBlackoutDates ?? [],
-    availabilityWindows: windows,
   };
 }
 
@@ -465,6 +456,111 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   void setFormat;
   void setGroupCount;
   void setGroupAdvance;
+
+  // ─── Load most recent config on wizard open ──────────────────────────────────
+
+  useEffect(() => {
+    if (!open || !season?.id || !league.id) return;
+
+    const configCol = collection(db, 'leagues', league.id, 'seasons', season.id, 'scheduleConfig');
+    const q = query(configCol, orderBy('createdAt', 'desc'), limit(1));
+
+    getDocs(q).then(snap => {
+      if (snap.empty) return;
+      const cfg = snap.docs[0].data() as ScheduleConfig;
+
+      if (cfg.mode) setMode(cfg.mode);
+      if (cfg.seasonStart) setSeasonStart(cfg.seasonStart);
+      if (cfg.seasonEnd) setSeasonEnd(cfg.seasonEnd);
+      if (cfg.matchDuration != null) setMatchDuration(String(cfg.matchDuration));
+      if (cfg.bufferMinutes != null) setBufferMinutes(String(cfg.bufferMinutes));
+      if (cfg.gamesPerTeam != null) setGamesPerTeam(String(cfg.gamesPerTeam));
+      if (cfg.homeAwayBalance != null) setHomeAwayBalance(cfg.homeAwayBalance);
+      if (cfg.format) setFormat(cfg.format as Format);
+      if (cfg.playoffFormat) setPlayoffFormat(cfg.playoffFormat as Format);
+      if (cfg.groupCount != null) setGroupCount(String(cfg.groupCount));
+      if (cfg.groupAdvance != null) setGroupAdvance(String(cfg.groupAdvance));
+      if (cfg.minRestDays != null) setMinRestDays(String(cfg.minRestDays));
+      if (cfg.maxConsecAway != null) setMaxConsecAway(String(cfg.maxConsecAway));
+      if (cfg.constraints?.length) setConstraints(cfg.constraints);
+      if (cfg.seasonBlackouts) setSeasonBlackouts(cfg.seasonBlackouts);
+      if (cfg.availabilityOption) setAvailabilityOption(cfg.availabilityOption);
+      if (cfg.collectionId) setCollectionId(cfg.collectionId);
+
+      if (cfg.venueConfigs?.length) {
+        setVenueConfigs(cfg.venueConfigs.map((svc: ScheduleVenueConfig): WizardVenueConfig => ({
+          selectedVenueId: svc.venueId || null,
+          name: svc.name,
+          concurrentPitches: svc.concurrentPitches,
+          availableDays: svc.availableDays,
+          availableTimeStart: svc.availableTimeStart,
+          availableTimeEnd: svc.availableTimeEnd,
+          blackoutDates: svc.blackoutDates,
+          availabilityWindows: svc.availabilityWindows,
+        })));
+        setVenueBlackoutInputs(cfg.venueConfigs.map(() => ''));
+      }
+
+      // Skip mode picker — go straight to config step
+      if (cfg.mode) {
+        setStep(getSteps(cfg.mode)[0]);
+      }
+    }).catch(() => {
+      // Non-fatal: if the query fails, default wizard state is used
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, season?.id, league.id]);
+
+  // ─── Save wizard config to Firestore ────────────────────────────────────────
+
+  function saveScheduleConfig() {
+    if (!season?.id || !league.id || !mode) return;
+
+    const configId = crypto.randomUUID();
+    const venueConfigsMapped: ScheduleVenueConfig[] = venueConfigs.map(vc => ({
+      venueId: vc.selectedVenueId ?? '',
+      name: vc.name,
+      concurrentPitches: vc.concurrentPitches,
+      availableDays: vc.availableDays,
+      availableTimeStart: vc.availableTimeStart,
+      availableTimeEnd: vc.availableTimeEnd,
+      availabilityWindows: vc.availabilityWindows,
+      blackoutDates: vc.blackoutDates,
+    }));
+
+    const cfg: ScheduleConfig = {
+      id: configId,
+      mode,
+      seasonStart,
+      seasonEnd,
+      matchDuration: parseInt(matchDuration),
+      bufferMinutes: parseInt(bufferMinutes),
+      gamesPerTeam: parseInt(gamesPerTeam),
+      homeAwayBalance,
+      format,
+      ...(mode === 'playoff' ? { playoffFormat } : {}),
+      ...(groupCount ? { groupCount: parseInt(groupCount) } : {}),
+      ...(groupAdvance ? { groupAdvance: parseInt(groupAdvance) } : {}),
+      minRestDays: parseInt(minRestDays),
+      maxConsecAway: parseInt(maxConsecAway),
+      constraints,
+      venueConfigs: venueConfigsMapped,
+      seasonBlackouts,
+      teamIds: leagueTeams.map(t => t.id),
+      availabilityOption,
+      ...(collectionId ? { collectionId } : {}),
+      createdAt: new Date().toISOString(),
+      createdBy: currentUserUid,
+    };
+
+    // Fire-and-forget — don't block the publish flow
+    setDoc(
+      doc(db, 'leagues', league.id, 'seasons', season.id, 'scheduleConfig', configId),
+      cfg
+    ).catch(() => {
+      // Non-fatal: config save failure does not block the user
+    });
+  }
 
   // ─── Navigation ─────────────────────────────────────────────────────────────
 
@@ -774,6 +870,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         })
       );
       setPublished(true);
+      saveScheduleConfig();
     } catch {
       setGenError('Failed to publish some events. Please check the schedule and try again.');
     } finally {
@@ -831,6 +928,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       );
       setPublished(true);
       setPublishedAsDraft(!publishNow);
+      saveScheduleConfig();
     } catch {
       setGenError('Failed to save some events. Please check the schedule and try again.');
     } finally {

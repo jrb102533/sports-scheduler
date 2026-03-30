@@ -18,8 +18,10 @@ export interface Venue {
   lng?: number;
   isOutdoor: boolean;
   fields: VenueField[];
-  defaultAvailabilityWindows: RecurringVenueWindow[];
-  defaultBlackoutDates: string[]; // ISO date strings
+  /** @deprecated — availability now lives at schedule level (scheduleConfig subcollection). Optional for backwards compat. */
+  defaultAvailabilityWindows?: RecurringVenueWindow[];
+  /** @deprecated — blackouts now live at schedule level (scheduleConfig subcollection). Optional for backwards compat. */
+  defaultBlackoutDates?: string[];
   notes?: string;
   createdAt: string;
   updatedAt: string;

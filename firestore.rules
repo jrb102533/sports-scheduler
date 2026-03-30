@@ -212,6 +212,19 @@ service cloud.firestore {
           );
           allow write: if false; // written exclusively by Cloud Functions (Admin SDK)
         }
+
+        // Schedule config subcollection — persisted wizard configurations.
+        match /scheduleConfig/{configId} {
+          allow read: if request.auth != null && (
+            isAdmin() || isLeagueManager() || isCoach()
+            || getProfile().leagueId == leagueId
+          );
+          allow write: if isAdmin()
+            || (isLeagueManager() && (
+              getProfile().leagueId == leagueId
+              || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
+            ));
+        }
       }
 
       // Divisions — league managers can read/write; league members can read.
