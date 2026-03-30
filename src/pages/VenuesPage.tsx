@@ -53,8 +53,8 @@ function venueToForm(v: Venue): VenueFormData {
     address: v.address,
     isOutdoor: v.isOutdoor,
     fields: v.fields,
-    defaultAvailabilityWindows: v.defaultAvailabilityWindows,
-    defaultBlackoutDates: v.defaultBlackoutDates,
+    defaultAvailabilityWindows: v.defaultAvailabilityWindows ?? [],
+    defaultBlackoutDates: v.defaultBlackoutDates ?? [],
     notes: v.notes ?? '',
   };
 }
@@ -196,7 +196,7 @@ function VenueFormModal({ open, onClose, editVenue, onSave }: VenueFormModalProp
       title={editVenue ? 'Edit Venue' : 'New Venue'}
       size="lg"
     >
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} noValidate className="space-y-5">
         {/* Name */}
         <Input
           label="Name"
@@ -455,9 +455,9 @@ function VenueCard({ venue, onEdit, onDelete }: VenueCardProps) {
             {venue.fields.length} {venue.fields.length === 1 ? 'field' : 'fields'}
           </span>
         )}
-        {venue.defaultAvailabilityWindows.length > 0 && (
+        {(venue.defaultAvailabilityWindows?.length ?? 0) > 0 && (
           <span className="text-xs text-gray-400">
-            {venue.defaultAvailabilityWindows.length} availability {venue.defaultAvailabilityWindows.length === 1 ? 'window' : 'windows'}
+            {venue.defaultAvailabilityWindows!.length} availability {venue.defaultAvailabilityWindows!.length === 1 ? 'window' : 'windows'}
           </span>
         )}
       </div>
@@ -472,9 +472,9 @@ function VenueCard({ venue, onEdit, onDelete }: VenueCardProps) {
         </div>
       )}
 
-      {venue.defaultAvailabilityWindows.length > 0 && (
+      {(venue.defaultAvailabilityWindows?.length ?? 0) > 0 && (
         <div className="mt-2 space-y-0.5">
-          {venue.defaultAvailabilityWindows.map((w, i) => (
+          {venue.defaultAvailabilityWindows!.map((w, i) => (
             <p key={i} className="text-xs text-gray-500">
               {DAY_SHORT[w.dayOfWeek]}: {w.startTime} – {w.endTime}
             </p>
