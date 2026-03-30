@@ -106,14 +106,14 @@ function VenueFormModal({ open, onClose, editVenue, onSave }: VenueFormModalProp
     try {
       await onSave(form);
     } catch (e: unknown) {
-      const raw = (e as { message?: string }).message ?? '';
+      const raw = (e as { message?: string }).message ?? String(e);
       let userMessage: string;
       if (raw.includes('Missing or insufficient permissions')) {
         userMessage = 'Permission denied. Your role may not allow this action — try refreshing and signing in again.';
       } else if (raw === 'Not authenticated') {
         userMessage = 'You are not signed in. Please sign in and try again.';
       } else {
-        userMessage = 'Save failed. Please try again.';
+        userMessage = `Save failed: ${raw}`;
       }
       setSaveError(userMessage);
     } finally {
