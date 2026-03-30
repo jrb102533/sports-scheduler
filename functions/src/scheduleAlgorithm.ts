@@ -384,7 +384,7 @@ export function validateInput(input: GenerateScheduleInput): void {
 
   // Validate coach availability time formats
   for (const ca of (input.coachAvailability ?? [])) {
-    for (const w of ca.weeklyWindows) {
+    for (const w of (ca.weeklyWindows ?? [])) {
       if (!TIME_RE.test(w.startTime) || !TIME_RE.test(w.endTime))
         err('times must be HH:MM 24-hour format');
     }
@@ -622,7 +622,7 @@ function computeCoachAvailabilityPenalty(
 
     // Check date overrides first
     let overrideFound = false;
-    for (const ov of ca.dateOverrides) {
+    for (const ov of (ca.dateOverrides ?? [])) {
       if (slot.date >= ov.start && slot.date <= ov.end) {
         // Coach unavailable on this date
         penalty += 1;
@@ -633,7 +633,7 @@ function computeCoachAvailabilityPenalty(
     if (overrideFound) continue;
 
     // Check weekly windows
-    const matchingWindows = ca.weeklyWindows.filter(w => w.dayOfWeek === slotDow);
+    const matchingWindows = (ca.weeklyWindows ?? []).filter(w => w.dayOfWeek === slotDow);
     if (matchingWindows.length === 0) {
       // No window defined for this day = not available
       penalty += 1;

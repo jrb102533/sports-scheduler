@@ -2196,6 +2196,16 @@ export const generateSchedule = onCall(
     await checkRateLimit(request.auth.uid, 'generateSchedule', 5, 60_000);
 
     const input = request.data as GenerateScheduleInput;
+    console.log('generateSchedule input summary', {
+      leagueId: input.leagueId,
+      format: input.format,
+      teams: input.teams?.length,
+      venues: input.venues?.map(v => ({ id: v.id, name: v.name, windows: v.availabilityWindows?.length })),
+      softConstraintPriority: input.softConstraintPriority,
+      homeAwayMode: input.homeAwayMode,
+      minRestDays: input.minRestDays,
+      coachAvailabilityCount: input.coachAvailability?.length ?? 0,
+    });
 
     // 4. League ownership check (fixes FINDING-01)
     if (role !== 'admin') {
