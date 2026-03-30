@@ -738,13 +738,19 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         // user configured availability via the day-picker checkboxes rather than
         // explicit RecurringVenueWindow entries. The algorithm requires at least one
         // window per venue, so an empty array will fail validateInput.
+        // Note: availableDays stores names sourced from the DAYS_OF_WEEK constant
+        // (day-picker UI only), so indexOf against DAY_NAMES (Sunday-first) always
+        // produces a valid 0–6 integer. The filter guards against any stale persisted
+        // state that might contain an unrecognized string.
         const resolvedWindows: RecurringVenueWindow[] = vc.availabilityWindows.length > 0
           ? vc.availabilityWindows
-          : vc.availableDays.map(dayName => ({
-              dayOfWeek: DAY_NAMES.indexOf(dayName),
-              startTime: vc.availableTimeStart,
-              endTime: vc.availableTimeEnd,
-            }));
+          : vc.availableDays
+              .filter(dayName => DAY_NAMES.includes(dayName))
+              .map(dayName => ({
+                dayOfWeek: DAY_NAMES.indexOf(dayName),
+                startTime: vc.availableTimeStart,
+                endTime: vc.availableTimeEnd,
+              }));
         const days = resolvedWindows.length > 0
           ? [...new Set(resolvedWindows.map(w => DAY_NAMES[w.dayOfWeek]))]
           : vc.availableDays;
