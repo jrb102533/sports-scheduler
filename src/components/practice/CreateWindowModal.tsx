@@ -125,7 +125,7 @@ export function CreateWindowModal({
 
   return (
     <Modal open={open} onClose={handleClose} title="New Practice Window">
-      <div className="space-y-4" noValidate>
+      <div className="space-y-4">
         {/* Name */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
