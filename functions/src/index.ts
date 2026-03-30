@@ -1,4 +1,4 @@
-import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
+import { onCall, onRequest, HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
@@ -2178,6 +2178,19 @@ export const generateSchedule = onCall(
     enforceAppCheck: false,
   },
   async (request): Promise<ScheduleAlgorithmOutput> => {
+    // DEBUG wrapper — exposes real error message; remove after root cause identified
+    try {
+      return await generateScheduleImpl(request);
+    } catch (e: unknown) {
+      if (e instanceof HttpsError) throw e;
+      const raw = e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e);
+      console.error('generateSchedule unhandled error', { raw });
+      throw new HttpsError('failed-precondition', `DEBUG: ${raw}`);
+    }
+  }
+);
+
+async function generateScheduleImpl(request: CallableRequest): Promise<ScheduleAlgorithmOutput> {
     // 1. Auth check
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Authentication required.');
@@ -2275,8 +2288,7 @@ export const generateSchedule = onCall(
       console.error('generateSchedule algorithm error', { raw });
       throw new HttpsError('internal', 'Schedule generation failed. Check your team count, venue availability, and date range, then try again.');
     }
-  }
-);
+}
 
 // ─── Callable: geocode a venue address via Nominatim ─────────────────────────
 
