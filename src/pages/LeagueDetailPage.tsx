@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2, Layers } from 'lucide-react';
+import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2, Layers, CalendarClock } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { EventCard } from '@/components/events/EventCard';
@@ -12,6 +12,7 @@ import { LeagueForm } from '@/components/leagues/LeagueForm';
 import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
 import { SeasonCreateModal } from '@/components/seasons/SeasonCreateModal';
 import { AvailabilityStatusPanel } from '@/components/leagues/AvailabilityStatusPanel';
+import { PracticeSlotTab } from '@/components/practice/PracticeSlotTab';
 import type { CoachInfo } from '@/components/leagues/AvailabilityStatusPanel';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useTeamStore } from '@/store/useTeamStore';
@@ -19,11 +20,12 @@ import { useEventStore } from '@/store/useEventStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useCollectionStore } from '@/store/useCollectionStore';
+import { useVenueStore } from '@/store/useVenueStore';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { SPORT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent } from '@/types';
 
-type Tab = 'schedule' | 'standings' | 'teams' | 'seasons';
+type Tab = 'schedule' | 'standings' | 'teams' | 'seasons' | 'practice';
 
 export function LeagueDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -44,6 +46,18 @@ export function LeagueDetailPage() {
 
   const { seasons, fetchSeasons } = useSeasonStore();
   const { activeCollection, responses, loadCollection, loadWizardDraft, wizardDraft } = useCollectionStore();
+  const savedVenues = useVenueStore(s => s.venues);
+
+  // Active season for practice slots tab (active first, otherwise most recent)
+  const activeSeason =
+    seasons.find(s => s.status === 'active') ??
+    seasons.slice().sort((a, b) => b.startDate.localeCompare(a.startDate))[0] ??
+    null;
+
+  // Coach team for practice slot signup (the team this viewer coaches in this league)
+  const coachTeam = profile?.role === 'coach'
+    ? leagueTeams.find(t => t.coachId === profile.uid || t.createdBy === profile.uid) ?? null
+    : null;
   const [collectionPanelOpen, setCollectionPanelOpen] = useState(false);
 
   const [tab, setTab] = useState<Tab>('schedule');
@@ -111,6 +125,7 @@ export function LeagueDetailPage() {
     { key: 'standings', label: 'Standings', icon: <Trophy size={14} /> },
     { key: 'teams', label: `Teams (${leagueTeams.length})`, icon: <Users size={14} /> },
     { key: 'seasons', label: `Seasons (${seasons.length})`, icon: <Layers size={14} /> },
+    { key: 'practice', label: 'Practice Slots', icon: <CalendarClock size={14} /> },
   ];
 
   return (
@@ -286,6 +301,25 @@ export function LeagueDetailPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Practice Slots Tab */}
+      {tab === 'practice' && (
+        activeSeason ? (
+          <PracticeSlotTab
+            leagueId={id!}
+            seasonId={activeSeason.id}
+            seasonStart={activeSeason.startDate}
+            seasonEnd={activeSeason.endDate}
+            canManage={canManage}
+            coachTeam={coachTeam ? { id: coachTeam.id, name: coachTeam.name } : null}
+            savedVenues={savedVenues}
+          />
+        ) : (
+          <div className="text-center py-12 text-sm text-gray-400">
+            No season found. Create a season to use practice slots.
+          </div>
+        )
       )}
 
       <EventForm open={eventFormOpen} onClose={() => setEventFormOpen(false)} />
