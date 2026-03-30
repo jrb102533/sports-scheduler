@@ -739,6 +739,9 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
           : vc.availableDays;
         const firstWindow = vc.availabilityWindows[0];
         return {
+          // id is required by the algorithm for duplicate-detection; use the saved
+          // venue id when available, otherwise fall back to the manual entry name.
+          id: vc.selectedVenueId ?? vc.name,
           name: vc.name,
           concurrentPitches: vc.concurrentPitches,
           availableDays: days,
@@ -748,6 +751,20 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
           blackoutDates: vc.blackoutDates,
         };
       });
+
+      // Map wizard constraint IDs to the algorithm's SoftConstraintId vocabulary,
+      // preserving priority order and skipping any unknown/hard constraints.
+      const WIZARD_TO_ALGO: Record<string, string> = {
+        'SC-01': 'prefer_weekends',
+        'SC-02': 'respect_coach_availability',
+        'SC-04': 'balance_home_away',
+        'SC-05': 'avoid_practice_conflicts',
+        'SC-06': 'minimise_doubleheaders',
+      };
+      const softConstraintPriority = constraints
+        .filter(c => c.type === 'soft' && c.enabled && WIZARD_TO_ALGO[c.id])
+        .sort((a, b) => a.priority - b.priority)
+        .map(c => WIZARD_TO_ALGO[c.id]);
 
       const payload: Record<string, unknown> = {
         mode: mode ?? 'season',
@@ -769,7 +786,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             })),
         venues: venuesPayload,
         blackoutDates: seasonBlackouts,
-        preferences: constraints,
+        softConstraintPriority,
+        homeAwayMode: homeAwayBalance ? 'strict' : 'relaxed',
         coachAvailability,
         ...(isPractice
           ? {
