@@ -37,7 +37,7 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
     : [];
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set(prevTeamIds));
 
-  const eligibleTeams = allTeams.filter(t => !t.leagueIds?.length || (editLeague?.id && t.leagueIds.includes(editLeague.id)));
+  const eligibleTeams = allTeams.filter(t => !t.isDeleted && !t.isPending);
   const displayedTeams = sportType ? eligibleTeams.filter(t => t.sportType === sportType) : eligibleTeams;
 
   function toggleTeam(id: string) {
