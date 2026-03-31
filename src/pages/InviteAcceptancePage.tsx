@@ -57,6 +57,7 @@ export function InviteAcceptancePage() {
     }
 
     const email = user.email?.toLowerCase() ?? '';
+    const uid = user.uid;
 
     async function loadData() {
       setLoadingInvites(true);
@@ -81,7 +82,7 @@ export function InviteAcceptancePage() {
         const teamsSnap = await getDocs(
           query(
             collection(db, 'teams'),
-            where('createdBy', '==', user.uid),
+            where('createdBy', '==', uid),
           ),
         );
         const owned: Team[] = teamsSnap.docs
