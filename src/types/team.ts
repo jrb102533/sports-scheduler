@@ -20,6 +20,7 @@ export interface Team {
   ownerName: string;
   coachId?: string;
   leagueIds?: string[]; // optional: ids of the leagues this team belongs to
+  _managedLeagueId?: string; // internal: last league added/removed by an LM (auth hint for Firestore rules)
   isPending?: boolean;
   pendingEmail?: string;
   attendanceWarningThreshold?: number;  // undefined = use sport default

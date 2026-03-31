@@ -52,10 +52,17 @@ service cloud.firestore {
         || request.auth.uid == resource.data.createdBy
         || request.auth.uid == resource.data.coachId
         || (isLeagueManager() && (
+             // LM manages a league the team is already in (profile.leagueId path)
              ('leagueIds' in resource.data && resource.data.leagueIds.hasAny([getProfile().leagueId]))
              || resource.data.get('leagueId', '') == getProfile().leagueId
-             // Allow LM to add their league to a team not yet in any of their leagues
              || ('leagueIds' in request.resource.data && request.resource.data.leagueIds.hasAny([getProfile().leagueId]))
+             // LM adding/removing via managedBy: only leagueIds + _managedLeagueId may change,
+             // and the referenced league must have managedBy == this LM.
+             || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leagueIds', '_managedLeagueId'])
+                 && '_managedLeagueId' in request.resource.data
+                 && (request.resource.data.leagueIds.hasAny([request.resource.data._managedLeagueId])
+                     || resource.data.get('leagueIds', []).hasAny([request.resource.data._managedLeagueId]))
+                 && get(/databases/$(database)/documents/leagues/$(request.resource.data._managedLeagueId)).data.managedBy == request.auth.uid)
            ));
 
       // Player availability windows — any team member can read; players/parents write their own,
