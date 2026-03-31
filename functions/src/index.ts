@@ -2214,55 +2214,58 @@ export const generateSchedule = onCall(
       }
     }
 
-    // 5. Input validation
-    validateInput(input);
+    // Steps 5–8 wrapped so any unhandled JS error surfaces instead of becoming "internal"
+    try {
+      // 5. Input validation
+      validateInput(input);
 
-    // 6. Feasibility pre-check (zero slots across all venues)
-    const hasSomeSlot = (() => {
-      const seasonBlackouts = new Set(input.blackoutDates ?? []);
-      const start = new Date(input.seasonStart + 'T00:00:00Z');
-      const end = new Date(input.seasonEnd + 'T00:00:00Z');
-      for (const cur = new Date(start); cur <= end; cur.setUTCDate(cur.getUTCDate() + 1)) {
-        const isoDate = cur.toISOString().slice(0, 10);
-        if (seasonBlackouts.has(isoDate)) continue;
-        const dow = cur.getUTCDay();
-        for (const venue of input.venues) {
-          const venueBlackouts = new Set(venue.blackoutDates ?? []);
-          if (venueBlackouts.has(isoDate)) continue;
-          const allWindows = [
-            ...(venue.availabilityWindows ?? []),
-            ...(venue.fallbackWindows ?? []),
-          ];
-          for (const window of allWindows) {
-            if (window.dayOfWeek === dow) return true;
+      // 6. Feasibility pre-check (zero slots across all venues)
+      const hasSomeSlot = (() => {
+        const seasonBlackouts = new Set(input.blackoutDates ?? []);
+        const start = new Date(input.seasonStart + 'T00:00:00Z');
+        const end = new Date(input.seasonEnd + 'T00:00:00Z');
+        for (const cur = new Date(start); cur <= end; cur.setUTCDate(cur.getUTCDate() + 1)) {
+          const isoDate = cur.toISOString().slice(0, 10);
+          if (seasonBlackouts.has(isoDate)) continue;
+          const dow = cur.getUTCDay();
+          for (const venue of input.venues) {
+            const venueBlackouts = new Set(venue.blackoutDates ?? []);
+            if (venueBlackouts.has(isoDate)) continue;
+            const allWindows = [
+              ...(venue.availabilityWindows ?? []),
+              ...(venue.fallbackWindows ?? []),
+            ];
+            for (const window of allWindows) {
+              if (window.dayOfWeek === dow) return true;
+            }
           }
         }
+        return false;
+      })();
+
+      if (!hasSomeSlot) {
+        throw new HttpsError(
+          'invalid-argument',
+          'No available venue slots in season window after blackouts'
+        );
       }
-      return false;
-    })();
 
-    if (!hasSomeSlot) {
-      throw new HttpsError(
-        'invalid-argument',
-        'No available venue slots in season window after blackouts'
-      );
-    }
+      // 7. Capacity feasibility pre-check
+      feasibilityPreCheck(input);
 
-    // 7. Capacity feasibility pre-check
-    feasibilityPreCheck(input);
-
-    // 8. Run algorithm
-    try {
+      // 8. Run algorithm
       const slots = generateSlots(input);
       const rawPairings = generatePairings(input);
       const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
       const shuffled = shufflePairings(rawPairings, seed);
       const assignmentResult = assignFixtures(shuffled, slots, input);
-      const output = buildOutput(assignmentResult, input);
-      return output;
+      return buildOutput(assignmentResult, input);
+
     } catch (err: unknown) {
-      const raw = err instanceof Error ? err.message : String(err);
-      console.error('generateSchedule algorithm error', { raw });
+      // Let HttpsError propagate with its original code and message
+      if (err instanceof HttpsError) throw err;
+      const raw = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      console.error('generateSchedule unhandled error', { raw, stack: err instanceof Error ? err.stack : undefined });
       throw new HttpsError('failed-precondition', `DEBUG — ${raw}`);
     }
   }
