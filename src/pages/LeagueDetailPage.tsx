@@ -7,7 +7,6 @@ import { EventCard } from '@/components/events/EventCard';
 import { EventForm } from '@/components/events/EventForm';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
 import { StandingsTable } from '@/components/standings/StandingsTable';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { LeagueForm } from '@/components/leagues/LeagueForm';
 import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
 import { DeleteLeagueModal } from '@/components/leagues/DeleteLeagueModal';
@@ -31,7 +30,7 @@ export function LeagueDetailPage() {
   const navigate = useNavigate();
 
   const leagues = useLeagueStore(s => s.leagues);
-  const { updateLeague, deleteLeague, softDeleteLeague } = useLeagueStore();
+  const { updateLeague, softDeleteLeague } = useLeagueStore();
   const { teams, addTeamToLeague, removeTeamFromLeague } = useTeamStore();
   const allEvents = useEventStore(s => s.events);
   const profile = useAuthStore(s => s.profile);
@@ -51,7 +50,6 @@ export function LeagueDetailPage() {
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [softDeleteOpen, setSoftDeleteOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [seasonCreateOpen, setSeasonCreateOpen] = useState(false);
@@ -89,11 +87,6 @@ export function LeagueDetailPage() {
 
   const canSoftDelete = isLeagueManager && league.managedBy === profile?.uid;
 
-  async function handleDelete() {
-    await Promise.all(leagueTeams.map(t => removeTeamFromLeague(t.id, league!.id)));
-    await deleteLeague(league!.id);
-    navigate('/leagues');
-  }
 
   async function handleSaveLeague(
     leagueData: Omit<typeof league, 'id' | 'createdAt' | 'updatedAt'>,
@@ -139,10 +132,7 @@ export function LeagueDetailPage() {
         {canManage && (
           <div className="flex gap-2 flex-shrink-0">
             <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}><Pencil size={14} /> Edit</Button>
-            {isAdmin && (
-              <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)} aria-label="Delete league"><Trash2 size={14} /></Button>
-            )}
-            {!isAdmin && canSoftDelete && (
+            {(isAdmin || canSoftDelete) && (
               <Button variant="danger" size="sm" onClick={() => setSoftDeleteOpen(true)} aria-label="Delete league"><Trash2 size={14} /></Button>
             )}
           </div>
@@ -235,20 +225,29 @@ export function LeagueDetailPage() {
           ) : (
             <div className="divide-y divide-gray-100">
               {leagueTeams.map(team => (
-                <button
-                  key={team.id}
-                  onClick={() => navigate(`/teams/${team.id}`)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
-                >
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style={{ backgroundColor: team.color }}>
-                    {team.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{team.name}</p>
-                    <p className="text-xs text-gray-500">{SPORT_TYPE_LABELS[team.sportType]}</p>
-                  </div>
-                  <span className="text-xs text-gray-400">View →</span>
-                </button>
+                <div key={team.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
+                  <button
+                    onClick={() => navigate(`/teams/${team.id}`)}
+                    className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                  >
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style={{ backgroundColor: team.color }}>
+                      {team.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{team.name}</p>
+                      <p className="text-xs text-gray-500">{SPORT_TYPE_LABELS[team.sportType]}</p>
+                    </div>
+                  </button>
+                  {canManage && (
+                    <button
+                      onClick={() => removeTeamFromLeague(team.id, id!)}
+                      className="text-xs text-gray-400 hover:text-red-600 transition-colors flex-shrink-0 px-2 py-1 rounded hover:bg-red-50"
+                      title="Remove from league"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           )}
@@ -342,14 +341,6 @@ export function LeagueDetailPage() {
         onClose={() => setSeasonCreateOpen(false)}
         leagueId={id ?? ''}
         onCreated={(season) => navigate(`/leagues/${id}/seasons/${season.id}`)}
-      />
-
-      <ConfirmDialog
-        open={confirmDelete}
-        onClose={() => setConfirmDelete(false)}
-        onConfirm={handleDelete}
-        title="Delete League"
-        message={`Delete "${league.name}"? Teams in this league will be unassigned but not deleted.`}
       />
 
       {softDeleteOpen && (
