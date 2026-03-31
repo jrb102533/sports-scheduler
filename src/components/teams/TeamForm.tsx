@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage } from '@/lib/firebase';
+import { storage } from '@/lib/firebase';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -12,7 +11,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { FLAGS } from '@/lib/flags';
 import { SPORT_TYPES, SPORT_TYPE_LABELS, TEAM_COLORS, AGE_GROUPS, AGE_GROUP_LABELS, SPORT_FORFEIT_THRESHOLDS } from '@/constants';
 import { Upload, X, Image } from 'lucide-react';
-import type { Team, SportType, AgeGroup, UserProfile } from '@/types';
+import type { Team, SportType, AgeGroup } from '@/types';
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
@@ -44,7 +43,6 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const [divisionLabel, setDivisionLabel] = useState(editTeam?.divisionLabel ?? '');
   const [homeVenue, setHomeVenue] = useState(editTeam?.homeVenue ?? '');
   const [coachId, setCoachId] = useState(editTeam?.coachId ?? '');
-  const [coachUsers, setCoachUsers] = useState<UserProfile[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [attendanceWarningsEnabled, setAttendanceWarningsEnabled] = useState<boolean>(editTeam?.attendanceWarningsEnabled !== false);
   const [attendanceWarningThreshold, setAttendanceWarningThreshold] = useState<string>(
@@ -59,44 +57,42 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const [saveError, setSaveError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isAdmin = profile?.role === 'admin';
-  const isCreator = !editTeam || editTeam.createdBy === user?.uid;
-  const canAssignCoach = isAdmin || isCreator;
-
-  useEffect(() => {
-    if (!open) return;
-    // Reset logo state when form opens
-    setLogoFile(null);
-    setLogoPreview(editTeam?.logoUrl ?? null);
-    setRemoveLogo(false);
-    // Reset attendance warning state
-    setAttendanceWarningsEnabled(editTeam?.attendanceWarningsEnabled !== false);
-    setAttendanceWarningThreshold(
-      editTeam?.attendanceWarningThreshold !== undefined ? String(editTeam.attendanceWarningThreshold) : ''
-    );
-  }, [open, editTeam?.logoUrl, editTeam?.attendanceWarningsEnabled, editTeam?.attendanceWarningThreshold]);
-
-  // Auto-fill coach fields with current user when they are a coach creating a new team
+  // Reset all form fields when opening for a new team
   useEffect(() => {
     if (!open || editTeam) return;
-    if (profile?.email) {
-      setCoachEmail(prev => prev || profile.email);
-    }
-    if (profile?.role === 'coach' && user?.uid) {
-      setCoachId(prev => prev || user.uid);
-      setCoachName(prev => prev || profile.displayName);
-    }
-  }, [open, editTeam, profile?.email, profile?.role, profile?.displayName, user?.uid]);
+    setName('');
+    setSportType('soccer');
+    setColor(TEAM_COLORS[0]);
+    setCoachName('');
+    setCoachEmail('');
+    setAgeGroup('');
+    setDivisionLabel('');
+    setHomeVenue('');
+    setCoachId('');
+    setErrors({});
+    setSaveError('');
+    setLogoFile(null);
+    setLogoPreview(null);
+    setRemoveLogo(false);
+    setAttendanceWarningsEnabled(true);
+    setAttendanceWarningThreshold('');
+    // Auto-fill coach fields from current user's profile
+    if (profile?.email) setCoachEmail(profile.email);
+    if (profile?.displayName) setCoachName(profile.displayName);
+    if (user?.uid) setCoachId(user.uid);
+  }, [open, editTeam, profile?.email, profile?.displayName, user?.uid]);
 
   useEffect(() => {
-    if (!open || !canAssignCoach) return;
-    getDocs(collection(db, 'users')).then(snap => {
-      const coaches = snap.docs
-        .map(d => d.data() as UserProfile)
-        .filter(u => u.role === 'coach');
-      setCoachUsers(coaches);
-    });
-  }, [open, canAssignCoach]);
+    if (!open || !editTeam) return;
+    // Sync logo and attendance state when editing
+    setLogoPreview(editTeam.logoUrl ?? null);
+    setRemoveLogo(false);
+    setLogoFile(null);
+    setAttendanceWarningsEnabled(editTeam.attendanceWarningsEnabled !== false);
+    setAttendanceWarningThreshold(
+      editTeam.attendanceWarningThreshold !== undefined ? String(editTeam.attendanceWarningThreshold) : ''
+    );
+  }, [open, editTeam?.logoUrl, editTeam?.attendanceWarningsEnabled, editTeam?.attendanceWarningThreshold]);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -286,18 +282,6 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         <Input label={kidsMode ? 'Head Coach' : 'Coach Name (optional)'} name="coach-name" autoComplete="off" value={coachName} onChange={e => setCoachName(e.target.value)} />
         <Input label="Coach Email (optional)" type="email" name="coach-email" autoComplete="off" value={coachEmail} onChange={e => setCoachEmail(e.target.value)} />
         <Input label="Home Venue (optional)" name="home-venue" autoComplete="off" value={homeVenue} onChange={e => setHomeVenue(e.target.value)} placeholder="e.g. City Park" />
-        {canAssignCoach && coachUsers.length > 0 && (
-          <div className="border-t border-gray-100 pt-3">
-            <Select
-              label="Assign Coach Account"
-              value={coachId}
-              onChange={e => setCoachId(e.target.value)}
-              options={coachUsers.map(u => ({ value: u.uid, label: `${u.displayName} (${u.email})` }))}
-              placeholder="Select a coach user"
-            />
-            <p className="text-xs text-gray-400 mt-1">Links a registered coach account to this team.</p>
-          </div>
-        )}
         {/* Attendance Warnings */}
         <div className="border-t border-gray-100 pt-4 space-y-3">
           <h3 className="text-sm font-semibold text-gray-700">Attendance Warnings</h3>
