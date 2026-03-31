@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { EventCard } from '@/components/events/EventCard';
 import { EventForm } from '@/components/events/EventForm';
@@ -32,12 +33,12 @@ export function LeagueDetailPage() {
 
   const leagues = useLeagueStore(s => s.leagues);
   const { updateLeague, deleteLeague, softDeleteLeague } = useLeagueStore();
-  const { teams, updateTeam } = useTeamStore();
+  const { teams, addTeamToLeague, removeTeamFromLeague } = useTeamStore();
   const allEvents = useEventStore(s => s.events);
   const profile = useAuthStore(s => s.profile);
 
   const league = leagues.find(l => l.id === id);
-  const leagueTeams = teams.filter(t => t.leagueId === id);
+  const leagueTeams = teams.filter(t => t.leagueIds?.includes(id ?? ''));
   const leagueTeamIds = leagueTeams.map(t => t.id);
   const leagueEvents = allEvents
     .filter(e => e.teamIds.some(tid => leagueTeamIds.includes(tid)))
@@ -90,7 +91,7 @@ export function LeagueDetailPage() {
   const canSoftDelete = isLeagueManager && league.managedBy === profile?.uid;
 
   async function handleDelete() {
-    await Promise.all(leagueTeams.map(t => updateTeam({ ...t, leagueId: undefined })));
+    await Promise.all(leagueTeams.map(t => removeTeamFromLeague(t.id, league!.id)));
     await deleteLeague(league!.id);
     navigate('/leagues');
   }
@@ -105,8 +106,8 @@ export function LeagueDetailPage() {
     const added = selectedTeamIds.filter(tid => !prevTeamIds.includes(tid));
     const removed = prevTeamIds.filter(tid => !selectedTeamIds.includes(tid));
     await Promise.all([
-      ...added.map(tid => { const t = teams.find(tm => tm.id === tid); return t ? updateTeam({ ...t, leagueId: id }) : Promise.resolve(); }),
-      ...removed.map(tid => { const t = teams.find(tm => tm.id === tid); return t ? updateTeam({ ...t, leagueId: undefined }) : Promise.resolve(); }),
+      ...added.map(tid => addTeamToLeague(tid, id!)),
+      ...removed.map(tid => removeTeamFromLeague(tid, id!)),
     ]);
     setEditOpen(false);
   }
@@ -228,32 +229,82 @@ export function LeagueDetailPage() {
       )}
 
       {/* Teams Tab */}
-      {tab === 'teams' && (
-        <div className="bg-white rounded-xl border border-gray-200">
-          {leagueTeams.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-400">No teams assigned to this league yet.</div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {leagueTeams.map(team => (
-                <button
-                  key={team.id}
-                  onClick={() => navigate(`/teams/${team.id}`)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
-                >
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style={{ backgroundColor: team.color }}>
-                    {team.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{team.name}</p>
-                    <p className="text-xs text-gray-500">{SPORT_TYPE_LABELS[team.sportType]}</p>
-                  </div>
-                  <span className="text-xs text-gray-400">View →</span>
-                </button>
-              ))}
+      {tab === 'teams' && (() => {
+        const activeTeams = leagueTeams.filter(t => !t.isPending);
+        const pendingTeams = leagueTeams.filter(t => t.isPending === true);
+        return (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-gray-200">
+              {activeTeams.length === 0 ? (
+                <div className="p-8 text-center text-sm text-gray-400">No teams assigned to this league yet.</div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {activeTeams.map(team => (
+                    <button
+                      key={team.id}
+                      onClick={() => navigate(`/teams/${team.id}`)}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                    >
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style={{ backgroundColor: team.color }}>
+                        {team.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{team.name}</p>
+                        <p className="text-xs text-gray-500">{SPORT_TYPE_LABELS[team.sportType]}</p>
+                      </div>
+                      <span className="text-xs text-gray-400">View →</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      )}
+
+            {pendingTeams.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200">
+                <div className="px-4 py-2 border-b border-gray-100">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Pending Invites</p>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {pendingTeams.map(team => (
+                    <div key={team.id} className="flex items-center gap-3 px-4 py-3">
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold flex-shrink-0 bg-amber-200 text-amber-700">
+                        {team.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-gray-900">{team.name}</p>
+                          <Badge variant="warning">Invite Pending</Badge>
+                        </div>
+                        {team.pendingEmail && (
+                          <p className="text-xs text-gray-500">{team.pendingEmail}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          type="button"
+                          disabled
+                          className="text-xs text-blue-500 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                          aria-label={`Resend invite to ${team.pendingEmail ?? team.name}`}
+                        >
+                          Resend
+                        </button>
+                        <button
+                          type="button"
+                          disabled
+                          className="text-xs text-red-500 hover:text-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                          aria-label={`Remove pending invite for ${team.pendingEmail ?? team.name}`}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Seasons Tab */}
       {tab === 'seasons' && (

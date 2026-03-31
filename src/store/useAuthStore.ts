@@ -291,7 +291,7 @@ export function canEdit(profile: UserProfile | null, team?: Team | null): boolea
   if (!team) return false;
   if (team.createdBy === profile.uid || team.coachId === profile.uid) return true;
   if (memberships.some(m =>
-    m.role === 'league_manager' && m.leagueId && team.leagueId === m.leagueId
+    m.role === 'league_manager' && m.leagueId && team.leagueIds?.includes(m.leagueId)
   )) return true;
   return false;
 }
@@ -314,7 +314,7 @@ export function getAccessibleTeamIds(profile: UserProfile | null, allTeams: Team
   const ids = new Set<string>();
   for (const m of memberships) {
     if (m.role === 'league_manager' && m.leagueId) {
-      allTeams.filter(t => t.leagueId === m.leagueId).forEach(t => ids.add(t.id));
+      allTeams.filter(t => t.leagueIds?.includes(m.leagueId!)).forEach(t => ids.add(t.id));
     } else if (m.role === 'coach') {
       allTeams
         .filter(t => t.createdBy === profile.uid || t.coachId === profile.uid)

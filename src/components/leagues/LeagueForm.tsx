@@ -3,6 +3,8 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
+import { TeamPicker } from '@/components/leagues/TeamPicker';
+import { useAuthStore } from '@/store/useAuthStore';
 import { SPORT_TYPE_LABELS } from '@/constants';
 import type { League, Team } from '@/types';
 
@@ -32,21 +34,13 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
   const [nameError, setNameError] = useState('');
   const [saveError, setSaveError] = useState('');
 
+  const profile = useAuthStore(s => s.profile);
+  const currentUserId = profile?.uid ?? '';
+
   const prevTeamIds = editLeague?.id
-    ? allTeams.filter(t => t.leagueId === editLeague.id).map(t => t.id)
+    ? allTeams.filter(t => t.leagueIds?.includes(editLeague.id)).map(t => t.id)
     : [];
-  const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set(prevTeamIds));
-
-  const eligibleTeams = allTeams.filter(t => !t.leagueId || t.leagueId === editLeague?.id);
-  const displayedTeams = sportType ? eligibleTeams.filter(t => t.sportType === sportType) : eligibleTeams;
-
-  function toggleTeam(id: string) {
-    setSelectedTeamIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>(prevTeamIds);
 
   async function handleSubmit() {
     if (!name.trim()) { setNameError('League name is required'); return; }
@@ -62,7 +56,7 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
           ...(sportType ? { sportType: sportType as League['sportType'] } : {}),
           ...(editLeague?.managedBy ? { managedBy: editLeague.managedBy } : {}),
         } as Omit<League, 'id' | 'createdAt' | 'updatedAt'>,
-        [...selectedTeamIds],
+        selectedTeamIds,
         prevTeamIds,
       );
     } catch (e: unknown) {
@@ -114,28 +108,13 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
 
         <div>
           <p className="text-sm font-medium text-gray-700 mb-2">Assign Teams</p>
-          {displayedTeams.length === 0 ? (
-            <p className="text-xs text-gray-400 italic">
-              {allTeams.length === 0
-                ? 'No teams exist yet.'
-                : 'All teams are already assigned to other leagues.'}
-            </p>
-          ) : (
-            <div className="border border-gray-200 rounded-lg overflow-hidden max-h-52 overflow-y-auto">
-              {displayedTeams.map(team => (
-                <label key={team.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0">
-                  <input
-                    type="checkbox"
-                    checked={selectedTeamIds.has(team.id)}
-                    onChange={() => toggleTeam(team.id)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
-                  <span className="text-sm text-gray-800">{team.name}</span>
-                </label>
-              ))}
-            </div>
-          )}
+          <TeamPicker
+            leagueId={editLeague?.id ?? ''}
+            sportType={sportType || undefined}
+            selectedTeamIds={selectedTeamIds}
+            onChange={ids => setSelectedTeamIds(ids)}
+            currentUserId={currentUserId}
+          />
         </div>
 
         {saveError && (
