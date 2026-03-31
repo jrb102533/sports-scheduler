@@ -491,11 +491,11 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         setVenueConfigs(cfg.venueConfigs.map((svc: ScheduleVenueConfig): WizardVenueConfig => ({
           selectedVenueId: svc.venueId || null,
           name: svc.name,
-          concurrentPitches: svc.concurrentPitches,
-          availableDays: svc.availableDays,
-          availableTimeStart: svc.availableTimeStart,
-          availableTimeEnd: svc.availableTimeEnd,
-          blackoutDates: svc.blackoutDates,
+          concurrentPitches: svc.concurrentPitches ?? 1,
+          availableDays: svc.availableDays ?? ['Saturday', 'Sunday'],
+          availableTimeStart: svc.availableTimeStart ?? '09:00',
+          availableTimeEnd: svc.availableTimeEnd ?? '17:00',
+          blackoutDates: svc.blackoutDates ?? [],
           availabilityWindows: svc.availabilityWindows ?? [],
         })));
         setVenueBlackoutInputs(cfg.venueConfigs.map(() => ''));
@@ -607,7 +607,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   function validateVenues(): boolean {
     const errs = venueConfigs.map(v => {
       if (!v.name.trim()) return 'Venue name is required.';
-      if (!v.availableDays.length) return 'Select at least one available day.';
+      if (!(v.availableDays ?? []).length) return 'Select at least one available day.';
       if (v.availableTimeStart >= v.availableTimeEnd) return 'End time must be after start time.';
       return '';
     });
@@ -744,7 +744,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         // state that might contain an unrecognized string.
         const resolvedWindows: RecurringVenueWindow[] = (vc.availabilityWindows?.length ?? 0) > 0
           ? vc.availabilityWindows
-          : vc.availableDays
+          : (vc.availableDays ?? [])
               .filter(dayName => DAY_NAMES.includes(dayName))
               .map(dayName => ({
                 dayOfWeek: DAY_NAMES.indexOf(dayName),
@@ -753,7 +753,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
               }));
         const days = resolvedWindows.length > 0
           ? [...new Set(resolvedWindows.map(w => DAY_NAMES[w.dayOfWeek]))]
-          : vc.availableDays;
+          : (vc.availableDays ?? []);
         const firstWindow = resolvedWindows[0];
         return {
           // id is required by the algorithm for duplicate-detection; use the saved
