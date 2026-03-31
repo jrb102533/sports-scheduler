@@ -42,7 +42,8 @@ export const useTeamStore = create<TeamStore>((set) => ({
   },
 
   updateTeam: async (team) => {
-    await setDoc(doc(db, 'teams', team.id), team);
+    const data = Object.fromEntries(Object.entries(team).filter(([, v]) => v !== undefined));
+    await setDoc(doc(db, 'teams', team.id), data);
   },
 
   // Owner-initiated delete: marks as deleted, recoverable by admin
