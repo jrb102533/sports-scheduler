@@ -7,6 +7,8 @@ export interface League {
   description?: string;
   sportType?: SportType;
   managedBy?: string; // uid of the league_manager user
+  isDeleted?: boolean;
+  deletedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
