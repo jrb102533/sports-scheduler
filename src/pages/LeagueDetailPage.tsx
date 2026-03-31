@@ -81,7 +81,7 @@ export function LeagueDetailPage() {
 
   const isAdmin = profile?.role === 'admin';
   const isLeagueManager = profile?.role === 'league_manager';
-  const canManage = isAdmin || (isLeagueManager && profile?.leagueId === id);
+  const canManage = isAdmin || (isLeagueManager && (profile?.leagueId === id || league?.managedBy === profile?.uid));
 
   if (!league) return <div className="p-4 sm:p-6 text-gray-500">League not found.</div>;
 

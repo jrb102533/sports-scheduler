@@ -52,12 +52,14 @@ export const useTeamStore = create<TeamStore>((set) => ({
   addTeamToLeague: async (teamId, leagueId) => {
     await updateDoc(doc(db, 'teams', teamId), {
       leagueIds: arrayUnion(leagueId),
+      _managedLeagueId: leagueId,
     });
   },
 
   removeTeamFromLeague: async (teamId, leagueId) => {
     await updateDoc(doc(db, 'teams', teamId), {
       leagueIds: arrayRemove(leagueId),
+      _managedLeagueId: leagueId,
     });
   },
 
