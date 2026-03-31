@@ -2178,44 +2178,44 @@ export const generateSchedule = onCall(
     enforceAppCheck: false,
   },
   async (request): Promise<ScheduleAlgorithmOutput> => {
-    // 1. Auth check
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Authentication required.');
-    }
-
-    // 2. Role check
-    const role = await assertAdminOrCoach(request.auth.uid);
-    if (role !== 'admin' && role !== 'league_manager') {
-      throw new HttpsError(
-        'permission-denied',
-        'Only league managers and admins can generate schedules.'
-      );
-    }
-
-    // 3. Rate limit
-    await checkRateLimit(request.auth.uid, 'generateSchedule', 5, 60_000);
-
-    const input = request.data as GenerateScheduleInput;
-
-    // 4. League ownership check (fixes FINDING-01)
-    if (role !== 'admin') {
-      const leagueDoc = await admin.firestore().doc(`leagues/${input.leagueId}`).get();
-      if (!leagueDoc.exists) {
-        throw new HttpsError('not-found', 'League not found.');
-      }
-      const leagueData = leagueDoc.data()!;
-      const userDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
-      const profile = userDoc.data();
-      const ownsLeague =
-        leagueData.managedBy === request.auth.uid ||
-        profile?.leagueId === input.leagueId;
-      if (!ownsLeague) {
-        throw new HttpsError('permission-denied', 'You do not manage this league.');
-      }
-    }
-
-    // Steps 5–8 wrapped so any unhandled JS error surfaces instead of becoming "internal"
+    // Outer catch: captures errors from ALL steps including auth, Firestore reads, and algorithm
     try {
+      // 1. Auth check
+      if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'Authentication required.');
+      }
+
+      // 2. Role check
+      const role = await assertAdminOrCoach(request.auth.uid);
+      if (role !== 'admin' && role !== 'league_manager') {
+        throw new HttpsError(
+          'permission-denied',
+          'Only league managers and admins can generate schedules.'
+        );
+      }
+
+      // 3. Rate limit
+      await checkRateLimit(request.auth.uid, 'generateSchedule', 5, 60_000);
+
+      const input = request.data as GenerateScheduleInput;
+
+      // 4. League ownership check (fixes FINDING-01)
+      if (role !== 'admin') {
+        const leagueDoc = await admin.firestore().doc(`leagues/${input.leagueId}`).get();
+        if (!leagueDoc.exists) {
+          throw new HttpsError('not-found', 'League not found.');
+        }
+        const leagueData = leagueDoc.data()!;
+        const userDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+        const profile = userDoc.data();
+        const ownsLeague =
+          leagueData.managedBy === request.auth.uid ||
+          profile?.leagueId === input.leagueId;
+        if (!ownsLeague) {
+          throw new HttpsError('permission-denied', 'You do not manage this league.');
+        }
+      }
+
       // 5. Input validation
       validateInput(input);
 
@@ -2253,20 +2253,28 @@ export const generateSchedule = onCall(
       // 7. Capacity feasibility pre-check
       feasibilityPreCheck(input);
 
-      // 8. Run algorithm
-      const slots = generateSlots(input);
-      const rawPairings = generatePairings(input);
-      const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
-      const shuffled = shufflePairings(rawPairings, seed);
-      const assignmentResult = assignFixtures(shuffled, slots, input);
-      return buildOutput(assignmentResult, input);
+      // 8. Run algorithm — inner catch preserves algorithm-specific error context
+      try {
+        const slots = generateSlots(input);
+        const rawPairings = generatePairings(input);
+        const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
+        const shuffled = shufflePairings(rawPairings, seed);
+        const assignmentResult = assignFixtures(shuffled, slots, input);
+        return buildOutput(assignmentResult, input);
+      } catch (err: unknown) {
+        if (err instanceof HttpsError) throw err;
+        const raw = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+        console.error('generateSchedule algorithm error', { raw, stack: err instanceof Error ? err.stack : undefined });
+        throw new HttpsError('failed-precondition', `DEBUG — ${raw}`);
+      }
 
-    } catch (err: unknown) {
-      // Let HttpsError propagate with its original code and message
-      if (err instanceof HttpsError) throw err;
-      const raw = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-      console.error('generateSchedule unhandled error', { raw, stack: err instanceof Error ? err.stack : undefined });
-      throw new HttpsError('failed-precondition', `DEBUG — ${raw}`);
+    } catch (outerErr: unknown) {
+      // Re-throw HttpsErrors unchanged (they already have the right code + message)
+      if (outerErr instanceof HttpsError) throw outerErr;
+      // Any other error (Firestore SDK, network, unexpected throws in steps 1-7)
+      const raw = outerErr instanceof Error ? `${outerErr.name}: ${outerErr.message}` : String(outerErr);
+      console.error('generateSchedule outer error', { raw, stack: outerErr instanceof Error ? outerErr.stack : undefined });
+      throw new HttpsError('failed-precondition', `DEBUG [outer] — ${raw}`);
     }
   }
 );
