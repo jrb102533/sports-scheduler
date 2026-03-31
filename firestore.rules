@@ -54,6 +54,8 @@ service cloud.firestore {
         || (isLeagueManager() && (
              ('leagueIds' in resource.data && resource.data.leagueIds.hasAny([getProfile().leagueId]))
              || resource.data.get('leagueId', '') == getProfile().leagueId
+             // Allow LM to add their league to a team not yet in any of their leagues
+             || ('leagueIds' in request.resource.data && request.resource.data.leagueIds.hasAny([getProfile().leagueId]))
            ));
 
       // Player availability windows — any team member can read; players/parents write their own,
