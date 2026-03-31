@@ -410,7 +410,7 @@ export function feasibilityPreCheck(input: GenerateScheduleInput): void {
       const venueBlackouts = new Set(venue.blackoutDates ?? []);
       if (venueBlackouts.has(date)) continue;
       const allWindows = [
-        ...venue.availabilityWindows.map(w => ({ ...w, fallback: false })),
+        ...(venue.availabilityWindows ?? []).map(w => ({ ...w, fallback: false })),
         ...(venue.fallbackWindows ?? []).map(w => ({ ...w, fallback: true })),
       ];
       for (const window of allWindows) {
@@ -451,7 +451,7 @@ export function generateSlots(input: GenerateScheduleInput): Slot[] {
       if (venueBlackouts.has(date)) continue;
 
       // Primary windows first
-      for (const window of venue.availabilityWindows) {
+      for (const window of (venue.availabilityWindows ?? [])) {
         if (window.dayOfWeek !== dow) continue;
         let startMins = timeToMinutes(window.startTime);
         const endMins = timeToMinutes(window.endTime);

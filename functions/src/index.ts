@@ -1,4 +1,4 @@
-import { onCall, onRequest, HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
+import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
@@ -2178,19 +2178,6 @@ export const generateSchedule = onCall(
     enforceAppCheck: false,
   },
   async (request): Promise<ScheduleAlgorithmOutput> => {
-    // DEBUG wrapper — exposes real error message; remove after root cause identified
-    try {
-      return await generateScheduleImpl(request);
-    } catch (e: unknown) {
-      if (e instanceof HttpsError) throw e;
-      const raw = e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e);
-      console.error('generateSchedule unhandled error', { raw });
-      throw new HttpsError('failed-precondition', `DEBUG: ${raw}`);
-    }
-  }
-);
-
-async function generateScheduleImpl(request: CallableRequest): Promise<ScheduleAlgorithmOutput> {
     // 1. Auth check
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Authentication required.');
@@ -2209,16 +2196,6 @@ async function generateScheduleImpl(request: CallableRequest): Promise<ScheduleA
     await checkRateLimit(request.auth.uid, 'generateSchedule', 5, 60_000);
 
     const input = request.data as GenerateScheduleInput;
-    console.log('generateSchedule input summary', {
-      leagueId: input.leagueId,
-      format: input.format,
-      teams: input.teams?.length,
-      venues: input.venues?.map(v => ({ id: v.id, name: v.name, windows: v.availabilityWindows?.length })),
-      softConstraintPriority: input.softConstraintPriority,
-      homeAwayMode: input.homeAwayMode,
-      minRestDays: input.minRestDays,
-      coachAvailabilityCount: input.coachAvailability?.length ?? 0,
-    });
 
     // 4. League ownership check (fixes FINDING-01)
     if (role !== 'admin') {
@@ -2284,12 +2261,12 @@ async function generateScheduleImpl(request: CallableRequest): Promise<ScheduleA
       const output = buildOutput(assignmentResult, input);
       return output;
     } catch (err: unknown) {
-      const raw = err instanceof Error ? `${err.message} | ${err.stack ?? ''}` : String(err);
+      const raw = err instanceof Error ? err.message : String(err);
       console.error('generateSchedule algorithm error', { raw });
-      // DEBUG: expose real error — revert after root cause identified
-      throw new HttpsError('failed-precondition', `DEBUG: ${raw}`);
+      throw new HttpsError('internal', 'Schedule generation failed. Check your team count, venue availability, and date range, then try again.');
     }
-}
+  }
+);
 
 // ─── Callable: geocode a venue address via Nominatim ─────────────────────────
 
