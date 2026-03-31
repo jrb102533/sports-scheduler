@@ -61,18 +61,6 @@ export const useTeamStore = create<TeamStore>((set) => ({
     });
   },
 
-  addTeamToLeague: async (teamId, leagueId) => {
-    await updateDoc(doc(db, 'teams', teamId), {
-      leagueIds: arrayUnion(leagueId),
-    });
-  },
-
-  removeTeamFromLeague: async (teamId, leagueId) => {
-    await updateDoc(doc(db, 'teams', teamId), {
-      leagueIds: arrayRemove(leagueId),
-    });
-  },
-
   // Owner-initiated delete: marks as deleted, recoverable by admin
   softDeleteTeam: async (id) => {
     await updateDoc(doc(db, 'teams', id), {

@@ -3,8 +3,6 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
-import { TeamPicker } from '@/components/leagues/TeamPicker';
-import { useAuthStore } from '@/store/useAuthStore';
 import { SPORT_TYPE_LABELS } from '@/constants';
 import type { League, Team } from '@/types';
 
@@ -33,9 +31,6 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState('');
   const [saveError, setSaveError] = useState('');
-
-  const profile = useAuthStore(s => s.profile);
-  const currentUserId = profile?.uid ?? '';
 
   const prevTeamIds = editLeague?.id
     ? allTeams.filter(t => t.leagueIds?.includes(editLeague.id)).map(t => t.id)
@@ -108,13 +103,26 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
 
         <div>
           <p className="text-sm font-medium text-gray-700 mb-2">Assign Teams</p>
-          <TeamPicker
-            leagueId={editLeague?.id ?? ''}
-            sportType={sportType || undefined}
-            selectedTeamIds={selectedTeamIds}
-            onChange={ids => setSelectedTeamIds(ids)}
-            currentUserId={currentUserId}
-          />
+          <div className="border rounded-lg max-h-52 overflow-y-auto divide-y divide-gray-100">
+            {allTeams
+              .filter(t => !t.isDeleted && !t.isPending && (!sportType || t.sportType === sportType))
+              .map(t => (
+                <label key={t.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    checked={selectedTeamIds.includes(t.id)}
+                    onChange={() => setSelectedTeamIds(prev =>
+                      prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                    )}
+                  />
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: t.color }}
+                  />
+                  <span className="text-sm text-gray-800">{t.name}</span>
+                </label>
+              ))}
+          </div>
         </div>
 
         {saveError && (
