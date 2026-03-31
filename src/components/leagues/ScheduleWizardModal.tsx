@@ -496,7 +496,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
           availableTimeStart: svc.availableTimeStart,
           availableTimeEnd: svc.availableTimeEnd,
           blackoutDates: svc.blackoutDates,
-          availabilityWindows: svc.availabilityWindows,
+          availabilityWindows: svc.availabilityWindows ?? [],
         })));
         setVenueBlackoutInputs(cfg.venueConfigs.map(() => ''));
       }
@@ -742,7 +742,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         // (day-picker UI only), so indexOf against DAY_NAMES (Sunday-first) always
         // produces a valid 0–6 integer. The filter guards against any stale persisted
         // state that might contain an unrecognized string.
-        const resolvedWindows: RecurringVenueWindow[] = vc.availabilityWindows.length > 0
+        const resolvedWindows: RecurringVenueWindow[] = (vc.availabilityWindows?.length ?? 0) > 0
           ? vc.availabilityWindows
           : vc.availableDays
               .filter(dayName => DAY_NAMES.includes(dayName))
