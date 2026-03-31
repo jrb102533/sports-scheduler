@@ -4,12 +4,12 @@ import type { WizardMode, ScheduleConstraint, RecurringVenueWindow } from './wiz
 export interface ScheduleVenueConfig {
   venueId: string;              // reference to the saved venue (or '' for manual entry)
   name: string;
-  concurrentPitches: number;
-  availableDays: string[];
-  availableTimeStart: string;
-  availableTimeEnd: string;
-  availabilityWindows: RecurringVenueWindow[];
-  blackoutDates: string[];
+  concurrentPitches?: number;
+  availableDays?: string[];
+  availableTimeStart?: string;
+  availableTimeEnd?: string;
+  availabilityWindows?: RecurringVenueWindow[];
+  blackoutDates?: string[];
 }
 
 /**
