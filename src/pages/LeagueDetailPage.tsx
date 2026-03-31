@@ -38,7 +38,7 @@ export function LeagueDetailPage() {
   const profile = useAuthStore(s => s.profile);
 
   const league = leagues.find(l => l.id === id);
-  const leagueTeams = teams.filter(t => t.leagueId === id);
+  const leagueTeams = teams.filter(t => t.leagueIds?.includes(id!));
   const leagueTeamIds = leagueTeams.map(t => t.id);
   const leagueEvents = allEvents
     .filter(e => e.teamIds.some(tid => leagueTeamIds.includes(tid)))
@@ -91,7 +91,7 @@ export function LeagueDetailPage() {
   const canSoftDelete = isLeagueManager && league.managedBy === profile?.uid;
 
   async function handleDelete() {
-    await Promise.all(leagueTeams.map(t => updateTeam({ ...t, leagueId: undefined })));
+    await Promise.all(leagueTeams.map(t => updateTeam({ ...t, leagueIds: (t.leagueIds ?? []).filter(lid => lid !== id) })));
     await deleteLeague(league!.id);
     navigate('/leagues');
   }
@@ -106,8 +106,8 @@ export function LeagueDetailPage() {
     const added = selectedTeamIds.filter(tid => !prevTeamIds.includes(tid));
     const removed = prevTeamIds.filter(tid => !selectedTeamIds.includes(tid));
     await Promise.all([
-      ...added.map(tid => { const t = teams.find(tm => tm.id === tid); return t ? updateTeam({ ...t, leagueId: id }) : Promise.resolve(); }),
-      ...removed.map(tid => { const t = teams.find(tm => tm.id === tid); return t ? updateTeam({ ...t, leagueId: undefined }) : Promise.resolve(); }),
+      ...added.map(tid => { const t = teams.find(tm => tm.id === tid); return t ? updateTeam({ ...t, leagueIds: [...(t.leagueIds ?? []), id!] }) : Promise.resolve(); }),
+      ...removed.map(tid => { const t = teams.find(tm => tm.id === tid); return t ? updateTeam({ ...t, leagueIds: (t.leagueIds ?? []).filter(lid => lid !== id) }) : Promise.resolve(); }),
     ]);
     setEditOpen(false);
   }
