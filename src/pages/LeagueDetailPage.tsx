@@ -10,6 +10,7 @@ import { StandingsTable } from '@/components/standings/StandingsTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { LeagueForm } from '@/components/leagues/LeagueForm';
 import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
+import { DeleteLeagueModal } from '@/components/leagues/DeleteLeagueModal';
 import { SeasonCreateModal } from '@/components/seasons/SeasonCreateModal';
 import { AvailabilityStatusPanel } from '@/components/leagues/AvailabilityStatusPanel';
 import type { CoachInfo } from '@/components/leagues/AvailabilityStatusPanel';
@@ -30,7 +31,7 @@ export function LeagueDetailPage() {
   const navigate = useNavigate();
 
   const leagues = useLeagueStore(s => s.leagues);
-  const { updateLeague, deleteLeague } = useLeagueStore();
+  const { updateLeague, deleteLeague, softDeleteLeague } = useLeagueStore();
   const { teams, updateTeam } = useTeamStore();
   const allEvents = useEventStore(s => s.events);
   const profile = useAuthStore(s => s.profile);
@@ -51,6 +52,7 @@ export function LeagueDetailPage() {
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [softDeleteOpen, setSoftDeleteOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [seasonCreateOpen, setSeasonCreateOpen] = useState(false);
 
@@ -80,9 +82,12 @@ export function LeagueDetailPage() {
   }));
 
   const isAdmin = profile?.role === 'admin';
-  const canManage = isAdmin || (profile?.role === 'league_manager' && profile?.leagueId === id);
+  const isLeagueManager = profile?.role === 'league_manager';
+  const canManage = isAdmin || (isLeagueManager && profile?.leagueId === id);
 
   if (!league) return <div className="p-4 sm:p-6 text-gray-500">League not found.</div>;
+
+  const canSoftDelete = isLeagueManager && league.managedBy === profile?.uid;
 
   async function handleDelete() {
     await Promise.all(leagueTeams.map(t => updateTeam({ ...t, leagueId: undefined })));
@@ -135,7 +140,10 @@ export function LeagueDetailPage() {
           <div className="flex gap-2 flex-shrink-0">
             <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}><Pencil size={14} /> Edit</Button>
             {isAdmin && (
-              <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}><Trash2 size={14} /></Button>
+              <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)} aria-label="Delete league"><Trash2 size={14} /></Button>
+            )}
+            {!isAdmin && canSoftDelete && (
+              <Button variant="danger" size="sm" onClick={() => setSoftDeleteOpen(true)} aria-label="Delete league"><Trash2 size={14} /></Button>
             )}
           </div>
         )}
@@ -172,11 +180,17 @@ export function LeagueDetailPage() {
               )}
             </div>
             <div className="flex gap-2">
-              {canManage && leagueTeams.length >= 2 && (
-                <Button size="sm" variant="secondary" onClick={() => setWizardOpen(true)}>
+              {canManage && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setWizardOpen(true)}
+                  disabled={leagueTeams.length < 2}
+                  title={leagueTeams.length < 2 ? 'Add at least 2 teams to use the Schedule Wizard' : undefined}
+                >
                   <Wand2 size={14} />
                   {wizardDraft ? 'Continue Schedule' : 'Schedule Wizard'}
-                  {hasActiveCollection && (
+                  {hasActiveCollection && leagueTeams.length >= 2 && (
                     <span className="ml-1 text-xs bg-blue-100 text-blue-700 rounded-full px-1.5">
                       {respondedCount}/{totalCoaches}
                     </span>
@@ -337,6 +351,15 @@ export function LeagueDetailPage() {
         title="Delete League"
         message={`Delete "${league.name}"? Teams in this league will be unassigned but not deleted.`}
       />
+
+      {softDeleteOpen && (
+        <DeleteLeagueModal
+          open={softDeleteOpen}
+          league={league}
+          onClose={() => setSoftDeleteOpen(false)}
+          onConfirm={() => softDeleteLeague(league.id).then(() => navigate('/leagues'))}
+        />
+      )}
     </div>
   );
 }
