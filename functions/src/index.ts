@@ -2230,7 +2230,7 @@ export const generateSchedule = onCall(
           const venueBlackouts = new Set(venue.blackoutDates ?? []);
           if (venueBlackouts.has(isoDate)) continue;
           const allWindows = [
-            ...venue.availabilityWindows,
+            ...(venue.availabilityWindows ?? []),
             ...(venue.fallbackWindows ?? []),
           ];
           for (const window of allWindows) {
