@@ -256,9 +256,10 @@ service cloud.firestore {
       }
     }
 
-    // Invite records — written by Cloud Function (admin SDK), read by invitee only
-    match /invites/{email} {
-      allow read: if request.auth != null && request.auth.token.email == email;
+    // Invite records — written exclusively by Cloud Functions (Admin SDK).
+    // Auto-ID documents; invitee may read only their own invite by matching email claim.
+    match /invites/{inviteId} {
+      allow read: if request.auth != null && request.auth.token.email == resource.data.email;
       allow write: if false;
     }
 

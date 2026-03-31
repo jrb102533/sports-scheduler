@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "invites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "email", "order": "ASCENDING" },
+        { "fieldPath": "acceptedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "seasons",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
