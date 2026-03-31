@@ -3048,3 +3048,428 @@ export const overrideStandingRank = onCall<OverrideStandingRankData, Promise<Ove
   }
 );
 
+// ─── League Team Invite Flow ──────────────────────────────────────────────────
+
+interface SendLeagueInviteData {
+  emails: string[];
+  leagueId: string;
+}
+
+interface SendLeagueInviteResult {
+  results: Array<{ email: string; success: boolean; error?: string }>;
+}
+
+/**
+ * sendLeagueInvite — invite coaches to join a league by email.
+ *
+ * For each email the function:
+ *   1. Creates a placeholder team document.
+ *   2. Creates an auto-ID invite document in /invites.
+ *   3. Sends an invitation email via nodemailer.
+ *
+ * Caller must be league_manager or admin and must own the league.
+ * Rate limit: 1 call per minute per uid.
+ * Maximum 20 emails per call.
+ */
+export const sendLeagueInvite = onCall<SendLeagueInviteData, Promise<SendLeagueInviteResult>>(
+  { secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+
+    const uid = request.auth.uid;
+    const role = await assertAdminOrCoach(uid);
+    if (role !== 'admin' && role !== 'league_manager') {
+      throw new HttpsError('permission-denied', 'Only league managers and admins can send league invites.');
+    }
+    await checkRateLimit(uid, 'sendLeagueInvite', 1);
+
+    const { emails, leagueId } = request.data;
+
+    if (!Array.isArray(emails) || emails.length === 0) {
+      throw new HttpsError('invalid-argument', 'emails must be a non-empty array.');
+    }
+    if (emails.length > 20) {
+      throw new HttpsError('invalid-argument', 'Maximum 20 emails per call.');
+    }
+    if (!leagueId?.trim()) {
+      throw new HttpsError('invalid-argument', 'leagueId is required.');
+    }
+
+    // Verify league exists and caller owns it.
+    const db = admin.firestore();
+    const leagueSnap = await db.doc(`leagues/${leagueId}`).get();
+    if (!leagueSnap.exists) {
+      throw new HttpsError('not-found', `League ${leagueId} not found.`);
+    }
+    const league = leagueSnap.data() as {
+      name: string;
+      managedBy?: string;
+      sportType?: string;
+    };
+    if (role !== 'admin' && league.managedBy !== uid) {
+      throw new HttpsError('permission-denied', 'You do not own this league.');
+    }
+
+    const leagueName = league.name ?? 'Unknown League';
+    const sportType = league.sportType ?? 'other';
+    const now = new Date().toISOString();
+    const transporter = createTransporter();
+    const inviteUrl = `${APP_URL}/invite/league`;
+
+    const settled = await Promise.allSettled(
+      emails.map(async (rawEmail) => {
+        const email = rawEmail.toLowerCase().trim();
+        if (!email) throw new Error('Empty email address.');
+
+        // 1. Create placeholder team.
+        const placeholderTeamId = crypto.randomUUID();
+        await db.doc(`teams/${placeholderTeamId}`).set({
+          id: placeholderTeamId,
+          name: `Pending \u2014 ${email}`,
+          leagueIds: [leagueId],
+          isPending: true,
+          pendingEmail: email,
+          sportType,
+          color: '#9ca3af',
+          createdBy: uid,
+          ownerName: '',
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        // 2. Create auto-ID invite document.
+        await db.collection('invites').add({
+          email,
+          leagueId,
+          leagueName,
+          placeholderTeamId,
+          invitedBy: uid,
+          invitedAt: now,
+        });
+
+        // 3. Send invite email.
+        await transporter.sendMail({
+          from: emailFrom.value(),
+          to: email,
+          subject: `You've been invited to join ${leagueName} on First Whistle`,
+          text: [
+            `You've been invited to join ${leagueName} on First Whistle.`,
+            '',
+            'Click the link below to accept your invitation:',
+            inviteUrl,
+            '',
+            '---',
+            'Sent via First Whistle',
+          ].join('\n'),
+          html: `
+            <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
+              <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:12px;padding:24px;margin-bottom:24px;text-align:center">
+                <p style="color:white;font-weight:700;font-size:22px;margin:0">First Whistle</p>
+                <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px">Game day starts here.</p>
+              </div>
+              <p style="color:#111827;font-size:15px">You've been invited to join <strong>${esc(leagueName)}</strong> on First Whistle.</p>
+              <p style="color:#374151">Click below to accept your invitation and set up your team in the league.</p>
+              <div style="text-align:center;margin:32px 0">
+                <a href="${inviteUrl}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
+                  Accept Invitation
+                </a>
+              </div>
+              <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
+              <p style="color:#9ca3af;font-size:12px;text-align:center">
+                You received this because a league manager invited you to First Whistle.
+              </p>
+            </div>
+          `,
+        });
+      })
+    );
+
+    const results: SendLeagueInviteResult['results'] = settled.map((outcome, i) => {
+      const email = emails[i].toLowerCase().trim();
+      if (outcome.status === 'fulfilled') {
+        return { email, success: true };
+      }
+      const err = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+      console.error(`sendLeagueInvite: failed for email=${email} leagueId=${leagueId} uid=${uid}:`, err);
+      return { email, success: false, error: err };
+    });
+
+    return { results };
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ResendLeagueInviteData {
+  placeholderTeamId: string;
+}
+
+/**
+ * resendLeagueInvite — re-send an invite email for a pending placeholder team.
+ *
+ * Caller must be authenticated and must own the league the placeholder belongs to
+ * (or be an admin).
+ * Rate limit: 10 calls per minute per uid.
+ */
+export const resendLeagueInvite = onCall<ResendLeagueInviteData, Promise<{ success: boolean }>>(
+  { secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+
+    const uid = request.auth.uid;
+    const role = await assertAdminOrCoach(uid);
+    if (role !== 'admin' && role !== 'league_manager') {
+      throw new HttpsError('permission-denied', 'Only league managers and admins can resend league invites.');
+    }
+    await checkRateLimit(uid, 'resendLeagueInvite', 10);
+
+    const { placeholderTeamId } = request.data;
+    if (!placeholderTeamId?.trim()) {
+      throw new HttpsError('invalid-argument', 'placeholderTeamId is required.');
+    }
+
+    const db = admin.firestore();
+
+    // Load the placeholder team.
+    const teamSnap = await db.doc(`teams/${placeholderTeamId}`).get();
+    if (!teamSnap.exists) {
+      throw new HttpsError('not-found', 'Placeholder team not found.');
+    }
+    const team = teamSnap.data() as {
+      isPending?: boolean;
+      pendingEmail?: string;
+      leagueIds?: string[];
+    };
+    if (!team.isPending) {
+      throw new HttpsError('failed-precondition', 'This team is no longer pending.');
+    }
+    const email = team.pendingEmail ?? '';
+    const leagueId = team.leagueIds?.[0] ?? '';
+    if (!email || !leagueId) {
+      throw new HttpsError('internal', 'Placeholder team is missing email or leagueId.');
+    }
+
+    // Verify caller owns the league.
+    const leagueSnap = await db.doc(`leagues/${leagueId}`).get();
+    if (!leagueSnap.exists) {
+      throw new HttpsError('not-found', `League ${leagueId} not found.`);
+    }
+    const league = leagueSnap.data() as { name: string; managedBy?: string };
+    if (role !== 'admin' && league.managedBy !== uid) {
+      throw new HttpsError('permission-denied', 'You do not own this league.');
+    }
+
+    const leagueName = league.name ?? 'Unknown League';
+    const inviteUrl = `${APP_URL}/invite/league`;
+    const transporter = createTransporter();
+
+    await transporter.sendMail({
+      from: emailFrom.value(),
+      to: email,
+      subject: `Reminder: You've been invited to join ${leagueName} on First Whistle`,
+      text: [
+        `You've been invited to join ${leagueName} on First Whistle.`,
+        '',
+        'Click the link below to accept your invitation:',
+        inviteUrl,
+        '',
+        '---',
+        'Sent via First Whistle',
+      ].join('\n'),
+      html: `
+        <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
+          <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:12px;padding:24px;margin-bottom:24px;text-align:center">
+            <p style="color:white;font-weight:700;font-size:22px;margin:0">First Whistle</p>
+            <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px">Game day starts here.</p>
+          </div>
+          <p style="color:#111827;font-size:15px">Reminder: You've been invited to join <strong>${esc(leagueName)}</strong> on First Whistle.</p>
+          <p style="color:#374151">Click below to accept your invitation and set up your team in the league.</p>
+          <div style="text-align:center;margin:32px 0">
+            <a href="${inviteUrl}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
+              Accept Invitation
+            </a>
+          </div>
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
+          <p style="color:#9ca3af;font-size:12px;text-align:center">
+            You received this because a league manager invited you to First Whistle.
+          </p>
+        </div>
+      `,
+    });
+
+    console.log(`resendLeagueInvite: resent to email=${email} leagueId=${leagueId} uid=${uid}`);
+    return { success: true };
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AcceptLeagueInviteData {
+  inviteId: string;
+  realTeamId?: string;
+}
+
+/**
+ * acceptLeagueInvite — accept a pending league invitation.
+ *
+ * If realTeamId is provided the caller brings their own team:
+ *   - leagueId is added to the real team via arrayUnion.
+ *   - Any events that referenced the placeholder are migrated to the real team
+ *     (batched in groups of 500).
+ *   - The placeholder team document is deleted.
+ *
+ * If realTeamId is omitted the placeholder team is promoted:
+ *   - coachId is set to the caller's uid.
+ *   - isPending and pendingEmail are removed via FieldValue.delete().
+ *
+ * The invite document is stamped with acceptedAt in both cases.
+ */
+export const acceptLeagueInvite = onCall<AcceptLeagueInviteData, Promise<{ success: boolean }>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+
+    const uid = request.auth.uid;
+    const callerEmail = request.auth.token.email;
+
+    const { inviteId, realTeamId } = request.data;
+    if (!inviteId?.trim()) {
+      throw new HttpsError('invalid-argument', 'inviteId is required.');
+    }
+
+    const db = admin.firestore();
+
+    // Load the invite document.
+    const inviteRef = db.doc(`invites/${inviteId}`);
+    const inviteSnap = await inviteRef.get();
+    if (!inviteSnap.exists) {
+      throw new HttpsError('not-found', 'Invite not found.');
+    }
+    const invite = inviteSnap.data() as {
+      email: string;
+      leagueId: string;
+      leagueName: string;
+      placeholderTeamId: string;
+      invitedBy: string;
+      invitedAt: string;
+      acceptedAt?: string;
+    };
+
+    // Verify the caller's email matches the invite (admins bypass this check).
+    const userSnap = await db.doc(`users/${uid}`).get();
+    const isAdmin = userSnap.data()?.role === 'admin';
+    if (!isAdmin && callerEmail?.toLowerCase() !== invite.email.toLowerCase()) {
+      throw new HttpsError('permission-denied', 'This invite was not sent to your email address.');
+    }
+
+    // Use a transaction to atomically guard against double-acceptance (SEC-16 pattern).
+    // The transaction reads the invite, verifies it is still open, stamps acceptedAt,
+    // and — when the caller is using their own team — also adds leagueId to that team.
+    // Event migration (potentially hundreds of docs) happens outside the transaction
+    // because Firestore transactions cannot contain unbounded reads.
+    const { leagueId, placeholderTeamId } = invite;
+    const now = new Date().toISOString();
+
+    let realTeamRef: admin.firestore.DocumentReference | null = null;
+
+    if (realTeamId) {
+      // Pre-validate ownership outside the transaction (read-only, no write risk).
+      realTeamRef = db.doc(`teams/${realTeamId}`);
+      const realTeamSnap = await realTeamRef.get();
+      if (!realTeamSnap.exists) {
+        throw new HttpsError('not-found', 'Real team not found.');
+      }
+      const realTeam = realTeamSnap.data() as { createdBy?: string };
+      if (!isAdmin && realTeam.createdBy !== uid) {
+        throw new HttpsError('permission-denied', 'You do not own this team.');
+      }
+    }
+
+    await db.runTransaction(async (tx) => {
+      const freshInviteSnap = await tx.get(inviteRef);
+      const freshInvite = freshInviteSnap.data() as typeof invite | undefined;
+
+      if (!freshInviteSnap.exists || !freshInvite) {
+        throw new HttpsError('not-found', 'Invite not found.');
+      }
+      if (freshInvite.acceptedAt) {
+        throw new HttpsError('already-exists', 'This invite has already been accepted.');
+      }
+
+      // Stamp accepted.
+      tx.update(inviteRef, { acceptedAt: now });
+
+      if (realTeamRef) {
+        // Add leagueId to real team atomically with the invite stamp.
+        tx.update(realTeamRef, {
+          leagueIds: admin.firestore.FieldValue.arrayUnion(leagueId),
+          updatedAt: now,
+        });
+      } else {
+        // Promote the placeholder team.
+        tx.update(db.doc(`teams/${placeholderTeamId}`), {
+          coachId: uid,
+          isPending: admin.firestore.FieldValue.delete(),
+          pendingEmail: admin.firestore.FieldValue.delete(),
+          updatedAt: now,
+        });
+      }
+    });
+
+    if (realTeamId) {
+      // Migrate event fixture references from placeholder to real team in batches of 500.
+      // Each document update combines arrayUnion + arrayRemove in a single update call
+      // so both field transforms apply to the same server-side document version.
+      const eventsRef = db.collection('events');
+      let lastDoc: admin.firestore.QueryDocumentSnapshot | null = null;
+
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        let q = eventsRef
+          .where('teamIds', 'array-contains', placeholderTeamId)
+          .limit(500);
+        if (lastDoc) q = q.startAfter(lastDoc);
+
+        const eventsSnap = await q.get();
+        if (eventsSnap.empty) break;
+
+        // Firestore does not allow two batch.update() calls for the same document
+        // in the same field — the second would silently overwrite the first.
+        // Work around this by updating two separate fields in one batch call per doc,
+        // then issuing a second batch for the remove. In practice arrayUnion and
+        // arrayRemove on the same field in one update() are each distinct FieldValue
+        // transforms and Firestore applies them both atomically when passed in the
+        // same object; however passing the same key twice in a JS object is invalid
+        // (last-write-wins at the object level before it reaches the SDK).
+        //
+        // The correct approach: use two sequential batches — first add, then remove.
+        // Because a teamId cannot be both the real and placeholder ID this is safe:
+        // the union adds realTeamId, the remove drops placeholderTeamId.
+        const batchAdd = db.batch();
+        eventsSnap.docs.forEach((d) => {
+          batchAdd.update(d.ref, {
+            teamIds: admin.firestore.FieldValue.arrayUnion(realTeamId),
+          });
+        });
+        await batchAdd.commit();
+
+        const batchRemove = db.batch();
+        eventsSnap.docs.forEach((d) => {
+          batchRemove.update(d.ref, {
+            teamIds: admin.firestore.FieldValue.arrayRemove(placeholderTeamId),
+          });
+        });
+        await batchRemove.commit();
+
+        if (eventsSnap.docs.length < 500) break;
+        lastDoc = eventsSnap.docs[eventsSnap.docs.length - 1];
+      }
+
+      // Delete the placeholder team.
+      await db.doc(`teams/${placeholderTeamId}`).delete();
+    }
+
+    console.log(`acceptLeagueInvite: uid=${uid} accepted inviteId=${inviteId} leagueId=${leagueId} realTeamId=${realTeamId ?? 'placeholder'}`);
+    return { success: true };
+  }
+);
+
