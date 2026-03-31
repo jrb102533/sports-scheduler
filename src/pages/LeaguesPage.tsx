@@ -6,19 +6,21 @@ import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LeagueForm } from '@/components/leagues/LeagueForm';
+import { DeleteLeagueModal } from '@/components/leagues/DeleteLeagueModal';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import type { League, Team } from '@/types';
 
 export function LeaguesPage() {
-  const { leagues, addLeague, updateLeague, deleteLeague } = useLeagueStore();
-  const { teams, updateTeam } = useTeamStore();
+  const { leagues, addLeague, updateLeague, deleteLeague, softDeleteLeague } = useLeagueStore();
+  const { teams, addTeamToLeague, removeTeamFromLeague } = useTeamStore();
   const { profile, updateProfile } = useAuthStore();
   const navigate = useNavigate();
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<League | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<League | null>(null);
+  const [softDeleteTarget, setSoftDeleteTarget] = useState<League | null>(null);
 
   const isAdmin = profile?.role === 'admin';
   const isLeagueManager = profile?.role === 'league_manager';
@@ -40,8 +42,8 @@ export function LeaguesPage() {
   }
 
   async function handleDelete(league: League) {
-    const assigned = teams.filter(t => t.leagueId === league.id);
-    await Promise.all(assigned.map(t => updateTeam({ ...t, leagueId: undefined })));
+    const assigned = teams.filter(t => t.leagueIds?.includes(league.id));
+    await Promise.all(assigned.map(t => removeTeamFromLeague(t.id, league.id)));
     await deleteLeague(league.id);
     setDeleteTarget(null);
   }
@@ -65,7 +67,8 @@ export function LeaguesPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {visibleLeagues.map(league => {
-            const leagueTeams = teams.filter(t => t.leagueId === league.id);
+            const leagueTeams = teams.filter(t => t.leagueIds?.includes(league.id));
+            const canSoftDelete = isLeagueManager && league.managedBy === profile?.uid;
             return (
               <LeagueCard
                 key={league.id}
@@ -73,9 +76,11 @@ export function LeaguesPage() {
                 leagueTeams={leagueTeams}
                 canEdit={isAdmin || (isLeagueManager && (league.managedBy === profile?.uid || league.id === profile?.leagueId))}
                 canDelete={isAdmin}
+                canSoftDelete={canSoftDelete}
                 onClick={() => navigate(`/leagues/${league.id}`)}
                 onEdit={e => openEdit(league, e)}
                 onDelete={e => { e.stopPropagation(); setDeleteTarget(league); }}
+                onSoftDelete={e => { e.stopPropagation(); setSoftDeleteTarget(league); }}
               />
             );
           })}
@@ -112,8 +117,8 @@ export function LeaguesPage() {
             }
 
             await Promise.all([
-              ...added.map(id => { const t = teams.find(tm => tm.id === id); return t ? updateTeam({ ...t, leagueId }) : Promise.resolve(); }),
-              ...removed.map(id => { const t = teams.find(tm => tm.id === id); return t ? updateTeam({ ...t, leagueId: undefined }) : Promise.resolve(); }),
+              ...added.map(id => addTeamToLeague(id, leagueId)),
+              ...removed.map(id => removeTeamFromLeague(id, leagueId)),
             ]);
             setFormOpen(false);
           }}
@@ -127,6 +132,15 @@ export function LeaguesPage() {
         title="Delete League"
         message={`Delete "${deleteTarget?.name}"? Teams in this league will be unassigned but not deleted.`}
       />
+
+      {softDeleteTarget && (
+        <DeleteLeagueModal
+          open
+          league={softDeleteTarget}
+          onClose={() => setSoftDeleteTarget(null)}
+          onConfirm={() => softDeleteLeague(softDeleteTarget.id)}
+        />
+      )}
     </div>
   );
 }
@@ -138,12 +152,14 @@ interface LeagueCardProps {
   leagueTeams: Team[];
   canEdit: boolean;
   canDelete: boolean;
+  canSoftDelete: boolean;
   onClick: () => void;
   onEdit: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
+  onSoftDelete: (e: React.MouseEvent) => void;
 }
 
-function LeagueCard({ league, leagueTeams, canEdit, canDelete, onClick, onEdit, onDelete }: LeagueCardProps) {
+function LeagueCard({ league, leagueTeams, canEdit, canDelete, canSoftDelete, onClick, onEdit, onDelete, onSoftDelete }: LeagueCardProps) {
   return (
     <Card className="p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={onClick}>
       <div className="flex items-start justify-between gap-2 mb-3">
@@ -158,12 +174,16 @@ function LeagueCard({ league, leagueTeams, canEdit, canDelete, onClick, onEdit, 
         </div>
         <div className="flex gap-1 flex-shrink-0">
           {canEdit && (
-            <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
+            <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" aria-label="Edit league">
               <Pencil size={14} />
             </button>
           )}
-          {canDelete && (
-            <button onClick={onDelete} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors">
+          {(canDelete || canSoftDelete) && (
+            <button
+              onClick={canDelete ? onDelete : onSoftDelete}
+              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+              aria-label="Delete league"
+            >
               <Trash2 size={14} />
             </button>
           )}

@@ -26,7 +26,8 @@ function makeProfile(overrides: Partial<UserProfile> = {}): UserProfile {
   };
 }
 
-function makeTeam(overrides: Partial<Team> = {}): Team {
+function makeTeam(overrides: Partial<Team> & { leagueId?: string } = {}): Team {
+  const { leagueId, ...rest } = overrides;
   return {
     id: 'team1',
     name: 'Lions',
@@ -41,7 +42,8 @@ function makeTeam(overrides: Partial<Team> = {}): Team {
     isDeleted: false,
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:00.000Z',
-    ...overrides,
+    ...(leagueId ? { leagueIds: [leagueId] } : {}),
+    ...rest,
   } as Team;
 }
 

@@ -54,7 +54,7 @@ function makeTeam(id: string): Team {
   return {
     id,
     name: `Team ${id}`,
-    leagueId: 'league-1',
+    leagueIds: ['league-1'],
     sportType: 'soccer',
     color: '#000',
     homeVenue: '',

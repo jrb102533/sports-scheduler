@@ -51,7 +51,10 @@ service cloud.firestore {
       allow update: if isAdmin()
         || request.auth.uid == resource.data.createdBy
         || request.auth.uid == resource.data.coachId
-        || (isLeagueManager() && resource.data.leagueId == getProfile().leagueId);
+        || (isLeagueManager() && (
+             ('leagueIds' in resource.data && resource.data.leagueIds.hasAny([getProfile().leagueId]))
+             || resource.data.get('leagueId', '') == getProfile().leagueId
+           ));
 
       // Player availability windows — any team member can read; players/parents write their own,
       // coaches and admins can write any player's record.

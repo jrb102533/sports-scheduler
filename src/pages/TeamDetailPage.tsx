@@ -54,8 +54,8 @@ export function TeamDetailPage() {
 
   const team = teams.find(t => t.id === id);
   const userCanEdit = canEdit(profile, team ?? null);
-  const league = team?.leagueId ? leagues.find(l => l.id === team.leagueId) : null;
-  const leagueTeamIds = league ? teams.filter(t => t.leagueId === league.id).map(t => t.id) : null;
+  const league = team?.leagueIds?.length ? leagues.find(l => team.leagueIds!.includes(l.id)) : null;
+  const leagueTeamIds = league ? teams.filter(t => t.leagueIds?.includes(league.id)).map(t => t.id) : null;
 
   const [tab, setTab] = useState<Tab>('schedule');
   const [editOpen, setEditOpen] = useState(false);

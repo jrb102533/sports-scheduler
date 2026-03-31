@@ -68,7 +68,7 @@ export function Dashboard() {
     : undefined;
   const leagueId = leagueManagerMembership?.leagueId ?? profile?.leagueId;
   const myLeague = leagueId ? leagues.find(l => l.id === leagueId) : null;
-  const myLeagueTeams = myLeague ? allTeams.filter(t => t.leagueId === myLeague.id) : [];
+  const myLeagueTeams = myLeague ? allTeams.filter(t => t.leagueIds?.includes(myLeague.id)) : [];
 
   const isEmpty = teams.length === 0 && events.length === 0;
   const [seeding, setSeeding] = useState(false);
@@ -80,11 +80,11 @@ export function Dashboard() {
     ? [...new Set(
         allTeams
           .filter(t =>
-            t.leagueId &&
+            t.leagueIds?.length &&
             (t.coachId === profile?.uid ||
               getMemberships(profile).some(m => m.role === 'coach' && m.teamId === t.id))
           )
-          .map(t => t.leagueId!)
+          .flatMap(t => t.leagueIds!)
       )]
     : [];
 

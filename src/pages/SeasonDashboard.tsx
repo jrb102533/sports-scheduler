@@ -293,7 +293,7 @@ export function SeasonDashboard() {
 
   const league = leagues.find(l => l.id === leagueId);
   const season = seasons.find(s => s.id === seasonId);
-  const leagueTeams = teams.filter(t => t.leagueId === leagueId);
+  const leagueTeams = teams.filter(t => t.leagueIds?.includes(leagueId ?? ''));
 
   // Estimated available venue slots across the season range
   const availableSlots = (() => {

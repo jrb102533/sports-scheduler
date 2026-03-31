@@ -73,7 +73,7 @@ function makeTeam(id: string): Team {
   return {
     id,
     name: `Team ${id}`,
-    leagueId: 'league-1',
+    leagueIds: ['league-1'],
     sportType: 'soccer',
     color: '#000',
     homeVenue: '',
@@ -146,7 +146,7 @@ vi.mock('@/store/useAuthStore', () => ({
         email: 'lm@example.com',
         displayName: 'LM',
         role: 'league_manager',
-        leagueId: 'league-1',
+        leagueIds: ['league-1'],
         createdAt: '2024-01-01T00:00:00.000Z',
       } as UserProfile,
     }),

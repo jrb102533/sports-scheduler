@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   collection, onSnapshot, doc, setDoc, deleteDoc, query, orderBy, updateDoc,
+  arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Team } from '@/types';
@@ -12,6 +13,8 @@ interface TeamStore {
   subscribe: () => () => void;
   addTeam: (team: Team) => Promise<void>;
   updateTeam: (team: Team) => Promise<void>;
+  addTeamToLeague: (teamId: string, leagueId: string) => Promise<void>;
+  removeTeamFromLeague: (teamId: string, leagueId: string) => Promise<void>;
   softDeleteTeam: (id: string) => Promise<void>;
   restoreTeam: (id: string) => Promise<void>;
   hardDeleteTeam: (id: string) => Promise<void>;
@@ -44,6 +47,18 @@ export const useTeamStore = create<TeamStore>((set) => ({
   updateTeam: async (team) => {
     const data = Object.fromEntries(Object.entries(team).filter(([, v]) => v !== undefined));
     await setDoc(doc(db, 'teams', team.id), data);
+  },
+
+  addTeamToLeague: async (teamId, leagueId) => {
+    await updateDoc(doc(db, 'teams', teamId), {
+      leagueIds: arrayUnion(leagueId),
+    });
+  },
+
+  removeTeamFromLeague: async (teamId, leagueId) => {
+    await updateDoc(doc(db, 'teams', teamId), {
+      leagueIds: arrayRemove(leagueId),
+    });
   },
 
   // Owner-initiated delete: marks as deleted, recoverable by admin
