@@ -865,9 +865,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             };
           })() : {};
 
-          const event: ScheduledEvent = isPracticeFixture
+          const event: Omit<ScheduledEvent, 'id'> = isPracticeFixture
             ? {
-                id: crypto.randomUUID(),
                 title: `${fixture.homeTeamName} Practice`,
                 type: 'practice',
                 status: 'scheduled',
@@ -884,7 +883,6 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                 ...venueFields,
               }
             : {
-                id: crypto.randomUUID(),
                 title: `${fixture.homeTeamName} vs ${fixture.awayTeamName}`,
                 type: 'game',
                 status: 'scheduled',
@@ -903,13 +901,12 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                 ...venueFields,
               };
 
-          return addEvent(event);
+          return addEvent(event as ScheduledEvent);
         })
       );
       setPublished(true);
       saveScheduleConfig();
-    } catch (err) {
-      console.error('handlePublish failed:', err);
+    } catch {
       setGenError('Failed to publish some events. Please check the schedule and try again.');
     } finally {
       setPublishing(false);
@@ -941,8 +938,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
               } : {}),
             };
           })() : {};
-          const event: ScheduledEvent = {
-            id: crypto.randomUUID(),
+          const event: Omit<ScheduledEvent, 'id'> = {
             title: `${fixture.homeTeamName} vs ${fixture.awayTeamName}`,
             type: 'game',
             status: publishNow ? 'scheduled' : 'draft',
@@ -962,14 +958,13 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             ...(season?.id ? { seasonId: season.id } : {}),
             ...(divisionId ? { divisionId } : {}),
           };
-          return addEvent(event);
+          return addEvent(event as ScheduledEvent);
         })
       );
       setPublished(true);
       setPublishedAsDraft(!publishNow);
       saveScheduleConfig();
-    } catch (err) {
-      console.error('saveFixtures failed:', err);
+    } catch {
       setGenError('Failed to save some events. Please check the schedule and try again.');
     } finally {
       setPublishing(false);
@@ -1896,7 +1891,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                             <td className="px-3 py-2 text-gray-700">{f.awayTeamName}</td>
                           </>
                         )}
-                        <td className="px-3 py-2 text-gray-500 hidden sm:table-cell">{f.venueName ?? f.venue}</td>
+                        <td className="px-3 py-2 text-gray-500 hidden sm:table-cell">{f.venue}</td>
                         <td className="px-3 py-2 text-gray-400 hidden sm:table-cell">
                           {isPracticeMode ? '' : (f.stage ?? `Rd ${f.round}`)}
                         </td>

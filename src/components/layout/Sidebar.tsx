@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers, MapPin, X, CalendarClock, ChevronDown, Home } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers, MapPin, X, CalendarClock, ChevronDown } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
@@ -65,13 +65,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
     return format(d, 'EEE, MMM d');
   }
 
-  const isParentOrPlayer = hasRole(profile, 'player', 'parent') && !hasRole(profile, 'admin', 'league_manager', 'coach');
-
-  const parentNavItems = [
-    { to: '/parent', label: 'My Team', icon: Home, end: true },
-  ];
-
-  const allNavItems = isParentOrPlayer ? parentNavItems : [
+  const allNavItems = [
     navItems[0], // Home
     navItems[1], // Calendar
     navItems[2], // Teams
