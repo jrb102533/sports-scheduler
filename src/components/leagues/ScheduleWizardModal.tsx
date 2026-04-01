@@ -1896,7 +1896,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                             <td className="px-3 py-2 text-gray-700">{f.awayTeamName}</td>
                           </>
                         )}
-                        <td className="px-3 py-2 text-gray-500 hidden sm:table-cell">{f.venue}</td>
+                        <td className="px-3 py-2 text-gray-500 hidden sm:table-cell">{f.venueName ?? f.venue}</td>
                         <td className="px-3 py-2 text-gray-400 hidden sm:table-cell">
                           {isPracticeMode ? '' : (f.stage ?? `Rd ${f.round}`)}
                         </td>
