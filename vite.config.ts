@@ -6,6 +6,9 @@ import path from 'path'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    sourcemap: true,
+  },
   define: {
     __APP_VERSION__:  JSON.stringify(process.env.VITE_APP_VERSION  ?? 'dev'),
     __BUILD_SHA__:    JSON.stringify(process.env.VITE_BUILD_SHA    ?? 'local'),
