@@ -30,12 +30,13 @@ interface InviteDoc {
   playerName: string;
   teamId: string;
   teamName: string;
+  role?: string;
   invitedAt: string;
   acceptedAt?: string;
 }
 
 const sendInviteFn = httpsCallable<{
-  to: string; playerName: string; teamName: string; playerId: string; teamId: string;
+  to: string; playerName: string; teamName: string; playerId: string; teamId: string; role?: string;
 }>(functions, 'sendInvite');
 
 type Tab = 'schedule' | 'roster' | 'attendance' | 'standings' | 'info' | 'requests' | 'invites';
@@ -205,6 +206,7 @@ export function TeamDetailPage() {
         teamName: invite.teamName,
         playerId: invite.playerId,
         teamId: invite.teamId,
+        ...(invite.role ? { role: invite.role } : {}),
       });
     } finally {
       setResendingEmails(prev => { const s = new Set(prev); s.delete(invite.email); return s; });
@@ -518,6 +520,11 @@ export function TeamDetailPage() {
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isAccepted ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                           {isAccepted ? 'Accepted' : 'Pending'}
                         </span>
+                        {invite.role && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 capitalize">
+                            {invite.role}
+                          </span>
+                        )}
                         <span className="text-xs text-gray-400">
                           Sent {new Date(invite.invitedAt).toLocaleDateString()}
                         </span>

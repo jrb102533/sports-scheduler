@@ -111,14 +111,28 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
               const inviteSnap = await getDoc(doc(db, 'invites', user.email.toLowerCase()));
               if (inviteSnap.exists()) {
                 const invite = inviteSnap.data();
-                const { teamId, playerId } = invite as { teamId?: string; playerId?: string };
+                const { teamId, playerId, role: inviteRole } = invite as { teamId?: string; playerId?: string; role?: string };
                 // Validate that the invite's playerId actually belongs to the teamId
                 // before linking to prevent a compromised invite from linking a user
                 // to an arbitrary player record on an unrelated team.
                 if (teamId && playerId) {
                   const playerSnap = await getDoc(doc(db, 'players', playerId));
                   if (playerSnap.exists() && playerSnap.data().teamId === teamId) {
-                    await setDoc(doc(db, 'users', user.uid), { ...profile, teamId, playerId });
+                    const patch: Partial<UserProfile> = { teamId, playerId };
+                    // Apply the role from the invite only if it is an allowed invite role.
+                    // Allowlist is defense-in-depth against a compromised invite document —
+                    // the server also enforces this, but we never trust Firestore data blindly.
+                    // We only override if the current profile role is still the default 'player'
+                    // to avoid downgrading a coach who was re-invited.
+                    const ALLOWED_INVITE_ROLES: UserRole[] = ['player', 'parent'];
+                    if (
+                      inviteRole &&
+                      ALLOWED_INVITE_ROLES.includes(inviteRole as UserRole) &&
+                      profile.role === 'player'
+                    ) {
+                      patch.role = inviteRole as UserRole;
+                    }
+                    await setDoc(doc(db, 'users', user.uid), { ...profile, ...patch });
                   } else {
                     console.warn(`Auto-link skipped: player ${playerId} not found on team ${teamId}`);
                   }
