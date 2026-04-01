@@ -8,7 +8,6 @@ import { useAuthStore } from '@/store/useAuthStore';
 
 export function useNotificationTrigger() {
   const events = useEventStore(s => s.events);
-  const addNotification = useNotificationStore(s => s.addNotification);
   const uid = useAuthStore(s => s.user?.uid);
 
   useEffect(() => {
@@ -26,6 +25,7 @@ export function useNotificationTrigger() {
 
     if (upcomingEvents.length === 0) return;
 
+    const { addNotification } = useNotificationStore.getState();
     for (const event of upcomingEvents) {
       addNotification({
         id: crypto.randomUUID(),
@@ -39,5 +39,5 @@ export function useNotificationTrigger() {
     }
 
     setItem(key, [...notified, ...upcomingEvents.map(e => e.id)]);
-  }, [events, addNotification, uid]);
+  }, [events, uid]);
 }

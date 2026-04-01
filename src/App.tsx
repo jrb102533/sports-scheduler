@@ -6,15 +6,14 @@ import { ForcePasswordChangeModal } from './components/auth/ForcePasswordChangeM
 import { ConsentUpdateModal } from './components/auth/ConsentUpdateModal';
 
 export default function App() {
-  const init = useAuthStore(s => s.init);
   const user = useAuthStore(s => s.user);
   const mustChangePassword = useAuthStore(s => s.mustChangePassword);
   const consentOutdated = useAuthStore(s => s.consentOutdated);
 
   useEffect(() => {
-    const unsubscribe = init();
+    const unsubscribe = useAuthStore.getState().init();
     return unsubscribe;
-  }, [init]);
+  }, []);
 
   return (
     <>

@@ -360,17 +360,14 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   const wizardDraft = useCollectionStore(s => s.wizardDraft);
   const activeCollection = useCollectionStore(s => s.activeCollection);
   const responses = useCollectionStore(s => s.responses);
-  const loadCollection = useCollectionStore(s => s.loadCollection);
-
   // Venue store
   const savedVenues = useVenueStore(s => s.venues);
-  const subscribeVenues = useVenueStore(s => s.subscribe);
   const user = useAuthStore(s => s.user);
 
   useEffect(() => {
-    const unsub = subscribeVenues();
+    const unsub = useVenueStore.getState().subscribe();
     return unsub;
-  }, [subscribeVenues]);
+  }, []);
 
   // Mode & step
   const [mode, setMode] = useState<WizardMode | null>(null);
@@ -441,10 +438,10 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
   useEffect(() => {
     if (step === 'generate' && generatePhase === 'configure' && mode === 'season') {
-      const unsub = loadCollection(league.id);
+      const unsub = useCollectionStore.getState().loadCollection(league.id);
       return unsub;
     }
-  }, [step, generatePhase, mode, league.id, loadCollection]);
+  }, [step, generatePhase, mode, league.id]);
 
   // ── Preview: per-fixture fallback acknowledgement ────────────────────────
   const [acknowledgedFallbacks, setAcknowledgedFallbacks] = useState<Set<number>>(new Set());
