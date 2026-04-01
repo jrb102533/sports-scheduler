@@ -327,11 +327,20 @@ export function getAccessibleTeamIds(profile: UserProfile | null, allTeams: Team
 
   const ids = new Set<string>();
   for (const m of memberships) {
-    if (m.role === 'league_manager' && m.leagueId) {
-      allTeams.filter(t => t.leagueIds?.includes(m.leagueId!)).forEach(t => ids.add(t.id));
+    if (m.role === 'league_manager') {
+      // Teams in the LM's league
+      if (m.leagueId) {
+        allTeams.filter(t => t.leagueIds?.includes(m.leagueId!)).forEach(t => ids.add(t.id));
+      }
+      // Teams the LM created (may not yet be assigned to a league)
+      allTeams.filter(t => t.createdBy === profile.uid).forEach(t => ids.add(t.id));
     } else if (m.role === 'coach') {
       allTeams
-        .filter(t => t.createdBy === profile.uid || t.coachId === profile.uid)
+        .filter(t =>
+          t.createdBy === profile.uid ||
+          t.coachId === profile.uid ||
+          (m.teamId && t.id === m.teamId)
+        )
         .forEach(t => ids.add(t.id));
     } else if (m.teamId) {
       ids.add(m.teamId);
