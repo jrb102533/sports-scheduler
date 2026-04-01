@@ -34,8 +34,8 @@ vi.mock('@/lib/firebase', () => ({ db: {} }));
 
 // useVenueStore() is called with NO selector in VenuesPage — it destructures
 // the whole store.  The mock must support both the no-arg and selector shapes.
-vi.mock('@/store/useVenueStore', () => ({
-  useVenueStore: (selector?: (s: unknown) => unknown) => {
+vi.mock('@/store/useVenueStore', () => {
+  const useVenueStore = (selector?: (s: unknown) => unknown) => {
     const slice = {
       venues: [],
       loading: false,
@@ -45,8 +45,11 @@ vi.mock('@/store/useVenueStore', () => ({
       subscribe: mockSubscribe,
     };
     return selector ? selector(slice) : slice;
-  },
-}));
+  };
+  // VenuesPage now calls useVenueStore.getState().subscribe() inside useEffect.
+  useVenueStore.getState = () => ({ subscribe: mockSubscribe });
+  return { useVenueStore };
+});
 
 // useAuthStore is called with a selector: useAuthStore(s => s.user)
 vi.mock('@/store/useAuthStore', () => ({

@@ -46,11 +46,8 @@ export function LeagueDetailPage() {
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
   const seasons = useSeasonStore(s => s.seasons);
-  const fetchSeasons = useSeasonStore(s => s.fetchSeasons);
   const activeCollection = useCollectionStore(s => s.activeCollection);
   const responses = useCollectionStore(s => s.responses);
-  const loadCollection = useCollectionStore(s => s.loadCollection);
-  const loadWizardDraft = useCollectionStore(s => s.loadWizardDraft);
   const wizardDraft = useCollectionStore(s => s.wizardDraft);
   const [collectionPanelOpen, setCollectionPanelOpen] = useState(false);
 
@@ -64,16 +61,15 @@ export function LeagueDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    const unsub = fetchSeasons(id);
-    return unsub;
-  }, [id, fetchSeasons]);
+    return useSeasonStore.getState().fetchSeasons(id);
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
-    const unsub1 = loadCollection(id);
-    const unsub2 = loadWizardDraft(id);
+    const unsub1 = useCollectionStore.getState().loadCollection(id);
+    const unsub2 = useCollectionStore.getState().loadWizardDraft(id);
     return () => { unsub1(); unsub2(); };
-  }, [id, loadCollection, loadWizardDraft]);
+  }, [id]);
 
   const hasActiveCollection = activeCollection?.status === 'open';
   const respondedCount = responses.length;

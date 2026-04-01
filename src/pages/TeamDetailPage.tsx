@@ -88,12 +88,10 @@ export function TeamDetailPage() {
   const [revokingEmails, setRevokingEmails] = useState<Set<string>>(new Set());
 
   // Load player availability for this team on mount
-  const loadAvailability = useAvailabilityStore(s => s.loadAvailability);
   useEffect(() => {
     if (!id) return;
-    const unsub = loadAvailability(id);
-    return unsub;
-  }, [id, loadAvailability]);
+    return useAvailabilityStore.getState().loadAvailability(id);
+  }, [id]);
 
   useEffect(() => {
     if (tab !== 'requests' || !team || !canSeeRequests) return;
