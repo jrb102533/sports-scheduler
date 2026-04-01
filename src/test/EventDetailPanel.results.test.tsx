@@ -55,7 +55,8 @@ let currentProfile: UserProfile | null = null;
 // ── Store mocks ───────────────────────────────────────────────────────────────
 
 vi.mock('@/store/useAuthStore', () => ({
-  useAuthStore: () => ({ user: null, profile: currentProfile }),
+  useAuthStore: (selector: (s: { user: null; profile: UserProfile | null }) => unknown) =>
+    selector({ user: null, profile: currentProfile }),
   getActiveMembership: vi.fn(() => null),
   hasRole: vi.fn((profile: UserProfile | null, ...roles: string[]) => {
     if (!profile) return false;

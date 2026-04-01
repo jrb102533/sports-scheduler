@@ -107,17 +107,13 @@ let currentDivisions: Division[] = [];
 // ── Store mocks ───────────────────────────────────────────────────────────────
 
 vi.mock('@/store/useSeasonStore', () => ({
-  useSeasonStore: () => ({
-    seasons: [SEASON],
-    fetchSeasons: vi.fn(() => () => {}),
-  }),
+  useSeasonStore: (selector: (s: { seasons: Season[]; fetchSeasons: () => () => void }) => unknown) =>
+    selector({ seasons: [SEASON], fetchSeasons: vi.fn(() => () => {}) }),
 }));
 
 vi.mock('@/store/useDivisionStore', () => ({
-  useDivisionStore: () => ({
-    divisions: currentDivisions,
-    fetchDivisions: vi.fn(() => () => {}),
-  }),
+  useDivisionStore: (selector: (s: { divisions: Division[]; fetchDivisions: () => () => void }) => unknown) =>
+    selector({ divisions: currentDivisions, fetchDivisions: vi.fn(() => () => {}) }),
 }));
 
 vi.mock('@/store/useLeagueStore', () => ({

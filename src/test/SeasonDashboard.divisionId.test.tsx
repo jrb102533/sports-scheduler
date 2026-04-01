@@ -147,17 +147,13 @@ vi.mock('@/store/useLeagueStore', () => ({
 }));
 
 vi.mock('@/store/useSeasonStore', () => ({
-  useSeasonStore: () => ({
-    seasons: [SEASON],
-    fetchSeasons: mockFetchSeasons,
-  }),
+  useSeasonStore: (selector: (s: { seasons: Season[]; fetchSeasons: typeof mockFetchSeasons }) => unknown) =>
+    selector({ seasons: [SEASON], fetchSeasons: mockFetchSeasons }),
 }));
 
 vi.mock('@/store/useDivisionStore', () => ({
-  useDivisionStore: () => ({
-    divisions: currentDivisions,
-    fetchDivisions: mockFetchDivisions,
-  }),
+  useDivisionStore: (selector: (s: { divisions: Division[]; fetchDivisions: typeof mockFetchDivisions }) => unknown) =>
+    selector({ divisions: currentDivisions, fetchDivisions: mockFetchDivisions }),
 }));
 
 vi.mock('@/store/useTeamStore', () => ({
