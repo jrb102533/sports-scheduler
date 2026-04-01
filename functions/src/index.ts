@@ -310,7 +310,6 @@ interface SendInviteData {
   teamName: string;
   playerId: string;
   teamId: string;
-  role?: string;
 }
 
 export const sendInvite = onCall<SendInviteData>(
@@ -320,15 +319,8 @@ export const sendInvite = onCall<SendInviteData>(
     await assertAdminOrCoach(request.auth.uid);
     await checkRateLimit(request.auth.uid, 'sendInvite', 20);
 
-    const { to, playerName, teamName, playerId, teamId, role: rawRole } = request.data;
+    const { to, playerName, teamName, playerId, teamId } = request.data;
     if (!to?.trim()) throw new HttpsError('invalid-argument', 'Email address is required.');
-
-    // Allowlist: only parent-safe roles may be assigned via invite.
-    // Coach and admin provisioning flows are separate and require explicit admin action.
-    const ALLOWED_INVITE_ROLES = ['player', 'parent'] as const;
-    const role = ALLOWED_INVITE_ROLES.includes(rawRole as typeof ALLOWED_INVITE_ROLES[number])
-      ? rawRole!
-      : 'player';
 
     const appUrl = 'https://first-whistle-e76f4.web.app';
 
@@ -338,7 +330,6 @@ export const sendInvite = onCall<SendInviteData>(
       teamId,
       playerName,
       teamName,
-      role,
       invitedAt: new Date().toISOString(),
     });
 
@@ -346,8 +337,8 @@ export const sendInvite = onCall<SendInviteData>(
     await transporter.sendMail({
       from: emailFrom.value(),
       to: `${playerName} <${to.trim()}>`,
-      subject: `You've been invited to ${teamName} on First Whistle`,
-      text: `Hi ${playerName},\n\nYou've been invited to join ${teamName} on First Whistle.\n\nSign up or log in to view your schedule, track attendance, and stay connected with your team:\n${appUrl}\n\nSee you on the field!`,
+      subject: `You've been added to ${teamName} on First Whistle`,
+      text: `Hi ${playerName},\n\nYou've been added to ${teamName} on First Whistle.\n\nSign up or log in to view your schedule, track attendance, and stay connected with your team:\n${appUrl}\n\nSee you on the field!`,
       html: `
         <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
           <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:12px;padding:24px;margin-bottom:24px;text-align:center">
@@ -355,16 +346,16 @@ export const sendInvite = onCall<SendInviteData>(
             <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px">Game day starts here.</p>
           </div>
           <p style="color:#111827;font-size:15px">Hi ${esc(playerName)},</p>
-          <p style="color:#374151">You've been invited to join <strong>${esc(teamName)}</strong> on First Whistle.</p>
+          <p style="color:#374151">You've been added to <strong>${esc(teamName)}</strong> on First Whistle.</p>
           <p style="color:#374151">Sign up or log in to view your schedule, track attendance, and stay connected with your team.</p>
           <div style="text-align:center;margin:32px 0">
             <a href="${appUrl}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
-              Join My Team &rarr;
+              View My Team
             </a>
           </div>
           <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
           <p style="color:#9ca3af;font-size:12px;text-align:center">
-            You received this because a coach invited you to their roster on First Whistle.
+            You received this because a coach added you to their roster on First Whistle.
           </p>
         </div>
       `,
@@ -2274,7 +2265,7 @@ export const generateSchedule = onCall(
         if (err instanceof HttpsError) throw err;
         const raw = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
         console.error('generateSchedule algorithm error', { raw, stack: err instanceof Error ? err.stack : undefined });
-        throw new HttpsError('failed-precondition', 'Schedule generation failed. Check server logs for detail.');
+        throw new HttpsError('failed-precondition', `DEBUG — ${raw}`);
       }
 
     } catch (outerErr: unknown) {
@@ -2283,7 +2274,7 @@ export const generateSchedule = onCall(
       // Any other error (Firestore SDK, network, unexpected throws in steps 1-7)
       const raw = outerErr instanceof Error ? `${outerErr.name}: ${outerErr.message}` : String(outerErr);
       console.error('generateSchedule outer error', { raw, stack: outerErr instanceof Error ? outerErr.stack : undefined });
-      throw new HttpsError('internal', 'An unexpected error occurred. Check server logs for detail.');
+      throw new HttpsError('failed-precondition', `DEBUG [outer] — ${raw}`);
     }
   }
 );
@@ -3494,10 +3485,12 @@ export const acceptLeagueInvite = onCall<AcceptLeagueInviteData, Promise<{ succe
 );
 
 
+
 // ─── Scheduled: game-day reminders (daily 8AM UTC) ───────────────────────────
 // Sends a 24-hour ahead reminder to all team members for every game happening
 // tomorrow. Skips events that already received a game-day reminder today
 // (idempotency via `gameDayReminderSentDate` field on the event doc).
+// Stamped before sending so retries do not cause duplicate emails.
 
 export const sendGameDayReminders = onSchedule(
   {
@@ -3529,9 +3522,20 @@ export const sendGameDayReminders = onSchedule(
     for (const evDoc of eventsSnap.docs) {
       const ev = evDoc.data();
 
-      // Idempotency: skip if a game-day reminder was already sent today.
+      // Skip cancelled events.
+      if (ev.status === 'cancelled') continue;
+
+      // Idempotency: if already stamped today, skip.
       if (ev.gameDayReminderSentDate === todayStr) {
         console.log(`sendGameDayReminders: already sent for event ${evDoc.id}, skipping`);
+        continue;
+      }
+
+      // Stamp before sending so a mid-run retry does not re-send to everyone.
+      try {
+        await evDoc.ref.update({ gameDayReminderSentDate: todayStr });
+      } catch (err) {
+        console.error(`sendGameDayReminders: failed to stamp event ${evDoc.id}, skipping`, err);
         continue;
       }
 
@@ -3555,25 +3559,28 @@ export const sendGameDayReminders = onSchedule(
       const time: string = ev.startTime ?? '';
       const location: string = ev.location ?? '';
 
-      // RSVP count from the inline rsvps array.
+      // RSVP count from the inline rsvps array on the event doc.
       const rsvps: Array<{ response: string }> = ev.rsvps ?? [];
       const rsvpYesCount = rsvps.filter(r => r.response === 'yes').length;
 
       // Snack slot from subcollection events/{id}/snackSlot/slot.
-      let snackLine = 'No one signed up yet';
+      // Keep separate HTML and plain-text versions to avoid HTML entities in text body.
+      let snackLineHtml = 'No one signed up yet';
+      let snackLineText = 'No one signed up yet';
       try {
         const snackSnap = await db.doc(`events/${evDoc.id}/snackSlot/slot`).get();
         if (snackSnap.exists) {
           const slot = snackSnap.data() as { claimedBy: string | null; claimedByName: string | null };
           if (slot.claimedBy && slot.claimedByName) {
-            snackLine = `Covered by ${esc(slot.claimedByName)}`;
+            snackLineHtml = `Covered by ${esc(slot.claimedByName)}`;
+            snackLineText = `Covered by ${slot.claimedByName}`;
           }
         }
       } catch (err) {
         console.error(`sendGameDayReminders: failed to read snackSlot for event ${evDoc.id}`, err);
       }
 
-      // Fetch all players on this event's teams.
+      // Fetch all players on this event's teams (players collection, teamId field).
       const playersSnap = await db
         .collection('players')
         .where('teamId', 'in', teamIds.slice(0, 10))
@@ -3605,17 +3612,17 @@ export const sendGameDayReminders = onSchedule(
                 `Reminder: ${title} is tomorrow.`,
                 '',
                 `Date: ${date}`,
-                time ? `Time: ${time}` : '',
-                location ? `Venue: ${location}` : '',
+                time ? `Time: ${time}` : null,
+                location ? `Venue: ${location}` : null,
                 '',
                 `RSVPs so far: ${rsvpYesCount} attending`,
-                `Snacks: ${snackLine.replace(/<[^>]+>/g, '')}`,
+                `Snacks: ${snackLineText}`,
                 '',
                 `View Schedule: ${APP_URL}`,
                 '',
                 '---',
                 'Sent via First Whistle',
-              ].filter(Boolean).join('\n'),
+              ].filter((l): l is string => l !== null).join('\n'),
               html: `
                 <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
                   <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
@@ -3629,7 +3636,7 @@ export const sendGameDayReminders = onSchedule(
                     ${time ? `<tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>` : ''}
                     ${location ? `<tr><td style="padding:4px 8px 4px 0">Venue</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
                     <tr><td style="padding:4px 8px 4px 0">RSVPs</td><td style="color:#111827">${rsvpYesCount} attending</td></tr>
-                    <tr><td style="padding:4px 8px 4px 0">Snacks</td><td style="color:#111827">${snackLine}</td></tr>
+                    <tr><td style="padding:4px 8px 4px 0">Snacks</td><td style="color:#111827">${snackLineHtml}</td></tr>
                   </table>
                   <div style="text-align:center;margin:32px 0">
                     <a href="${APP_URL}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
@@ -3647,22 +3654,12 @@ export const sendGameDayReminders = onSchedule(
 
       const results = await Promise.allSettled(sends);
       const sentCount = results.filter(r => r.status === 'fulfilled').length;
-      const failCount = results.filter(r => r.status === 'rejected').length;
-      if (failCount > 0) {
-        results.forEach((r, i) => {
-          if (r.status === 'rejected') {
-            console.error(`sendGameDayReminders: send ${i} failed for event ${evDoc.id}:`, (r as PromiseRejectedResult).reason);
-          }
-        });
-      }
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          console.error(`sendGameDayReminders: send ${i} failed for event ${evDoc.id}:`, (r as PromiseRejectedResult).reason);
+        }
+      });
       totalSent += sentCount;
-
-      // Stamp the reminder sent date for idempotency.
-      try {
-        await evDoc.ref.update({ gameDayReminderSentDate: todayStr });
-      } catch (err) {
-        console.error(`sendGameDayReminders: failed to stamp gameDayReminderSentDate on event ${evDoc.id}`, err);
-      }
     }
 
     console.log(`sendGameDayReminders: sent ${totalSent} reminder(s) for ${eventsSnap.size} event(s) on ${tomorrowStr}`);
@@ -3673,6 +3670,8 @@ export const sendGameDayReminders = onSchedule(
 // Sends a 48-hour reminder to all team members when no one has claimed the
 // snack slot for a game happening in two days. Skips events that already
 // received a snack reminder today (idempotency via `snackReminderSentDate`).
+// Stamped before sending so retries do not cause duplicate emails.
+// Fails closed on snackSlot read errors to avoid false reminders.
 
 export const sendSnackReminders = onSchedule(
   {
@@ -3704,7 +3703,10 @@ export const sendSnackReminders = onSchedule(
     for (const evDoc of eventsSnap.docs) {
       const ev = evDoc.data();
 
-      // Idempotency: skip if a snack reminder was already sent today.
+      // Skip cancelled events.
+      if (ev.status === 'cancelled') continue;
+
+      // Idempotency: if already stamped today, skip.
       if (ev.snackReminderSentDate === todayStr) {
         console.log(`sendSnackReminders: already sent for event ${evDoc.id}, skipping`);
         continue;
@@ -3714,6 +3716,8 @@ export const sendSnackReminders = onSchedule(
       if (!teamIds.length) continue;
 
       // Check snack slot — only send if no one has claimed it.
+      // Fail closed on errors: skip to avoid sending false reminders when the
+      // slot may actually be claimed but unreadable.
       let snackIsClaimed = false;
       try {
         const snackSnap = await db.doc(`events/${evDoc.id}/snackSlot/slot`).get();
@@ -3722,11 +3726,20 @@ export const sendSnackReminders = onSchedule(
           snackIsClaimed = typeof slot.claimedBy === 'string' && slot.claimedBy.length > 0;
         }
       } catch (err) {
-        console.error(`sendSnackReminders: failed to read snackSlot for event ${evDoc.id}`, err);
+        console.error(`sendSnackReminders: failed to read snackSlot for event ${evDoc.id}, skipping to avoid false reminder`, err);
+        continue;
       }
 
       if (snackIsClaimed) {
         console.log(`sendSnackReminders: snack slot already claimed for event ${evDoc.id}, skipping`);
+        continue;
+      }
+
+      // Stamp before sending so a mid-run retry does not re-send to everyone.
+      try {
+        await evDoc.ref.update({ snackReminderSentDate: todayStr });
+      } catch (err) {
+        console.error(`sendSnackReminders: failed to stamp event ${evDoc.id}, skipping`, err);
         continue;
       }
 
@@ -3745,7 +3758,7 @@ export const sendSnackReminders = onSchedule(
       const date: string = ev.date ?? inTwoDaysStr;
       const location: string = ev.location ?? '';
 
-      // Fetch all players on this event's teams.
+      // Fetch all players on this event's teams (players collection, teamId field).
       const playersSnap = await db
         .collection('players')
         .where('teamId', 'in', teamIds.slice(0, 10))
@@ -3766,8 +3779,9 @@ export const sendSnackReminders = onSchedule(
         if (!addrs.length) continue;
 
         const subjectTeam = teamName ? `${teamName} game` : 'game';
-        const bodyTeam = teamName ? `<strong>${esc(teamName)}</strong>` : 'the team';
-        const venueClause = location ? ` at <strong>${esc(location)}</strong>` : '';
+        const bodyTeamHtml = teamName ? `<strong>${esc(teamName)}</strong>` : 'the team';
+        const venueClauseHtml = location ? ` at <strong>${esc(location)}</strong>` : '';
+        const venueClauseText = location ? ` at ${location}` : '';
 
         for (const address of addrs) {
           sends.push(
@@ -3778,7 +3792,7 @@ export const sendSnackReminders = onSchedule(
               text: [
                 `Hi ${firstName},`,
                 '',
-                `No one has signed up to bring snacks for the ${teamName || 'team'} game on ${date}${location ? ` at ${location}` : ''}.`,
+                `No one has signed up to bring snacks for the ${teamName || 'team'} game on ${date}${venueClauseText}.`,
                 '',
                 `Sign up to bring snacks: ${APP_URL}`,
                 '',
@@ -3793,8 +3807,8 @@ export const sendSnackReminders = onSchedule(
                   </div>
                   <p style="color:#111827;font-size:15px">Hi ${esc(firstName)},</p>
                   <p style="color:#374151">
-                    No one has signed up to bring snacks for ${bodyTeam}'s game on
-                    <strong>${esc(date)}</strong>${venueClause}.
+                    No one has signed up to bring snacks for ${bodyTeamHtml}'s game on
+                    <strong>${esc(date)}</strong>${venueClauseHtml}.
                   </p>
                   <p style="color:#374151">Can you help out?</p>
                   <div style="text-align:center;margin:32px 0">
@@ -3813,22 +3827,12 @@ export const sendSnackReminders = onSchedule(
 
       const results = await Promise.allSettled(sends);
       const sentCount = results.filter(r => r.status === 'fulfilled').length;
-      const failCount = results.filter(r => r.status === 'rejected').length;
-      if (failCount > 0) {
-        results.forEach((r, i) => {
-          if (r.status === 'rejected') {
-            console.error(`sendSnackReminders: send ${i} failed for event ${evDoc.id}:`, (r as PromiseRejectedResult).reason);
-          }
-        });
-      }
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          console.error(`sendSnackReminders: send ${i} failed for event ${evDoc.id}:`, (r as PromiseRejectedResult).reason);
+        }
+      });
       totalSent += sentCount;
-
-      // Stamp the reminder sent date for idempotency.
-      try {
-        await evDoc.ref.update({ snackReminderSentDate: todayStr });
-      } catch (err) {
-        console.error(`sendSnackReminders: failed to stamp snackReminderSentDate on event ${evDoc.id}`, err);
-      }
     }
 
     console.log(`sendSnackReminders: sent ${totalSent} snack reminder(s) for ${eventsSnap.size} event(s) on ${inTwoDaysStr}`);
