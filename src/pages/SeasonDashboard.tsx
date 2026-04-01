@@ -281,8 +281,10 @@ export function SeasonDashboard() {
   const navigate = useNavigate();
 
   const leagues = useLeagueStore(s => s.leagues);
-  const { seasons, fetchSeasons } = useSeasonStore();
-  const { divisions, fetchDivisions } = useDivisionStore();
+  const seasons = useSeasonStore(s => s.seasons);
+  const fetchSeasons = useSeasonStore(s => s.fetchSeasons);
+  const divisions = useDivisionStore(s => s.divisions);
+  const fetchDivisions = useDivisionStore(s => s.fetchDivisions);
   const teams = useTeamStore(s => s.teams);
   const venues = useVenueStore(s => s.venues);
   const subscribeVenues = useVenueStore(s => s.subscribe);

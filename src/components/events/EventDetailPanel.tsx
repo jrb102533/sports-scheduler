@@ -35,7 +35,8 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const { deleteEvent, recordResult, updateEvent, deleteEventsByGroupId } = useEventStore();
   const teams = useTeamStore(s => s.teams);
   const allPlayers = usePlayerStore(s => s.players);
-  const { user: authUser, profile } = useAuthStore();
+  const authUser = useAuthStore(s => s.user);
+  const profile = useAuthStore(s => s.profile);
   const [editOpen, setEditOpen] = useState(false);
   const [nudgeToast, setNudgeToast] = useState<string | null>(null);
   const [duplicateOpen, setDuplicateOpen] = useState(false);

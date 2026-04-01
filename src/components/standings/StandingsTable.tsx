@@ -255,9 +255,10 @@ export function StandingsTable({ teamIds, leagueId, seasonId }: StandingsTablePr
     const unsub = onSnapshot(
       standingsRef,
       (snap) => {
+        const teams = useTeamStore.getState().teams;
         const entries: StandingsDocWithOverride[] = snap.docs.map((d) => {
           const data = d.data() as StandingsDocument;
-          const team = allTeams.find(t => t.id === data.teamId);
+          const team = teams.find(t => t.id === data.teamId);
           return {
             row: firestoreToStandingRow(data, team?.name ?? data.teamId, team?.color ?? '#6b7280'),
             // Use manualRankOverride.rank when present, otherwise fall back to computed rank
@@ -276,7 +277,7 @@ export function StandingsTable({ teamIds, leagueId, seasonId }: StandingsTablePr
     );
 
     return unsub;
-  }, [useFirestore, leagueId, seasonId, allTeams]);
+  }, [useFirestore, leagueId, seasonId]);
 
   const canOverride = useFirestore && hasRole(profile, 'admin', 'league_manager');
   const [modalState, setModalState] = useState<OverrideModalState | null>(null);

@@ -355,7 +355,12 @@ interface Props {
 
 export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season, currentUserUid, divisionId }: Props) {
   const { addEvent } = useEventStore();
-  const { createCollection, saveWizardDraft, wizardDraft, activeCollection, responses, loadCollection } = useCollectionStore();
+  const createCollection = useCollectionStore(s => s.createCollection);
+  const saveWizardDraft = useCollectionStore(s => s.saveWizardDraft);
+  const wizardDraft = useCollectionStore(s => s.wizardDraft);
+  const activeCollection = useCollectionStore(s => s.activeCollection);
+  const responses = useCollectionStore(s => s.responses);
+  const loadCollection = useCollectionStore(s => s.loadCollection);
 
   // Venue store
   const savedVenues = useVenueStore(s => s.venues);

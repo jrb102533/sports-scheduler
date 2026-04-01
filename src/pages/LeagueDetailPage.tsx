@@ -42,8 +42,13 @@ export function LeagueDetailPage() {
     .filter(e => e.teamIds.some(tid => leagueTeamIds.includes(tid)))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
-  const { seasons, fetchSeasons } = useSeasonStore();
-  const { activeCollection, responses, loadCollection, loadWizardDraft, wizardDraft } = useCollectionStore();
+  const seasons = useSeasonStore(s => s.seasons);
+  const fetchSeasons = useSeasonStore(s => s.fetchSeasons);
+  const activeCollection = useCollectionStore(s => s.activeCollection);
+  const responses = useCollectionStore(s => s.responses);
+  const loadCollection = useCollectionStore(s => s.loadCollection);
+  const loadWizardDraft = useCollectionStore(s => s.loadWizardDraft);
+  const wizardDraft = useCollectionStore(s => s.wizardDraft);
   const [collectionPanelOpen, setCollectionPanelOpen] = useState(false);
 
   const [tab, setTab] = useState<Tab>('schedule');
