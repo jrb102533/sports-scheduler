@@ -282,12 +282,9 @@ export function SeasonDashboard() {
 
   const leagues = useLeagueStore(s => s.leagues);
   const seasons = useSeasonStore(s => s.seasons);
-  const fetchSeasons = useSeasonStore(s => s.fetchSeasons);
   const divisions = useDivisionStore(s => s.divisions);
-  const fetchDivisions = useDivisionStore(s => s.fetchDivisions);
   const teams = useTeamStore(s => s.teams);
   const venues = useVenueStore(s => s.venues);
-  const subscribeVenues = useVenueStore(s => s.subscribe);
   const profile = useAuthStore(s => s.profile);
 
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -329,20 +326,17 @@ export function SeasonDashboard() {
 
   useEffect(() => {
     if (!leagueId) return;
-    const unsub = fetchSeasons(leagueId);
-    return unsub;
-  }, [leagueId, fetchSeasons]);
+    return useSeasonStore.getState().fetchSeasons(leagueId);
+  }, [leagueId]);
 
   useEffect(() => {
     if (!leagueId || !seasonId) return;
-    const unsub = fetchDivisions(leagueId, seasonId);
-    return unsub;
-  }, [leagueId, seasonId, fetchDivisions]);
+    return useDivisionStore.getState().fetchDivisions(leagueId, seasonId);
+  }, [leagueId, seasonId]);
 
   useEffect(() => {
-    const unsub = subscribeVenues();
-    return unsub;
-  }, [subscribeVenues]);
+    return useVenueStore.getState().subscribe();
+  }, []);
 
   const isAdmin = profile?.role === 'admin';
   const canManage = isAdmin || (profile?.role === 'league_manager' && profile?.leagueId === leagueId);

@@ -492,7 +492,6 @@ export function VenuesPage() {
   const addVenue = useVenueStore(s => s.addVenue);
   const updateVenue = useVenueStore(s => s.updateVenue);
   const softDeleteVenue = useVenueStore(s => s.softDeleteVenue);
-  const subscribe = useVenueStore(s => s.subscribe);
   const user = useAuthStore(s => s.user);
 
   const [formOpen, setFormOpen] = useState(false);
@@ -500,9 +499,8 @@ export function VenuesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Venue | null>(null);
 
   useEffect(() => {
-    const unsub = subscribe();
-    return unsub;
-  }, [subscribe]);
+    return useVenueStore.getState().subscribe();
+  }, []);
 
   function openAdd() {
     setEditTarget(null);
