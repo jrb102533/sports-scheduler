@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Plus, CalendarDays, Trophy, Users, Activity, MessageSquare, Bell, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Bandage } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { EventCard } from '@/components/events/EventCard';
 import { EventForm } from '@/components/events/EventForm';
@@ -43,6 +43,11 @@ export function Dashboard() {
   const [selected, setSelected] = useState<ScheduledEvent | null>(null);
   const [teamsExpanded, setTeamsExpanded] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
+
+  // Redirect player/parent roles to their dedicated home screen
+  if (profile && (profile.role === 'player' || profile.role === 'parent')) {
+    return <Navigate to="/parent" replace />;
+  }
 
   const accessibleTeamIds = getAccessibleTeamIds(profile, allTeams);
   const teams = accessibleTeamIds === null ? allTeams : allTeams.filter(t => accessibleTeamIds.includes(t.id));
