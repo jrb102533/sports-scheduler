@@ -55,8 +55,7 @@ let currentProfile: UserProfile | null = null;
 // ── Store mocks ───────────────────────────────────────────────────────────────
 
 vi.mock('@/store/useAuthStore', () => ({
-  useAuthStore: (selector: (s: { user: null; profile: UserProfile | null }) => unknown) =>
-    selector({ user: null, profile: currentProfile }),
+  useAuthStore: () => ({ user: null, profile: currentProfile }),
   getActiveMembership: vi.fn(() => null),
   hasRole: vi.fn((profile: UserProfile | null, ...roles: string[]) => {
     if (!profile) return false;
@@ -87,15 +86,10 @@ vi.mock('@/store/usePlayerStore', () => ({
 
 vi.mock('@/store/useVenueStore', () => {
   const subscribe = vi.fn(() => () => {});
-  // The component uses two access patterns:
-  //   useVenueStore(s => s.venues)       — selector call (render)
-  //   useVenueStore.getState().subscribe() — static getState call (useEffect)
-  // The mock must satisfy both. Zustand attaches getState as a property on the
-  // hook function; we replicate that here.
-  const useVenueStore = (selector: (s: { venues: Venue[] }) => unknown) =>
-    selector({ venues: [] });
-  useVenueStore.getState = () => ({ subscribe });
-  return { useVenueStore };
+  return {
+    useVenueStore: (selector: (s: { venues: Venue[]; subscribe: typeof subscribe }) => unknown) =>
+      selector({ venues: [], subscribe }),
+  };
 });
 
 // ── Sub-component stubs ───────────────────────────────────────────────────────

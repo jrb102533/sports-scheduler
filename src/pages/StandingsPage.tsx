@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 
 export function StandingsPage() {
   const teams = useTeamStore(s => s.teams);
-  const settings = useSettingsStore(s => s.settings);
+  const { settings } = useSettingsStore();
   const navigate = useNavigate();
 
   if (settings.kidsSportsMode && settings.hideStandingsInKidsMode) {

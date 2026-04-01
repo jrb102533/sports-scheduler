@@ -70,10 +70,10 @@ vi.mock('@/store/useTeamStore', () => {
       createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z',
     },
   ];
-  const useTeamStore = (selector: (s: { teams: unknown[] }) => unknown) =>
-    selector({ teams: STABLE_TEAMS });
-  useTeamStore.getState = () => ({ teams: STABLE_TEAMS });
-  return { useTeamStore };
+  return {
+    useTeamStore: (selector: (s: { teams: unknown[] }) => unknown) =>
+      selector({ teams: STABLE_TEAMS }),
+  };
 });
 
 vi.mock('@/store/useEventStore', () => ({

@@ -149,7 +149,7 @@ function downloadTemplate() {
 }
 
 export function ImportEventsModal({ open, onClose }: ImportEventsModalProps) {
-  const bulkAddEvents = useEventStore(s => s.bulkAddEvents);
+  const { bulkAddEvents } = useEventStore();
   const teams = useTeamStore(s => s.teams);
 
   const [step, setStep] = useState<'upload' | 'preview'>('upload');

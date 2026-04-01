@@ -6,8 +6,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const user = useAuthStore(s => s.user);
-  const loading = useAuthStore(s => s.loading);
+  const { user, loading } = useAuthStore();
 
   if (loading) {
     return (

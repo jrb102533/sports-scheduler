@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 
 export function useAttendanceNotification() {
   const events = useEventStore(s => s.events);
+  const addNotification = useNotificationStore(s => s.addNotification);
   const uid = useAuthStore(s => s.user?.uid);
 
   useEffect(() => {
@@ -23,7 +24,6 @@ export function useAttendanceNotification() {
 
     if (missing.length === 0) return;
 
-    const { addNotification } = useNotificationStore.getState();
     for (const event of missing) {
       addNotification({
         id: crypto.randomUUID(),
@@ -37,5 +37,5 @@ export function useAttendanceNotification() {
     }
 
     setItem(key, [...notified, ...missing.map(e => e.id)]);
-  }, [events, uid]);
+  }, [events, addNotification, uid]);
 }

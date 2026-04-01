@@ -87,7 +87,7 @@ export function CoachAvailabilityForm({
   existingResponse,
   onSuccess,
 }: Props) {
-  const submitResponse = useCollectionStore(s => s.submitResponse);
+  const { submitResponse } = useCollectionStore();
 
   const [grid, setGrid] = useState<GridState>(() =>
     existingResponse ? initGridFromResponse(existingResponse) : buildDefaultGrid()

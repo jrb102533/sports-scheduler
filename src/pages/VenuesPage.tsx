@@ -488,10 +488,7 @@ function VenueCard({ venue, onEdit, onDelete }: VenueCardProps) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function VenuesPage() {
-  const venues = useVenueStore(s => s.venues);
-  const addVenue = useVenueStore(s => s.addVenue);
-  const updateVenue = useVenueStore(s => s.updateVenue);
-  const softDeleteVenue = useVenueStore(s => s.softDeleteVenue);
+  const { venues, addVenue, updateVenue, softDeleteVenue, subscribe } = useVenueStore();
   const user = useAuthStore(s => s.user);
 
   const [formOpen, setFormOpen] = useState(false);
@@ -499,8 +496,9 @@ export function VenuesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Venue | null>(null);
 
   useEffect(() => {
-    return useVenueStore.getState().subscribe();
-  }, []);
+    const unsub = subscribe();
+    return unsub;
+  }, [subscribe]);
 
   function openAdd() {
     setEditTarget(null);

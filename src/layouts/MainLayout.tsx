@@ -5,7 +5,6 @@ import { TopBar } from '@/components/layout/TopBar';
 import { NotificationPanel } from '@/components/layout/NotificationPanel';
 import { useNotificationTrigger } from '@/hooks/useNotificationTrigger';
 import { useAttendanceNotification } from '@/hooks/useAttendanceNotification';
-import { buildInfo } from '@/lib/buildInfo';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
@@ -32,22 +31,29 @@ export function MainLayout() {
   useAttendanceNotification();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const user = useAuthStore(s => s.user);
-  const profile = useAuthStore(s => s.profile);
+  const { user, profile } = useAuthStore();
+  const subscribeTeams = useTeamStore(s => s.subscribe);
+  const subscribePlayers = usePlayerStore(s => s.subscribe);
+  const subscribeEvents = useEventStore(s => s.subscribe);
+  const subscribeNotifications = useNotificationStore(s => s.subscribe);
+  const subscribeSettings = useSettingsStore(s => s.subscribe);
+  const subscribeLeagues = useLeagueStore(s => s.subscribe);
+  const subscribeOpponents = useOpponentStore(s => s.subscribe);
+
   // Subscribe all Firestore collections when user is authenticated
   useEffect(() => {
     if (!user) return;
     const unsubs = [
-      useTeamStore.getState().subscribe(),
-      usePlayerStore.getState().subscribe(),
-      useEventStore.getState().subscribe(),
-      useNotificationStore.getState().subscribe(user.uid),
-      useSettingsStore.getState().subscribe(user.uid),
-      useLeagueStore.getState().subscribe(),
-      useOpponentStore.getState().subscribe(),
+      subscribeTeams(),
+      subscribePlayers(),
+      subscribeEvents(),
+      subscribeNotifications(user.uid),
+      subscribeSettings(user.uid),
+      subscribeLeagues(),
+      subscribeOpponents(),
     ];
     return () => unsubs.forEach(u => u());
-  }, [user]);
+  }, [user, subscribeTeams, subscribePlayers, subscribeEvents, subscribeNotifications, subscribeSettings, subscribeLeagues, subscribeOpponents]);
 
   const location = useLocation();
   const firstName = profile?.displayName?.split(' ')[0] ?? '';
@@ -79,24 +85,6 @@ export function MainLayout() {
         <main className="flex-1 overflow-y-auto">
           <Outlet />
         </main>
-        {/* Build indicator — full info on non-prod, version only on prod */}
-        <div className="px-4 py-1.5 border-t border-gray-100 bg-gray-50 flex items-center justify-end gap-2">
-          {!buildInfo.isProduction && (
-            <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
-              buildInfo.env === 'staging' ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'
-            }`}>
-              {buildInfo.env}
-            </span>
-          )}
-          <span className="text-[10px] text-gray-400 font-mono">
-            {buildInfo.isProduction
-              ? `v${buildInfo.version}`
-              : buildInfo.pr
-                ? `PR #${buildInfo.pr} · ${buildInfo.shortSha}`
-                : `${buildInfo.branch} · ${buildInfo.shortSha}`
-            }
-          </span>
-        </div>
       </div>
       <NotificationPanel />
     </div>

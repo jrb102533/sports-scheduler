@@ -37,7 +37,7 @@ function formatReturnDate(iso: string): string {
 }
 
 export function MarkAbsenceModal({ open, onClose, player }: MarkAbsenceModalProps) {
-  const updatePlayer = usePlayerStore(s => s.updatePlayer);
+  const { updatePlayer } = usePlayerStore();
 
   const existing = player.absence ?? null;
 

@@ -46,10 +46,9 @@ export function TeamDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const teams = useTeamStore(s => s.teams);
-  const softDeleteTeam = useTeamStore(s => s.softDeleteTeam);
-  const hardDeleteTeam = useTeamStore(s => s.hardDeleteTeam);
+  const { softDeleteTeam, hardDeleteTeam } = useTeamStore();
   const players = usePlayerStore(s => s.players);
-  const deletePlayersForTeam = usePlayerStore(s => s.deletePlayersForTeam);
+  const { deletePlayersForTeam } = usePlayerStore();
   const allEvents = useEventStore(s => s.events);
   const leagues = useLeagueStore(s => s.leagues);
   const profile = useAuthStore(s => s.profile);
@@ -88,10 +87,12 @@ export function TeamDetailPage() {
   const [revokingEmails, setRevokingEmails] = useState<Set<string>>(new Set());
 
   // Load player availability for this team on mount
+  const loadAvailability = useAvailabilityStore(s => s.loadAvailability);
   useEffect(() => {
     if (!id) return;
-    return useAvailabilityStore.getState().loadAvailability(id);
-  }, [id]);
+    const unsub = loadAvailability(id);
+    return unsub;
+  }, [id, loadAvailability]);
 
   useEffect(() => {
     if (tab !== 'requests' || !team || !canSeeRequests) return;

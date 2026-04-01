@@ -18,7 +18,8 @@ export function CoachAvailabilityPage() {
   const leagues = useLeagueStore(s => s.leagues);
   const teams = useTeamStore(s => s.teams);
   const profile = useAuthStore(s => s.profile);
-  const activeCollection = useCollectionStore(s => s.activeCollection);
+  const { activeCollection, loadCollection } = useCollectionStore();
+
   // Fetch only the coach's own response via getDoc — coaches do not have
   // list permission on the responses subcollection, so getDocs would fail
   // with PERMISSION_DENIED.
@@ -26,8 +27,8 @@ export function CoachAvailabilityPage() {
 
   useEffect(() => {
     if (!leagueId) return;
-    return useCollectionStore.getState().loadCollection(leagueId);
-  }, [leagueId]);
+    return loadCollection(leagueId);
+  }, [leagueId, loadCollection]);
 
   useEffect(() => {
     if (!leagueId || !collectionId || !profile?.uid) return;

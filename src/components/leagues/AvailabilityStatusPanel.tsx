@@ -100,10 +100,8 @@ function coverageClass(ratio: number, hasAny: boolean): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function AvailabilityStatusPanel({ leagueId, coaches, onClose: _onClose, onSendReminder }: Props) {
-  const activeCollection = useCollectionStore(s => s.activeCollection);
-  const responses = useCollectionStore(s => s.responses);
-  const closeCollection = useCollectionStore(s => s.closeCollection);
-  const reopenCollection = useCollectionStore(s => s.reopenCollection);
+  const { activeCollection, responses, loadCollection, closeCollection, reopenCollection } =
+    useCollectionStore();
 
   // ── Reopen date picker state ─────────────────────────────────────────────────
   const [showReopenPicker, setShowReopenPicker] = useState(false);
@@ -131,9 +129,9 @@ export function AvailabilityStatusPanel({ leagueId, coaches, onClose: _onClose, 
 
   // ── Load collection on mount ─────────────────────────────────────────────────
   useEffect(() => {
-    const unsub = useCollectionStore.getState().loadCollection(leagueId);
+    const unsub = loadCollection(leagueId);
     return () => unsub();
-  }, [leagueId]);
+  }, [leagueId, loadCollection]);
 
   // ── Dismiss tooltip on outside click ────────────────────────────────────────
   useEffect(() => {

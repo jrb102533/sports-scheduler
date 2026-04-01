@@ -88,14 +88,11 @@ function formatPreviewDate(isoDate: string): string {
 const GAME_TYPES = new Set<EventType>(['game', 'match', 'tournament']);
 
 export function EventForm({ open, onClose, initial, editEvent }: EventFormProps) {
-  const addEvent = useEventStore(s => s.addEvent);
-  const bulkAddEvents = useEventStore(s => s.bulkAddEvents);
-  const events = useEventStore(s => s.events);
+  const { addEvent, bulkAddEvents, events } = useEventStore();
   const updateEvent = useEventStore(s => s.updateEvent);
   const allEvents = useEventStore(s => s.events);
   const allTeams = useTeamStore(s => s.teams);
-  const opponents = useOpponentStore(s => s.opponents);
-  const addOpponent = useOpponentStore(s => s.addOpponent);
+  const { opponents, addOpponent } = useOpponentStore();
   const profile = useAuthStore(s => s.profile);
   const user = useAuthStore(s => s.user);
 

@@ -32,14 +32,10 @@ interface EventDetailPanelProps {
 }
 
 export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
-  const deleteEvent = useEventStore(s => s.deleteEvent);
-  const recordResult = useEventStore(s => s.recordResult);
-  const updateEvent = useEventStore(s => s.updateEvent);
-  const deleteEventsByGroupId = useEventStore(s => s.deleteEventsByGroupId);
+  const { deleteEvent, recordResult, updateEvent, deleteEventsByGroupId } = useEventStore();
   const teams = useTeamStore(s => s.teams);
   const allPlayers = usePlayerStore(s => s.players);
-  const authUser = useAuthStore(s => s.user);
-  const profile = useAuthStore(s => s.profile);
+  const { user: authUser, profile } = useAuthStore();
   const [editOpen, setEditOpen] = useState(false);
   const [nudgeToast, setNudgeToast] = useState<string | null>(null);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
@@ -121,10 +117,11 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   }
 
   const venues = useVenueStore(s => s.venues);
+  const subscribeVenues = useVenueStore(s => s.subscribe);
   useEffect(() => {
-    const unsub = useVenueStore.getState().subscribe();
+    const unsub = subscribeVenues();
     return unsub;
-  }, []);
+  }, [subscribeVenues]);
 
   const canManage = profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach';
   const isReadOnly = profile?.role === 'player' || profile?.role === 'parent';

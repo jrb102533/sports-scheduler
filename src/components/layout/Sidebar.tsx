@@ -48,10 +48,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   const unread = useNotificationStore(s => s.notifications.filter(n => !n.isRead).length);
   const kidsSetting = useSettingsStore(s => s.settings.kidsSportsMode);
   const kidsMode = FLAGS.KIDS_MODE && kidsSetting;
-  const user = useAuthStore(s => s.user);
-  const profile = useAuthStore(s => s.profile);
-  const logout = useAuthStore(s => s.logout);
-  const updateProfile = useAuthStore(s => s.updateProfile);
+  const { user, profile, logout, updateProfile } = useAuthStore();
   const navigate = useNavigate();
   const [contextOpen, setContextOpen] = useState(false);
   const allEvents = useEventStore(s => s.events);

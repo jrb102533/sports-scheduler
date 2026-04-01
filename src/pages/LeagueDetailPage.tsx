@@ -30,11 +30,8 @@ export function LeagueDetailPage() {
   const navigate = useNavigate();
 
   const leagues = useLeagueStore(s => s.leagues);
-  const updateLeague = useLeagueStore(s => s.updateLeague);
-  const softDeleteLeague = useLeagueStore(s => s.softDeleteLeague);
-  const teams = useTeamStore(s => s.teams);
-  const addTeamToLeague = useTeamStore(s => s.addTeamToLeague);
-  const removeTeamFromLeague = useTeamStore(s => s.removeTeamFromLeague);
+  const { updateLeague, softDeleteLeague } = useLeagueStore();
+  const { teams, addTeamToLeague, removeTeamFromLeague } = useTeamStore();
   const allEvents = useEventStore(s => s.events);
   const profile = useAuthStore(s => s.profile);
 
@@ -45,10 +42,8 @@ export function LeagueDetailPage() {
     .filter(e => e.teamIds.some(tid => leagueTeamIds.includes(tid)))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
-  const seasons = useSeasonStore(s => s.seasons);
-  const activeCollection = useCollectionStore(s => s.activeCollection);
-  const responses = useCollectionStore(s => s.responses);
-  const wizardDraft = useCollectionStore(s => s.wizardDraft);
+  const { seasons, fetchSeasons } = useSeasonStore();
+  const { activeCollection, responses, loadCollection, loadWizardDraft, wizardDraft } = useCollectionStore();
   const [collectionPanelOpen, setCollectionPanelOpen] = useState(false);
 
   const [tab, setTab] = useState<Tab>('schedule');
@@ -61,15 +56,16 @@ export function LeagueDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    return useSeasonStore.getState().fetchSeasons(id);
-  }, [id]);
+    const unsub = fetchSeasons(id);
+    return unsub;
+  }, [id, fetchSeasons]);
 
   useEffect(() => {
     if (!id) return;
-    const unsub1 = useCollectionStore.getState().loadCollection(id);
-    const unsub2 = useCollectionStore.getState().loadWizardDraft(id);
+    const unsub1 = loadCollection(id);
+    const unsub2 = loadWizardDraft(id);
     return () => { unsub1(); unsub2(); };
-  }, [id]);
+  }, [id, loadCollection, loadWizardDraft]);
 
   const hasActiveCollection = activeCollection?.status === 'open';
   const respondedCount = responses.length;

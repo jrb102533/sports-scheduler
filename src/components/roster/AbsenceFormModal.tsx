@@ -25,8 +25,7 @@ interface AbsenceFormModalProps {
 
 export function AbsenceFormModal({ open, onClose, player, editAbsence }: AbsenceFormModalProps) {
   const profile = useAuthStore(s => s.profile);
-  const addAbsence = useAbsenceStore(s => s.addAbsence);
-  const updateAbsence = useAbsenceStore(s => s.updateAbsence);
+  const { addAbsence, updateAbsence } = useAbsenceStore();
 
   const today = todayISO();
 

@@ -12,10 +12,7 @@ import { LEGAL_VERSIONS } from '@/legal/versions';
 import type { UserRole, RoleMembership } from '@/types';
 
 export function SignupPage() {
-  const signup = useAuthStore(s => s.signup);
-  const logout = useAuthStore(s => s.logout);
-  const error = useAuthStore(s => s.error);
-  const clearError = useAuthStore(s => s.clearError);
+  const { signup, logout, error, clearError } = useAuthStore();
   const navigate = useNavigate();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');

@@ -354,20 +354,18 @@ interface Props {
 }
 
 export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season, currentUserUid, divisionId }: Props) {
-  const addEvent = useEventStore(s => s.addEvent);
-  const createCollection = useCollectionStore(s => s.createCollection);
-  const saveWizardDraft = useCollectionStore(s => s.saveWizardDraft);
-  const wizardDraft = useCollectionStore(s => s.wizardDraft);
-  const activeCollection = useCollectionStore(s => s.activeCollection);
-  const responses = useCollectionStore(s => s.responses);
+  const { addEvent } = useEventStore();
+  const { createCollection, saveWizardDraft, wizardDraft, activeCollection, responses, loadCollection } = useCollectionStore();
+
   // Venue store
   const savedVenues = useVenueStore(s => s.venues);
+  const subscribeVenues = useVenueStore(s => s.subscribe);
   const user = useAuthStore(s => s.user);
 
   useEffect(() => {
-    const unsub = useVenueStore.getState().subscribe();
+    const unsub = subscribeVenues();
     return unsub;
-  }, []);
+  }, [subscribeVenues]);
 
   // Mode & step
   const [mode, setMode] = useState<WizardMode | null>(null);
@@ -438,10 +436,10 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
   useEffect(() => {
     if (step === 'generate' && generatePhase === 'configure' && mode === 'season') {
-      const unsub = useCollectionStore.getState().loadCollection(league.id);
+      const unsub = loadCollection(league.id);
       return unsub;
     }
-  }, [step, generatePhase, mode, league.id]);
+  }, [step, generatePhase, mode, league.id, loadCollection]);
 
   // ── Preview: per-fixture fallback acknowledgement ────────────────────────
   const [acknowledgedFallbacks, setAcknowledgedFallbacks] = useState<Set<number>>(new Set());
