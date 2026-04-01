@@ -146,27 +146,36 @@ vi.mock('@/store/useLeagueStore', () => ({
     selector({ leagues: [LEAGUE] }),
 }));
 
-vi.mock('@/store/useSeasonStore', () => ({
-  useSeasonStore: (selector: (s: { seasons: Season[]; fetchSeasons: typeof mockFetchSeasons }) => unknown) =>
-    selector({ seasons: [SEASON], fetchSeasons: mockFetchSeasons }),
-}));
+vi.mock('@/store/useSeasonStore', () => {
+  const useSeasonStore = (selector: (s: { seasons: Season[]; fetchSeasons: typeof mockFetchSeasons }) => unknown) =>
+    selector({ seasons: [SEASON], fetchSeasons: mockFetchSeasons });
+  // SeasonDashboard calls useSeasonStore.getState().fetchSeasons(leagueId) inside useEffect.
+  useSeasonStore.getState = () => ({ fetchSeasons: mockFetchSeasons });
+  return { useSeasonStore };
+});
 
-vi.mock('@/store/useDivisionStore', () => ({
-  useDivisionStore: (selector: (s: { divisions: Division[]; fetchDivisions: typeof mockFetchDivisions }) => unknown) =>
-    selector({ divisions: currentDivisions, fetchDivisions: mockFetchDivisions }),
-}));
+vi.mock('@/store/useDivisionStore', () => {
+  const useDivisionStore = (selector: (s: { divisions: Division[]; fetchDivisions: typeof mockFetchDivisions }) => unknown) =>
+    selector({ divisions: currentDivisions, fetchDivisions: mockFetchDivisions });
+  // SeasonDashboard calls useDivisionStore.getState().fetchDivisions(leagueId, seasonId) inside useEffect.
+  useDivisionStore.getState = () => ({ fetchDivisions: mockFetchDivisions });
+  return { useDivisionStore };
+});
 
 vi.mock('@/store/useTeamStore', () => ({
   useTeamStore: (selector: (s: { teams: Team[] }) => unknown) =>
     selector({ teams: currentTeams }),
 }));
 
-vi.mock('@/store/useVenueStore', () => ({
+vi.mock('@/store/useVenueStore', () => {
   // useVenueStore is called twice with different selectors (s.venues and s.subscribe).
   // We provide one venue so canGenerate === true, enabling the Open Wizard button.
-  useVenueStore: (selector: (s: { venues: Venue[]; subscribe: typeof mockSubscribeVenues }) => unknown) =>
-    selector({ venues: [MOCK_VENUE], subscribe: mockSubscribeVenues }),
-}));
+  const useVenueStore = (selector: (s: { venues: Venue[]; subscribe: typeof mockSubscribeVenues }) => unknown) =>
+    selector({ venues: [MOCK_VENUE], subscribe: mockSubscribeVenues });
+  // SeasonDashboard calls useVenueStore.getState().subscribe() inside useEffect.
+  useVenueStore.getState = () => ({ subscribe: mockSubscribeVenues });
+  return { useVenueStore };
+});
 
 vi.mock('@/store/useAuthStore', () => ({
   useAuthStore: (selector: (s: { profile: { uid: string; role: string; leagueId: string } }) => unknown) =>
