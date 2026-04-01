@@ -111,28 +111,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
               const inviteSnap = await getDoc(doc(db, 'invites', user.email.toLowerCase()));
               if (inviteSnap.exists()) {
                 const invite = inviteSnap.data();
-                const { teamId, playerId, role: inviteRole } = invite as { teamId?: string; playerId?: string; role?: string };
+                const { teamId, playerId } = invite as { teamId?: string; playerId?: string };
                 // Validate that the invite's playerId actually belongs to the teamId
                 // before linking to prevent a compromised invite from linking a user
                 // to an arbitrary player record on an unrelated team.
                 if (teamId && playerId) {
                   const playerSnap = await getDoc(doc(db, 'players', playerId));
                   if (playerSnap.exists() && playerSnap.data().teamId === teamId) {
-                    const patch: Partial<UserProfile> = { teamId, playerId };
-                    // Apply the role from the invite only if it is an allowed invite role.
-                    // Allowlist is defense-in-depth against a compromised invite document —
-                    // the server also enforces this, but we never trust Firestore data blindly.
-                    // We only override if the current profile role is still the default 'player'
-                    // to avoid downgrading a coach who was re-invited.
-                    const ALLOWED_INVITE_ROLES: UserRole[] = ['player', 'parent'];
-                    if (
-                      inviteRole &&
-                      ALLOWED_INVITE_ROLES.includes(inviteRole as UserRole) &&
-                      profile.role === 'player'
-                    ) {
-                      patch.role = inviteRole as UserRole;
-                    }
-                    await setDoc(doc(db, 'users', user.uid), { ...profile, ...patch });
+                    await setDoc(doc(db, 'users', user.uid), { ...profile, teamId, playerId });
                   } else {
                     console.warn(`Auto-link skipped: player ${playerId} not found on team ${teamId}`);
                   }
@@ -327,20 +313,11 @@ export function getAccessibleTeamIds(profile: UserProfile | null, allTeams: Team
 
   const ids = new Set<string>();
   for (const m of memberships) {
-    if (m.role === 'league_manager') {
-      // Teams in the LM's league
-      if (m.leagueId) {
-        allTeams.filter(t => t.leagueIds?.includes(m.leagueId!)).forEach(t => ids.add(t.id));
-      }
-      // Teams the LM created (may not yet be assigned to a league)
-      allTeams.filter(t => t.createdBy === profile.uid).forEach(t => ids.add(t.id));
+    if (m.role === 'league_manager' && m.leagueId) {
+      allTeams.filter(t => t.leagueIds?.includes(m.leagueId!)).forEach(t => ids.add(t.id));
     } else if (m.role === 'coach') {
       allTeams
-        .filter(t =>
-          t.createdBy === profile.uid ||
-          t.coachId === profile.uid ||
-          (m.teamId && t.id === m.teamId)
-        )
+        .filter(t => t.createdBy === profile.uid || t.coachId === profile.uid)
         .forEach(t => ids.add(t.id));
     } else if (m.teamId) {
       ids.add(m.teamId);

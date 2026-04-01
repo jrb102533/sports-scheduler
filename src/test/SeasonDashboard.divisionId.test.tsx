@@ -146,31 +146,32 @@ vi.mock('@/store/useLeagueStore', () => ({
     selector({ leagues: [LEAGUE] }),
 }));
 
-const seasonStoreState = { seasons: [SEASON], fetchSeasons: mockFetchSeasons };
+const seasonState = () => ({ seasons: [SEASON], fetchSeasons: mockFetchSeasons });
 vi.mock('@/store/useSeasonStore', () => ({
   useSeasonStore: Object.assign(
-    (selector: (s: typeof seasonStoreState) => unknown) => selector(seasonStoreState),
-    { getState: () => seasonStoreState }
+    (selector: (s: ReturnType<typeof seasonState>) => unknown) => selector(seasonState()),
+    { getState: seasonState }
   ),
 }));
 
-vi.mock('@/store/useDivisionStore', () => {
-  const getState = () => ({ divisions: currentDivisions, fetchDivisions: mockFetchDivisions });
-  const hook = (selector: (s: ReturnType<typeof getState>) => unknown) => selector(getState());
-  hook.getState = getState;
-  return { useDivisionStore: hook };
-});
+const divisionState = () => ({ divisions: currentDivisions, fetchDivisions: mockFetchDivisions });
+vi.mock('@/store/useDivisionStore', () => ({
+  useDivisionStore: Object.assign(
+    (selector: (s: ReturnType<typeof divisionState>) => unknown) => selector(divisionState()),
+    { getState: divisionState }
+  ),
+}));
 
 vi.mock('@/store/useTeamStore', () => ({
   useTeamStore: (selector: (s: { teams: Team[] }) => unknown) =>
     selector({ teams: currentTeams }),
 }));
 
-const venueStoreState = { venues: [MOCK_VENUE], subscribe: mockSubscribeVenues };
+const venueState = () => ({ venues: [MOCK_VENUE], subscribe: mockSubscribeVenues });
 vi.mock('@/store/useVenueStore', () => ({
   useVenueStore: Object.assign(
-    (selector: (s: typeof venueStoreState) => unknown) => selector(venueStoreState),
-    { getState: () => venueStoreState }
+    (selector: (s: ReturnType<typeof venueState>) => unknown) => selector(venueState()),
+    { getState: venueState }
   ),
 }));
 

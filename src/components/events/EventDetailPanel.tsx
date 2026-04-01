@@ -9,8 +9,6 @@ import { Badge } from '@/components/ui/Badge';
 import { EventStatusBadge } from './EventStatusBadge';
 import { EventForm } from './EventForm';
 import { SnackVolunteerForm } from './SnackVolunteerForm';
-import { RsvpButton } from './RsvpButton';
-import { SnackSlotButton } from './SnackSlotButton';
 import { RsvpInviteModal } from './RsvpInviteModal';
 import { PostGameBroadcastModal } from './PostGameBroadcastModal';
 import { AttendanceTracker } from '@/components/attendance/AttendanceTracker';
@@ -32,13 +30,9 @@ interface EventDetailPanelProps {
 }
 
 export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
-  const deleteEvent = useEventStore(s => s.deleteEvent);
-  const recordResult = useEventStore(s => s.recordResult);
-  const updateEvent = useEventStore(s => s.updateEvent);
-  const deleteEventsByGroupId = useEventStore(s => s.deleteEventsByGroupId);
+  const { deleteEvent, recordResult, updateEvent, deleteEventsByGroupId } = useEventStore();
   const teams = useTeamStore(s => s.teams);
   const allPlayers = usePlayerStore(s => s.players);
-  const authUser = useAuthStore(s => s.user);
   const profile = useAuthStore(s => s.profile);
   const [editOpen, setEditOpen] = useState(false);
   const [nudgeToast, setNudgeToast] = useState<string | null>(null);
@@ -281,23 +275,6 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
             {/* Snack Volunteer */}
             {event.status !== 'cancelled' && (
               <SnackVolunteerForm event={currentEvent} />
-            )}
-
-            {/* Subcollection-backed RSVP + snack slot */}
-            {event.status !== 'cancelled' && event.status !== 'completed' && authUser && (
-              <div className="border border-gray-200 rounded-xl p-4 space-y-4">
-                <h3 className="text-sm font-semibold text-gray-800">RSVP &amp; Snacks</h3>
-                <RsvpButton
-                  eventId={event.id}
-                  currentUserUid={authUser.uid}
-                  currentUserName={profile?.displayName ?? authUser.email ?? ''}
-                />
-                <SnackSlotButton
-                  eventId={event.id}
-                  currentUserUid={authUser.uid}
-                  currentUserName={profile?.displayName ?? authUser.email ?? ''}
-                />
-              </div>
             )}
 
             {/* Record Result */}

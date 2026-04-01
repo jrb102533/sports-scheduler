@@ -59,6 +59,7 @@ export function LeagueDetailPage() {
   useEffect(() => {
     if (!id) return;
     return useSeasonStore.getState().fetchSeasons(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   useEffect(() => {
@@ -66,6 +67,7 @@ export function LeagueDetailPage() {
     const unsub1 = useCollectionStore.getState().loadCollection(id);
     const unsub2 = useCollectionStore.getState().loadWizardDraft(id);
     return () => { unsub1(); unsub2(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const hasActiveCollection = activeCollection?.status === 'open';

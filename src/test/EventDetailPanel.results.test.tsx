@@ -55,8 +55,8 @@ let currentProfile: UserProfile | null = null;
 // ── Store mocks ───────────────────────────────────────────────────────────────
 
 vi.mock('@/store/useAuthStore', () => ({
-  useAuthStore: (selector: (s: { user: null; profile: typeof currentProfile }) => unknown) =>
-    selector({ user: null, profile: currentProfile }),
+  useAuthStore: (selector: (s: { profile: UserProfile | null }) => unknown) =>
+    selector({ profile: currentProfile }),
   getActiveMembership: vi.fn(() => null),
   hasRole: vi.fn((profile: UserProfile | null, ...roles: string[]) => {
     if (!profile) return false;
@@ -69,16 +69,15 @@ vi.mock('@/store/useTeamStore', () => ({
     selector({ teams: [makeTeam('t1'), makeTeam('t2')] }),
 }));
 
-// EventDetailPanel uses individual selectors for each action.
+// EventDetailPanel calls useEventStore() with NO selector — destructures directly.
 vi.mock('@/store/useEventStore', () => ({
-  useEventStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({
-      updateEvent: vi.fn(),
-      events: [],
-      deleteEvent: vi.fn(),
-      recordResult: vi.fn(),
-      deleteEventsByGroupId: vi.fn(),
-    }),
+  useEventStore: () => ({
+    updateEvent: vi.fn(),
+    events: [],
+    deleteEvent: vi.fn(),
+    recordResult: vi.fn(),
+    deleteEventsByGroupId: vi.fn(),
+  }),
 }));
 
 vi.mock('@/store/usePlayerStore', () => ({

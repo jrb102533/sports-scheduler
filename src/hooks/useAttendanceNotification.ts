@@ -37,5 +37,6 @@ export function useAttendanceNotification() {
     }
 
     setItem(key, [...notified, ...missing.map(e => e.id)]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, uid]);
 }

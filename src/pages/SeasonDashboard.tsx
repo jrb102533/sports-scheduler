@@ -327,11 +327,13 @@ export function SeasonDashboard() {
   useEffect(() => {
     if (!leagueId) return;
     return useSeasonStore.getState().fetchSeasons(leagueId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
 
   useEffect(() => {
     if (!leagueId || !seasonId) return;
     return useDivisionStore.getState().fetchDivisions(leagueId, seasonId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId, seasonId]);
 
   useEffect(() => {

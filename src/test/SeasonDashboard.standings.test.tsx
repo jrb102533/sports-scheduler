@@ -106,21 +106,21 @@ let currentDivisions: Division[] = [];
 
 // ── Store mocks ───────────────────────────────────────────────────────────────
 
-const seasonState = { seasons: [SEASON], fetchSeasons: vi.fn(() => () => {}) };
+const seasonState2 = () => ({ seasons: [SEASON], fetchSeasons: vi.fn(() => () => {}) });
 vi.mock('@/store/useSeasonStore', () => ({
   useSeasonStore: Object.assign(
-    (selector: (s: typeof seasonState) => unknown) => selector(seasonState),
-    { getState: () => seasonState }
+    (selector: (s: ReturnType<typeof seasonState2>) => unknown) => selector(seasonState2()),
+    { getState: seasonState2 }
   ),
 }));
 
-vi.mock('@/store/useDivisionStore', () => {
-  const fetchDivisions = vi.fn(() => () => {});
-  const getState = () => ({ divisions: currentDivisions, fetchDivisions });
-  const hook = (selector: (s: ReturnType<typeof getState>) => unknown) => selector(getState());
-  hook.getState = getState;
-  return { useDivisionStore: hook };
-});
+const divisionState2 = () => ({ divisions: currentDivisions, fetchDivisions: vi.fn(() => () => {}) });
+vi.mock('@/store/useDivisionStore', () => ({
+  useDivisionStore: Object.assign(
+    (selector: (s: ReturnType<typeof divisionState2>) => unknown) => selector(divisionState2()),
+    { getState: divisionState2 }
+  ),
+}));
 
 vi.mock('@/store/useLeagueStore', () => ({
   useLeagueStore: (selector: (s: { leagues: League[] }) => unknown) =>
@@ -132,12 +132,12 @@ vi.mock('@/store/useTeamStore', () => ({
     selector({ teams: [makeTeam('t1'), makeTeam('t2')] }),
 }));
 
-const venueSubscribe = vi.fn(() => () => {});
-const venueState = { venues: [VENUE], subscribe: venueSubscribe };
+const subscribe2 = vi.fn(() => () => {});
+const venueState2 = () => ({ venues: [VENUE], subscribe: subscribe2 });
 vi.mock('@/store/useVenueStore', () => ({
   useVenueStore: Object.assign(
-    (selector: (s: typeof venueState) => unknown) => selector(venueState),
-    { getState: () => venueState }
+    (selector: (s: ReturnType<typeof venueState2>) => unknown) => selector(venueState2()),
+    { getState: venueState2 }
   ),
 }));
 
