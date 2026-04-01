@@ -12,7 +12,6 @@ import { useNavigate } from 'react-router-dom';
 import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Team, Player, UserProfile } from '@/types';
-import type { User } from 'firebase/auth';
 
 export function TeamsPage() {
   const teams = useTeamStore(s => s.teams);
@@ -21,7 +20,7 @@ export function TeamsPage() {
   const hardDeleteTeam = useTeamStore(s => s.hardDeleteTeam);
   const players = usePlayerStore(s => s.players);
   const profile = useAuthStore(s => s.profile);
-  const user = useAuthStore(s => s.user);
+  const userUid = useAuthStore(s => s.user?.uid);
   const [formOpen, setFormOpen] = useState(false);
   const [findTeamOpen, setFindTeamOpen] = useState(false);
   const [deletedOpen, setDeletedOpen] = useState(false);
@@ -52,8 +51,8 @@ export function TeamsPage() {
 
   // Load existing join request statuses for other teams when user is logged in (non-admin)
   useEffect(() => {
-    if (!user || isAdmin || otherTeams.length === 0) return;
-    const uid = user.uid;
+    if (!userUid || isAdmin || otherTeams.length === 0) return;
+    const uid = userUid;
     Promise.all(
       otherTeams.map(async t => {
         const snap = await getDoc(doc(db, 'teams', t.id, 'joinRequests', uid));
@@ -65,7 +64,7 @@ export function TeamsPage() {
       setRequestStatuses(map);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid, isAdmin, teams.length]);
+  }, [userUid, isAdmin, teams.length]);
 
   // Load pending join request counts for coaches/admins
   useEffect(() => {
@@ -84,11 +83,11 @@ export function TeamsPage() {
   }, [isCoachOrAdmin, myTeams.length]);
 
   async function requestToJoin(team: Team) {
-    if (!user || !profile) return;
+    if (!userUid || !profile) return;
     setRequestingIds(prev => new Set(prev).add(team.id));
     try {
-      await setDoc(doc(db, 'teams', team.id, 'joinRequests', user.uid), {
-        uid: user.uid,
+      await setDoc(doc(db, 'teams', team.id, 'joinRequests', userUid), {
+        uid: userUid,
         displayName: profile.displayName,
         email: profile.email,
         status: 'pending',
@@ -110,7 +109,7 @@ export function TeamsPage() {
             ? `${teams.length} ${teams.length === 1 ? 'team' : 'teams'}`
             : `${myTeams.length} ${myTeams.length === 1 ? 'team' : 'teams'}`}
         </p>
-        {user && (
+        {userUid && (
           <Button onClick={() => setFormOpen(true)}>
             <Plus size={16} /> New Team
           </Button>
@@ -124,7 +123,7 @@ export function TeamsPage() {
           title="No teams yet"
           description="Create your first team to start managing rosters and scheduling events."
           action={
-            user ? <Button onClick={() => setFormOpen(true)}><Plus size={16} /> Create Team</Button> : undefined
+            userUid ? <Button onClick={() => setFormOpen(true)}><Plus size={16} /> Create Team</Button> : undefined
           }
         />
       )}
@@ -165,7 +164,7 @@ export function TeamsPage() {
               requestingIds={requestingIds}
               onRequestJoin={requestToJoin}
               onNavigate={t => navigate(`/teams/${t.id}`)}
-              user={user}
+              isLoggedIn={!!userUid}
               profile={profile}
               defaultOpen={findTeamOpen}
               onToggle={() => setFindTeamOpen(o => !o)}
@@ -234,7 +233,7 @@ interface FindTeamSectionProps {
   requestingIds: Set<string>;
   onRequestJoin: (team: Team) => void;
   onNavigate: (team: Team) => void;
-  user: User | null;
+  isLoggedIn: boolean;
   profile: UserProfile | null;
   defaultOpen?: boolean;
   collapsible?: boolean;
@@ -243,7 +242,7 @@ interface FindTeamSectionProps {
 
 function FindTeamSection({
   teams, players, requestStatuses, requestingIds, onRequestJoin, onNavigate,
-  user, profile, defaultOpen = false, collapsible = false, onToggle,
+  isLoggedIn, profile, defaultOpen = false, collapsible = false, onToggle,
 }: FindTeamSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -269,7 +268,7 @@ function FindTeamSection({
             const status = requestStatuses[team.id];
             const isRequesting = requestingIds.has(team.id);
             const isOnTeam = profile?.teamId === team.id;
-            const showRequestBtn = user && !isOnTeam && profile?.role !== 'admin';
+            const showRequestBtn = isLoggedIn && !isOnTeam && profile?.role !== 'admin';
 
             return (
               <div key={team.id} className="flex flex-col">

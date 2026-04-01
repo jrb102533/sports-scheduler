@@ -32,22 +32,22 @@ export function MainLayout() {
   useAttendanceNotification();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const user = useAuthStore(s => s.user);
+  const uid = useAuthStore(s => s.user?.uid);
   const profile = useAuthStore(s => s.profile);
   // Subscribe all Firestore collections when user is authenticated
   useEffect(() => {
-    if (!user) return;
+    if (!uid) return;
     const unsubs = [
       useTeamStore.getState().subscribe(),
       usePlayerStore.getState().subscribe(),
       useEventStore.getState().subscribe(),
-      useNotificationStore.getState().subscribe(user.uid),
-      useSettingsStore.getState().subscribe(user.uid),
+      useNotificationStore.getState().subscribe(uid),
+      useSettingsStore.getState().subscribe(uid),
       useLeagueStore.getState().subscribe(),
       useOpponentStore.getState().subscribe(),
     ];
     return () => unsubs.forEach(u => u());
-  }, [user]);
+  }, [uid]);
 
   const location = useLocation();
   const firstName = profile?.displayName?.split(' ')[0] ?? '';

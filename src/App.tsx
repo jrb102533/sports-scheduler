@@ -6,7 +6,7 @@ import { ForcePasswordChangeModal } from './components/auth/ForcePasswordChangeM
 import { ConsentUpdateModal } from './components/auth/ConsentUpdateModal';
 
 export default function App() {
-  const user = useAuthStore(s => s.user);
+  const isAuthenticated = useAuthStore(s => Boolean(s.user));
   const mustChangePassword = useAuthStore(s => s.mustChangePassword);
   const consentOutdated = useAuthStore(s => s.consentOutdated);
 
@@ -18,8 +18,8 @@ export default function App() {
   return (
     <>
       <RouterProvider router={router} />
-      {user && mustChangePassword && <ForcePasswordChangeModal />}
-      {user && !mustChangePassword && consentOutdated && <ConsentUpdateModal />}
+      {isAuthenticated && mustChangePassword && <ForcePasswordChangeModal />}
+      {isAuthenticated && !mustChangePassword && consentOutdated && <ConsentUpdateModal />}
     </>
   );
 }

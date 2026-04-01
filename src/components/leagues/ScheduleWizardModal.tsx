@@ -362,7 +362,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   const responses = useCollectionStore(s => s.responses);
   // Venue store
   const savedVenues = useVenueStore(s => s.venues);
-  const user = useAuthStore(s => s.user);
+  const userUid = useAuthStore(s => s.user?.uid);
 
   useEffect(() => {
     const unsub = useVenueStore.getState().subscribe();
@@ -2048,7 +2048,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         open={quickCreateOpen}
         onClose={() => { setQuickCreateOpen(false); setQuickCreateTargetIdx(null); }}
         onCreated={handleQuickCreated}
-        ownerUid={user?.uid ?? ''}
+        ownerUid={userUid ?? ''}
       />
     </>
   );
