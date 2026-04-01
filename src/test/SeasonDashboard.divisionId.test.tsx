@@ -146,30 +146,32 @@ vi.mock('@/store/useLeagueStore', () => ({
     selector({ leagues: [LEAGUE] }),
 }));
 
+const seasonStoreState = { seasons: [SEASON], fetchSeasons: mockFetchSeasons };
 vi.mock('@/store/useSeasonStore', () => ({
-  useSeasonStore: () => ({
-    seasons: [SEASON],
-    fetchSeasons: mockFetchSeasons,
-  }),
+  useSeasonStore: Object.assign(
+    (selector: (s: typeof seasonStoreState) => unknown) => selector(seasonStoreState),
+    { getState: () => seasonStoreState }
+  ),
 }));
 
-vi.mock('@/store/useDivisionStore', () => ({
-  useDivisionStore: () => ({
-    divisions: currentDivisions,
-    fetchDivisions: mockFetchDivisions,
-  }),
-}));
+vi.mock('@/store/useDivisionStore', () => {
+  const getState = () => ({ divisions: currentDivisions, fetchDivisions: mockFetchDivisions });
+  const hook = (selector: (s: ReturnType<typeof getState>) => unknown) => selector(getState());
+  hook.getState = getState;
+  return { useDivisionStore: hook };
+});
 
 vi.mock('@/store/useTeamStore', () => ({
   useTeamStore: (selector: (s: { teams: Team[] }) => unknown) =>
     selector({ teams: currentTeams }),
 }));
 
+const venueStoreState = { venues: [MOCK_VENUE], subscribe: mockSubscribeVenues };
 vi.mock('@/store/useVenueStore', () => ({
-  // useVenueStore is called twice with different selectors (s.venues and s.subscribe).
-  // We provide one venue so canGenerate === true, enabling the Open Wizard button.
-  useVenueStore: (selector: (s: { venues: Venue[]; subscribe: typeof mockSubscribeVenues }) => unknown) =>
-    selector({ venues: [MOCK_VENUE], subscribe: mockSubscribeVenues }),
+  useVenueStore: Object.assign(
+    (selector: (s: typeof venueStoreState) => unknown) => selector(venueStoreState),
+    { getState: () => venueStoreState }
+  ),
 }));
 
 vi.mock('@/store/useAuthStore', () => ({

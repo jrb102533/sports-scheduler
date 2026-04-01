@@ -42,8 +42,10 @@ export function LeagueDetailPage() {
     .filter(e => e.teamIds.some(tid => leagueTeamIds.includes(tid)))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
-  const { seasons, fetchSeasons } = useSeasonStore();
-  const { activeCollection, responses, loadCollection, loadWizardDraft, wizardDraft } = useCollectionStore();
+  const seasons = useSeasonStore(s => s.seasons);
+  const activeCollection = useCollectionStore(s => s.activeCollection);
+  const responses = useCollectionStore(s => s.responses);
+  const wizardDraft = useCollectionStore(s => s.wizardDraft);
   const [collectionPanelOpen, setCollectionPanelOpen] = useState(false);
 
   const [tab, setTab] = useState<Tab>('schedule');
@@ -56,16 +58,15 @@ export function LeagueDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    const unsub = fetchSeasons(id);
-    return unsub;
-  }, [id, fetchSeasons]);
+    return useSeasonStore.getState().fetchSeasons(id);
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
-    const unsub1 = loadCollection(id);
-    const unsub2 = loadWizardDraft(id);
+    const unsub1 = useCollectionStore.getState().loadCollection(id);
+    const unsub2 = useCollectionStore.getState().loadWizardDraft(id);
     return () => { unsub1(); unsub2(); };
-  }, [id, loadCollection, loadWizardDraft]);
+  }, [id]);
 
   const hasActiveCollection = activeCollection?.status === 'open';
   const respondedCount = responses.length;

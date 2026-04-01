@@ -106,19 +106,21 @@ let currentDivisions: Division[] = [];
 
 // ── Store mocks ───────────────────────────────────────────────────────────────
 
+const seasonState = { seasons: [SEASON], fetchSeasons: vi.fn(() => () => {}) };
 vi.mock('@/store/useSeasonStore', () => ({
-  useSeasonStore: () => ({
-    seasons: [SEASON],
-    fetchSeasons: vi.fn(() => () => {}),
-  }),
+  useSeasonStore: Object.assign(
+    (selector: (s: typeof seasonState) => unknown) => selector(seasonState),
+    { getState: () => seasonState }
+  ),
 }));
 
-vi.mock('@/store/useDivisionStore', () => ({
-  useDivisionStore: () => ({
-    divisions: currentDivisions,
-    fetchDivisions: vi.fn(() => () => {}),
-  }),
-}));
+vi.mock('@/store/useDivisionStore', () => {
+  const fetchDivisions = vi.fn(() => () => {});
+  const getState = () => ({ divisions: currentDivisions, fetchDivisions });
+  const hook = (selector: (s: ReturnType<typeof getState>) => unknown) => selector(getState());
+  hook.getState = getState;
+  return { useDivisionStore: hook };
+});
 
 vi.mock('@/store/useLeagueStore', () => ({
   useLeagueStore: (selector: (s: { leagues: League[] }) => unknown) =>
@@ -130,13 +132,14 @@ vi.mock('@/store/useTeamStore', () => ({
     selector({ teams: [makeTeam('t1'), makeTeam('t2')] }),
 }));
 
-vi.mock('@/store/useVenueStore', () => {
-  const subscribe = vi.fn(() => () => {});
-  return {
-    useVenueStore: (selector: (s: { venues: Venue[]; subscribe: typeof subscribe }) => unknown) =>
-      selector({ venues: [VENUE], subscribe }),
-  };
-});
+const venueSubscribe = vi.fn(() => () => {});
+const venueState = { venues: [VENUE], subscribe: venueSubscribe };
+vi.mock('@/store/useVenueStore', () => ({
+  useVenueStore: Object.assign(
+    (selector: (s: typeof venueState) => unknown) => selector(venueState),
+    { getState: () => venueState }
+  ),
+}));
 
 vi.mock('@/store/useAuthStore', () => ({
   useAuthStore: (selector: (s: { profile: UserProfile }) => unknown) =>
