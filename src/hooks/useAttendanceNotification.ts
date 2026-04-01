@@ -1,12 +1,10 @@
 import { useEffect } from 'react';
 import { useEventStore } from '@/store/useEventStore';
-import { doc, writeBatch } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { useNotificationStore } from '@/store/useNotificationStore';
 import { getItem, setItem } from '@/lib/localStorage';
 import { STORAGE_KEYS } from '@/constants';
 import { parseISO, isBefore, subHours } from 'date-fns';
 import { useAuthStore } from '@/store/useAuthStore';
-import type { AppNotification } from '@/types';
 
 export function useAttendanceNotification() {
   const events = useEventStore(s => s.events);
@@ -25,15 +23,9 @@ export function useAttendanceNotification() {
 
     if (missing.length === 0) return;
 
-    // Mark as notified FIRST to prevent re-entry if the effect re-runs
-    setItem(key, [...notified, ...missing.map(e => e.id)]);
-
-    // Batch-write all notifications so onSnapshot fires only once
-    const currentUid = auth.currentUser?.uid;
-    if (!currentUid) return;
-    const batch = writeBatch(db);
+    const { addNotification } = useNotificationStore.getState();
     for (const event of missing) {
-      const n: AppNotification = {
+      addNotification({
         id: crypto.randomUUID(),
         type: 'attendance_missing',
         title: 'Attendance Not Recorded',
@@ -41,11 +33,9 @@ export function useAttendanceNotification() {
         relatedEventId: event.id,
         isRead: false,
         createdAt: new Date().toISOString(),
-      };
-      batch.set(doc(db, 'users', currentUid, 'notifications', n.id), n);
+      });
     }
-    batch.commit().catch(() => {
-      // Best-effort; if the batch fails the localStorage marker still prevents retries
-    });
+
+    setItem(key, [...notified, ...missing.map(e => e.id)]);
   }, [events, uid]);
 }

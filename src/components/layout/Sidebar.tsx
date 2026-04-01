@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers, MapPin, X, CalendarClock, ChevronDown, Home } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -45,15 +45,10 @@ const roleColors: Record<string, string> = {
 };
 
 function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
-  const renderCount = useRef(0);
-  renderCount.current += 1;
-  if (renderCount.current % 10 === 0) console.warn(`[Sidebar] render #${renderCount.current}`);
-  if (renderCount.current > 50) throw new Error(`Sidebar render loop detected (${renderCount.current} renders)`);
-
   const unread = useNotificationStore(s => s.notifications.filter(n => !n.isRead).length);
   const kidsSetting = useSettingsStore(s => s.settings.kidsSportsMode);
   const kidsMode = FLAGS.KIDS_MODE && kidsSetting;
-  const isAuthenticated = useAuthStore(s => Boolean(s.user));
+  const user = useAuthStore(s => s.user);
   const profile = useAuthStore(s => s.profile);
   const logout = useAuthStore(s => s.logout);
   const updateProfile = useAuthStore(s => s.updateProfile);
@@ -178,7 +173,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
         </div>
       )}
 
-      {isAuthenticated && (
+      {user && (
         <div className="border-t border-white/10 px-3 py-3">
           {profile ? (
             <button

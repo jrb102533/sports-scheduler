@@ -4,19 +4,19 @@ import { recordConsent } from '@/lib/consent';
 import { LEGAL_VERSIONS } from '@/legal/versions';
 
 export function ConsentUpdateModal() {
-  const userUid = useAuthStore(s => s.user?.uid);
+  const user = useAuthStore(s => s.user);
   const markConsentCurrent = useAuthStore(s => s.markConsentCurrent);
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   async function handleConfirm() {
-    if (!userUid || !agreed) return;
+    if (!user || !agreed) return;
     setError('');
     setLoading(true);
     try {
-      await recordConsent(userUid, 'termsOfService', LEGAL_VERSIONS.termsOfService);
-      await recordConsent(userUid, 'privacyPolicy', LEGAL_VERSIONS.privacyPolicy);
+      await recordConsent(user.uid, 'termsOfService', LEGAL_VERSIONS.termsOfService);
+      await recordConsent(user.uid, 'privacyPolicy', LEGAL_VERSIONS.privacyPolicy);
       markConsentCurrent();
     } catch (err: unknown) {
       setError((err as Error).message ?? 'Something went wrong. Please try again.');

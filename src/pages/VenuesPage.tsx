@@ -492,7 +492,7 @@ export function VenuesPage() {
   const addVenue = useVenueStore(s => s.addVenue);
   const updateVenue = useVenueStore(s => s.updateVenue);
   const softDeleteVenue = useVenueStore(s => s.softDeleteVenue);
-  const userUid = useAuthStore(s => s.user?.uid);
+  const user = useAuthStore(s => s.user);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Venue | null>(null);
@@ -515,7 +515,7 @@ export function VenuesPage() {
 
   async function handleSave(data: VenueFormData) {
     const now = new Date().toISOString();
-    const uid = userUid ?? '';
+    const uid = user?.uid ?? '';
 
     if (editTarget) {
       await updateVenue({

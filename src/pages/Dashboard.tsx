@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Plus, CalendarDays, Trophy, Users, Activity, MessageSquare, Bell, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Bandage } from 'lucide-react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { RoleGuard } from '@/components/auth/RoleGuard';
@@ -32,15 +32,6 @@ function formatAbsenceReturnDate(iso: string): string {
 }
 
 export function Dashboard() {
-  const renderCount = useRef(0);
-  renderCount.current += 1;
-  if (renderCount.current % 10 === 0) {
-    console.warn(`[Dashboard] render #${renderCount.current}`);
-  }
-  if (renderCount.current > 50) {
-    throw new Error(`Dashboard render loop detected (${renderCount.current} renders). Check Zustand selectors and useEffect deps.`);
-  }
-
   const allEvents = useEventStore(s => s.events);
   const allTeams = useTeamStore(s => s.teams);
   const allPlayers = usePlayerStore(s => s.players);

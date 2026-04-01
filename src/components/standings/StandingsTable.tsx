@@ -242,23 +242,19 @@ export function StandingsTable({ teamIds, leagueId, seasonId }: StandingsTablePr
   const profile = useAuthStore(s => s.profile);
 
   const [firestoreEntries, setFirestoreEntries] = useState<StandingsDocWithOverride[] | null>(null);
+  const [loadingFirestore, setLoadingFirestore] = useState(false);
 
   const useFirestore = Boolean(leagueId && seasonId);
-  // Derive loading from entries state: loading when we should use Firestore but haven't received data yet
-  const loadingFirestore = useFirestore && firestoreEntries === null;
 
   useEffect(() => {
-    if (!useFirestore || !leagueId || !seasonId) {
-      setFirestoreEntries(null);
-      return;
-    }
+    if (!useFirestore || !leagueId || !seasonId) return;
 
-    let active = true;
+    setLoadingFirestore(true);
+
     const standingsRef = collection(db, 'leagues', leagueId, 'seasons', seasonId, 'standings');
     const unsub = onSnapshot(
       standingsRef,
       (snap) => {
-        if (!active) return;
         const teams = useTeamStore.getState().teams;
         const entries: StandingsDocWithOverride[] = snap.docs.map((d) => {
           const data = d.data() as StandingsDocument;
@@ -273,13 +269,14 @@ export function StandingsTable({ teamIds, leagueId, seasonId }: StandingsTablePr
         // Sort by the effective (possibly overridden) rank
         entries.sort((a, b) => a.rank - b.rank);
         setFirestoreEntries(entries);
+        setLoadingFirestore(false);
       },
       () => {
-        if (active) setFirestoreEntries([]);
+        setLoadingFirestore(false);
       },
     );
 
-    return () => { active = false; unsub(); setFirestoreEntries(null); };
+    return unsub;
   }, [useFirestore, leagueId, seasonId]);
 
   const canOverride = useFirestore && hasRole(profile, 'admin', 'league_manager');

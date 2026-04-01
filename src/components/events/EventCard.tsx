@@ -20,7 +20,7 @@ interface EventCardProps {
 }
 
 function RsvpIndicator({ event }: { event: ScheduledEvent; onOpenDetail?: () => void }) {
-  const uid = useAuthStore(s => s.user?.uid);
+  const user = useAuthStore(s => s.user);
   const profile = useAuthStore(s => s.profile);
   const updateEvent = useEventStore(s => s.updateEvent);
   const [submitting, setSubmitting] = useState(false);
@@ -49,6 +49,7 @@ function RsvpIndicator({ event }: { event: ScheduledEvent; onOpenDetail?: () => 
 
   // Player / parent: show their own RSVP status or inline RSVP buttons
   if (role === 'player' || role === 'parent') {
+    const uid = user?.uid;
     if (!uid) return null;
     // Prefer the Firestore player doc ID (matches email-link RSVPs); fall back to auth UID
     const playerId = profile?.playerId ?? uid;
@@ -183,9 +184,10 @@ export function EventCard({ event, teams, onClick }: EventCardProps) {
   const homeTeam = teams.find(t => t.id === event.homeTeamId);
   const awayTeam = teams.find(t => t.id === event.awayTeamId);
   const accentColor = EVENT_TYPE_COLORS[event.type] ?? '#6b7280';
-  const cardUserUid = useAuthStore(s => s.user?.uid ?? null);
+  const user = useAuthStore(s => s.user);
   const profile = useAuthStore(s => s.profile);
-  const cardUserName = profile?.displayName ?? profile?.email ?? '';
+  const cardUserUid = user?.uid ?? null;
+  const cardUserName = profile?.displayName ?? user?.email ?? '';
   const showInteractive = cardUserUid !== null && event.status !== 'completed' && event.status !== 'cancelled';
 
   return (

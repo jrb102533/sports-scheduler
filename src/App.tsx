@@ -4,10 +4,9 @@ import { router } from './router';
 import { useAuthStore } from './store/useAuthStore';
 import { ForcePasswordChangeModal } from './components/auth/ForcePasswordChangeModal';
 import { ConsentUpdateModal } from './components/auth/ConsentUpdateModal';
-import { AppErrorBoundary } from './components/AppErrorBoundary';
 
 export default function App() {
-  const isAuthenticated = useAuthStore(s => Boolean(s.user));
+  const user = useAuthStore(s => s.user);
   const mustChangePassword = useAuthStore(s => s.mustChangePassword);
   const consentOutdated = useAuthStore(s => s.consentOutdated);
 
@@ -17,10 +16,10 @@ export default function App() {
   }, []);
 
   return (
-    <AppErrorBoundary>
+    <>
       <RouterProvider router={router} />
-      {isAuthenticated && mustChangePassword && <ForcePasswordChangeModal />}
-      {isAuthenticated && !mustChangePassword && consentOutdated && <ConsentUpdateModal />}
-    </AppErrorBoundary>
+      {user && mustChangePassword && <ForcePasswordChangeModal />}
+      {user && !mustChangePassword && consentOutdated && <ConsentUpdateModal />}
+    </>
   );
 }

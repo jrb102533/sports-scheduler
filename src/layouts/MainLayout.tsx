@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
@@ -28,35 +28,26 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 export function MainLayout() {
-  const renderCount = useRef(0);
-  renderCount.current += 1;
-  if (renderCount.current % 10 === 0) {
-    console.warn(`[MainLayout] render #${renderCount.current}`);
-  }
-  if (renderCount.current > 50) {
-    throw new Error(`MainLayout render loop detected (${renderCount.current} renders). Check Zustand selectors and useEffect deps.`);
-  }
-
   useNotificationTrigger();
   useAttendanceNotification();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const uid = useAuthStore(s => s.user?.uid);
+  const user = useAuthStore(s => s.user);
   const profile = useAuthStore(s => s.profile);
   // Subscribe all Firestore collections when user is authenticated
   useEffect(() => {
-    if (!uid) return;
+    if (!user) return;
     const unsubs = [
       useTeamStore.getState().subscribe(),
       usePlayerStore.getState().subscribe(),
       useEventStore.getState().subscribe(),
-      useNotificationStore.getState().subscribe(uid),
-      useSettingsStore.getState().subscribe(uid),
+      useNotificationStore.getState().subscribe(user.uid),
+      useSettingsStore.getState().subscribe(user.uid),
       useLeagueStore.getState().subscribe(),
       useOpponentStore.getState().subscribe(),
     ];
     return () => unsubs.forEach(u => u());
-  }, [uid]);
+  }, [user]);
 
   const location = useLocation();
   const firstName = profile?.displayName?.split(' ')[0] ?? '';

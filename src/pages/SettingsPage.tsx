@@ -14,7 +14,7 @@ import type { ConsentRecord } from '@/lib/consent';
 export function SettingsPage() {
   const settings = useSettingsStore(s => s.settings);
   const updateSettings = useSettingsStore(s => s.updateSettings);
-  const userUid = useAuthStore(s => s.user?.uid);
+  const user = useAuthStore(s => s.user);
   const profile = useAuthStore(s => s.profile);
   const [consents, setConsents] = useState<Record<string, ConsentRecord | null> | null>(null);
 
@@ -22,16 +22,16 @@ export function SettingsPage() {
   const weeklyDigestEnabled = profile?.weeklyDigestEnabled !== false;
 
   async function handleWeeklyDigestToggle(value: boolean) {
-    if (!userUid) return;
-    await updateDoc(doc(db, 'users', userUid), { weeklyDigestEnabled: value });
+    if (!user) return;
+    await updateDoc(doc(db, 'users', user.uid), { weeklyDigestEnabled: value });
   }
 
   useEffect(() => {
-    if (!userUid) return;
-    getUserConsents(userUid)
+    if (!user) return;
+    getUserConsents(user.uid)
       .then(c => setConsents(c))
       .catch(() => setConsents(null));
-  }, [userUid]);
+  }, [user]);
 
   return (
     <div className="p-6 max-w-2xl">

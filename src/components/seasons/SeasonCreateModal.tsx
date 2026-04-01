@@ -15,7 +15,7 @@ interface SeasonCreateModalProps {
 
 export function SeasonCreateModal({ open, onClose, leagueId, onCreated }: SeasonCreateModalProps) {
   const createSeason = useSeasonStore(s => s.createSeason);
-  const userUid = useAuthStore(s => s.user?.uid);
+  const user = useAuthStore(s => s.user);
 
   const [name, setName] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -42,7 +42,7 @@ export function SeasonCreateModal({ open, onClose, leagueId, onCreated }: Season
 
   async function handleSubmit() {
     if (!validate()) return;
-    if (!userUid) return;
+    if (!user) return;
     setSaving(true);
     try {
       const season = await createSeason(leagueId, {
@@ -52,7 +52,7 @@ export function SeasonCreateModal({ open, onClose, leagueId, onCreated }: Season
         gamesPerTeam: parseInt(gamesPerTeam),
         homeAwayBalance,
         status: 'setup',
-        createdBy: userUid,
+        createdBy: user.uid,
       });
       onCreated?.(season);
       handleClose();

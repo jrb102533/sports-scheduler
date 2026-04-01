@@ -37,8 +37,7 @@ const acceptLeagueInviteFn = httpsCallable<AcceptLeagueInviteData, AcceptLeagueI
 
 export function InviteAcceptancePage() {
   const navigate = useNavigate();
-  const userUid = useAuthStore(s => s.user?.uid);
-  const userEmail = useAuthStore(s => s.user?.email);
+  const user = useAuthStore(s => s.user);
 
   const [invites, setInvites] = useState<PendingInvite[]>([]);
   const [ownedTeams, setOwnedTeams] = useState<Team[]>([]);
@@ -52,13 +51,13 @@ export function InviteAcceptancePage() {
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!userUid) {
+    if (!user) {
       navigate('/login', { state: { returnTo: '/invite/league' }, replace: true });
       return;
     }
 
-    const email = userEmail?.toLowerCase() ?? '';
-    const uid = userUid;
+    const email = user.email?.toLowerCase() ?? '';
+    const uid = user.uid;
 
     async function loadData() {
       setLoadingInvites(true);
@@ -99,7 +98,7 @@ export function InviteAcceptancePage() {
     }
 
     void loadData();
-  }, [userUid, userEmail, navigate]);
+  }, [user, navigate]);
 
   async function handleAccept(invite: PendingInvite) {
     const inviteId = invite.id;
