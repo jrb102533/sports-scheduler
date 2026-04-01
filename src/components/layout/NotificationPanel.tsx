@@ -4,7 +4,12 @@ import { Button } from '@/components/ui/Button';
 import { formatDate } from '@/lib/dateUtils';
 
 export function NotificationPanel() {
-  const { notifications, panelOpen, setPanelOpen, markRead, markAllRead, clearAll } = useNotificationStore();
+  const notifications = useNotificationStore(s => s.notifications);
+  const panelOpen = useNotificationStore(s => s.panelOpen);
+  const setPanelOpen = useNotificationStore(s => s.setPanelOpen);
+  const markRead = useNotificationStore(s => s.markRead);
+  const markAllRead = useNotificationStore(s => s.markAllRead);
+  const clearAll = useNotificationStore(s => s.clearAll);
 
   if (!panelOpen) return null;
 

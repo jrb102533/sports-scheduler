@@ -8,8 +8,8 @@ interface TopBarProps {
 }
 
 export function TopBar({ greeting, pageTitle, onMenuClick }: TopBarProps) {
-  const { notifications, setPanelOpen } = useNotificationStore();
-  const unread = notifications.filter(n => !n.isRead).length;
+  const unread = useNotificationStore(s => s.notifications.filter(n => !n.isRead).length);
+  const setPanelOpen = useNotificationStore(s => s.setPanelOpen);
 
   return (
     <header className="border-b border-gray-200 bg-white flex items-center justify-between px-4 sm:px-6 flex-shrink-0 h-14">
