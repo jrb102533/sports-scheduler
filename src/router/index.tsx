@@ -22,11 +22,15 @@ import { PrivacyPolicyPage } from '@/pages/legal/PrivacyPolicyPage';
 import { TermsOfServicePage } from '@/pages/legal/TermsOfServicePage';
 import { InviteAcceptancePage } from '@/pages/InviteAcceptancePage';
 import { ParentHomePage } from '@/pages/ParentHomePage';
+import { LogoComparisonPage } from '@/pages/LogoComparisonPage';
 
 export const router = createBrowserRouter([
   // Public auth routes
   { path: '/login', element: <LoginPage /> },
   { path: '/signup', element: <SignupPage /> },
+
+  // Dev-only routes
+  { path: '/logo-compare', element: <LogoComparisonPage /> },
 
   // Public legal routes
   { path: '/legal/privacy-policy', element: <PrivacyPolicyPage /> },
