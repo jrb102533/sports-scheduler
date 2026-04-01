@@ -2303,6 +2303,10 @@ export const geocodeVenueAddress = onCall(
       throw new HttpsError('permission-denied', 'Not authorised');
     }
 
+    // SEC-17: rate-limit geocoding — Nominatim ToS: max 1 req/s, no bulk.
+    // Allow 10 geocode requests per minute per user.
+    await checkRateLimit(request.auth.uid, 'geocodeVenue', 10);
+
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
 
     try {
