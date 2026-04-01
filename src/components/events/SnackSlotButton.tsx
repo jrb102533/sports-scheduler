@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useSnackStore } from '@/store/useSnackStore';
+import type { SnackSlot } from '@/store/useSnackStore';
+
+const EMPTY_SLOT: SnackSlot = { claimedBy: null, claimedByName: null, claimedAt: null };
 
 interface SnackSlotButtonProps {
   eventId: string;
@@ -8,7 +11,7 @@ interface SnackSlotButtonProps {
 }
 
 export function SnackSlotButton({ eventId, currentUserUid, currentUserName }: SnackSlotButtonProps) {
-  const slot = useSnackStore(s => s.slots[eventId] ?? { claimedBy: null, claimedByName: null, claimedAt: null });
+  const slot = useSnackStore(s => s.slots[eventId] ?? EMPTY_SLOT);
   const claimSlot = useSnackStore(s => s.claimSlot);
   const releaseSlot = useSnackStore(s => s.releaseSlot);
   const subscribeSlot = useSnackStore(s => s.subscribeSlot);
