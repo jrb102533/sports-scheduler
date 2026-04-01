@@ -865,8 +865,9 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             };
           })() : {};
 
-          const event: Omit<ScheduledEvent, 'id'> = isPracticeFixture
+          const event: ScheduledEvent = isPracticeFixture
             ? {
+                id: crypto.randomUUID(),
                 title: `${fixture.homeTeamName} Practice`,
                 type: 'practice',
                 status: 'scheduled',
@@ -883,6 +884,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                 ...venueFields,
               }
             : {
+                id: crypto.randomUUID(),
                 title: `${fixture.homeTeamName} vs ${fixture.awayTeamName}`,
                 type: 'game',
                 status: 'scheduled',
@@ -901,12 +903,13 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                 ...venueFields,
               };
 
-          return addEvent(event as ScheduledEvent);
+          return addEvent(event);
         })
       );
       setPublished(true);
       saveScheduleConfig();
-    } catch {
+    } catch (err) {
+      console.error('handlePublish failed:', err);
       setGenError('Failed to publish some events. Please check the schedule and try again.');
     } finally {
       setPublishing(false);
@@ -938,7 +941,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
               } : {}),
             };
           })() : {};
-          const event: Omit<ScheduledEvent, 'id'> = {
+          const event: ScheduledEvent = {
+            id: crypto.randomUUID(),
             title: `${fixture.homeTeamName} vs ${fixture.awayTeamName}`,
             type: 'game',
             status: publishNow ? 'scheduled' : 'draft',
@@ -958,13 +962,14 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             ...(season?.id ? { seasonId: season.id } : {}),
             ...(divisionId ? { divisionId } : {}),
           };
-          return addEvent(event as ScheduledEvent);
+          return addEvent(event);
         })
       );
       setPublished(true);
       setPublishedAsDraft(!publishNow);
       saveScheduleConfig();
-    } catch {
+    } catch (err) {
+      console.error('saveFixtures failed:', err);
       setGenError('Failed to save some events. Please check the schedule and try again.');
     } finally {
       setPublishing(false);
