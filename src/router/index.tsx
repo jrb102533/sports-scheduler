@@ -1,6 +1,24 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, useRouteError } from 'react-router-dom';
 import { MainLayout } from '@/layouts/MainLayout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+
+function RootErrorBoundary() {
+  const error = useRouteError() as Error;
+  return (
+    <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif', maxWidth: 720 }}>
+      <h1 style={{ color: '#dc2626', fontSize: 20, marginBottom: 12 }}>Something went wrong</h1>
+      <pre style={{ background: '#f3f4f6', padding: 16, borderRadius: 8, fontSize: 12, overflow: 'auto', whiteSpace: 'pre-wrap', color: '#1f2937' }}>
+        {error?.message ?? String(error)}
+      </pre>
+      <pre style={{ background: '#fef3c7', padding: 16, borderRadius: 8, fontSize: 11, overflow: 'auto', whiteSpace: 'pre-wrap', color: '#92400e', marginTop: 8 }}>
+        {error?.stack ?? ''}
+      </pre>
+      <button onClick={() => window.location.href = '/'} style={{ marginTop: 16, background: '#2563eb', color: 'white', border: 'none', padding: '8px 20px', borderRadius: 8, cursor: 'pointer' }}>
+        Reload App
+      </button>
+    </div>
+  );
+}
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { Dashboard } from '@/pages/Dashboard';
 import { CalendarPage } from '@/pages/CalendarPage';
@@ -44,6 +62,7 @@ export const router = createBrowserRouter([
         <MainLayout />
       </ProtectedRoute>
     ),
+    errorElement: <RootErrorBoundary />,
     children: [
       { index: true, element: <Dashboard /> },
       { path: 'calendar', element: <CalendarPage /> },

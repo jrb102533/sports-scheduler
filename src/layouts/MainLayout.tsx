@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
@@ -28,6 +28,15 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 export function MainLayout() {
+  const renderCount = useRef(0);
+  renderCount.current += 1;
+  if (renderCount.current % 10 === 0) {
+    console.warn(`[MainLayout] render #${renderCount.current}`);
+  }
+  if (renderCount.current > 50) {
+    throw new Error(`MainLayout render loop detected (${renderCount.current} renders). Check Zustand selectors and useEffect deps.`);
+  }
+
   useNotificationTrigger();
   useAttendanceNotification();
 
