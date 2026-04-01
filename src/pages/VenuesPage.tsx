@@ -488,7 +488,11 @@ function VenueCard({ venue, onEdit, onDelete }: VenueCardProps) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function VenuesPage() {
-  const { venues, addVenue, updateVenue, softDeleteVenue, subscribe } = useVenueStore();
+  const venues = useVenueStore(s => s.venues);
+  const addVenue = useVenueStore(s => s.addVenue);
+  const updateVenue = useVenueStore(s => s.updateVenue);
+  const softDeleteVenue = useVenueStore(s => s.softDeleteVenue);
+  const subscribe = useVenueStore(s => s.subscribe);
   const user = useAuthStore(s => s.user);
 
   const [formOpen, setFormOpen] = useState(false);

@@ -21,7 +21,7 @@ const statusOptions: { value: PlayerStatus; label: string }[] = [
 ];
 
 export function PlayerStatusModal({ open, onClose, player }: PlayerStatusModalProps) {
-  const { updatePlayer } = usePlayerStore();
+  const updatePlayer = usePlayerStore(s => s.updatePlayer);
 
   const [status, setStatus] = useState<PlayerStatus>(player.status);
   const [returnDate, setReturnDate] = useState(player.statusReturnDate ?? '');

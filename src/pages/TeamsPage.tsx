@@ -17,7 +17,8 @@ import type { User } from 'firebase/auth';
 export function TeamsPage() {
   const teams = useTeamStore(s => s.teams);
   const deletedTeams = useTeamStore(s => s.deletedTeams);
-  const { restoreTeam, hardDeleteTeam } = useTeamStore();
+  const restoreTeam = useTeamStore(s => s.restoreTeam);
+  const hardDeleteTeam = useTeamStore(s => s.hardDeleteTeam);
   const players = usePlayerStore(s => s.players);
   const profile = useAuthStore(s => s.profile);
   const user = useAuthStore(s => s.user);

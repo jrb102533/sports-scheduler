@@ -8,7 +8,10 @@ import { useEventStore } from '@/store/useEventStore';
 import { formatDate } from '@/lib/dateUtils';
 
 export function NotificationsPage() {
-  const { notifications, markRead, markAllRead, clearAll } = useNotificationStore();
+  const notifications = useNotificationStore(s => s.notifications);
+  const markRead = useNotificationStore(s => s.markRead);
+  const markAllRead = useNotificationStore(s => s.markAllRead);
+  const clearAll = useNotificationStore(s => s.clearAll);
   const allEvents = useEventStore(s => s.events);
   const navigate = useNavigate();
   const unread = notifications.filter(n => !n.isRead).length;

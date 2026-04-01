@@ -16,7 +16,7 @@ const statuses: { value: AttendanceStatus; label: string; color: string }[] = [
 ];
 
 export function AttendanceTracker({ event }: AttendanceTrackerProps) {
-  const { updateEvent } = useEventStore();
+  const updateEvent = useEventStore(s => s.updateEvent);
   const players = usePlayerStore(s => s.players);
 
   const teamPlayers = players.filter(p => event.teamIds.includes(p.teamId) && p.status !== 'inactive');

@@ -29,7 +29,8 @@ const ageGroupOptions = AGE_GROUPS.map(g => ({
 }));
 
 export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
-  const { addTeam, updateTeam } = useTeamStore();
+  const addTeam = useTeamStore(s => s.addTeam);
+  const updateTeam = useTeamStore(s => s.updateTeam);
   const kidsSetting = useSettingsStore(s => s.settings.kidsSportsMode);
   const kidsMode = FLAGS.KIDS_MODE && kidsSetting;
   const profile = useAuthStore(s => s.profile);

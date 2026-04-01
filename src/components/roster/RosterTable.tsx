@@ -60,7 +60,7 @@ interface RosterTableProps {
 }
 
 export function RosterTable({ players, teamId }: RosterTableProps) {
-  const { deletePlayer } = usePlayerStore();
+  const deletePlayer = usePlayerStore(s => s.deletePlayer);
   const team = useTeamStore(s => s.teams.find(t => t.id === teamId));
   const profile = useAuthStore(s => s.profile);
   const availability = useAvailabilityStore(s => s.availability);

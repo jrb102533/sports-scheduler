@@ -63,7 +63,10 @@ function ParentFields({
 }
 
 export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProps) {
-  const { addPlayer, updatePlayer, addSensitiveData, updateSensitiveData } = usePlayerStore();
+  const addPlayer = usePlayerStore(s => s.addPlayer);
+  const updatePlayer = usePlayerStore(s => s.updatePlayer);
+  const addSensitiveData = usePlayerStore(s => s.addSensitiveData);
+  const updateSensitiveData = usePlayerStore(s => s.updateSensitiveData);
   const team = useTeamStore(s => s.teams.find(t => t.id === teamId));
 
   const [firstName, setFirstName] = useState(editPlayer?.firstName ?? '');

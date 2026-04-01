@@ -70,7 +70,7 @@ export function CoachAvailabilityModal({
   existingResponse,
   onClose,
 }: Props) {
-  const { submitResponse } = useCollectionStore();
+  const submitResponse = useCollectionStore(s => s.submitResponse);
 
   const [grid, setGrid] = useState<GridState>(() => {
     if (existingResponse) {
