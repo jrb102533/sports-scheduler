@@ -34,7 +34,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const kidsSetting = useSettingsStore(s => s.settings.kidsSportsMode);
   const kidsMode = FLAGS.KIDS_MODE && kidsSetting;
   const profile = useAuthStore(s => s.profile);
-  const user = useAuthStore(s => s.user);
+  const userUid = useAuthStore(s => s.user?.uid);
   const [name, setName] = useState(editTeam?.name ?? '');
   const [sportType, setSportType] = useState<SportType>(editTeam?.sportType ?? 'soccer');
   const [color, setColor] = useState(editTeam?.color ?? TEAM_COLORS[0]);
@@ -80,8 +80,8 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
     // Auto-fill coach fields from current user's profile
     if (profile?.email) setCoachEmail(profile.email);
     if (profile?.displayName) setCoachName(profile.displayName);
-    if (user?.uid) setCoachId(user.uid);
-  }, [open, editTeam, profile?.email, profile?.displayName, user?.uid]);
+    if (userUid) setCoachId(userUid);
+  }, [open, editTeam, profile?.email, profile?.displayName, userUid]);
 
   useEffect(() => {
     if (!open || !editTeam) return;
@@ -166,7 +166,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         if (editTeam) {
           await updateTeam({ ...editTeam, ...base });
         } else {
-          await addTeam({ id: teamId, ...base, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now });
+          await addTeam({ id: teamId, ...base, createdBy: userUid!, ownerName: profile!.displayName, createdAt: now });
         }
         onClose();
         return;
@@ -196,7 +196,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         if (!logoUrl) delete updated.logoUrl;
         await updateTeam(updated);
       } else {
-        await addTeam({ id: crypto.randomUUID(), ...base as Omit<Team, 'id' | 'createdBy' | 'ownerName' | 'createdAt'>, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now });
+        await addTeam({ id: crypto.randomUUID(), ...base as Omit<Team, 'id' | 'createdBy' | 'ownerName' | 'createdAt'>, createdBy: userUid!, ownerName: profile!.displayName, createdAt: now });
       }
       onClose();
     } catch (e: unknown) {

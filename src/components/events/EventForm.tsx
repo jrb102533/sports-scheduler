@@ -97,13 +97,13 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const opponents = useOpponentStore(s => s.opponents);
   const addOpponent = useOpponentStore(s => s.addOpponent);
   const profile = useAuthStore(s => s.profile);
-  const user = useAuthStore(s => s.user);
+  const userUid = useAuthStore(s => s.userUid);
 
   // Teams the user can schedule for
   const myTeams = useMemo(() => {
     if (profile?.role === 'admin' || profile?.role === 'league_manager') return allTeams;
-    return allTeams.filter(t => t.createdBy === user?.uid || t.coachId === user?.uid);
-  }, [allTeams, profile, user]);
+    return allTeams.filter(t => t.createdBy === userUid || t.coachId === userUid);
+  }, [allTeams, profile, userUid]);
 
   // If a team is pre-set from the page context (e.g. TeamDetailPage), lock it
   const lockedTeamId = initial?.homeTeamId ?? '';
@@ -451,7 +451,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
 
         {/* Snack request — admin/coach/owner */}
         {(profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach' ||
-          (selectedTeamId && allTeams.find(t => t.id === selectedTeamId)?.createdBy === user?.uid)) && (
+          (selectedTeamId && allTeams.find(t => t.id === selectedTeamId)?.createdBy === userUid)) && (
           <Input
             label="Snack Request (optional)"
             name="snack-request"

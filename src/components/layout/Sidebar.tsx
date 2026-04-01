@@ -48,7 +48,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   const unread = useNotificationStore(s => s.notifications.filter(n => !n.isRead).length);
   const kidsSetting = useSettingsStore(s => s.settings.kidsSportsMode);
   const kidsMode = FLAGS.KIDS_MODE && kidsSetting;
-  const user = useAuthStore(s => s.user);
+  const isAuthenticated = useAuthStore(s => Boolean(s.user));
   const profile = useAuthStore(s => s.profile);
   const logout = useAuthStore(s => s.logout);
   const updateProfile = useAuthStore(s => s.updateProfile);
@@ -173,7 +173,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
         </div>
       )}
 
-      {user && (
+      {isAuthenticated && (
         <div className="border-t border-white/10 px-3 py-3">
           {profile ? (
             <button
