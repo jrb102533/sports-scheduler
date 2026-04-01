@@ -5,6 +5,8 @@ import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EventStatusBadge } from './EventStatusBadge';
+import { RsvpButton } from './RsvpButton';
+import { SnackSlotButton } from './SnackSlotButton';
 import { formatDate, formatTime } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, EVENT_TYPE_BADGE_CLASSES } from '@/constants';
 import type { ScheduledEvent, Team } from '@/types';
@@ -181,6 +183,10 @@ export function EventCard({ event, teams, onClick }: EventCardProps) {
   const homeTeam = teams.find(t => t.id === event.homeTeamId);
   const awayTeam = teams.find(t => t.id === event.awayTeamId);
   const accentColor = EVENT_TYPE_COLORS[event.type] ?? '#6b7280';
+  const { user, profile } = useAuthStore();
+  const cardUserUid = user?.uid ?? null;
+  const cardUserName = profile?.displayName ?? user?.email ?? '';
+  const showInteractive = cardUserUid !== null && event.status !== 'completed' && event.status !== 'cancelled';
 
   return (
     <Card className="overflow-hidden" onClick={onClick}>
@@ -250,6 +256,14 @@ export function EventCard({ event, teams, onClick }: EventCardProps) {
           </div>
 
           <RsvpIndicator event={event} onOpenDetail={onClick} />
+
+          {/* Subcollection-backed RSVP + snack slot — shown for all authenticated users */}
+          {showInteractive && (
+            <div className="mt-3 pt-2.5 border-t border-gray-100 space-y-2" onClick={e => e.stopPropagation()}>
+              <RsvpButton eventId={event.id} currentUserUid={cardUserUid!} currentUserName={cardUserName} />
+              <SnackSlotButton eventId={event.id} currentUserUid={cardUserUid!} currentUserName={cardUserName} />
+            </div>
+          )}
         </div>
       </div>
     </Card>
