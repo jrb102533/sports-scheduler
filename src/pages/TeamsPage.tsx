@@ -136,7 +136,7 @@ export function TeamsPage() {
           requestingIds={requestingIds}
           onRequestJoin={requestToJoin}
           onNavigate={t => navigate(`/teams/${t.id}`)}
-          user={user}
+          isLoggedIn={!!userUid}
           profile={profile}
           defaultOpen
         />

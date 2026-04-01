@@ -97,7 +97,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const opponents = useOpponentStore(s => s.opponents);
   const addOpponent = useOpponentStore(s => s.addOpponent);
   const profile = useAuthStore(s => s.profile);
-  const userUid = useAuthStore(s => s.userUid);
+  const userUid = useAuthStore(s => s.user?.uid);
 
   // Teams the user can schedule for
   const myTeams = useMemo(() => {
