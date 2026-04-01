@@ -3484,3 +3484,357 @@ export const acceptLeagueInvite = onCall<AcceptLeagueInviteData, Promise<{ succe
   }
 );
 
+
+
+// ─── Scheduled: game-day reminders (daily 8AM UTC) ───────────────────────────
+// Sends a 24-hour ahead reminder to all team members for every game happening
+// tomorrow. Skips events that already received a game-day reminder today
+// (idempotency via `gameDayReminderSentDate` field on the event doc).
+// Stamped before sending so retries do not cause duplicate emails.
+
+export const sendGameDayReminders = onSchedule(
+  {
+    schedule: '0 8 * * *',
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+  },
+  async () => {
+    const db = admin.firestore();
+
+    const tomorrow = new Date();
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().slice(0, 10); // YYYY-MM-DD
+
+    const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+    const eventsSnap = await db
+      .collection('events')
+      .where('date', '==', tomorrowStr)
+      .get();
+
+    if (eventsSnap.empty) {
+      console.log(`sendGameDayReminders: no events on ${tomorrowStr}`);
+      return;
+    }
+
+    const transporter = createTransporter();
+    let totalSent = 0;
+
+    for (const evDoc of eventsSnap.docs) {
+      const ev = evDoc.data();
+
+      // Skip cancelled events.
+      if (ev.status === 'cancelled') continue;
+
+      // Idempotency: if already stamped today, skip.
+      if (ev.gameDayReminderSentDate === todayStr) {
+        console.log(`sendGameDayReminders: already sent for event ${evDoc.id}, skipping`);
+        continue;
+      }
+
+      // Stamp before sending so a mid-run retry does not re-send to everyone.
+      try {
+        await evDoc.ref.update({ gameDayReminderSentDate: todayStr });
+      } catch (err) {
+        console.error(`sendGameDayReminders: failed to stamp event ${evDoc.id}, skipping`, err);
+        continue;
+      }
+
+      const teamIds: string[] = ev.teamIds ?? [];
+      if (!teamIds.length) continue;
+
+      // Resolve team names for home/away display.
+      const homeTeamId: string = ev.homeTeamId ?? teamIds[0] ?? '';
+      const awayTeamId: string = ev.awayTeamId ?? teamIds[1] ?? '';
+
+      const [homeTeamDoc, awayTeamDoc] = await Promise.all([
+        homeTeamId ? db.doc(`teams/${homeTeamId}`).get() : Promise.resolve(null),
+        awayTeamId && awayTeamId !== homeTeamId ? db.doc(`teams/${awayTeamId}`).get() : Promise.resolve(null),
+      ]);
+
+      const homeTeamName: string = homeTeamDoc?.data()?.name ?? ev.title ?? 'Home Team';
+      const awayTeamName: string = awayTeamDoc?.data()?.name ?? ev.opponentName ?? 'Away Team';
+
+      const title: string = ev.title ?? 'Game';
+      const date: string = ev.date ?? tomorrowStr;
+      const time: string = ev.startTime ?? '';
+      const location: string = ev.location ?? '';
+
+      // RSVP count from the inline rsvps array on the event doc.
+      const rsvps: Array<{ response: string }> = ev.rsvps ?? [];
+      const rsvpYesCount = rsvps.filter(r => r.response === 'yes').length;
+
+      // Snack slot from subcollection events/{id}/snackSlot/slot.
+      // Keep separate HTML and plain-text versions to avoid HTML entities in text body.
+      let snackLineHtml = 'No one signed up yet';
+      let snackLineText = 'No one signed up yet';
+      try {
+        const snackSnap = await db.doc(`events/${evDoc.id}/snackSlot/slot`).get();
+        if (snackSnap.exists) {
+          const slot = snackSnap.data() as { claimedBy: string | null; claimedByName: string | null };
+          if (slot.claimedBy && slot.claimedByName) {
+            snackLineHtml = `Covered by ${esc(slot.claimedByName)}`;
+            snackLineText = `Covered by ${slot.claimedByName}`;
+          }
+        }
+      } catch (err) {
+        console.error(`sendGameDayReminders: failed to read snackSlot for event ${evDoc.id}`, err);
+      }
+
+      // Fetch all players on this event's teams (players collection, teamId field).
+      const playersSnap = await db
+        .collection('players')
+        .where('teamId', 'in', teamIds.slice(0, 10))
+        .get();
+
+      const sends: Promise<unknown>[] = [];
+
+      for (const p of playersSnap.docs) {
+        const d = p.data();
+        const name: string = `${d.firstName ?? ''} ${d.lastName ?? ''}`.trim() || 'Player';
+        const firstName: string = d.firstName ?? name.split(' ')[0] ?? 'Player';
+        const addrs: string[] = [
+          d.email,
+          d.parentContact?.parentEmail,
+          d.parentContact2?.parentEmail,
+        ].filter((e: unknown): e is string => typeof e === 'string' && e.trim().length > 0);
+
+        if (!addrs.length) continue;
+
+        for (const address of addrs) {
+          sends.push(
+            transporter.sendMail({
+              from: emailFrom.value(),
+              to: `${name} <${address}>`,
+              subject: `\uD83C\uDFC6 Game tomorrow \u2014 ${homeTeamName} vs ${awayTeamName}`,
+              text: [
+                `Hi ${firstName},`,
+                '',
+                `Reminder: ${title} is tomorrow.`,
+                '',
+                `Date: ${date}`,
+                time ? `Time: ${time}` : null,
+                location ? `Venue: ${location}` : null,
+                '',
+                `RSVPs so far: ${rsvpYesCount} attending`,
+                `Snacks: ${snackLineText}`,
+                '',
+                `View Schedule: ${APP_URL}`,
+                '',
+                '---',
+                'Sent via First Whistle',
+              ].filter((l): l is string => l !== null).join('\n'),
+              html: `
+                <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
+                  <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
+                    <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
+                  </div>
+                  <p style="color:#111827;font-size:15px">Hi ${esc(firstName)},</p>
+                  <p style="color:#374151">Your game is <strong>tomorrow</strong>. Here are the details:</p>
+                  <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:24px">
+                    <tr><td style="padding:4px 8px 4px 0;width:80px">Matchup</td><td style="color:#111827;font-weight:600">${esc(homeTeamName)} vs ${esc(awayTeamName)}</td></tr>
+                    <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(date)}</td></tr>
+                    ${time ? `<tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>` : ''}
+                    ${location ? `<tr><td style="padding:4px 8px 4px 0">Venue</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
+                    <tr><td style="padding:4px 8px 4px 0">RSVPs</td><td style="color:#111827">${rsvpYesCount} attending</td></tr>
+                    <tr><td style="padding:4px 8px 4px 0">Snacks</td><td style="color:#111827">${snackLineHtml}</td></tr>
+                  </table>
+                  <div style="text-align:center;margin:32px 0">
+                    <a href="${APP_URL}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
+                      View Schedule &#8594;
+                    </a>
+                  </div>
+                  <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
+                  <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
+                </div>
+              `,
+            })
+          );
+        }
+      }
+
+      const results = await Promise.allSettled(sends);
+      const sentCount = results.filter(r => r.status === 'fulfilled').length;
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          console.error(`sendGameDayReminders: send ${i} failed for event ${evDoc.id}:`, (r as PromiseRejectedResult).reason);
+        }
+      });
+      totalSent += sentCount;
+    }
+
+    console.log(`sendGameDayReminders: sent ${totalSent} reminder(s) for ${eventsSnap.size} event(s) on ${tomorrowStr}`);
+  }
+);
+
+// ─── Scheduled: snack reminders (daily 8AM UTC) ───────────────────────────────
+// Sends a 48-hour reminder to all team members when no one has claimed the
+// snack slot for a game happening in two days. Skips events that already
+// received a snack reminder today (idempotency via `snackReminderSentDate`).
+// Stamped before sending so retries do not cause duplicate emails.
+// Fails closed on snackSlot read errors to avoid false reminders.
+
+export const sendSnackReminders = onSchedule(
+  {
+    schedule: '0 8 * * *',
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+  },
+  async () => {
+    const db = admin.firestore();
+
+    const inTwoDays = new Date();
+    inTwoDays.setUTCDate(inTwoDays.getUTCDate() + 2);
+    const inTwoDaysStr = inTwoDays.toISOString().slice(0, 10); // YYYY-MM-DD
+
+    const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+    const eventsSnap = await db
+      .collection('events')
+      .where('date', '==', inTwoDaysStr)
+      .get();
+
+    if (eventsSnap.empty) {
+      console.log(`sendSnackReminders: no events on ${inTwoDaysStr}`);
+      return;
+    }
+
+    const transporter = createTransporter();
+    let totalSent = 0;
+
+    for (const evDoc of eventsSnap.docs) {
+      const ev = evDoc.data();
+
+      // Skip cancelled events.
+      if (ev.status === 'cancelled') continue;
+
+      // Idempotency: if already stamped today, skip.
+      if (ev.snackReminderSentDate === todayStr) {
+        console.log(`sendSnackReminders: already sent for event ${evDoc.id}, skipping`);
+        continue;
+      }
+
+      const teamIds: string[] = ev.teamIds ?? [];
+      if (!teamIds.length) continue;
+
+      // Check snack slot — only send if no one has claimed it.
+      // Fail closed on errors: skip to avoid sending false reminders when the
+      // slot may actually be claimed but unreadable.
+      let snackIsClaimed = false;
+      try {
+        const snackSnap = await db.doc(`events/${evDoc.id}/snackSlot/slot`).get();
+        if (snackSnap.exists) {
+          const slot = snackSnap.data() as { claimedBy: string | null };
+          snackIsClaimed = typeof slot.claimedBy === 'string' && slot.claimedBy.length > 0;
+        }
+      } catch (err) {
+        console.error(`sendSnackReminders: failed to read snackSlot for event ${evDoc.id}, skipping to avoid false reminder`, err);
+        continue;
+      }
+
+      if (snackIsClaimed) {
+        console.log(`sendSnackReminders: snack slot already claimed for event ${evDoc.id}, skipping`);
+        continue;
+      }
+
+      // Stamp before sending so a mid-run retry does not re-send to everyone.
+      try {
+        await evDoc.ref.update({ snackReminderSentDate: todayStr });
+      } catch (err) {
+        console.error(`sendSnackReminders: failed to stamp event ${evDoc.id}, skipping`, err);
+        continue;
+      }
+
+      // Resolve team name for the email subject.
+      const primaryTeamId: string = teamIds[0] ?? '';
+      let teamName = '';
+      if (primaryTeamId) {
+        try {
+          const teamDoc = await db.doc(`teams/${primaryTeamId}`).get();
+          teamName = teamDoc.data()?.name ?? '';
+        } catch (err) {
+          console.error(`sendSnackReminders: failed to read team ${primaryTeamId}`, err);
+        }
+      }
+
+      const date: string = ev.date ?? inTwoDaysStr;
+      const location: string = ev.location ?? '';
+
+      // Fetch all players on this event's teams (players collection, teamId field).
+      const playersSnap = await db
+        .collection('players')
+        .where('teamId', 'in', teamIds.slice(0, 10))
+        .get();
+
+      const sends: Promise<unknown>[] = [];
+
+      for (const p of playersSnap.docs) {
+        const d = p.data();
+        const name: string = `${d.firstName ?? ''} ${d.lastName ?? ''}`.trim() || 'Player';
+        const firstName: string = d.firstName ?? name.split(' ')[0] ?? 'Player';
+        const addrs: string[] = [
+          d.email,
+          d.parentContact?.parentEmail,
+          d.parentContact2?.parentEmail,
+        ].filter((e: unknown): e is string => typeof e === 'string' && e.trim().length > 0);
+
+        if (!addrs.length) continue;
+
+        const subjectTeam = teamName ? `${teamName} game` : 'game';
+        const bodyTeamHtml = teamName ? `<strong>${esc(teamName)}</strong>` : 'the team';
+        const venueClauseHtml = location ? ` at <strong>${esc(location)}</strong>` : '';
+        const venueClauseText = location ? ` at ${location}` : '';
+
+        for (const address of addrs) {
+          sends.push(
+            transporter.sendMail({
+              from: emailFrom.value(),
+              to: `${name} <${address}>`,
+              subject: `\uD83C\uDF4E Can you bring snacks? ${subjectTeam} on ${date}`,
+              text: [
+                `Hi ${firstName},`,
+                '',
+                `No one has signed up to bring snacks for the ${teamName || 'team'} game on ${date}${venueClauseText}.`,
+                '',
+                `Sign up to bring snacks: ${APP_URL}`,
+                '',
+                '---',
+                'Sent via First Whistle',
+              ].join('\n'),
+              html: `
+                <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
+                  <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
+                    <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
+                    ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${esc(teamName)}</p>` : ''}
+                  </div>
+                  <p style="color:#111827;font-size:15px">Hi ${esc(firstName)},</p>
+                  <p style="color:#374151">
+                    No one has signed up to bring snacks for ${bodyTeamHtml}'s game on
+                    <strong>${esc(date)}</strong>${venueClauseHtml}.
+                  </p>
+                  <p style="color:#374151">Can you help out?</p>
+                  <div style="text-align:center;margin:32px 0">
+                    <a href="${APP_URL}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
+                      Sign up to bring snacks &#8594;
+                    </a>
+                  </div>
+                  <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
+                  <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
+                </div>
+              `,
+            })
+          );
+        }
+      }
+
+      const results = await Promise.allSettled(sends);
+      const sentCount = results.filter(r => r.status === 'fulfilled').length;
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          console.error(`sendSnackReminders: send ${i} failed for event ${evDoc.id}:`, (r as PromiseRejectedResult).reason);
+        }
+      });
+      totalSent += sentCount;
+    }
+
+    console.log(`sendSnackReminders: sent ${totalSent} snack reminder(s) for ${eventsSnap.size} event(s) on ${inTwoDaysStr}`);
+  }
+);
