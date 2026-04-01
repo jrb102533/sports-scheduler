@@ -43,6 +43,7 @@ export function Dashboard() {
   const [selected, setSelected] = useState<ScheduledEvent | null>(null);
   const [teamsExpanded, setTeamsExpanded] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   // Redirect player/parent roles to their dedicated home screen
   if (profile && (profile.role === 'player' || profile.role === 'parent')) {
@@ -76,7 +77,6 @@ export function Dashboard() {
   const myLeagueTeams = myLeague ? allTeams.filter(t => t.leagueIds?.includes(myLeague.id)) : [];
 
   const isEmpty = teams.length === 0 && events.length === 0;
-  const [seeding, setSeeding] = useState(false);
 
   const isManager = profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach';
 
