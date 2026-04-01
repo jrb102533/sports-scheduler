@@ -392,9 +392,9 @@ export const onNotificationCreated = onDocumentCreated(
           <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
             <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
           </div>
-          <p style="color:#111827;font-size:15px">Hi ${userName},</p>
-          <p style="color:#111827;font-weight:600">${notif.title}</p>
-          <p style="color:#374151">${notif.message}</p>
+          <p style="color:#111827;font-size:15px">Hi ${esc(userName)},</p>
+          <p style="color:#111827;font-weight:600">${esc(notif.title)}</p>
+          <p style="color:#374151">${esc(notif.message)}</p>
           <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
           <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
         </div>
@@ -657,15 +657,15 @@ export const onEventCreated = onDocumentCreated(
           <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
             <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
               <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
-              ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${teamName}</p>` : ''}
+              ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${esc(teamName)}</p>` : ''}
             </div>
-            <p style="color:#111827;font-size:15px;font-weight:600;margin:0 0 16px">A new ${type} has been scheduled</p>
+            <p style="color:#111827;font-size:15px;font-weight:600;margin:0 0 16px">A new ${esc(type)} has been scheduled</p>
             <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:24px">
-              <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${title}</td></tr>
-              <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${date}</td></tr>
-              <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${time}</td></tr>
-              ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${location}</td></tr>` : ''}
-              ${teamName ? `<tr><td style="padding:4px 8px 4px 0">Team</td><td style="color:#111827">${teamName}</td></tr>` : ''}
+              <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${esc(title)}</td></tr>
+              <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(date)}</td></tr>
+              <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>
+              ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
+              ${teamName ? `<tr><td style="padding:4px 8px 4px 0">Team</td><td style="color:#111827">${esc(teamName)}</td></tr>` : ''}
             </table>
             <div style="text-align:center;margin-bottom:24px">
               <a href="${APP_URL}" style="background:#1B3A6B;color:white;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;display:inline-block">View Schedule</a>
@@ -777,18 +777,18 @@ export const sendEventReminders = onSchedule(
                 <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
                   <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
                     <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
-                    ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${teamName}</p>` : ''}
+                    ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${esc(teamName)}</p>` : ''}
                   </div>
-                  <p style="color:#111827;font-size:15px">Hi ${firstName},</p>
-                  <p style="color:#374151">This is a reminder that <strong>${title}</strong> is tomorrow.</p>
+                  <p style="color:#111827;font-size:15px">Hi ${esc(firstName)},</p>
+                  <p style="color:#374151">This is a reminder that <strong>${esc(title)}</strong> is tomorrow.</p>
                   <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:24px">
-                    <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${title}</td></tr>
-                    <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${date}</td></tr>
-                    <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${time}</td></tr>
-                    ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${location}</td></tr>` : ''}
-                    ${teamName ? `<tr><td style="padding:4px 8px 4px 0">Team</td><td style="color:#111827">${teamName}</td></tr>` : ''}
+                    <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${esc(title)}</td></tr>
+                    <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(date)}</td></tr>
+                    <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>
+                    ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
+                    ${teamName ? `<tr><td style="padding:4px 8px 4px 0">Team</td><td style="color:#111827">${esc(teamName)}</td></tr>` : ''}
                   </table>
-                  <p style="color:#111827;font-size:15px;font-weight:600;text-align:center;margin:0 0 20px">Will you be there, ${firstName}?</p>
+                  <p style="color:#111827;font-size:15px;font-weight:600;text-align:center;margin:0 0 20px">Will you be there, ${esc(firstName)}?</p>
                   <div style="text-align:center;margin-bottom:24px">
                     <a href="${yesUrl}" style="${btnStyle('#15803d')}">Yes, I'll be there</a>
                     <a href="${maybeUrl}" style="${btnStyle('#d97706')}">Maybe</a>
@@ -914,18 +914,18 @@ export const sendRsvpFollowups = onSchedule(
                 <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
                   <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
                     <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
-                    ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${teamName}</p>` : ''}
+                    ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${esc(teamName)}</p>` : ''}
                   </div>
-                  <p style="color:#111827;font-size:15px">Hi ${firstName},</p>
+                  <p style="color:#111827;font-size:15px">Hi ${esc(firstName)},</p>
                   <p style="color:#374151">You haven't responded yet to tomorrow's event.</p>
                   <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:24px">
-                    <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${title}</td></tr>
-                    <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${date}</td></tr>
-                    <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${time}</td></tr>
-                    ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${location}</td></tr>` : ''}
-                    ${teamName ? `<tr><td style="padding:4px 8px 4px 0">Team</td><td style="color:#111827">${teamName}</td></tr>` : ''}
+                    <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${esc(title)}</td></tr>
+                    <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(date)}</td></tr>
+                    <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>
+                    ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
+                    ${teamName ? `<tr><td style="padding:4px 8px 4px 0">Team</td><td style="color:#111827">${esc(teamName)}</td></tr>` : ''}
                   </table>
-                  <p style="color:#111827;font-size:15px;font-weight:600;text-align:center;margin:0 0 20px">Will you be there, ${firstName}?</p>
+                  <p style="color:#111827;font-size:15px;font-weight:600;text-align:center;margin:0 0 20px">Will you be there, ${esc(firstName)}?</p>
                   <div style="text-align:center;margin-bottom:24px">
                     <a href="${yesUrl}" style="${btnStyle('#15803d')}">Yes</a>
                     <a href="${maybeUrl}" style="${btnStyle('#d97706')}">Maybe</a>
@@ -1055,8 +1055,8 @@ export const onEventCancelled = onDocumentUpdated(
               <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
                 <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
               </div>
-              <p style="color:#111827;font-size:15px">Hi ${firstName},</p>
-              <p style="color:#374151"><strong>${eventTitle}</strong> scheduled for ${eventDate} at ${eventTime} has been cancelled.</p>
+              <p style="color:#111827;font-size:15px">Hi ${esc(firstName)},</p>
+              <p style="color:#374151"><strong>${esc(eventTitle)}</strong> scheduled for ${esc(eventDate)} at ${esc(eventTime)} has been cancelled.</p>
               <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
               <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
             </div>
@@ -2302,6 +2302,10 @@ export const geocodeVenueAddress = onCall(
     if (request.auth?.uid !== ownerUid) {
       throw new HttpsError('permission-denied', 'Not authorised');
     }
+
+    // SEC-17: rate-limit geocoding — Nominatim ToS: max 1 req/s, no bulk.
+    // Allow 10 geocode requests per minute per user.
+    await checkRateLimit(request.auth.uid, 'geocodeVenue', 10);
 
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
 
