@@ -133,6 +133,24 @@ service cloud.firestore {
       );
       allow create, delete: if isAdmin() || isCoach() || isLeagueManager();
       allow update: if isAdmin() || isCoach() || isLeagueManager();
+
+      // RSVP subcollection — any authenticated user may read all RSVPs;
+      // each user may only write their own RSVP document (keyed by uid).
+      match /rsvps/{uid} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // Snack slot subcollection — single doc per event keyed 'slot'.
+      // Any authenticated user may read. A user may write only if the slot is
+      // unclaimed, or if they are the current claimer (claim or release).
+      match /snackSlot/{doc} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null
+          && (resource == null
+              || resource.data.claimedBy == null
+              || resource.data.claimedBy == request.auth.uid);
+      }
     }
 
     match /opponents/{opponentId} {
