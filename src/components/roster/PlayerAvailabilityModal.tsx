@@ -27,7 +27,8 @@ function formatDisplayDate(iso: string): string {
 }
 
 export function PlayerAvailabilityModal({ open, onClose, player, teamId }: PlayerAvailabilityModalProps) {
-  const { availability, setUnavailable } = useAvailabilityStore();
+  const availability = useAvailabilityStore(s => s.availability);
+  const setUnavailable = useAvailabilityStore(s => s.setUnavailable);
   const profile = useAuthStore(s => s.profile);
 
   const existing = availability[player.id]?.windows ?? [];

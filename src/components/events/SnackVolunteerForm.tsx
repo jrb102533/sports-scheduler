@@ -11,7 +11,7 @@ interface SnackVolunteerFormProps {
 }
 
 export function SnackVolunteerForm({ event }: SnackVolunteerFormProps) {
-  const { updateEvent } = useEventStore();
+  const updateEvent = useEventStore(s => s.updateEvent);
   const profile = useAuthStore(s => s.profile);
 
   const [signupOpen, setSignupOpen] = useState(false);

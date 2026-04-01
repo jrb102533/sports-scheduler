@@ -46,9 +46,10 @@ export function TeamDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const teams = useTeamStore(s => s.teams);
-  const { softDeleteTeam, hardDeleteTeam } = useTeamStore();
+  const softDeleteTeam = useTeamStore(s => s.softDeleteTeam);
+  const hardDeleteTeam = useTeamStore(s => s.hardDeleteTeam);
   const players = usePlayerStore(s => s.players);
-  const { deletePlayersForTeam } = usePlayerStore();
+  const deletePlayersForTeam = usePlayerStore(s => s.deletePlayersForTeam);
   const allEvents = useEventStore(s => s.events);
   const leagues = useLeagueStore(s => s.leagues);
   const profile = useAuthStore(s => s.profile);

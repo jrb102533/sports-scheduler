@@ -100,8 +100,11 @@ function coverageClass(ratio: number, hasAny: boolean): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function AvailabilityStatusPanel({ leagueId, coaches, onClose: _onClose, onSendReminder }: Props) {
-  const { activeCollection, responses, loadCollection, closeCollection, reopenCollection } =
-    useCollectionStore();
+  const activeCollection = useCollectionStore(s => s.activeCollection);
+  const responses = useCollectionStore(s => s.responses);
+  const loadCollection = useCollectionStore(s => s.loadCollection);
+  const closeCollection = useCollectionStore(s => s.closeCollection);
+  const reopenCollection = useCollectionStore(s => s.reopenCollection);
 
   // ── Reopen date picker state ─────────────────────────────────────────────────
   const [showReopenPicker, setShowReopenPicker] = useState(false);

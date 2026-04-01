@@ -12,7 +12,8 @@ import { buildInfo } from '@/lib/buildInfo';
 import type { ConsentRecord } from '@/lib/consent';
 
 export function SettingsPage() {
-  const { settings, updateSettings } = useSettingsStore();
+  const settings = useSettingsStore(s => s.settings);
+  const updateSettings = useSettingsStore(s => s.updateSettings);
   const user = useAuthStore(s => s.user);
   const profile = useAuthStore(s => s.profile);
   const [consents, setConsents] = useState<Record<string, ConsentRecord | null> | null>(null);

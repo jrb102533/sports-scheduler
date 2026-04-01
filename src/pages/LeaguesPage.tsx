@@ -12,9 +12,15 @@ import { useAuthStore } from '@/store/useAuthStore';
 import type { League, Team } from '@/types';
 
 export function LeaguesPage() {
-  const { leagues, addLeague, updateLeague, deleteLeague } = useLeagueStore();
-  const { teams, addTeamToLeague, removeTeamFromLeague } = useTeamStore();
-  const { profile, updateProfile } = useAuthStore();
+  const leagues = useLeagueStore(s => s.leagues);
+  const addLeague = useLeagueStore(s => s.addLeague);
+  const updateLeague = useLeagueStore(s => s.updateLeague);
+  const deleteLeague = useLeagueStore(s => s.deleteLeague);
+  const teams = useTeamStore(s => s.teams);
+  const addTeamToLeague = useTeamStore(s => s.addTeamToLeague);
+  const removeTeamFromLeague = useTeamStore(s => s.removeTeamFromLeague);
+  const profile = useAuthStore(s => s.profile);
+  const updateProfile = useAuthStore(s => s.updateProfile);
   const navigate = useNavigate();
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<League | null>(null);

@@ -10,7 +10,9 @@ import { useAuthStore } from '@/store/useAuthStore';
 const VERIFY_ERROR_SUBSTRING = 'verify your email';
 
 export function LoginPage() {
-  const { login, error, clearError } = useAuthStore();
+  const login = useAuthStore(s => s.login);
+  const error = useAuthStore(s => s.error);
+  const clearError = useAuthStore(s => s.clearError);
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

@@ -32,7 +32,10 @@ interface EventDetailPanelProps {
 }
 
 export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
-  const { deleteEvent, recordResult, updateEvent, deleteEventsByGroupId } = useEventStore();
+  const deleteEvent = useEventStore(s => s.deleteEvent);
+  const recordResult = useEventStore(s => s.recordResult);
+  const updateEvent = useEventStore(s => s.updateEvent);
+  const deleteEventsByGroupId = useEventStore(s => s.deleteEventsByGroupId);
   const teams = useTeamStore(s => s.teams);
   const allPlayers = usePlayerStore(s => s.players);
   const authUser = useAuthStore(s => s.user);

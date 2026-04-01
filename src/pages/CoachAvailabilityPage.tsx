@@ -18,7 +18,8 @@ export function CoachAvailabilityPage() {
   const leagues = useLeagueStore(s => s.leagues);
   const teams = useTeamStore(s => s.teams);
   const profile = useAuthStore(s => s.profile);
-  const { activeCollection, loadCollection } = useCollectionStore();
+  const activeCollection = useCollectionStore(s => s.activeCollection);
+  const loadCollection = useCollectionStore(s => s.loadCollection);
 
   // Fetch only the coach's own response via getDoc — coaches do not have
   // list permission on the responses subcollection, so getDocs would fail

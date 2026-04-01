@@ -31,7 +31,8 @@ export function MainLayout() {
   useAttendanceNotification();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, profile } = useAuthStore();
+  const user = useAuthStore(s => s.user);
+  const profile = useAuthStore(s => s.profile);
   const subscribeTeams = useTeamStore(s => s.subscribe);
   const subscribePlayers = usePlayerStore(s => s.subscribe);
   const subscribeEvents = useEventStore(s => s.subscribe);
