@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useRsvpStore } from '@/store/useRsvpStore';
+import type { RsvpEntry } from '@/store/useRsvpStore';
+
+const EMPTY_RSVPS: RsvpEntry[] = [];
 
 interface RsvpButtonProps {
   eventId: string;
@@ -8,7 +11,7 @@ interface RsvpButtonProps {
 }
 
 export function RsvpButton({ eventId, currentUserUid, currentUserName }: RsvpButtonProps) {
-  const entries = useRsvpStore(s => s.rsvps[eventId] ?? []);
+  const entries = useRsvpStore(s => s.rsvps[eventId] ?? EMPTY_RSVPS);
   const submitRsvp = useRsvpStore(s => s.submitRsvp);
   const [submitting, setSubmitting] = useState(false);
   const [showNames, setShowNames] = useState(false);
