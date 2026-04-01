@@ -87,10 +87,15 @@ vi.mock('@/store/usePlayerStore', () => ({
 
 vi.mock('@/store/useVenueStore', () => {
   const subscribe = vi.fn(() => () => {});
-  return {
-    useVenueStore: (selector: (s: { venues: Venue[]; subscribe: typeof subscribe }) => unknown) =>
-      selector({ venues: [], subscribe }),
-  };
+  // The component uses two access patterns:
+  //   useVenueStore(s => s.venues)       — selector call (render)
+  //   useVenueStore.getState().subscribe() — static getState call (useEffect)
+  // The mock must satisfy both. Zustand attaches getState as a property on the
+  // hook function; we replicate that here.
+  const useVenueStore = (selector: (s: { venues: Venue[] }) => unknown) =>
+    selector({ venues: [] });
+  useVenueStore.getState = () => ({ subscribe });
+  return { useVenueStore };
 });
 
 // ── Sub-component stubs ───────────────────────────────────────────────────────
