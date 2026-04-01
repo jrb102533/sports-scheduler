@@ -290,11 +290,15 @@ const VALID_SOFT_CONSTRAINTS = new Set<SoftConstraintId>([
 export function validateInput(input: GenerateScheduleInput): void {
   const err = (msg: string) => { throw new HttpsError('invalid-argument', msg); };
 
-  // Team and venue counts
-  if (!Array.isArray(input.teams) || input.teams.length < 2 || input.teams.length > 20)
-    err('teams must contain 2–20 entries');
-  if (!Array.isArray(input.venues) || input.venues.length < 1 || input.venues.length > 10)
-    err('venues must contain 1–10 entries');
+  // SEC-18: leagueId must be a non-empty string
+  if (!input.leagueId || typeof input.leagueId !== 'string' || input.leagueId.trim() === '')
+    err('leagueId is required');
+
+  // SEC-19: Team and venue counts (caps prevent DoS via oversized arrays)
+  if (!Array.isArray(input.teams) || input.teams.length < 2 || input.teams.length > 64)
+    err('teams must contain 2–64 entries');
+  if (!Array.isArray(input.venues) || input.venues.length < 1 || input.venues.length > 32)
+    err('venues must contain 1–32 entries');
 
   // Date formats
   if (!ISO_DATE_RE.test(input.seasonStart) || !ISO_DATE_RE.test(input.seasonEnd))
@@ -320,7 +324,11 @@ export function validateInput(input: GenerateScheduleInput): void {
   if (input.format !== 'single_round_robin' && input.format !== 'double_round_robin')
     err(`unsupported format: ${input.format}`);
 
-  // Blackout dates
+  // SEC-19: Season-level blackout dates cap
+  if ((input.blackoutDates?.length ?? 0) > 366)
+    err('Too many season-level blackout dates (max 366)');
+
+  // Blackout dates (combined total)
   const totalBlackouts = (input.blackoutDates?.length ?? 0) +
     input.venues.reduce((s, v) => s + (v.blackoutDates?.length ?? 0), 0);
   if (totalBlackouts > 365)
@@ -351,6 +359,13 @@ export function validateInput(input: GenerateScheduleInput): void {
       err('concurrentPitches must be 1–20');
     if (!v.availabilityWindows || v.availabilityWindows.length === 0)
       err(`venue ${v.name} has no availability windows`);
+    // SEC-19: Per-venue array caps
+    if (v.availabilityWindows.length > 21)
+      err(`venue ${v.name} has too many availability windows (max 21)`);
+    if ((v.fallbackWindows?.length ?? 0) > 21)
+      err(`venue ${v.name} has too many fallback windows (max 21)`);
+    if ((v.blackoutDates?.length ?? 0) > 366)
+      err(`venue ${v.name} has too many blackout dates (max 366)`);
     // Validate window time formats
     for (const w of [...v.availabilityWindows, ...(v.fallbackWindows ?? [])]) {
       if (!TIME_RE.test(w.startTime) || !TIME_RE.test(w.endTime))
@@ -373,6 +388,9 @@ export function validateInput(input: GenerateScheduleInput): void {
   // gamesPerTeam validation
   const N = input.teams.length;
   if (input.gamesPerTeam !== undefined) {
+    // SEC-19: Absolute cap to prevent excessive computation
+    if (input.gamesPerTeam > 100)
+      err('gamesPerTeam must be at most 100');
     const max = input.format === 'single_round_robin' ? N - 1 : 2 * (N - 1);
     if (input.gamesPerTeam < 1 || input.gamesPerTeam > max)
       err(`gamesPerTeam ${input.gamesPerTeam} exceeds maximum ${max} for ${input.format} with ${N} teams`);

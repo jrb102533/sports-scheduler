@@ -450,12 +450,12 @@ describe('validateInput', () => {
   });
 
   it('rejects < 2 teams', () => {
-    expect(() => validateInput(baseInput({ teams: [makeTeam('t1')] }))).toThrow(/2–20/);
+    expect(() => validateInput(baseInput({ teams: [makeTeam('t1')] }))).toThrow(/2–64/);
   });
 
-  it('rejects > 20 teams', () => {
-    const teams = Array.from({ length: 21 }, (_, i) => makeTeam(`t${i}`));
-    expect(() => validateInput(baseInput({ teams }))).toThrow(/2–20/);
+  it('rejects > 64 teams', () => {
+    const teams = Array.from({ length: 65 }, (_, i) => makeTeam(`t${i}`));
+    expect(() => validateInput(baseInput({ teams }))).toThrow(/2–64/);
   });
 
   it('rejects invalid date format', () => {
