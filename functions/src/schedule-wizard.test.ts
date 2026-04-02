@@ -158,6 +158,16 @@ class MockBatch {
 class MockTransaction {
   private _ops: Array<() => void> = [];
 
+  async get(ref: MockDocRef) {
+    return ref.get();
+  }
+
+  set(ref: MockDocRef, data: DocData): void {
+    this._ops.push(() => {
+      _store.set(ref.path, { ...data });
+    });
+  }
+
   update(ref: MockDocRef, data: DocData): void {
     this._ops.push(() => {
       const existing = _store.get(ref.path) ?? {};
@@ -179,10 +189,11 @@ const mockDb = {
   doc: (path: string) => new MockDocRef(path),
   collection: (path: string) => new MockQuery(path),
   batch: () => new MockBatch(),
-  runTransaction: async (cb: (tx: MockTransaction) => Promise<void>) => {
+  runTransaction: async <T>(cb: (tx: MockTransaction) => Promise<T>): Promise<T> => {
     const tx = new MockTransaction();
-    await cb(tx);
+    const result = await cb(tx);
     await tx.commit();
+    return result;
   },
 };
 

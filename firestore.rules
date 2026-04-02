@@ -131,8 +131,21 @@ service cloud.firestore {
         resource.data.status != 'draft'
         || isAdmin() || isLeagueManager() || isCoach()
       );
-      allow create, delete: if isAdmin() || isCoach() || isLeagueManager();
-      allow update: if isAdmin() || isCoach() || isLeagueManager();
+      // SEC-15: League schedule events (those with a seasonId) must be created as
+      // draft. The transition to 'scheduled' is handled exclusively by the
+      // publishSchedule Cloud Function (Admin SDK), which enforces LM ownership.
+      // Non-league events (practices, standalone games) may still be created as
+      // 'scheduled' directly by coaches.
+      allow create: if (isAdmin() || isCoach() || isLeagueManager())
+        && (request.resource.data.status != 'scheduled'
+            || !('seasonId' in request.resource.data));
+      allow delete: if isAdmin() || isCoach() || isLeagueManager();
+      // SEC-15: Clients may not transition league schedule events to 'scheduled' —
+      // that is a server-only operation via publishSchedule.
+      allow update: if (isAdmin() || isCoach() || isLeagueManager())
+        && (request.resource.data.status != 'scheduled'
+            || resource.data.status == 'scheduled'
+            || !('seasonId' in resource.data));
 
       // RSVP subcollection — any authenticated user may read all RSVPs;
       // each user may only write their own RSVP document (keyed by uid).

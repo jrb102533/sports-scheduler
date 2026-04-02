@@ -2704,68 +2704,75 @@ export const submitGameResult = onCall<SubmitGameResultData, Promise<SubmitGameR
     const now = new Date().toISOString();
     const submission = { homeScore, awayScore, submittedBy: uid, submittedAt: now, side: callerSide };
 
-    // Check for an existing pending submission from the OTHER team
+    // SEC-16: Use a transaction for the pending-result read-check-write to prevent
+    // TOCTOU race where two coaches submit simultaneously and both see no pending doc.
     const pendingRef = db.doc(`leagues/${leagueId}/pendingResults/${eventId}`);
-    const pendingSnap = await pendingRef.get();
+    const seasonId: string | undefined = ev.seasonId as string | undefined;
 
-    if (!pendingSnap.exists) {
-      // First submission — save as pending
-      await pendingRef.set({ eventId, leagueId, ...submission, createdAt: now, updatedAt: now });
-      console.log(`submitGameResult: saved first pending result for eventId=${eventId} by uid=${uid} (${callerSide})`);
-      return { status: 'pending' };
-    }
+    const result = await db.runTransaction(async (tx) => {
+      const pendingSnap = await tx.get(pendingRef);
 
-    const existing = pendingSnap.data()!;
-    if (existing.side === callerSide) {
-      // Same team submitting again — overwrite
-      await pendingRef.set({ eventId, leagueId, ...submission, createdAt: existing.createdAt as string, updatedAt: now });
-      console.log(`submitGameResult: updated pending result for eventId=${eventId} by uid=${uid} (${callerSide})`);
-      return { status: 'pending' };
-    }
+      if (!pendingSnap.exists) {
+        // First submission — save as pending
+        tx.set(pendingRef, { eventId, leagueId, ...submission, createdAt: now, updatedAt: now });
+        return { status: 'pending' as const };
+      }
 
-    // Other team has already submitted — compare scores
-    const scoresMatch =
-      (existing.homeScore as number) === homeScore &&
-      (existing.awayScore as number) === awayScore;
+      const existing = pendingSnap.data()!;
+      if (existing.side === callerSide) {
+        // Same team submitting again — overwrite
+        tx.set(pendingRef, { eventId, leagueId, ...submission, createdAt: existing.createdAt as string, updatedAt: now });
+        return { status: 'pending' as const };
+      }
 
-    if (scoresMatch) {
-      // Auto-confirm: save result on event and recalculate standings
-      const seasonId: string | undefined = ev.seasonId as string | undefined;
-      await db.runTransaction(async (tx) => {
+      // Other team has already submitted — compare scores
+      const scoresMatch =
+        (existing.homeScore as number) === homeScore &&
+        (existing.awayScore as number) === awayScore;
+
+      if (scoresMatch) {
+        // Auto-confirm: save result on event and recalculate standings
         tx.update(eventRef, {
           result: { homeScore, awayScore, confirmedAt: now },
           status: 'completed',
           updatedAt: now,
         });
         tx.delete(pendingRef);
+        return { status: 'confirmed' as const, recalculate: true };
+      }
+
+      // Scores don't match — create a dispute record
+      const disputeRef = db.doc(`leagues/${leagueId}/resultDisputes/${eventId}`);
+      tx.set(disputeRef, {
+        eventId,
+        leagueId,
+        firstSubmission: {
+          homeScore: existing.homeScore as number,
+          awayScore: existing.awayScore as number,
+          submittedBy: existing.submittedBy as string,
+          submittedAt: existing.submittedAt as string,
+          side: existing.side as string,
+        },
+        secondSubmission: submission,
+        status: 'open',
+        createdAt: now,
+        updatedAt: now,
       });
+      tx.delete(pendingRef);
+      return { status: 'dispute' as const, existingScores: `${existing.homeScore}-${existing.awayScore}` };
+    });
+
+    if (result.status === 'pending') {
+      console.log(`submitGameResult: saved/updated pending result for eventId=${eventId} by uid=${uid} (${callerSide})`);
+    } else if (result.status === 'confirmed') {
       if (seasonId) {
         await recalculateStandings(leagueId, seasonId);
       }
       console.log(`submitGameResult: auto-confirmed result for eventId=${eventId} (${homeScore}-${awayScore})`);
-      return { status: 'confirmed' };
+    } else {
+      console.log(`submitGameResult: dispute created for eventId=${eventId} — scores ${result.existingScores} vs ${homeScore}-${awayScore}`);
     }
-
-    // Scores don't match — create a dispute record
-    const disputeRef = db.doc(`leagues/${leagueId}/resultDisputes/${eventId}`);
-    await disputeRef.set({
-      eventId,
-      leagueId,
-      firstSubmission: {
-        homeScore: existing.homeScore as number,
-        awayScore: existing.awayScore as number,
-        submittedBy: existing.submittedBy as string,
-        submittedAt: existing.submittedAt as string,
-        side: existing.side as string,
-      },
-      secondSubmission: submission,
-      status: 'open',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await pendingRef.delete();
-    console.log(`submitGameResult: dispute created for eventId=${eventId} — scores ${existing.homeScore}-${existing.awayScore} vs ${homeScore}-${awayScore}`);
-    return { status: 'dispute' };
+    return { status: result.status };
   }
 );
 

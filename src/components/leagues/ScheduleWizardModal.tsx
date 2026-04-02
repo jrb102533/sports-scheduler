@@ -101,6 +101,7 @@ const DAY_OPTIONS = DAY_NAMES.map((d, i) => ({ value: String(i), label: d }));
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const generateScheduleFn = httpsCallable<object, ScheduleOutput>(getFunctions(), 'generateSchedule');
+const publishScheduleFn = httpsCallable<{ leagueId: string; seasonId: string; divisionId?: string }, { publishedCount: number }>(getFunctions(), 'publishSchedule');
 
 // FORMAT_OPTIONS is used when mode === 'season' format select is rendered (group_then_knockout path)
 const FORMAT_OPTIONS: { value: string; label: string }[] = [
@@ -923,6 +924,9 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     setPublishing(true);
     const now = new Date().toISOString();
     try {
+      // SEC-15: Always save events as draft. The transition to 'scheduled' is
+      // handled exclusively by the publishSchedule Cloud Function, which
+      // enforces server-side league-manager ownership and validation.
       await Promise.all(
         result.fixtures.map(fixture => {
           const durationMins = parseInt(matchDuration);
@@ -945,7 +949,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             id: crypto.randomUUID(),
             title: `${fixture.homeTeamName} vs ${fixture.awayTeamName}`,
             type: 'game',
-            status: publishNow ? 'scheduled' : 'draft',
+            status: 'draft',
             date: fixture.date,
             startTime: fixture.startTime,
             endTime,
@@ -965,6 +969,17 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
           return addEvent(event);
         })
       );
+
+      // If "Publish Now" was requested, call the server-side publishSchedule
+      // callable to atomically transition draft events to scheduled.
+      if (publishNow && season?.id && league?.id) {
+        await publishScheduleFn({
+          leagueId: league.id,
+          seasonId: season.id,
+          ...(divisionId ? { divisionId } : {}),
+        });
+      }
+
       setPublished(true);
       setPublishedAsDraft(!publishNow);
       saveScheduleConfig();
