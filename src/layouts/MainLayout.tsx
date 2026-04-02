@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { buildInfo } from '@/lib/buildInfo';
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -6,6 +6,8 @@ import { TopBar } from '@/components/layout/TopBar';
 import { NotificationPanel } from '@/components/layout/NotificationPanel';
 import { useNotificationTrigger } from '@/hooks/useNotificationTrigger';
 import { useAttendanceNotification } from '@/hooks/useAttendanceNotification';
+import { useIdleTimeout } from '@/hooks/useIdleTimeout';
+import { SessionTimeoutModal } from '@/components/auth/SessionTimeoutModal';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
@@ -35,6 +37,10 @@ export function MainLayout() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, profile } = useAuthStore();
+  const logout = useAuthStore(s => s.logout);
+
+  const handleTimeout = useCallback(() => { void logout(); }, [logout]);
+  const { showWarning, countdown, resetTimer } = useIdleTimeout({ onTimeout: handleTimeout });
   const subscribeTeams = useTeamStore(s => s.subscribe);
   const subscribePlayers = usePlayerStore(s => s.subscribe);
   const subscribeEvents = useEventStore(s => s.subscribe);
@@ -105,6 +111,13 @@ export function MainLayout() {
         </div>
       </div>
       <NotificationPanel />
+      {showWarning && (
+        <SessionTimeoutModal
+          countdown={countdown}
+          onStaySignedIn={resetTimer}
+          onSignOut={() => void logout()}
+        />
+      )}
     </div>
   );
 }
