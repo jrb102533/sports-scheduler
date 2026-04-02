@@ -110,6 +110,7 @@ export function TeamDetailPage() {
         const docs = snap.docs.map(d => ({ ...(d.data() as Omit<InviteDoc, 'email'>), email: d.id }));
         setInvites(docs);
       })
+      .catch(err => console.error('Failed to load invites:', err))
       .finally(() => setInvitesLoading(false));
   }, [tab, team?.id, userCanEdit]);
 
