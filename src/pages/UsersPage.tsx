@@ -58,8 +58,13 @@ export function UsersPage() {
     const next = { ...user, ...patch };
     // strip undefined teamId
     if (!next.teamId) delete next.teamId;
-    await setDoc(doc(db, 'users', uid), next);
-    setUsers(prev => prev.map(u => u.uid === uid ? next : u));
+    try {
+      await setDoc(doc(db, 'users', uid), next);
+      setUsers(prev => prev.map(u => u.uid === uid ? next : u));
+    } catch (err) {
+      console.error('Failed to update user:', err);
+      alert(`Failed to save: ${(err as Error).message}`);
+    }
   }
 
   async function handleDeleteUser(user: UserProfile) {
