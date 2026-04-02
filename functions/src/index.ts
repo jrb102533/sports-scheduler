@@ -5,6 +5,7 @@ import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
 import * as nodemailer from 'nodemailer';
 import * as crypto from 'crypto';
+import { buildEmail } from './emailTemplate';
 import {
   validateInput,
   feasibilityPreCheck,
@@ -257,6 +258,9 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
           ? `<p style="color:#6b7280;font-size:13px;margin:0 0 16px">To: ${esc(recipient.name)} &lt;${esc(recipient.email)}&gt;</p>`
           : '';
 
+        const metaLines = [senderLine, recipientLine].filter(Boolean).join('\n');
+        const messageHtml = `${metaLines}<p style="white-space:pre-wrap;line-height:1.7;margin:0">${escapedMessage}</p>`;
+
         return transporter.sendMail({
           from: emailFrom.value(),
           to: toHeader,
@@ -270,19 +274,13 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
             '---',
             'Sent via First Whistle',
           ].filter((l, idx) => idx > 1 || l).join('\n'),
-          html: `
-            <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
-              <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
-                <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
-                ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${esc(teamName)}</p>` : ''}
-              </div>
-              ${senderLine}
-              ${recipientLine}
-              <p style="color:#111827;white-space:pre-wrap;line-height:1.6">${escapedMessage}</p>
-              <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-              <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
-            </div>
-          `,
+          html: buildEmail({
+            recipientName: recipient?.name ?? '',
+            preheader: subject.trim(),
+            title: subject.trim(),
+            message: messageHtml,
+            teamName: teamName ?? '',
+          }),
         });
       })
     );
@@ -339,26 +337,15 @@ export const sendInvite = onCall<SendInviteData>(
       to: `${playerName} <${to.trim()}>`,
       subject: `You've been added to ${teamName} on First Whistle`,
       text: `Hi ${playerName},\n\nYou've been added to ${teamName} on First Whistle.\n\nSign up or log in to view your schedule, track attendance, and stay connected with your team:\n${appUrl}\n\nSee you on the field!`,
-      html: `
-        <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
-          <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:12px;padding:24px;margin-bottom:24px;text-align:center">
-            <p style="color:white;font-weight:700;font-size:22px;margin:0">First Whistle</p>
-            <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px">Game day starts here.</p>
-          </div>
-          <p style="color:#111827;font-size:15px">Hi ${esc(playerName)},</p>
-          <p style="color:#374151">You've been added to <strong>${esc(teamName)}</strong> on First Whistle.</p>
-          <p style="color:#374151">Sign up or log in to view your schedule, track attendance, and stay connected with your team.</p>
-          <div style="text-align:center;margin:32px 0">
-            <a href="${appUrl}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
-              View My Team
-            </a>
-          </div>
-          <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-          <p style="color:#9ca3af;font-size:12px;text-align:center">
-            You received this because a coach added you to their roster on First Whistle.
-          </p>
-        </div>
-      `,
+      html: buildEmail({
+        recipientName: playerName,
+        preheader: `You've been added to ${teamName} on First Whistle`,
+        title: `You've been invited to join ${teamName}`,
+        message: `<p style="margin:0 0 12px">You've been added to <strong>${esc(teamName)}</strong> on First Whistle.</p><p style="margin:0">Sign up or log in to view your schedule, track attendance, and stay connected with your team.</p>`,
+        teamName,
+        ctaUrl: appUrl,
+        ctaLabel: 'Accept Invitation',
+      }),
     });
   }
 );
@@ -387,18 +374,12 @@ export const onNotificationCreated = onDocumentCreated(
       to: `${userName} <${userEmail}>`,
       subject: notif.title,
       text: `Hi ${userName},\n\n${notif.message}`,
-      html: `
-        <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
-          <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
-            <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
-          </div>
-          <p style="color:#111827;font-size:15px">Hi ${esc(userName)},</p>
-          <p style="color:#111827;font-weight:600">${esc(notif.title)}</p>
-          <p style="color:#374151">${esc(notif.message)}</p>
-          <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-          <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
-        </div>
-      `,
+      html: buildEmail({
+        recipientName: userName,
+        preheader: notif.title as string,
+        title: notif.title as string,
+        message: `<p style="margin:0">${esc(notif.message as string)}</p>`,
+      }),
     });
   }
 );
@@ -522,6 +503,22 @@ export const sendEventInvite = onCall<SendEventInviteData>(
         const btnStyle = (bg: string) =>
           `display:inline-block;padding:10px 22px;border-radius:8px;background:${bg};color:white;text-decoration:none;font-weight:600;font-size:14px;margin:0 6px`;
 
+        const firstName = esc(recipient.name.split(' ')[0]);
+        const eventDetailsHtml = `
+          <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:20px">
+            <tr><td style="padding:3px 8px 3px 0;width:60px">From</td><td style="color:#111827;font-weight:600">${esc(senderName)} &middot; ${esc(teamName)}</td></tr>
+            <tr><td style="padding:3px 8px 3px 0">Event</td><td style="color:#111827;font-weight:600">${esc(eventTitle)}</td></tr>
+            <tr><td style="padding:3px 8px 3px 0">Date</td><td style="color:#111827">${esc(eventDate)}</td></tr>
+            <tr><td style="padding:3px 8px 3px 0">Time</td><td style="color:#111827">${esc(eventTime)}</td></tr>
+            ${eventLocation ? `<tr><td style="padding:3px 8px 3px 0">Location</td><td style="color:#111827">${esc(eventLocation)}</td></tr>` : ''}
+          </table>
+          <p style="font-size:15px;font-weight:600;text-align:center;margin:24px 0 20px;color:#1B3A6B">Will you be there, ${firstName}?</p>
+          <div style="text-align:center;margin-bottom:8px">
+            <a href="${yesUrl}" style="${btnStyle('#15803d')}">Yes, I'll be there</a>
+            <a href="${maybeUrl}" style="${btnStyle('#d97706')}">Maybe</a>
+            <a href="${noUrl}" style="${btnStyle('#dc2626')}">Can't make it</a>
+          </div>`;
+
         return transporter.sendMail({
           from: emailFrom.value(),
           to: `${recipient.name} <${recipient.email}>`,
@@ -543,34 +540,13 @@ export const sendEventInvite = onCall<SendEventInviteData>(
             '---',
             'Sent via First Whistle',
           ].join('\n'),
-          html: `
-            <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
-              <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
-                <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
-                <p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${esc(teamName)}</p>
-              </div>
-
-              <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:20px">
-                <tr><td style="padding:3px 8px 3px 0;width:60px">From</td><td style="color:#111827;font-weight:600">${esc(senderName)} · ${esc(teamName)}</td></tr>
-                <tr><td style="padding:3px 8px 3px 0">To</td><td style="color:#111827">${esc(recipient.name)} &lt;${esc(recipient.email)}&gt;</td></tr>
-                <tr><td style="padding:3px 8px 3px 0">Event</td><td style="color:#111827;font-weight:600">${esc(eventTitle)}</td></tr>
-                <tr><td style="padding:3px 8px 3px 0">Date</td><td style="color:#111827">${esc(eventDate)}</td></tr>
-                <tr><td style="padding:3px 8px 3px 0">Time</td><td style="color:#111827">${esc(eventTime)}</td></tr>
-                ${eventLocation ? `<tr><td style="padding:3px 8px 3px 0">Location</td><td style="color:#111827">${esc(eventLocation)}</td></tr>` : ''}
-              </table>
-
-              <p style="color:#111827;font-size:15px;font-weight:600;text-align:center;margin:0 0 20px">Will you be there, ${esc(recipient.name.split(' ')[0])}?</p>
-
-              <div style="text-align:center;margin-bottom:24px">
-                <a href="${yesUrl}" style="${btnStyle('#15803d')}">Yes, I'll be there</a>
-                <a href="${maybeUrl}" style="${btnStyle('#d97706')}">Maybe</a>
-                <a href="${noUrl}" style="${btnStyle('#dc2626')}">Can't make it</a>
-              </div>
-
-              <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-              <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
-            </div>
-          `,
+          html: buildEmail({
+            recipientName: recipient.name,
+            preheader: `RSVP for ${eventTitle} — ${eventDate}`,
+            title: 'Game RSVP',
+            message: eventDetailsHtml,
+            teamName,
+          }),
         });
       })
     );
@@ -639,8 +615,17 @@ export const onEventCreated = onDocumentCreated(
 
     const transporter = createTransporter();
 
-    await Promise.allSettled(emails.map(({ name, address }) =>
-      transporter.sendMail({
+    await Promise.allSettled(emails.map(({ name, address }) => {
+      const eventDetailsHtml = `
+        <p style="font-weight:600;margin:0 0 16px;color:#1B3A6B">A new ${esc(type)} has been scheduled</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:8px">
+          <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${esc(title)}</td></tr>
+          <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(date)}</td></tr>
+          <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>
+          ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
+        </table>`;
+
+      return transporter.sendMail({
         from: emailFrom.value(),
         to: `${name} <${address}>`,
         subject: `First Whistle: New ${type} scheduled — ${title}`,
@@ -653,29 +638,17 @@ export const onEventCreated = onDocumentCreated(
           '',
           `View your schedule: ${APP_URL}`,
         ].filter(Boolean).join('\n'),
-        html: `
-          <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
-            <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
-              <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
-              ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${esc(teamName)}</p>` : ''}
-            </div>
-            <p style="color:#111827;font-size:15px;font-weight:600;margin:0 0 16px">A new ${esc(type)} has been scheduled</p>
-            <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:24px">
-              <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${esc(title)}</td></tr>
-              <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(date)}</td></tr>
-              <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>
-              ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
-              ${teamName ? `<tr><td style="padding:4px 8px 4px 0">Team</td><td style="color:#111827">${esc(teamName)}</td></tr>` : ''}
-            </table>
-            <div style="text-align:center;margin-bottom:24px">
-              <a href="${APP_URL}" style="background:#1B3A6B;color:white;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;display:inline-block">View Schedule</a>
-            </div>
-            <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-            <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
-          </div>
-        `,
-      })
-    ));
+        html: buildEmail({
+          recipientName: name,
+          preheader: `New ${type} scheduled: ${title} on ${date}`,
+          title: `New ${type} scheduled`,
+          message: eventDetailsHtml,
+          teamName,
+          ctaUrl: APP_URL,
+          ctaLabel: 'View Schedule',
+        }),
+      });
+    }));
 
     console.log(`onEventCreated: notified ${emails.length} address(es) for event "${title}"`);
   }
@@ -749,6 +722,21 @@ export const sendEventReminders = onSchedule(
         const maybeUrl = `${base}&r=maybe`;
 
         for (const address of addrs) {
+          const reminderDetailsHtml = `
+            <p style="margin:0 0 16px">This is a reminder that <strong>${esc(title)}</strong> is tomorrow.</p>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:24px">
+              <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${esc(title)}</td></tr>
+              <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(date)}</td></tr>
+              <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>
+              ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
+            </table>
+            <p style="font-size:15px;font-weight:600;text-align:center;margin:0 0 20px;color:#1B3A6B">Will you be there, ${esc(firstName)}?</p>
+            <div style="text-align:center;margin-bottom:8px">
+              <a href="${yesUrl}" style="${btnStyle('#15803d')}">Yes, I'll be there</a>
+              <a href="${maybeUrl}" style="${btnStyle('#d97706')}">Maybe</a>
+              <a href="${noUrl}" style="${btnStyle('#dc2626')}">Can't make it</a>
+            </div>`;
+
           sends.push(
             transporter.sendMail({
               from: emailFrom.value(),
@@ -773,31 +761,13 @@ export const sendEventReminders = onSchedule(
                 '---',
                 'Sent via First Whistle',
               ].filter(Boolean).join('\n'),
-              html: `
-                <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
-                  <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
-                    <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
-                    ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${esc(teamName)}</p>` : ''}
-                  </div>
-                  <p style="color:#111827;font-size:15px">Hi ${esc(firstName)},</p>
-                  <p style="color:#374151">This is a reminder that <strong>${esc(title)}</strong> is tomorrow.</p>
-                  <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:24px">
-                    <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${esc(title)}</td></tr>
-                    <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(date)}</td></tr>
-                    <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>
-                    ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
-                    ${teamName ? `<tr><td style="padding:4px 8px 4px 0">Team</td><td style="color:#111827">${esc(teamName)}</td></tr>` : ''}
-                  </table>
-                  <p style="color:#111827;font-size:15px;font-weight:600;text-align:center;margin:0 0 20px">Will you be there, ${esc(firstName)}?</p>
-                  <div style="text-align:center;margin-bottom:24px">
-                    <a href="${yesUrl}" style="${btnStyle('#15803d')}">Yes, I'll be there</a>
-                    <a href="${maybeUrl}" style="${btnStyle('#d97706')}">Maybe</a>
-                    <a href="${noUrl}" style="${btnStyle('#dc2626')}">Can't make it</a>
-                  </div>
-                  <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-                  <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
-                </div>
-              `,
+              html: buildEmail({
+                recipientName: firstName,
+                preheader: `${title} is tomorrow — RSVP now`,
+                title: 'Upcoming Game',
+                message: reminderDetailsHtml,
+                teamName,
+              }),
             })
           );
         }
@@ -886,6 +856,21 @@ export const sendRsvpFollowups = onSchedule(
         const btnStyle = (bg: string) =>
           `display:inline-block;padding:10px 22px;border-radius:8px;background:${bg};color:white;text-decoration:none;font-weight:600;font-size:14px;margin:0 6px`;
 
+          const followupDetailsHtml = `
+            <p style="margin:0 0 16px">You haven't responded yet to tomorrow's event.</p>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:24px">
+              <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${esc(title)}</td></tr>
+              <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(date)}</td></tr>
+              <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>
+              ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
+            </table>
+            <p style="font-size:15px;font-weight:600;text-align:center;margin:0 0 20px;color:#1B3A6B">Will you be there, ${esc(firstName)}?</p>
+            <div style="text-align:center;margin-bottom:8px">
+              <a href="${yesUrl}" style="${btnStyle('#15803d')}">Yes</a>
+              <a href="${maybeUrl}" style="${btnStyle('#d97706')}">Maybe</a>
+              <a href="${noUrl}" style="${btnStyle('#dc2626')}">Can't make it</a>
+            </div>`;
+
         for (const address of addrs) {
           sends.push(
             transporter.sendMail({
@@ -910,31 +895,13 @@ export const sendRsvpFollowups = onSchedule(
                 '---',
                 'Sent via First Whistle',
               ].filter(Boolean).join('\n'),
-              html: `
-                <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
-                  <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
-                    <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
-                    ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${esc(teamName)}</p>` : ''}
-                  </div>
-                  <p style="color:#111827;font-size:15px">Hi ${esc(firstName)},</p>
-                  <p style="color:#374151">You haven't responded yet to tomorrow's event.</p>
-                  <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:24px">
-                    <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${esc(title)}</td></tr>
-                    <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(date)}</td></tr>
-                    <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>
-                    ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
-                    ${teamName ? `<tr><td style="padding:4px 8px 4px 0">Team</td><td style="color:#111827">${esc(teamName)}</td></tr>` : ''}
-                  </table>
-                  <p style="color:#111827;font-size:15px;font-weight:600;text-align:center;margin:0 0 20px">Will you be there, ${esc(firstName)}?</p>
-                  <div style="text-align:center;margin-bottom:24px">
-                    <a href="${yesUrl}" style="${btnStyle('#15803d')}">Yes</a>
-                    <a href="${maybeUrl}" style="${btnStyle('#d97706')}">Maybe</a>
-                    <a href="${noUrl}" style="${btnStyle('#dc2626')}">Can't make it</a>
-                  </div>
-                  <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-                  <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
-                </div>
-              `,
+              html: buildEmail({
+                recipientName: firstName,
+                preheader: `Don't forget to RSVP — ${title} is tomorrow`,
+                title: 'Game RSVP',
+                message: followupDetailsHtml,
+                teamName,
+              }),
             })
           );
         }
@@ -1050,17 +1017,12 @@ export const onEventCancelled = onDocumentUpdated(
             '---',
             'Sent via First Whistle',
           ].join('\n'),
-          html: `
-            <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
-              <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
-                <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
-              </div>
-              <p style="color:#111827;font-size:15px">Hi ${esc(firstName)},</p>
-              <p style="color:#374151"><strong>${esc(eventTitle)}</strong> scheduled for ${esc(eventDate)} at ${esc(eventTime)} has been cancelled.</p>
-              <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-              <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
-            </div>
-          `,
+          html: buildEmail({
+            recipientName: firstName,
+            preheader: `${eventTitle} has been cancelled`,
+            title: 'Event Cancelled',
+            message: `<p style="margin:0"><strong>${esc(eventTitle)}</strong> scheduled for ${esc(eventDate)} at ${esc(eventTime)} has been cancelled.</p>`,
+          }),
         })
       ));
 
@@ -3183,25 +3145,14 @@ export const sendLeagueInvite = onCall<SendLeagueInviteData, Promise<SendLeagueI
             '---',
             'Sent via First Whistle',
           ].join('\n'),
-          html: `
-            <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
-              <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:12px;padding:24px;margin-bottom:24px;text-align:center">
-                <p style="color:white;font-weight:700;font-size:22px;margin:0">First Whistle</p>
-                <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px">Game day starts here.</p>
-              </div>
-              <p style="color:#111827;font-size:15px">You've been invited to join <strong>${esc(leagueName)}</strong> on First Whistle.</p>
-              <p style="color:#374151">Click below to accept your invitation and set up your team in the league.</p>
-              <div style="text-align:center;margin:32px 0">
-                <a href="${inviteUrl}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
-                  Accept Invitation
-                </a>
-              </div>
-              <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-              <p style="color:#9ca3af;font-size:12px;text-align:center">
-                You received this because a league manager invited you to First Whistle.
-              </p>
-            </div>
-          `,
+          html: buildEmail({
+            recipientName: 'Coach',
+            preheader: `You've been invited to join ${leagueName} on First Whistle`,
+            title: `You've been invited to join ${leagueName}`,
+            message: `<p style="margin:0">Click below to accept your invitation and set up your team in the league.</p>`,
+            ctaUrl: inviteUrl,
+            ctaLabel: 'Accept Invitation',
+          }),
         });
       })
     );
@@ -3298,25 +3249,14 @@ export const resendLeagueInvite = onCall<ResendLeagueInviteData, Promise<{ succe
         '---',
         'Sent via First Whistle',
       ].join('\n'),
-      html: `
-        <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
-          <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:12px;padding:24px;margin-bottom:24px;text-align:center">
-            <p style="color:white;font-weight:700;font-size:22px;margin:0">First Whistle</p>
-            <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px">Game day starts here.</p>
-          </div>
-          <p style="color:#111827;font-size:15px">Reminder: You've been invited to join <strong>${esc(leagueName)}</strong> on First Whistle.</p>
-          <p style="color:#374151">Click below to accept your invitation and set up your team in the league.</p>
-          <div style="text-align:center;margin:32px 0">
-            <a href="${inviteUrl}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
-              Accept Invitation
-            </a>
-          </div>
-          <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-          <p style="color:#9ca3af;font-size:12px;text-align:center">
-            You received this because a league manager invited you to First Whistle.
-          </p>
-        </div>
-      `,
+      html: buildEmail({
+        recipientName: 'Coach',
+        preheader: `Reminder: You've been invited to join ${leagueName} on First Whistle`,
+        title: `Reminder: You've been invited to join ${leagueName}`,
+        message: `<p style="margin:0">Click below to accept your invitation and set up your team in the league.</p>`,
+        ctaUrl: inviteUrl,
+        ctaLabel: 'Accept Invitation',
+      }),
     });
 
     console.log(`resendLeagueInvite: resent to email=${email} leagueId=${leagueId} uid=${uid}`);
@@ -3612,6 +3552,17 @@ export const sendGameDayReminders = onSchedule(
         if (!addrs.length) continue;
 
         for (const address of addrs) {
+          const gameDayDetailsHtml = `
+            <p style="margin:0 0 16px">Your game is <strong>tomorrow</strong>. Here are the details:</p>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:8px">
+              <tr><td style="padding:4px 8px 4px 0;width:80px">Matchup</td><td style="color:#111827;font-weight:600">${esc(homeTeamName)} vs ${esc(awayTeamName)}</td></tr>
+              <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(date)}</td></tr>
+              ${time ? `<tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>` : ''}
+              ${location ? `<tr><td style="padding:4px 8px 4px 0">Venue</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
+              <tr><td style="padding:4px 8px 4px 0">RSVPs</td><td style="color:#111827">${rsvpYesCount} attending</td></tr>
+              <tr><td style="padding:4px 8px 4px 0">Snacks</td><td style="color:#111827">${snackLineHtml}</td></tr>
+            </table>`;
+
           sends.push(
             transporter.sendMail({
               from: emailFrom.value(),
@@ -3634,30 +3585,14 @@ export const sendGameDayReminders = onSchedule(
                 '---',
                 'Sent via First Whistle',
               ].filter((l): l is string => l !== null).join('\n'),
-              html: `
-                <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
-                  <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
-                    <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
-                  </div>
-                  <p style="color:#111827;font-size:15px">Hi ${esc(firstName)},</p>
-                  <p style="color:#374151">Your game is <strong>tomorrow</strong>. Here are the details:</p>
-                  <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:24px">
-                    <tr><td style="padding:4px 8px 4px 0;width:80px">Matchup</td><td style="color:#111827;font-weight:600">${esc(homeTeamName)} vs ${esc(awayTeamName)}</td></tr>
-                    <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(date)}</td></tr>
-                    ${time ? `<tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>` : ''}
-                    ${location ? `<tr><td style="padding:4px 8px 4px 0">Venue</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
-                    <tr><td style="padding:4px 8px 4px 0">RSVPs</td><td style="color:#111827">${rsvpYesCount} attending</td></tr>
-                    <tr><td style="padding:4px 8px 4px 0">Snacks</td><td style="color:#111827">${snackLineHtml}</td></tr>
-                  </table>
-                  <div style="text-align:center;margin:32px 0">
-                    <a href="${APP_URL}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
-                      View Schedule &#8594;
-                    </a>
-                  </div>
-                  <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-                  <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
-                </div>
-              `,
+              html: buildEmail({
+                recipientName: firstName,
+                preheader: `${homeTeamName} vs ${awayTeamName} — game day tomorrow`,
+                title: 'Upcoming Game',
+                message: gameDayDetailsHtml,
+                ctaUrl: APP_URL,
+                ctaLabel: 'View Schedule',
+              }),
             })
           );
         }
@@ -3794,6 +3729,8 @@ export const sendSnackReminders = onSchedule(
         const venueClauseHtml = location ? ` at <strong>${esc(location)}</strong>` : '';
         const venueClauseText = location ? ` at ${location}` : '';
 
+        const snackMessageHtml = `<p style="margin:0 0 12px">No one has signed up to bring snacks for ${bodyTeamHtml}'s game on <strong>${esc(date)}</strong>${venueClauseHtml}.</p><p style="margin:0">Can you help out?</p>`;
+
         for (const address of addrs) {
           sends.push(
             transporter.sendMail({
@@ -3810,27 +3747,15 @@ export const sendSnackReminders = onSchedule(
                 '---',
                 'Sent via First Whistle',
               ].join('\n'),
-              html: `
-                <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
-                  <div style="background:linear-gradient(135deg,#1B3A6B,#0f2a52);border-radius:10px;padding:16px 20px;margin-bottom:20px">
-                    <p style="color:white;font-weight:700;font-size:16px;margin:0">First Whistle</p>
-                    ${teamName ? `<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:2px 0 0">${esc(teamName)}</p>` : ''}
-                  </div>
-                  <p style="color:#111827;font-size:15px">Hi ${esc(firstName)},</p>
-                  <p style="color:#374151">
-                    No one has signed up to bring snacks for ${bodyTeamHtml}'s game on
-                    <strong>${esc(date)}</strong>${venueClauseHtml}.
-                  </p>
-                  <p style="color:#374151">Can you help out?</p>
-                  <div style="text-align:center;margin:32px 0">
-                    <a href="${APP_URL}" style="background:#1B3A6B;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
-                      Sign up to bring snacks &#8594;
-                    </a>
-                  </div>
-                  <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-                  <p style="color:#9ca3af;font-size:12px;text-align:center">Sent via First Whistle</p>
-                </div>
-              `,
+              html: buildEmail({
+                recipientName: firstName,
+                preheader: `Can you bring snacks? ${subjectTeam} on ${date}`,
+                title: 'Snack Reminder',
+                message: snackMessageHtml,
+                teamName,
+                ctaUrl: APP_URL,
+                ctaLabel: 'Sign Up to Bring Snacks',
+              }),
             })
           );
         }
