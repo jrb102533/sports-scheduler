@@ -31,6 +31,23 @@ export default defineConfig([
       'react-refresh/only-export-components': 'warn',
       'react-hooks/purity': 'warn',
       'react-hooks/set-state-in-effect': 'warn',
+      // Promoted to error: missing deps can cause stale closures and render loops.
+      // The recommended config sets this to warn; we override to error here.
+      // rules-of-hooks is already error via recommended.
+      'react-hooks/exhaustive-deps': 'error',
+    },
+  },
+  // Legacy exhaustive-deps debt — pre-existing violations in these files are
+  // tracked for cleanup (GitHub issue #192). Downgraded back to warn so CI
+  // does not block on debt that predates this rule change.
+  {
+    files: [
+      'src/components/events/RsvpInviteModal.tsx',
+      'src/components/teams/TeamForm.tsx',
+      'src/pages/TeamDetailPage.tsx',
+    ],
+    rules: {
+      'react-hooks/exhaustive-deps': 'warn',
     },
   },
   // Test files in functions use Function/any extensively in mock infrastructure

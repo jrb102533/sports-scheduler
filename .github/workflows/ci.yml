@@ -34,6 +34,13 @@ jobs:
         # Once issue #92 is resolved, replace with: npm run lint -- --max-warnings 0
         run: npm run lint -- --max-warnings 600
 
+      - name: Check Zustand action deps
+        # Catches the pattern: useXxxStore(s => s.action) result used in a
+        # useEffect/useCallback/useMemo dep array. This causes stale closures
+        # and infinite render loops. See GitHub issue #192.
+        # Fix: use useXxxStore.getState().action() inside the effect body.
+        run: npm run lint:zustand-deps
+
       - name: Run frontend tests
         run: npm test
 
