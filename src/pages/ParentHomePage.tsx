@@ -1,5 +1,6 @@
 import { CalendarDays, MapPin, Users } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
+import { RsvpButton } from '@/components/events/RsvpButton';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useAuthStore, getMemberships } from '@/store/useAuthStore';
@@ -36,6 +37,8 @@ function resolveParentTeams(
 
 export function ParentHomePage() {
   const profile = useAuthStore(s => s.profile);
+  const currentUserUid = useAuthStore(s => s.user?.uid ?? '');
+  const currentUserName = useAuthStore(s => s.profile?.displayName ?? '');
   const allTeams = useTeamStore(s => s.teams);
   const teamsLoading = useTeamStore(s => s.loading);
   const allEvents = useEventStore(s => s.events);
@@ -122,7 +125,7 @@ export function ParentHomePage() {
           </div>
         ) : upcomingEvents.length === 0 ? (
           <Card className="p-6 text-center">
-            <p className="text-sm text-gray-400">No games scheduled yet</p>
+            <p className="text-sm text-gray-400">Your coach hasn't added any games yet — check back soon</p>
           </Card>
         ) : (
           <div className="space-y-2">
@@ -165,14 +168,13 @@ export function ParentHomePage() {
                       )}
                     </div>
 
-                    {/* Placeholder badges for upcoming features */}
-                    <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed select-none">
-                        RSVP coming soon
-                      </span>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed select-none">
-                        Snack slot
-                      </span>
+                    {/* RSVP */}
+                    <div className="flex-shrink-0">
+                      <RsvpButton
+                        eventId={event.id}
+                        currentUserUid={currentUserUid}
+                        currentUserName={currentUserName}
+                      />
                     </div>
                   </div>
                 </Card>
