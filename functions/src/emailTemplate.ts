@@ -23,7 +23,7 @@ export interface EmailVars {
 
 // Load template once at module initialisation. Cloud Functions keep the
 // process warm across invocations, so this is effectively a one-time read.
-const TEMPLATE_PATH = path.resolve(__dirname, '../../email-templates/base-template.html');
+const TEMPLATE_PATH = path.resolve(__dirname, '../email-templates/base-template.html');
 const RAW_TEMPLATE: string = fs.readFileSync(TEMPLATE_PATH, 'utf8');
 
 /**

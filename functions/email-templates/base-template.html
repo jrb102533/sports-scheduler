@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="x-apple-disable-message-reformatting">
+  <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no">
+  <title>{{title}} — First Whistle</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+  <style>
+    /* Reset — applied before inline styles take over */
+    * { box-sizing: border-box; }
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+    /* Mobile responsive */
+    @media only screen and (max-width: 600px) {
+      .email-wrapper { width: 100% !important; }
+      .email-content { padding: 24px 16px !important; }
+      .email-header { padding: 28px 16px !important; }
+      .email-footer { padding: 20px 16px !important; }
+      .cta-button { display: block !important; width: 100% !important; text-align: center !important; }
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f0f4f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+
+  <!-- Preheader text (hidden, shows in inbox preview) -->
+  <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all;">
+    {{preheader}}&#160;&#8199;&#65279;&#847; &#160;&#8199;&#65279;&#847; &#160;&#8199;&#65279;&#847; &#160;&#8199;&#65279;&#847; &#160;&#8199;&#65279;&#847; &#160;&#8199;&#65279;&#847; &#160;&#8199;&#65279;&#847; &#160;&#8199;&#65279;&#847;
+  </div>
+
+  <!-- Outer wrapper -->
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f0f4f8;">
+    <tr>
+      <td align="center" style="padding: 32px 16px;">
+
+        <!-- Email card — max 600px -->
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" class="email-wrapper" style="max-width: 600px; width: 100%; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(27, 58, 107, 0.12);">
+
+          <!-- ========================================
+               HEADER — Navy brand band
+               ======================================== -->
+          <tr>
+            <td class="email-header" style="background: linear-gradient(135deg, #1B3A6B 0%, #0f2a52 100%); padding: 36px 40px 32px; text-align: center;">
+
+              <!-- Wordmark -->
+              <div style="margin-bottom: 10px; line-height: 1;">
+                <span style="font-size: 32px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">First </span><span style="font-size: 32px; font-weight: 800; color: #f97316; letter-spacing: -0.5px;">Whistle</span>
+              </div>
+
+              <!-- Tagline -->
+              <div style="font-size: 13px; color: #93b4d8; font-weight: 400; letter-spacing: 0.5px; text-transform: uppercase;">
+                Youth Sports Scheduling
+              </div>
+
+            </td>
+          </tr>
+
+          <!-- ========================================
+               BODY — White content area
+               ======================================== -->
+          <tr>
+            <td style="background-color: #ffffff;">
+
+              <!-- Orange accent bar — top of content area -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                <tr>
+                  <td style="height: 4px; background-color: #f97316; font-size: 0; line-height: 0;">&nbsp;</td>
+                </tr>
+              </table>
+
+              <!-- Content padding wrapper -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                <tr>
+                  <td class="email-content" style="padding: 40px 48px 36px;">
+
+                    <!-- Greeting -->
+                    <p style="margin: 0 0 8px; font-size: 14px; color: #6b7280; font-weight: 500;">
+                      Hi {{recipientName}},
+                    </p>
+
+                    <!-- Email title / headline -->
+                    <h1 style="margin: 0 0 20px; font-size: 24px; font-weight: 700; color: #1B3A6B; line-height: 1.3; letter-spacing: -0.3px;">
+                      {{title}}
+                    </h1>
+
+                    <!-- Divider -->
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 24px;">
+                      <tr>
+                        <td style="height: 1px; background-color: #e5e7eb; font-size: 0; line-height: 0;">&nbsp;</td>
+                      </tr>
+                    </table>
+
+                    <!-- Message body — supports multi-line text blocks -->
+                    <div style="font-size: 15px; line-height: 1.7; color: #374151;">
+                      {{message}}
+                    </div>
+
+                    <!-- Team name callout (conditional — shown when teamName is present) -->
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 28px 0;">
+                      <tr>
+                        <td style="background-color: #f0f4f8; border-left: 3px solid #f97316; border-radius: 0 8px 8px 0; padding: 14px 20px;">
+                          <span style="font-size: 13px; color: #6b7280; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 2px;">Team</span>
+                          <span style="font-size: 17px; font-weight: 700; color: #1B3A6B;">{{teamName}}</span>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- CTA Button -->
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 32px 0 8px;">
+                      <tr>
+                        <td style="border-radius: 8px; background-color: #f97316;">
+                          <!--[if mso]>
+                          <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ctaUrl}}" style="height:50px;v-text-anchor:middle;width:220px;" arcsize="16%" stroke="f" fillcolor="#f97316">
+                            <w:anchorlock/>
+                            <center style="color:#ffffff;font-family:sans-serif;font-size:15px;font-weight:700;">{{ctaLabel}}</center>
+                          </v:roundrect>
+                          <![endif]-->
+                          <a href="{{ctaUrl}}" class="cta-button"
+                             style="display: inline-block; padding: 14px 32px; font-size: 15px; font-weight: 700; color: #ffffff; text-decoration: none; border-radius: 8px; background-color: #f97316; mso-hide: all; letter-spacing: 0.2px; line-height: 1.2;">
+                            {{ctaLabel}}
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- CTA URL fallback (plain text for clients that block buttons) -->
+                    <p style="margin: 12px 0 0; font-size: 12px; color: #9ca3af; line-height: 1.5;">
+                      Or copy this link: <a href="{{ctaUrl}}" style="color: #1B3A6B; word-break: break-all;">{{ctaUrl}}</a>
+                    </p>
+
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- ========================================
+               FOOTER
+               ======================================== -->
+          <tr>
+            <td class="email-footer" style="background-color: #f8fafc; border-top: 1px solid #e5e7eb; padding: 28px 48px; text-align: center;">
+
+              <!-- Footer wordmark (smaller, muted) -->
+              <p style="margin: 0 0 10px; font-size: 15px; font-weight: 700; color: #1B3A6B; letter-spacing: -0.2px;">
+                First <span style="color: #f97316;">Whistle</span>
+              </p>
+
+              <!-- Legal line -->
+              <p style="margin: 0 0 8px; font-size: 12px; color: #9ca3af; line-height: 1.6;">
+                You're receiving this because you were invited to a team on First Whistle.<br>
+                Questions? Reply to this email and we'll get back to you.
+              </p>
+
+              <!-- Unsubscribe -->
+              <p style="margin: 0; font-size: 11px; color: #c4c9d1; line-height: 1.5;">
+                <a href="{{unsubscribeUrl}}" style="color: #9ca3af; text-decoration: underline;">Unsubscribe</a>
+                &nbsp;&middot;&nbsp;
+                <a href="{{privacyUrl}}" style="color: #9ca3af; text-decoration: underline;">Privacy Policy</a>
+              </p>
+
+            </td>
+          </tr>
+
+        </table>
+        <!-- /email card -->
+
+        <!-- Below-card legal copy -->
+        <p style="margin: 16px 0 0; font-size: 11px; color: #9ca3af; text-align: center;">
+          &copy; {{year}} First Whistle. All rights reserved.
+        </p>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>
