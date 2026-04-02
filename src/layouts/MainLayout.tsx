@@ -79,6 +79,19 @@ export function MainLayout() {
     <div className="flex w-full min-h-screen">
       <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Staging/preview environment banner — hidden in production */}
+        {!buildInfo.isProduction && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-1 flex items-center gap-2 text-[11px] flex-shrink-0">
+            <span className={`font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+              buildInfo.env === 'staging' ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'
+            }`}>
+              {buildInfo.env}
+            </span>
+            <span className="text-amber-600 font-mono">
+              {buildInfo.pr ? `PR #${buildInfo.pr} · ${buildInfo.shortSha}` : `${buildInfo.branch} · ${buildInfo.shortSha}`}
+            </span>
+          </div>
+        )}
         <div style={{ background: 'linear-gradient(135deg, #1B3A6B 0%, #0f2a52 100%)' }}>
           <div className="px-4 py-3 sm:px-6 flex items-center">
             <div>
@@ -91,24 +104,6 @@ export function MainLayout() {
         <main className="flex-1 overflow-y-auto">
           <Outlet />
         </main>
-        {/* Build indicator — full info on non-prod, version only on prod */}
-        <div className="px-4 py-1.5 border-t border-gray-100 bg-gray-50 flex items-center justify-end gap-2">
-          {!buildInfo.isProduction && (
-            <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
-              buildInfo.env === 'staging' ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'
-            }`}>
-              {buildInfo.env}
-            </span>
-          )}
-          <span className="text-[10px] text-gray-400 font-mono">
-            {buildInfo.isProduction
-              ? `v${buildInfo.version}`
-              : buildInfo.pr
-                ? `PR #${buildInfo.pr} · ${buildInfo.shortSha}`
-                : `${buildInfo.branch} · ${buildInfo.shortSha}`
-            }
-          </span>
-        </div>
       </div>
       <NotificationPanel />
       {showWarning && (
