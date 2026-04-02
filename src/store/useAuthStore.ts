@@ -161,9 +161,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   signup: async (email, password, displayName, role, teamId, memberships) => {
     set({ error: null });
     try {
-      // On non-production environments, check the sign-up allowlist before creating the account.
+      // Check the sign-up allowlist before creating the account.
       // system/signupConfig: { open: boolean, allowedEmails: string[], allowedDomains: string[] }
-      if (!buildInfo.isProduction) {
+      {
         const configSnap = await getDoc(doc(db, 'system', 'signupConfig'));
         if (configSnap.exists()) {
           const config = configSnap.data() as { open?: boolean; allowedEmails?: string[]; allowedDomains?: string[] };
