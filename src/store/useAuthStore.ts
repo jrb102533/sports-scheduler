@@ -11,7 +11,6 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, deleteDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { buildInfo } from '@/lib/buildInfo';
 import { getUserConsents } from '@/lib/consent';
 import { LEGAL_VERSIONS } from '@/legal/versions';
 import type { UserRole, UserProfile, RoleMembership, Team } from '@/types';
