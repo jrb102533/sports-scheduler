@@ -19,7 +19,7 @@ import {
   type ScheduleAlgorithmOutput,
 } from './scheduleAlgorithm';
 
-const APP_URL = 'https://first-whistle-e76f4.web.app';
+const APP_URL = process.env.APP_URL ?? 'https://first-whistle-e76f4.web.app';
 const FUNCTIONS_BASE = 'https://us-central1-first-whistle-e76f4.cloudfunctions.net';
 
 admin.initializeApp();
