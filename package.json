@@ -11,6 +11,7 @@
     "build:test": "tsc -b && vite build --mode test",
     "deploy:test": "npm run build:test && firebase deploy --project test",
     "lint": "eslint .",
+    "lint:zustand-deps": "node scripts/lint-zustand-deps.js",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
