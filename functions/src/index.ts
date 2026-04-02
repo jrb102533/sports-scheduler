@@ -320,8 +320,6 @@ export const sendInvite = onCall<SendInviteData>(
     const { to, playerName, teamName, playerId, teamId } = request.data;
     if (!to?.trim()) throw new HttpsError('invalid-argument', 'Email address is required.');
 
-    const appUrl = 'https://first-whistle-e76f4.web.app';
-
     // Store invite so auto-link can find it on signup/login
     await admin.firestore().doc(`invites/${to.toLowerCase().trim()}`).set({
       playerId,
@@ -336,14 +334,14 @@ export const sendInvite = onCall<SendInviteData>(
       from: emailFrom.value(),
       to: `${playerName} <${to.trim()}>`,
       subject: `You've been added to ${teamName} on First Whistle`,
-      text: `Hi ${playerName},\n\nYou've been added to ${teamName} on First Whistle.\n\nSign up or log in to view your schedule, track attendance, and stay connected with your team:\n${appUrl}\n\nSee you on the field!`,
+      text: `Hi ${playerName},\n\nYou've been added to ${teamName} on First Whistle.\n\nSign up or log in to view your schedule, track attendance, and stay connected with your team:\n${APP_URL}\n\nSee you on the field!`,
       html: buildEmail({
         recipientName: playerName,
         preheader: `You've been added to ${teamName} on First Whistle`,
         title: `You've been invited to join ${teamName}`,
         message: `<p style="margin:0 0 12px">You've been added to <strong>${esc(teamName)}</strong> on First Whistle.</p><p style="margin:0">Sign up or log in to view your schedule, track attendance, and stay connected with your team.</p>`,
         teamName,
-        ctaUrl: appUrl,
+        ctaUrl: APP_URL,
         ctaLabel: 'Accept Invitation',
       }),
     });

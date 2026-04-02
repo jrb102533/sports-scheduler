@@ -303,9 +303,13 @@ service cloud.firestore {
     }
 
     // Invite records — written exclusively by Cloud Functions (Admin SDK).
-    // Auto-ID documents; invitee may read only their own invite by matching email claim.
+    // Coaches, admins, and league managers may list invites (to display on the Invites tab).
+    // Invitees may read their own invite by matching email claim (used during auto-link on signup).
     match /invites/{inviteId} {
-      allow read: if request.auth != null && request.auth.token.email == resource.data.email;
+      allow read: if request.auth != null && (
+        isAdmin() || isCoach() || isLeagueManager() ||
+        request.auth.token.email == resource.data.email
+      );
       allow write: if false;
     }
 
