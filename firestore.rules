@@ -14,11 +14,15 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow create: if request.auth.uid == uid || isAdmin();
       // Self-update: users may update their own profile fields but must not
-      // touch uid, mustChangePassword, or memberships (admin-only), and must
-      // not escalate their top-level role to admin or league_manager.
+      // touch uid or memberships (admin-only), and must not escalate their
+      // top-level role to admin or league_manager.
+      // mustChangePassword may only be cleared (set to false) by the user
+      // themselves — setting it to true is admin-only.
       allow update: if (request.auth.uid == uid
           && !request.resource.data.diff(resource.data).affectedKeys()
-              .hasAny(['uid', 'mustChangePassword', 'memberships'])
+              .hasAny(['uid', 'memberships'])
+          && !(request.resource.data.diff(resource.data).affectedKeys().hasAny(['mustChangePassword'])
+               && request.resource.data.mustChangePassword == true)
           && !(['admin', 'league_manager'].hasAny([request.resource.data.role]))
           && request.resource.data.displayName is string
           && request.resource.data.displayName.size() >= 1
