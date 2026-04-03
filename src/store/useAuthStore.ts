@@ -4,7 +4,6 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  sendEmailVerification,
   updateProfile,
   updatePassword,
   type User,
@@ -206,28 +205,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       set({ error: mapAuthError(e) });
       throw e;
     }
-    // Send verification email separately — account creation already succeeded above
-    try {
-      await sendEmailVerification(auth.currentUser!);
-    } catch {
-      // Best-effort: verification email failure doesn't block the signup flow
-    }
   },
 
   login: async (email, password) => {
     set({ error: null });
     try {
-      const { user } = await signInWithEmailAndPassword(auth, email, password);
-      if (!user.emailVerified) {
-        await signOut(auth);
-        const err = 'Please verify your email before signing in. Check your inbox for the verification link.';
-        set({ error: err });
-        throw new Error(err);
-      }
+      await signInWithEmailAndPassword(auth, email, password);
     } catch (e: unknown) {
-      if (!(e as Error).message?.includes('verify your email')) {
-        set({ error: mapAuthError(e) });
-      }
+      set({ error: mapAuthError(e) });
       throw e;
     }
   },

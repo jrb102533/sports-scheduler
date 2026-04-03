@@ -1,13 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { sendEmailVerification } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
 import { AuthLayout } from '@/layouts/AuthLayout';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useAuthStore } from '@/store/useAuthStore';
-
-const VERIFY_ERROR_SUBSTRING = 'verify your email';
 
 export function LoginPage() {
   const { login, error, clearError } = useAuthStore();
@@ -15,15 +11,10 @@ export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [resendSent, setResendSent] = useState(false);
-  const [resending, setResending] = useState(false);
-
-  const isVerifyError = error?.toLowerCase().includes(VERIFY_ERROR_SUBSTRING) ?? false;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     clearError();
-    setResendSent(false);
     setLoading(true);
     try {
       await login(email, password);
@@ -32,22 +23,6 @@ export function LoginPage() {
       // error set in store
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleResendVerification() {
-    setResending(true);
-    try {
-      // Sign in temporarily to get the user object, then sign out again
-      const { signInWithEmailAndPassword, signOut } = await import('firebase/auth');
-      const { user } = await signInWithEmailAndPassword(auth, email, password);
-      await sendEmailVerification(user);
-      await signOut(auth);
-      setResendSent(true);
-    } catch {
-      // best-effort
-    } finally {
-      setResending(false);
     }
   }
 
@@ -76,21 +51,8 @@ export function LoginPage() {
           showToggle
         />
         {error && (
-          <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 space-y-2">
+          <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
             <p>{error}</p>
-            {isVerifyError && !resendSent && (
-              <button
-                type="button"
-                onClick={handleResendVerification}
-                disabled={resending}
-                className="text-blue-600 underline text-sm font-medium disabled:opacity-50"
-              >
-                {resending ? 'Sending…' : 'Resend verification email'}
-              </button>
-            )}
-            {resendSent && (
-              <p className="text-green-700">Verification email sent — check your inbox.</p>
-            )}
           </div>
         )}
         <Button type="submit" className="w-full" disabled={loading}>
