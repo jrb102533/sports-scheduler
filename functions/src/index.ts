@@ -320,14 +320,25 @@ export const sendInvite = onCall<SendInviteData>(
     const { to, playerName, teamName, playerId, teamId } = request.data;
     if (!to?.trim()) throw new HttpsError('invalid-argument', 'Email address is required.');
 
+    const normalizedEmail = to.toLowerCase().trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      throw new HttpsError('invalid-argument', 'Invalid email address format.');
+    }
+
     // Store invite so auto-link can find it on signup/login
-    await admin.firestore().doc(`invites/${to.toLowerCase().trim()}`).set({
+    await admin.firestore().doc(`invites/${normalizedEmail}`).set({
       playerId,
       teamId,
       playerName,
       teamName,
       invitedAt: new Date().toISOString(),
     });
+
+    // Add to signup allowlist so the invitee can register even when signups are restricted
+    await admin.firestore().doc('system/signupConfig').set(
+      { allowedEmails: admin.firestore.FieldValue.arrayUnion(normalizedEmail) },
+      { merge: true }
+    );
 
     const transporter = createTransporter();
     await transporter.sendMail({
