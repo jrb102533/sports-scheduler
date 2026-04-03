@@ -59,12 +59,21 @@ export function UsersPage() {
     const user = users.find(u => u.uid === uid);
     if (!user) return;
     const next = { ...user, ...patch };
+    // When changing top-level role, keep primary membership role in sync
+    if (patch.role && next.memberships) {
+      next.memberships = next.memberships.map(m =>
+        m.isPrimary ? { ...m, role: patch.role as UserRole } : m
+      );
+    }
     // strip undefined teamId
     if (!next.teamId) delete next.teamId;
+    // Optimistic update so selects don't snap back while save is in flight
+    setUsers(prev => prev.map(u => u.uid === uid ? next : u));
     try {
       await setDoc(doc(db, 'users', uid), next);
-      setUsers(prev => prev.map(u => u.uid === uid ? next : u));
     } catch (err) {
+      // Revert on failure
+      setUsers(prev => prev.map(u => u.uid === uid ? user : u));
       console.error('Failed to update user:', err);
       alert(`Failed to save: ${(err as Error).message}`);
     }
