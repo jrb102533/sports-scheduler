@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@/lib/firebase';
-import { Shield, Users, Plus, Trash2, Pencil, Check, X, Copy, RefreshCw } from 'lucide-react';
+import { Shield, Users, Plus, Trash2, Pencil, Check, X, Copy, RefreshCw, KeyRound } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
@@ -38,6 +38,9 @@ export function UsersPage() {
   const [deleteTarget, setDeleteTarget] = useState<UserProfile | null>(null);
   const [editingNameUid, setEditingNameUid] = useState<string | null>(null);
   const [editingNameValue, setEditingNameValue] = useState('');
+  const [resetTarget, setResetTarget] = useState<UserProfile | null>(null);
+  const [resetInFlight, setResetInFlight] = useState<string | null>(null);
+  const [resetToast, setResetToast] = useState<string | null>(null);
   const teams = useTeamStore(s => s.teams);
   const leagues = useLeagueStore(s => s.leagues);
   const currentUid = useAuthStore(s => s.user?.uid);
@@ -84,10 +87,36 @@ export function UsersPage() {
     setEditingNameUid(null);
   }
 
+  async function handleResetPassword(user: UserProfile) {
+    setResetTarget(null);
+    setResetInFlight(user.uid);
+    try {
+      const fn = httpsCallable<{ uid: string }, { success: boolean }>(functions, 'resetUserPassword');
+      await fn({ uid: user.uid });
+      setResetToast(`Password reset email sent to ${user.email}`);
+      setTimeout(() => setResetToast(null), 4000);
+    } catch (err) {
+      alert(`Failed to send reset email: ${(err as Error).message}`);
+    } finally {
+      setResetInFlight(null);
+    }
+  }
+
   if (loading) return <div className="p-4 sm:p-6 text-sm text-gray-400">Loading users…</div>;
 
   return (
     <div className="p-4 sm:p-6">
+      {resetToast && (
+        <div
+          role="status"
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] bg-gray-900 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-3"
+        >
+          <span>{resetToast}</span>
+          <button onClick={() => setResetToast(null)} aria-label="Dismiss notification" className="text-gray-400 hover:text-white">
+            <X size={14} />
+          </button>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <Users size={18} className="text-gray-500" />
@@ -184,13 +213,24 @@ export function UsersPage() {
                   </td>
                   <td className="px-4 py-3">
                     {!isSelf && (
-                      <button
-                        onClick={() => setDeleteTarget(user)}
-                        className="text-gray-300 hover:text-red-500 transition-colors"
-                        title="Delete user"
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setResetTarget(user)}
+                          disabled={resetInFlight === user.uid}
+                          className="text-gray-300 hover:text-blue-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          title="Send password reset email"
+                          aria-label={`Send password reset email to ${user.displayName}`}
+                        >
+                          <KeyRound size={15} />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(user)}
+                          className="text-gray-300 hover:text-red-500 transition-colors"
+                          title="Delete user"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -212,6 +252,15 @@ export function UsersPage() {
         onConfirm={() => deleteTarget && handleDeleteUser(deleteTarget)}
         title="Delete User"
         message={`Remove ${deleteTarget?.displayName} from the app? Their login account will still exist but they won't have access.`}
+      />
+
+      <ConfirmDialog
+        open={!!resetTarget}
+        onClose={() => setResetTarget(null)}
+        onConfirm={() => resetTarget && handleResetPassword(resetTarget)}
+        title="Send Password Reset Email"
+        message={`Send a password reset email to ${resetTarget?.email}?`}
+        confirmLabel="Send Reset Email"
       />
     </div>
   );

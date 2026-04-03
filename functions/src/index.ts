@@ -206,8 +206,73 @@ export const createUserByAdmin = onCall<CreateUserByAdminData>(
     if (leagueId) profile.leagueId = leagueId;
 
     await admin.firestore().doc(`users/${uid}`).set(profile);
+
+    // When signup is restricted (SIGNUP_ALLOWLIST_ENABLED=true), add the email
+    // to the allowlist so the user can reset their password and re-register if needed.
+    if (process.env.SIGNUP_ALLOWLIST_ENABLED === 'true') {
+      const normalizedEmail = email.trim().toLowerCase();
+      await admin.firestore().doc('system/signupConfig').set(
+        { allowedEmails: admin.firestore.FieldValue.arrayUnion(normalizedEmail) },
+        { merge: true }
+      );
+    }
+
     console.log(`createUserByAdmin: created uid=${uid}, role=${role}`);
     return { uid };
+  }
+);
+
+// ─── Admin: reset user password ──────────────────────────────────────────────
+
+interface ResetUserPasswordData {
+  uid: string;
+}
+
+export const resetUserPassword = onCall<ResetUserPasswordData>(
+  { secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+
+    const callerRole = await assertAdminOrCoach(request.auth.uid);
+    if (callerRole !== 'admin') {
+      throw new HttpsError('permission-denied', 'Only admins can send password reset emails.');
+    }
+
+    const { uid } = request.data;
+    if (!uid?.trim()) throw new HttpsError('invalid-argument', 'uid is required.');
+
+    let email: string;
+    try {
+      const userRecord = await admin.auth().getUser(uid);
+      if (!userRecord.email) {
+        throw new HttpsError('failed-precondition', 'This user has no email address on file.');
+      }
+      email = userRecord.email;
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      throw new HttpsError('not-found', 'User not found.');
+    }
+
+    const resetLink = await admin.auth().generatePasswordResetLink(email);
+
+    const transporter = createTransporter();
+    await transporter.sendMail({
+      from: emailFrom.value(),
+      to: email,
+      subject: 'Reset your First Whistle password',
+      text: `Hi,\n\nAn admin has sent you a link to reset your First Whistle password.\n\nClick the link below to choose a new password:\n${resetLink}\n\nThis link expires shortly. If you didn't request this, you can ignore this email.`,
+      html: buildEmail({
+        recipientName: 'there',
+        preheader: 'Reset your First Whistle password',
+        title: 'Reset your password',
+        message: `<p style="margin:0 0 12px">An admin has requested a password reset for your First Whistle account.</p><p style="margin:0">Click the button below to choose a new password. This link expires shortly.</p>`,
+        ctaUrl: resetLink,
+        ctaLabel: 'Reset Password',
+      }),
+    });
+
+    console.log(`resetUserPassword: sent reset email for uid=${uid}`);
+    return { success: true };
   }
 );
 

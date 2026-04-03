@@ -67,6 +67,7 @@ Email verification was removed (Option A) to reduce signup friction for invited 
 - [ ] **Cloud Run IAM** — Confirm all callable functions have `allUsers:run.invoker` set. `sendInvite` required a manual fix during soft launch due to failed initial deployment. Verify remaining functions are not affected.
 - [ ] **API key restrictions** — Review Google Cloud API key HTTP referrer restrictions to ensure only production domains are listed.
 - [ ] **Firestore security rules audit** — Run full security review before opening to general public.
+- [ ] **Rate limit `resetUserPassword`** — Add per-target cooldown (5 min) to prevent inbox flooding by a rogue admin. See issue #229.
 
 ## Infrastructure
 
