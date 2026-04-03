@@ -157,13 +157,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       {
         const configSnap = await getDoc(doc(db, 'system', 'signupConfig'));
         if (configSnap.exists()) {
-          const config = configSnap.data() as { open?: boolean; allowedEmails?: string[]; allowedDomains?: string[] };
+          const config = configSnap.data() as { open?: boolean; allowedEmails?: string[]; allowedDomains?: string[]; allowedPrefixes?: string[] };
           if (!config.open) {
             const normalizedEmail = email.toLowerCase();
             const domain = normalizedEmail.split('@')[1] ?? '';
             const emailAllowed = config.allowedEmails?.map(e => e.toLowerCase()).includes(normalizedEmail);
             const domainAllowed = config.allowedDomains?.map(d => d.toLowerCase()).includes(domain);
-            if (!emailAllowed && !domainAllowed) {
+            const prefixAllowed = config.allowedPrefixes?.some(p => normalizedEmail.startsWith(p.toLowerCase()));
+            if (!emailAllowed && !domainAllowed && !prefixAllowed) {
               const err = 'This is a test environment. Sign-ups are restricted to authorized testers. Contact the administrator to request access.';
               set({ error: err });
               throw new Error(err);
