@@ -48,6 +48,9 @@ service cloud.firestore {
           && request.resource.data.ownerUid == resource.data.ownerUid;
         allow delete: if request.auth != null && request.auth.uid == uid;
       }
+      match /consents/{type} {
+        allow read, write: if request.auth.uid == uid;
+      }
     }
 
     match /teams/{teamId} {
