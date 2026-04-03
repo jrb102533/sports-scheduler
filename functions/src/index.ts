@@ -5,7 +5,7 @@ import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
 import * as nodemailer from 'nodemailer';
 import * as crypto from 'crypto';
-import { buildEmail } from './emailTemplate';
+import { buildEmail, rsvpButtonsHtml } from './emailTemplate';
 import {
   validateInput,
   feasibilityPreCheck,
@@ -594,7 +594,7 @@ export const onEventCreated = onDocumentCreated(
       .where('teamId', 'in', teamIds.slice(0, 10))
       .get();
 
-    const emails: { name: string; address: string }[] = [];
+    const recipients: { playerId: string; name: string; address: string }[] = [];
     for (const p of playersSnap.docs) {
       const d = p.data();
       const name: string = `${d.firstName ?? ''} ${d.lastName ?? ''}`.trim() || 'Player';
@@ -603,10 +603,10 @@ export const onEventCreated = onDocumentCreated(
         d.parentContact?.parentEmail,
         d.parentContact2?.parentEmail,
       ].filter((e: any): e is string => typeof e === 'string' && e.trim().length > 0);
-      addrs.forEach(address => emails.push({ name, address }));
+      addrs.forEach(address => recipients.push({ playerId: p.id, name, address }));
     }
 
-    if (!emails.length) {
+    if (!recipients.length) {
       console.log('onEventCreated: no email addresses found for teams', teamIds);
       return;
     }
@@ -617,6 +617,7 @@ export const onEventCreated = onDocumentCreated(
       teamName = teamDoc.data()?.name ?? '';
     }
 
+    const eventId = event.params.eventId;
     const title: string = ev.title ?? 'New Event';
     const date: string = ev.date ?? '';
     const time: string = ev.startTime ?? '';
@@ -625,7 +626,13 @@ export const onEventCreated = onDocumentCreated(
 
     const transporter = createTransporter();
 
-    await Promise.allSettled(emails.map(({ name, address }) => {
+    await Promise.allSettled(recipients.map(({ playerId, name, address }) => {
+      const token = signRsvpToken(eventId, playerId);
+      const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(playerId)}&n=${encodeURIComponent(name)}&t=${token}`;
+      const yesUrl = `${base}&r=yes`;
+      const noUrl = `${base}&r=no`;
+      const maybeUrl = `${base}&r=maybe`;
+
       const eventDetailsHtml = `
         <p style="font-weight:600;margin:0 0 16px;color:#1B3A6B">A new ${esc(type)} has been scheduled</p>
         <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:8px">
@@ -646,21 +653,23 @@ export const onEventCreated = onDocumentCreated(
           `Time: ${time}`,
           location ? `Location: ${location}` : '',
           '',
-          `View your schedule: ${APP_URL}`,
+          `RSVP:`,
+          `  Yes: ${yesUrl}`,
+          `  No: ${noUrl}`,
+          `  Maybe: ${maybeUrl}`,
         ].filter(Boolean).join('\n'),
         html: buildEmail({
           recipientName: name,
           preheader: `New ${type} scheduled: ${title} on ${date}`,
           title: `New ${type} scheduled`,
           message: eventDetailsHtml,
+          extraHtml: rsvpButtonsHtml(yesUrl, noUrl, maybeUrl),
           teamName,
-          ctaUrl: APP_URL,
-          ctaLabel: 'View Schedule',
         }),
       });
     }));
 
-    console.log(`onEventCreated: notified ${emails.length} address(es) for event "${title}"`);
+    console.log(`onEventCreated: notified ${recipients.length} address(es) for event "${title}"`);
   }
 );
 
@@ -3562,6 +3571,12 @@ export const sendGameDayReminders = onSchedule(
         if (!addrs.length) continue;
 
         for (const address of addrs) {
+          const gameDayToken = signRsvpToken(evDoc.id, p.id);
+          const gameDayBase = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(evDoc.id)}&p=${encodeURIComponent(p.id)}&n=${encodeURIComponent(name)}&t=${gameDayToken}`;
+          const gdYes = `${gameDayBase}&r=yes`;
+          const gdNo = `${gameDayBase}&r=no`;
+          const gdMaybe = `${gameDayBase}&r=maybe`;
+
           const gameDayDetailsHtml = `
             <p style="margin:0 0 16px">Your game is <strong>tomorrow</strong>. Here are the details:</p>
             <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:8px">
@@ -3590,18 +3605,17 @@ export const sendGameDayReminders = onSchedule(
                 `RSVPs so far: ${rsvpYesCount} attending`,
                 `Snacks: ${snackLineText}`,
                 '',
-                `View Schedule: ${APP_URL}`,
-                '',
-                '---',
-                'Sent via First Whistle',
+                `RSVP:`,
+                `  Yes: ${gdYes}`,
+                `  No: ${gdNo}`,
+                `  Maybe: ${gdMaybe}`,
               ].filter((l): l is string => l !== null).join('\n'),
               html: buildEmail({
                 recipientName: firstName,
                 preheader: `${homeTeamName} vs ${awayTeamName} — game day tomorrow`,
                 title: 'Upcoming Game',
                 message: gameDayDetailsHtml,
-                ctaUrl: APP_URL,
-                ctaLabel: 'View Schedule',
+                extraHtml: rsvpButtonsHtml(gdYes, gdNo, gdMaybe),
               }),
             })
           );
