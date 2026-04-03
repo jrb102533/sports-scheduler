@@ -66,7 +66,8 @@ Email verification was removed (Option A) to reduce signup friction for invited 
 
 - [ ] **Cloud Run IAM** — Confirm all callable functions have `allUsers:run.invoker` set. `sendInvite` required a manual fix during soft launch due to failed initial deployment. Verify remaining functions are not affected.
 - [ ] **API key restrictions** — Review Google Cloud API key HTTP referrer restrictions to ensure only production domains are listed.
-- [ ] **Firestore security rules audit** — Run full security review before opening to general public.
+- [x] **Firestore security rules — invite path tested** — Emulator-based rules tests added for `/invites/{inviteId}` (branch `test/invite-rules-emulator`). Covers: invitee delete allowed, non-invitee delete denied, unauthenticated delete denied, create/update locked to Admin SDK, invitee read allowed, non-invitee read denied. Run before go-live with `npm run test:rules` (requires `firebase emulators:start --only firestore`).
+- [ ] **Firestore security rules audit** — Run full security review before opening to general public. Execute `npm run test:rules` as part of this audit to verify emulator rules are consistent with deployed rules.
 
 ## Infrastructure
 
