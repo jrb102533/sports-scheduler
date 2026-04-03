@@ -135,12 +135,6 @@ describe('UsersPage — reset password button', () => {
     expect(screen.getByText(/send a password reset email to player@example.com/i)).toBeInTheDocument();
   });
 
-  // NOTE: ConfirmDialog's default confirmLabel is "Delete" — the reset dialog
-  // in UsersPage does not pass a confirmLabel, so the confirm button reads
-  // "Delete".  This is a UX bug (flagged in the QA report below) but we test
-  // against the actual rendered label so tests accurately reflect current
-  // behaviour.
-
   it('does NOT call the Cloud Function when the dialog is cancelled', async () => {
     renderPage();
     await screen.findByText('Alex Jones');
@@ -161,9 +155,7 @@ describe('UsersPage — reset password button', () => {
     fireEvent.click(
       screen.getByRole('button', { name: /send password reset email to Alex Jones/i })
     );
-    // The confirm button currently renders as "Delete" (ConfirmDialog default —
-    // UsersPage does not pass confirmLabel; see UX finding in QA report).
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Send Reset Email$/i }));
 
     await waitFor(() => {
       expect(mockCallableFn).toHaveBeenCalledWith({ uid: 'other-uid' });
@@ -177,7 +169,7 @@ describe('UsersPage — reset password button', () => {
     fireEvent.click(
       screen.getByRole('button', { name: /send password reset email to Alex Jones/i })
     );
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Send Reset Email$/i }));
 
     await screen.findByRole('status');
     expect(screen.getByRole('status')).toHaveTextContent(
@@ -192,7 +184,7 @@ describe('UsersPage — reset password button', () => {
     fireEvent.click(
       screen.getByRole('button', { name: /send password reset email to Alex Jones/i })
     );
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Send Reset Email$/i }));
 
     await screen.findByRole('status');
     fireEvent.click(screen.getByRole('button', { name: /dismiss notification/i }));
@@ -213,7 +205,7 @@ describe('UsersPage — reset password button', () => {
       name: /send password reset email to Alex Jones/i,
     });
     fireEvent.click(btn);
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Send Reset Email$/i }));
 
     await waitFor(() => {
       expect(btn).toBeDisabled();
@@ -228,7 +220,7 @@ describe('UsersPage — reset password button', () => {
       name: /send password reset email to Alex Jones/i,
     });
     fireEvent.click(btn);
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Send Reset Email$/i }));
 
     // Disabled while in-flight, then re-enabled on resolution
     await waitFor(() => expect(btn).not.toBeDisabled());
@@ -245,7 +237,7 @@ describe('UsersPage — reset password button', () => {
       name: /send password reset email to Alex Jones/i,
     });
     fireEvent.click(btn);
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Send Reset Email$/i }));
 
     await waitFor(() => {
       expect(alertSpy).toHaveBeenCalledWith(
@@ -266,7 +258,7 @@ describe('UsersPage — reset password button', () => {
     fireEvent.click(
       screen.getByRole('button', { name: /send password reset email to Alex Jones/i })
     );
-    fireEvent.click(screen.getByRole('button', { name: /^Delete$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Send Reset Email$/i }));
 
     await waitFor(() => expect(window.alert).toHaveBeenCalled());
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
