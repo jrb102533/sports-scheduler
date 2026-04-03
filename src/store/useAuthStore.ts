@@ -110,32 +110,25 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
               if (inviteSnap.exists()) {
                 const invite = inviteSnap.data();
                 const { teamId, playerId, role: inviteRole } = invite as { teamId?: string; playerId?: string; role?: string };
-                // Validate that the invite's playerId actually belongs to the teamId
-                // before linking to prevent a compromised invite from linking a user
-                // to an arbitrary player record on an unrelated team.
+                // teamId and playerId were validated server-side when the invite was created.
+                // We trust the invite document and skip re-reading the player doc here —
+                // a parent user with no teamId cannot read players yet, which would silently
+                // block the link if we attempted the validation on the client.
                 if (teamId && playerId) {
-                  const playerSnap = await getDoc(doc(db, 'players', playerId));
-                  if (playerSnap.exists() && playerSnap.data().teamId === teamId) {
-                    const patch: Partial<UserProfile> = { teamId, playerId };
-                    // Apply the role from the invite only if it is an allowed invite role.
-                    // Allowlist is defense-in-depth against a compromised invite document —
-                    // the server also enforces this, but we never trust Firestore data blindly.
-                    // We only override if the current profile role is still the default 'player'
-                    // to avoid downgrading a coach who was re-invited.
-                    const ALLOWED_INVITE_ROLES: UserRole[] = ['player', 'parent'];
-                    if (
-                      inviteRole &&
-                      ALLOWED_INVITE_ROLES.includes(inviteRole as UserRole) &&
-                      profile.role === 'player'
-                    ) {
-                      patch.role = inviteRole as UserRole;
-                    }
-                    await setDoc(doc(db, 'users', user.uid), { ...profile, ...patch });
-                  } else {
-                    console.warn(`Auto-link skipped: player ${playerId} not found on team ${teamId}`);
+                  const patch: Partial<UserProfile> = { teamId, playerId };
+                  // Apply the role from the invite only if it is an allowed invite role.
+                  // We only override if the current profile role is still the default 'player'
+                  // to avoid downgrading a coach who was re-invited.
+                  const ALLOWED_INVITE_ROLES: UserRole[] = ['player', 'parent'];
+                  if (
+                    inviteRole &&
+                    ALLOWED_INVITE_ROLES.includes(inviteRole as UserRole) &&
+                    profile.role === 'player'
+                  ) {
+                    patch.role = inviteRole as UserRole;
                   }
+                  await setDoc(doc(db, 'users', user.uid), { ...profile, ...patch });
                 }
-                // Always delete the invite, even if the link was invalid, to prevent reuse.
                 await deleteDoc(doc(db, 'invites', user.email.toLowerCase()));
               }
             } catch {

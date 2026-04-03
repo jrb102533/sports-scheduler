@@ -327,6 +327,7 @@ export const sendInvite = onCall<SendInviteData>(
 
     // Store invite so auto-link can find it on signup/login
     await admin.firestore().doc(`invites/${normalizedEmail}`).set({
+      email: normalizedEmail,
       playerId,
       teamId,
       playerName,
