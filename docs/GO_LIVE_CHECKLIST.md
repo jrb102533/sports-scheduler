@@ -2,6 +2,44 @@
 
 Items to complete before opening First Whistle to the general public.
 
+## End-to-End Smoke Tests
+
+These must be run manually against production — unit tests use mocks and cannot catch infrastructure, SMTP, or Firestore rules issues.
+
+### Invite Flow
+- [ ] Admin creates a team
+- [ ] Admin adds a player with a parent email address
+- [ ] Invite email arrives in inbox from `noreply@firstwhistlesports.com` (not spam)
+- [ ] Email header shows "First Whistle" / "Sports Scheduling" (not "Youth Sports Scheduling")
+- [ ] Email CTA links to `firstwhistlesports.com` (not staging URL)
+- [ ] Parent clicks link → lands on signup page
+- [ ] Parent creates account → auto-linked to player record
+- [ ] Parent lands on parent home page and sees team schedule
+- [ ] RSVP button appears on events and can be tapped
+- [ ] Invite disappears from admin's Invites tab after parent accepts
+
+### Auth & Session
+- [ ] Login with valid credentials works
+- [ ] Login with wrong password shows correct error message
+- [ ] Session idle for 30 minutes → warning modal appears with 60-second countdown
+- [ ] Clicking "Stay Signed In" dismisses modal and resets timer
+- [ ] Countdown reaching zero logs user out
+- [ ] Unverified email signup blocked with correct message
+
+### Admin
+- [ ] Admin can create/edit/delete teams
+- [ ] Admin can add/edit/remove players
+- [ ] Admin can publish a schedule
+- [ ] Admin can revoke a pending invite
+
+### Environment
+- [ ] Production banner is NOT visible on `firstwhistlesports.com`
+- [ ] Staging banner IS visible on staging URL
+- [ ] Firebase Console → Functions → all functions show ACTIVE state
+- [ ] Check `firebase functions:log` for any ERROR entries after smoke test
+
+---
+
 ## Signup & Access Control
 
 - [ ] **Open signups** — Set `system/signupConfig.open = true` in Firestore (Firebase Console → Firestore → system → signupConfig). Currently `false` to restrict to invited testers only.
