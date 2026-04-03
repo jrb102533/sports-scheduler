@@ -40,6 +40,10 @@ These must be run manually against production — unit tests use mocks and canno
 
 ---
 
+## Release Process
+
+- [ ] **Restore PM release approval** — GitHub Actions production environment gate is currently approved by Claude (architect). Transfer approval back to PM before go-live. Settings → Environments → production → Required reviewers.
+
 ## Signup & Access Control
 
 - [ ] **Open signups** — Set `system/signupConfig.open = true` in Firestore (Firebase Console → Firestore → system → signupConfig). Currently `false` to restrict to invited testers only.
