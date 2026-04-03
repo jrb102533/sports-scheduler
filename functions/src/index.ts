@@ -321,6 +321,9 @@ export const sendInvite = onCall<SendInviteData>(
     if (!to?.trim()) throw new HttpsError('invalid-argument', 'Email address is required.');
 
     const normalizedEmail = to.toLowerCase().trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      throw new HttpsError('invalid-argument', 'Invalid email address format.');
+    }
 
     // Store invite so auto-link can find it on signup/login
     await admin.firestore().doc(`invites/${normalizedEmail}`).set({
