@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MailCheck } from 'lucide-react';
 import { AuthLayout } from '@/layouts/AuthLayout';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -12,7 +11,7 @@ import { LEGAL_VERSIONS } from '@/legal/versions';
 import type { UserRole, RoleMembership } from '@/types';
 
 export function SignupPage() {
-  const { signup, logout, error, clearError } = useAuthStore();
+  const { signup, error, clearError } = useAuthStore();
   const navigate = useNavigate();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -23,13 +22,11 @@ export function SignupPage() {
   const [additionalRoles, setAdditionalRoles] = useState<UserRole[]>([]);
   const [loading, setLoading] = useState(false);
   const [validationError, setValidationError] = useState('');
-  const [verificationSent, setVerificationSent] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [agreedToMarketing, setAgreedToMarketing] = useState(false);
 
   function handlePrimaryRoleChange(newRole: UserRole) {
     setRole(newRole);
-    // Remove any additional role that now duplicates the new primary
     setAdditionalRoles(prev => prev.filter(r => r !== newRole));
   }
 
@@ -55,7 +52,6 @@ export function SignupPage() {
     if (!lastName.trim()) { setValidationError('Last name is required'); return; }
     const displayName = `${firstName.trim()} ${lastName.trim()}`;
 
-    // Build memberships from primary + additional roles
     const memberships: RoleMembership[] = [
       { role, isPrimary: true },
       ...additionalRoles.map(r => ({ role: r })),
@@ -64,10 +60,6 @@ export function SignupPage() {
     setLoading(true);
     try {
       await signup(email, password, displayName, role, undefined, memberships);
-
-      // Account created — show the verification screen immediately.
-      // Consent recording and logout are best-effort and must not block or hide this.
-      setVerificationSent(true);
 
       const uid = auth.currentUser?.uid;
       if (uid) {
@@ -79,34 +71,16 @@ export function SignupPage() {
           console.warn('Consent recording failed (non-blocking):', e);
         }
       }
-      logout().catch(() => {});
+
+      navigate('/');
     } catch {
-      // signup itself failed — error set in store, stay on form
+      // signup failed — error set in store, stay on form
     } finally {
       setLoading(false);
     }
   }
 
   const displayedError = validationError || error;
-
-  if (verificationSent) {
-    return (
-      <AuthLayout title="Check your email" subtitle="One more step">
-        <div className="text-center space-y-4">
-          <div className="flex justify-center">
-            <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center">
-              <MailCheck size={32} className="text-blue-600" />
-            </div>
-          </div>
-          <p className="text-sm text-gray-600">
-            We sent a verification link to <span className="font-medium text-gray-900">{email}</span>.
-            Click the link in that email, then sign in below.
-          </p>
-          <Button className="w-full" onClick={() => navigate('/login')}>Go to Sign In</Button>
-        </div>
-      </AuthLayout>
-    );
-  }
 
   return (
     <AuthLayout title="Create account" subtitle="Join First Whistle">
