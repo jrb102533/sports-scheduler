@@ -157,13 +157,17 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       {
         const configSnap = await getDoc(doc(db, 'system', 'signupConfig'));
         if (configSnap.exists()) {
-          const config = configSnap.data() as { open?: boolean; allowedEmails?: string[]; allowedDomains?: string[]; allowedPrefixes?: string[] };
+          const config = configSnap.data() as { open?: boolean; allowedEmails?: string[]; allowedDomains?: string[] };
           if (!config.open) {
             const normalizedEmail = email.toLowerCase();
             const domain = normalizedEmail.split('@')[1] ?? '';
             const emailAllowed = config.allowedEmails?.map(e => e.toLowerCase()).includes(normalizedEmail);
             const domainAllowed = config.allowedDomains?.map(d => d.toLowerCase()).includes(domain);
-            const prefixAllowed = config.allowedPrefixes?.some(p => normalizedEmail.startsWith(p.toLowerCase()));
+            // VITE_SIGNUP_ALLOWED_PREFIXES — comma-separated prefixes set at build time
+            // (staging only; unset in production builds)
+            const envPrefixes = (import.meta.env.VITE_SIGNUP_ALLOWED_PREFIXES ?? '')
+              .split(',').map((p: string) => p.trim().toLowerCase()).filter(Boolean);
+            const prefixAllowed = envPrefixes.some((p: string) => normalizedEmail.startsWith(p));
             if (!emailAllowed && !domainAllowed && !prefixAllowed) {
               const err = 'This is a test environment. Sign-ups are restricted to authorized testers. Contact the administrator to request access.';
               set({ error: err });

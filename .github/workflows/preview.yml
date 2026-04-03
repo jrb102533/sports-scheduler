@@ -42,6 +42,7 @@ jobs:
           VITE_BUILD_BRANCH: ${{ github.head_ref }}
           VITE_BUILD_PR: ${{ github.event.pull_request.number }}
           VITE_APP_ENV: staging
+          VITE_SIGNUP_ALLOWED_PREFIXES: ${{ secrets.VITE_SIGNUP_ALLOWED_PREFIXES }}
         run: npm run build
 
       - name: Install Firebase CLI
