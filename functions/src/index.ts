@@ -419,27 +419,51 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
 // Stores an invite record and sends a welcome email. The client checks
 // invites/{email} on signup/login to auto-link the player record.
 
+const ALLOWED_INVITE_ROLES = ['player', 'parent'] as const;
+type InviteRole = (typeof ALLOWED_INVITE_ROLES)[number];
+
 interface SendInviteData {
   to: string;
   playerName: string;
   teamName: string;
   playerId: string;
   teamId: string;
+  /** 'player' for the player themselves, 'parent' for a parent/guardian. Defaults to 'player'. */
+  role?: 'player' | 'parent';
 }
 
 export const sendInvite = onCall<SendInviteData>(
   { secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom] },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
-    await assertAdminOrCoach(request.auth.uid);
-    await checkRateLimit(request.auth.uid, 'sendInvite', 20);
+    const uid = request.auth.uid;
+    const callerRole = await assertAdminOrCoach(uid);
+    await checkRateLimit(uid, 'sendInvite', 20);
 
-    const { to, playerName, teamName, playerId, teamId } = request.data;
+    const { to, playerName, teamName, playerId, teamId, role: requestedRole } = request.data;
     if (!to?.trim()) throw new HttpsError('invalid-argument', 'Email address is required.');
 
     const normalizedEmail = to.toLowerCase().trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       throw new HttpsError('invalid-argument', 'Invalid email address format.');
+    }
+
+    const inviteRole: InviteRole = (
+      requestedRole && ALLOWED_INVITE_ROLES.includes(requestedRole)
+        ? requestedRole
+        : 'player'
+    );
+
+    // SEC-22: coaches may only invite players to teams they own.
+    if (callerRole !== 'admin') {
+      const teamDoc = await admin.firestore().doc(`teams/${teamId}`).get();
+      if (!teamDoc.exists) {
+        throw new HttpsError('not-found', 'Team not found.');
+      }
+      const teamData = teamDoc.data()!;
+      if (teamData['coachId'] !== uid && teamData['createdBy'] !== uid) {
+        throw new HttpsError('permission-denied', 'You can only invite players to your own team.');
+      }
     }
 
     // Generate a one-time secret to prove the invitee received the email (SEC-18).
@@ -449,13 +473,16 @@ export const sendInvite = onCall<SendInviteData>(
     const inviteSecret = crypto.randomUUID();
     const inviteUrl = `${APP_URL}/signup?inviteSecret=${inviteSecret}`;
 
-    // Store invite so auto-link can find it on signup/login
-    await admin.firestore().doc(`invites/${normalizedEmail}`).set({
+    // Store invite so auto-link can find it on signup/login.
+    // The document ID is a composite of email + teamId + role so that a second invite to the
+    // same email for a different team (or role) does not silently overwrite the first (SEC-20).
+    await admin.firestore().doc(`invites/${normalizedEmail}_${teamId}_${inviteRole}`).set({
       email: normalizedEmail,
       playerId,
       teamId,
       playerName,
       teamName,
+      role: inviteRole,
       inviteSecret,
       invitedAt: new Date().toISOString(),
       autoVerify: true,
@@ -505,24 +532,51 @@ export const verifyInvitedUser = onCall<VerifyInvitedUserData, Promise<VerifyInv
     const email = request.auth.token.email?.toLowerCase();
     if (!email) throw new HttpsError('invalid-argument', 'No email on auth token.');
 
-    const inviteRef = admin.firestore().doc(`invites/${email}`);
-    const userRef = admin.firestore().doc(`users/${uid}`);
+    const db = admin.firestore();
+    const userRef = db.doc(`users/${uid}`);
 
-    // Use a transaction to atomically consume the invite and patch the profile,
-    // preventing double-consumption if called concurrently (SEC-19).
+    // SEC-20: invites are now stored under a composite key (email_teamId_role).
+    // Query by email + secret to locate the correct doc without knowing the key up front.
+    const normalizedEmail = email;
+    const inviteQuery = await db.collection('invites')
+      .where('email', '==', normalizedEmail)
+      .where('inviteSecret', '==', request.data.inviteSecret)
+      .limit(1)
+      .get();
+    if (inviteQuery.empty) {
+      return { found: false };
+    }
+    const inviteRef = inviteQuery.docs[0].ref;
+
+    // Use a transaction to atomically consume the invite, write/update the user profile,
+    // and update the player record — preventing double-consumption if called concurrently (SEC-19).
+    // The query above runs outside the transaction to obtain the ref; the transaction re-reads
+    // the doc inside to acquire a Firestore lock on it.
     let shouldAutoVerify = false;
-    const txResult = await admin.firestore().runTransaction(async (txn) => {
+    const txResult = await db.runTransaction(async (txn) => {
       const inviteSnap = await txn.get(inviteRef);
+
+      // Idempotency: if the invite doc was consumed between the query and the transaction, bail.
       if (!inviteSnap.exists) return { found: false };
 
       const invite = inviteSnap.data()!;
-      const { teamId, playerId, role: inviteRole, autoVerify, inviteSecret: storedSecret } = invite as {
+      const { teamId, playerId, autoVerify, inviteSecret: storedSecret } = invite as {
         teamId?: string;
         playerId?: string;
-        role?: string;
         autoVerify?: boolean;
         inviteSecret?: string;
       };
+
+      // Read the role from the invite doc — never trust client-supplied role (SEC-20).
+      // FND-2026-001: legacy invites may have been written without a role field; default to
+      // 'player' so they remain usable rather than failing with a hard error.
+      const rawRole = invite['role'] as string | undefined;
+      if (rawRole && !ALLOWED_INVITE_ROLES.includes(rawRole as InviteRole)) {
+        throw new HttpsError('failed-precondition', 'Invite has an invalid role.');
+      }
+      const inviteRole = (rawRole && ALLOWED_INVITE_ROLES.includes(rawRole as InviteRole)
+        ? rawRole
+        : 'player') as InviteRole;
 
       // Validate the invite secret to prevent invite theft (SEC-18).
       // Invites issued before this change won't have a secret — allow them through
@@ -534,39 +588,74 @@ export const verifyInvitedUser = onCall<VerifyInvitedUserData, Promise<VerifyInv
       shouldAutoVerify = !!autoVerify;
 
       const userSnap = await txn.get(userRef);
-      if (userSnap.exists) {
+
+      if (!userSnap.exists) {
+        // ── New user path ───────────────────────────────────────────────────────
+        // Build a fresh UserProfile using the invite's role as the authoritative role.
+        const newMembership: Record<string, unknown> = {
+          role: inviteRole,
+          isPrimary: true,
+          ...(teamId ? { teamId } : {}),
+          ...(playerId ? { playerId } : {}),
+        };
+        const now = new Date().toISOString();
+        const newProfile: Record<string, unknown> = {
+          uid,
+          email,
+          displayName: email,
+          role: inviteRole,
+          ...(teamId ? { teamId } : {}),
+          ...(playerId ? { playerId } : {}),
+          memberships: [newMembership],
+          createdAt: now,
+        };
+        txn.set(userRef, newProfile);
+      } else {
+        // ── Existing user path ──────────────────────────────────────────────────
+        // Append a new membership entry if the same role+teamId combo doesn't already exist.
         const profile = userSnap.data()!;
-        const patch: Record<string, unknown> = {};
-        if (teamId) patch.teamId = teamId;
-        if (playerId) patch.playerId = playerId;
+        const existingMemberships: Record<string, unknown>[] =
+          Array.isArray(profile['memberships']) ? profile['memberships'] : [];
 
-        // role is reserved for future use; whitelist prevents escalation
-        const ALLOWED_INVITE_ROLES = ['player', 'parent'];
-        if (inviteRole && ALLOWED_INVITE_ROLES.includes(inviteRole) && profile.role === 'player') {
-          patch.role = inviteRole;
-          if (Array.isArray(profile.memberships)) {
-            patch.memberships = (profile.memberships as Record<string, unknown>[]).map(m =>
-              m.isPrimary ? { ...m, role: inviteRole, ...(teamId ? { teamId } : {}) } : m
-            );
-          }
-        } else if (teamId && Array.isArray(profile.memberships)) {
-          patch.memberships = (profile.memberships as Record<string, unknown>[]).map(m =>
-            m.isPrimary ? { ...m, teamId } : m
-          );
-        }
+        const isDuplicate = existingMemberships.some(
+          (m) => m['role'] === inviteRole && m['teamId'] === teamId
+        );
 
-        if (Object.keys(patch).length > 0) {
-          txn.set(userRef, { ...profile, ...patch });
+        if (!isDuplicate) {
+          const newMembership: Record<string, unknown> = {
+            role: inviteRole,
+            isPrimary: false,
+            ...(teamId ? { teamId } : {}),
+            ...(playerId ? { playerId } : {}),
+          };
+          txn.update(userRef, {
+            memberships: admin.firestore.FieldValue.arrayUnion(newMembership),
+          });
         }
       }
 
+      // ── Update the Player record ────────────────────────────────────────────
+      // Write linkedUid (for player role) or parentUid (for parent role) on the player doc.
+      if (playerId) {
+        const playerRef = db.doc(`players/${playerId}`);
+        const playerSnap = await txn.get(playerRef);
+        if (playerSnap.exists) {
+          const playerPatch: Record<string, unknown> =
+            inviteRole === 'player'
+              ? { linkedUid: uid }
+              : { parentUid: uid };
+          txn.update(playerRef, playerPatch);
+        }
+      }
+
+      // Consume the invite doc atomically with the profile/player writes.
       txn.delete(inviteRef);
       return { found: true };
     });
 
     if (!txResult.found) return { found: false };
 
-    // Auth update must happen outside the transaction (Admin SDK constraint)
+    // Auth update must happen outside the transaction (Admin SDK constraint).
     if (shouldAutoVerify) {
       await admin.auth().updateUser(uid, { emailVerified: true });
     }

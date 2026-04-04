@@ -61,6 +61,11 @@ export interface Player {
    * availability ownership checks.
    */
   linkedUid?: string;
+  /**
+   * Firebase Auth UID of the parent/guardian account linked to this player record.
+   * Set when a parent accepts a 'parent' role invite for this player.
+   */
+  parentUid?: string;
   notes?: string;
   absence?: PlayerAbsence | null;
   parentContact?: ParentContact;
