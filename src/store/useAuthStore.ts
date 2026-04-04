@@ -6,10 +6,12 @@ import {
   onAuthStateChanged,
   updateProfile,
   updatePassword,
+  sendEmailVerification,
   type User,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, deleteDoc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { doc, setDoc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { auth, db, functions } from '@/lib/firebase';
 import { getUserConsents } from '@/lib/consent';
 import { LEGAL_VERSIONS } from '@/legal/versions';
 import type { UserRole, UserProfile, RoleMembership, Team } from '@/types';
@@ -26,6 +28,7 @@ function mapAuthError(e: unknown): string {
     case 'auth/user-not-found': return 'No account found with this email.';
     case 'auth/too-many-requests': return 'Too many attempts. Please try again later.';
     case 'auth/network-request-failed': return 'Network error. Check your connection and try again.';
+    case 'auth/email-not-verified': return 'Please verify your email before signing in. Check your inbox for a verification link.';
     default: return (e as Error).message ?? 'Something went wrong. Please try again.';
   }
 }
@@ -38,15 +41,18 @@ interface AuthStore {
   error: string | null;
   mustChangePassword: boolean;
   consentOutdated: boolean;
+  verificationEmailSent: boolean;
 
   init: () => () => void;
-  signup: (email: string, password: string, displayName: string, role: UserRole, teamId?: string, memberships?: import('@/types').RoleMembership[]) => Promise<void>;
+  signup: (email: string, password: string, displayName: string, role: UserRole, teamId?: string, memberships?: import('@/types').RoleMembership[], inviteSecret?: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (patch: Partial<Pick<UserProfile, 'displayName' | 'avatarUrl' | 'teamId' | 'playerId' | 'leagueId' | 'activeContext' | 'memberships' | 'role'>>) => Promise<void>;
   clearMustChangePassword: (newPassword: string) => Promise<void>;
   markConsentCurrent: () => void;
   clearError: () => void;
+  resendVerificationEmail: (email: string, password: string) => Promise<void>;
+  clearVerificationEmailSent: () => void;
 }
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
@@ -56,6 +62,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   error: null,
   mustChangePassword: false,
   consentOutdated: false,
+  verificationEmailSent: false,
 
   init: () => {
     let profileUnsub: (() => void) | null = null;
@@ -65,7 +72,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       profileUnsub = null;
 
       if (!user) {
-        set({ user: null, profile: null, loading: false, consentOutdated: false });
+        set({ user: null, profile: null, loading: false, consentOutdated: false, verificationEmailSent: false });
         return;
       }
 
@@ -103,38 +110,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
             // Best-effort; don't block the app if consent check fails
           }
 
-          // Auto-link: if no team/player yet, check if an invite exists for this email
-          if (!profile.teamId && !profile.playerId && user.email) {
-            try {
-              const inviteSnap = await getDoc(doc(db, 'invites', user.email.toLowerCase()));
-              if (inviteSnap.exists()) {
-                const invite = inviteSnap.data();
-                const { teamId, playerId, role: inviteRole } = invite as { teamId?: string; playerId?: string; role?: string };
-                // teamId and playerId were validated server-side when the invite was created.
-                // We trust the invite document and skip re-reading the player doc here —
-                // a parent user with no teamId cannot read players yet, which would silently
-                // block the link if we attempted the validation on the client.
-                if (teamId && playerId) {
-                  const patch: Partial<UserProfile> = { teamId, playerId };
-                  // Apply the role from the invite only if it is an allowed invite role.
-                  // We only override if the current profile role is still the default 'player'
-                  // to avoid downgrading a coach who was re-invited.
-                  const ALLOWED_INVITE_ROLES: UserRole[] = ['player', 'parent'];
-                  if (
-                    inviteRole &&
-                    ALLOWED_INVITE_ROLES.includes(inviteRole as UserRole) &&
-                    profile.role === 'player'
-                  ) {
-                    patch.role = inviteRole as UserRole;
-                  }
-                  await setDoc(doc(db, 'users', user.uid), { ...profile, ...patch });
-                }
-                await deleteDoc(doc(db, 'invites', user.email.toLowerCase()));
-              }
-            } catch {
-              // Invite check is best-effort; ignore errors
-            }
-          }
         },
         (err) => {
           console.error('Profile snapshot error:', err);
@@ -149,7 +124,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     };
   },
 
-  signup: async (email, password, displayName, role, teamId, memberships) => {
+  signup: async (email, password, displayName, role, teamId, memberships, inviteSecret = '') => {
     set({ error: null });
     try {
       // Check the sign-up allowlist before creating the account.
@@ -199,6 +174,25 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         ...(teamId ? { teamId } : {}),
       };
       await setDoc(doc(db, 'users', user.uid), profile);
+
+      // Check for an invite. If found, the CF verifies the email and links team/player.
+      // If not found, send a Firebase verification email and sign out.
+      try {
+        const verifyFn = httpsCallable<{ inviteSecret: string }, { found: boolean }>(
+          functions, 'verifyInvitedUser'
+        );
+        const result = await verifyFn({ inviteSecret });
+        if (!result.data.found) {
+          await sendEmailVerification(user);
+          await signOut(auth);
+          set({ verificationEmailSent: true });
+        }
+      } catch {
+        // If the CF call fails, fall back to sending a verification email
+        await sendEmailVerification(user);
+        await signOut(auth);
+        set({ verificationEmailSent: true });
+      }
     } catch (e: unknown) {
       set({ error: mapAuthError(e) });
       throw e;
@@ -208,7 +202,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   login: async (email, password) => {
     set({ error: null });
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      if (!cred.user.emailVerified) {
+        await signOut(auth);
+        throw Object.assign(new Error('Email not verified'), { code: 'auth/email-not-verified' });
+      }
     } catch (e: unknown) {
       set({ error: mapAuthError(e) });
       throw e;
@@ -240,6 +238,20 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   markConsentCurrent: () => set({ consentOutdated: false }),
 
   clearError: () => set({ error: null }),
+
+  resendVerificationEmail: async (email, password) => {
+    set({ error: null });
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      await sendEmailVerification(cred.user);
+      await signOut(auth);
+    } catch (e: unknown) {
+      set({ error: mapAuthError(e) });
+      throw e;
+    }
+  },
+
+  clearVerificationEmailSent: () => set({ verificationEmailSent: false }),
 }));
 
 // ── Membership helpers ────────────────────────────────────────────────────────

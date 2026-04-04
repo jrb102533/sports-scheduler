@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthLayout } from '@/layouts/AuthLayout';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -11,8 +11,10 @@ import { LEGAL_VERSIONS } from '@/legal/versions';
 import type { UserRole, RoleMembership } from '@/types';
 
 export function SignupPage() {
-  const { signup, error, clearError } = useAuthStore();
+  const { signup, error, clearError, verificationEmailSent, clearVerificationEmailSent } = useAuthStore();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const inviteSecret = searchParams.get('inviteSecret') ?? '';
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -24,6 +26,7 @@ export function SignupPage() {
   const [validationError, setValidationError] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [agreedToMarketing, setAgreedToMarketing] = useState(false);
+  const [submittedEmail, setSubmittedEmail] = useState('');
 
   function handlePrimaryRoleChange(newRole: UserRole) {
     setRole(newRole);
@@ -59,7 +62,8 @@ export function SignupPage() {
 
     setLoading(true);
     try {
-      await signup(email, password, displayName, role, undefined, memberships);
+      setSubmittedEmail(email);
+      await signup(email, password, displayName, role, undefined, memberships, inviteSecret);
 
       const uid = auth.currentUser?.uid;
       if (uid) {
@@ -72,6 +76,7 @@ export function SignupPage() {
         }
       }
 
+      if (useAuthStore.getState().verificationEmailSent) return;
       navigate('/');
     } catch {
       // signup failed — error set in store, stay on form
@@ -81,6 +86,35 @@ export function SignupPage() {
   }
 
   const displayedError = validationError || error;
+
+  if (verificationEmailSent) {
+    return (
+      <AuthLayout title="Check your email" subtitle="One more step">
+        <div className="space-y-4 text-center">
+          <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto">
+            <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm text-gray-600">
+              We sent a verification link to <strong>{submittedEmail}</strong>.
+              Click the link in that email to activate your account.
+            </p>
+          </div>
+          <p className="text-xs text-gray-400">
+            Didn't receive it? Check your spam folder.
+          </p>
+          <button
+            onClick={() => clearVerificationEmailSent()}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            Back to sign up
+          </button>
+        </div>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout title="Create account" subtitle="Join First Whistle">

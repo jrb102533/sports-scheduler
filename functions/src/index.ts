@@ -169,6 +169,7 @@ export const createUserByAdmin = onCall<CreateUserByAdminData>(
         email: email.trim(),
         password: tempPassword,
         displayName: displayName.trim(),
+        emailVerified: true,
       });
       uid = userRecord.uid;
     } catch (err: any) {
@@ -390,6 +391,13 @@ export const sendInvite = onCall<SendInviteData>(
       throw new HttpsError('invalid-argument', 'Invalid email address format.');
     }
 
+    // Generate a one-time secret to prove the invitee received the email (SEC-18).
+    // The secret is included in the invite link and must be presented when calling
+    // verifyInvitedUser — prevents an attacker registering with the invited email
+    // from claiming the invite without having access to the inbox.
+    const inviteSecret = crypto.randomUUID();
+    const inviteUrl = `${APP_URL}/signup?inviteSecret=${inviteSecret}`;
+
     // Store invite so auto-link can find it on signup/login
     await admin.firestore().doc(`invites/${normalizedEmail}`).set({
       email: normalizedEmail,
@@ -397,7 +405,9 @@ export const sendInvite = onCall<SendInviteData>(
       teamId,
       playerName,
       teamName,
+      inviteSecret,
       invitedAt: new Date().toISOString(),
+      autoVerify: true,
     });
 
     // Add to signup allowlist so the invitee can register even when signups are restricted
@@ -411,17 +421,106 @@ export const sendInvite = onCall<SendInviteData>(
       from: emailFrom.value(),
       to: `${playerName} <${to.trim()}>`,
       subject: `You've been added to ${teamName} on First Whistle`,
-      text: `Hi ${playerName},\n\nYou've been added to ${teamName} on First Whistle.\n\nCreate a free account (or sign in if you already have one) to view your schedule, track attendance, and stay connected with your team:\n${APP_URL}\n\nSee you on the field!`,
+      text: `Hi ${playerName},\n\nYou've been added to ${teamName} on First Whistle.\n\nCreate a free account (or sign in if you already have one) to view your schedule, track attendance, and stay connected with your team:\n${inviteUrl}\n\nSee you on the field!`,
       html: buildEmail({
         recipientName: playerName,
         preheader: `You've been added to ${teamName} on First Whistle`,
         title: `You've been invited to join ${teamName}`,
         message: `<p style="margin:0 0 12px">You've been added to <strong>${esc(teamName)}</strong> on First Whistle.</p><p style="margin:0">Create a free account — or sign in if you already have one — to view your schedule, track attendance, and stay connected with your team.</p>`,
         teamName,
-        ctaUrl: APP_URL,
+        ctaUrl: inviteUrl,
         ctaLabel: 'Accept Invitation',
       }),
     });
+  }
+);
+
+// ─── Verify invited user ──────────────────────────────────────────────────────
+
+interface VerifyInvitedUserResult {
+  found: boolean;
+}
+
+interface VerifyInvitedUserData {
+  inviteSecret: string;
+}
+
+export const verifyInvitedUser = onCall<VerifyInvitedUserData, Promise<VerifyInvitedUserResult>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+    await checkRateLimit(request.auth.uid, 'verifyInvitedUser', 5);
+
+    const uid = request.auth.uid;
+    const email = request.auth.token.email?.toLowerCase();
+    if (!email) throw new HttpsError('invalid-argument', 'No email on auth token.');
+
+    const inviteRef = admin.firestore().doc(`invites/${email}`);
+    const userRef = admin.firestore().doc(`users/${uid}`);
+
+    // Use a transaction to atomically consume the invite and patch the profile,
+    // preventing double-consumption if called concurrently (SEC-19).
+    let shouldAutoVerify = false;
+    const txResult = await admin.firestore().runTransaction(async (txn) => {
+      const inviteSnap = await txn.get(inviteRef);
+      if (!inviteSnap.exists) return { found: false };
+
+      const invite = inviteSnap.data()!;
+      const { teamId, playerId, role: inviteRole, autoVerify, inviteSecret: storedSecret } = invite as {
+        teamId?: string;
+        playerId?: string;
+        role?: string;
+        autoVerify?: boolean;
+        inviteSecret?: string;
+      };
+
+      // Validate the invite secret to prevent invite theft (SEC-18).
+      // Invites issued before this change won't have a secret — allow them through
+      // so existing pending invites aren't broken by the upgrade.
+      if (storedSecret && request.data.inviteSecret !== storedSecret) {
+        throw new HttpsError('permission-denied', 'Invalid invite link. Please use the link from your invitation email.');
+      }
+
+      shouldAutoVerify = !!autoVerify;
+
+      const userSnap = await txn.get(userRef);
+      if (userSnap.exists) {
+        const profile = userSnap.data()!;
+        const patch: Record<string, unknown> = {};
+        if (teamId) patch.teamId = teamId;
+        if (playerId) patch.playerId = playerId;
+
+        // role is reserved for future use; whitelist prevents escalation
+        const ALLOWED_INVITE_ROLES = ['player', 'parent'];
+        if (inviteRole && ALLOWED_INVITE_ROLES.includes(inviteRole) && profile.role === 'player') {
+          patch.role = inviteRole;
+          if (Array.isArray(profile.memberships)) {
+            patch.memberships = (profile.memberships as Record<string, unknown>[]).map(m =>
+              m.isPrimary ? { ...m, role: inviteRole, ...(teamId ? { teamId } : {}) } : m
+            );
+          }
+        } else if (teamId && Array.isArray(profile.memberships)) {
+          patch.memberships = (profile.memberships as Record<string, unknown>[]).map(m =>
+            m.isPrimary ? { ...m, teamId } : m
+          );
+        }
+
+        if (Object.keys(patch).length > 0) {
+          txn.set(userRef, { ...profile, ...patch });
+        }
+      }
+
+      txn.delete(inviteRef);
+      return { found: true };
+    });
+
+    if (!txResult.found) return { found: false };
+
+    // Auth update must happen outside the transaction (Admin SDK constraint)
+    if (shouldAutoVerify) {
+      await admin.auth().updateUser(uid, { emailVerified: true });
+    }
+
+    return { found: true };
   }
 );
 
