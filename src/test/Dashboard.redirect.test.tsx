@@ -28,6 +28,14 @@ import { render, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { UserProfile } from '@/types';
 
+// ─── Firebase stub — prevents auth/invalid-api-key at module init ─────────────
+vi.mock('@/lib/firebase', () => ({
+  app: {},
+  auth: {},
+  db: {},
+  functions: {},
+}));
+
 // ─── navigate spy ─────────────────────────────────────────────────────────────
 
 const mockNavigate = vi.fn();
