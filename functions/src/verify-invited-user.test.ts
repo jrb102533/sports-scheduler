@@ -478,9 +478,9 @@ describe('verifyInvitedUser — invite secret', () => {
   });
 
   it('(6) returns { found: false } for legacy invites without an inviteSecret field', async () => {
-    // SEC-20: the query now filters by inviteSecret. Invites without the field cannot
-    // be located when the client sends an empty/absent secret — this is intentional.
-    // All invites written after SEC-18 will have the secret field.
+    // SEC-25: legacy invite docs without a secret field are explicitly rejected.
+    // The transaction guard rejects any invite where storedSecret is absent, even if
+    // the SEC-20 query filter had somehow matched the doc. Admins must re-send.
     seedDoc('invites/invited@example.com', {
       email: 'invited@example.com',
       teamId: 'team1',
