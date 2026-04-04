@@ -16,9 +16,9 @@
  *     - Falls back gracefully when displayName is absent
  *
  *   Team card navigation (handleTeamClick)
- *     - Coach navigates to /coach
- *     - Admin navigates to /coach (isCoachOrAbove)
- *     - league_manager navigates to /coach (isCoachOrAbove)
+ *     - Coach navigates to /teams
+ *     - Admin navigates to /teams (isCoachOrAbove)
+ *     - league_manager navigates to /teams (isCoachOrAbove)
  *     - Player navigates to /parent
  *     - Parent navigates to /parent
  *
@@ -343,7 +343,7 @@ describe('HomePage — team cards rendered', () => {
 });
 
 describe('HomePage — team card navigation', () => {
-  it('navigates coach to /coach when team card is clicked', async () => {
+  it('navigates coach to /teams when team card is clicked', async () => {
     currentProfile = makeProfile('coach');
     currentTeams = [makeTeam('t1')];
     renderHomePage();
@@ -351,11 +351,11 @@ describe('HomePage — team card navigation', () => {
     fireEvent.click(screen.getByText('Team t1').closest('button')!);
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/coach');
+      expect(mockNavigate).toHaveBeenCalledWith('/teams');
     });
   });
 
-  it('navigates admin to /coach when team card is clicked', async () => {
+  it('navigates admin to /teams when team card is clicked', async () => {
     currentProfile = makeProfile('admin');
     currentTeams = [makeTeam('t1', { createdBy: 'uid-1' })];
     renderHomePage();
@@ -363,7 +363,7 @@ describe('HomePage — team card navigation', () => {
     fireEvent.click(screen.getByText('Team t1').closest('button')!);
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/coach');
+      expect(mockNavigate).toHaveBeenCalledWith('/teams');
     });
   });
 

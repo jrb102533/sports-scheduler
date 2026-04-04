@@ -170,16 +170,25 @@ describe('ProfilePage — error visibility on blur', () => {
 });
 
 describe('ProfilePage — save button disabled state', () => {
-  it('save button is disabled when first name is empty', async () => {
+  // TD #117: the button is no longer pre-disabled for empty names.
+  // Instead, clicking it triggers inline validation errors. The button
+  // stays disabled only when the composed name equals the saved displayName
+  // (i.e. no change has been made).
+
+  it('save button is enabled (not silently blocked) when first name is cleared', async () => {
+    // Clearing first name produces ' Smith', which differs from 'Jane Smith',
+    // so the "no changes" guard does not apply. Button must be enabled so
+    // the user can click and receive the inline error.
     renderPage();
     await userEvent.clear(getFirstNameInput());
-    expect(getSaveButton()).toBeDisabled();
+    expect(getSaveButton()).not.toBeDisabled();
   });
 
-  it('save button is disabled when last name is empty', async () => {
+  it('save button is enabled (not silently blocked) when last name is cleared', async () => {
+    // Clearing last name produces 'Jane ', which differs from 'Jane Smith'.
     renderPage();
     await userEvent.clear(getLastNameInput());
-    expect(getSaveButton()).toBeDisabled();
+    expect(getSaveButton()).not.toBeDisabled();
   });
 
   it('save button is disabled when both fields are empty', () => {
@@ -213,19 +222,33 @@ describe('ProfilePage — submit guard and save behaviour', () => {
     expect(await screen.findByText(/last name is required/i)).toBeInTheDocument();
   });
 
-  it('does not call updateProfile when the save button is disabled (empty first name)', async () => {
+  it('does not call updateProfile when Save is clicked with empty first name', async () => {
     renderPage();
     await userEvent.clear(getFirstNameInput());
-    // Button is disabled; clicking it should do nothing.
+    // Button is enabled; handleSave guard rejects the call and shows inline error.
     await userEvent.click(getSaveButton());
     expect(mockUpdateProfile).not.toHaveBeenCalled();
   });
 
-  it('does not call updateProfile when the save button is disabled (empty last name)', async () => {
+  it('does not call updateProfile when Save is clicked with empty last name', async () => {
     renderPage();
     await userEvent.clear(getLastNameInput());
     await userEvent.click(getSaveButton());
     expect(mockUpdateProfile).not.toHaveBeenCalled();
+  });
+
+  it('shows inline errors when Save is clicked with empty first name', async () => {
+    renderPage();
+    await userEvent.clear(getFirstNameInput());
+    await userEvent.click(getSaveButton());
+    expect(await screen.findByText(/first name is required/i)).toBeInTheDocument();
+  });
+
+  it('shows inline errors when Save is clicked with empty last name', async () => {
+    renderPage();
+    await userEvent.clear(getLastNameInput());
+    await userEvent.click(getSaveButton());
+    expect(await screen.findByText(/last name is required/i)).toBeInTheDocument();
   });
 
   it('calls updateProfile with the combined displayName when both fields are valid', async () => {

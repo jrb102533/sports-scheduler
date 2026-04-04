@@ -391,3 +391,95 @@ describe('EventDetailPanel — dispute resolution UI role gating', () => {
     expect(confirmButtons).toHaveLength(2);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C. Post-Game Summary button — visibility conditions (Fix 5)
+//
+// Rule: the button renders only when `canManage` (admin, league_manager, coach)
+// AND event.result is truthy. It must NOT appear for read-only roles or when
+// no result has been recorded.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('EventDetailPanel — "Send Post-Game Summary" button', () => {
+  let EventDetailPanel: typeof import('@/components/events/EventDetailPanel').EventDetailPanel;
+
+  beforeEach(async () => {
+    vi.useRealTimers();
+    __snapshotCb = null;
+    ({ EventDetailPanel } = await import('@/components/events/EventDetailPanel'));
+  });
+
+  function makeEventWithResult(resultOverride?: Partial<ScheduledEvent['result']>): ScheduledEvent {
+    return makeEvent({
+      status: 'completed',
+      result: {
+        homeScore: 3,
+        awayScore: 1,
+        ...resultOverride,
+      },
+    });
+  }
+
+  function renderAs(role: UserProfile['role'], event: ScheduledEvent) {
+    currentProfile = {
+      uid: 'user-1',
+      email: 'user@example.com',
+      displayName: 'Test User',
+      role,
+      teamId: 't1',
+      createdAt: '2024-01-01T00:00:00.000Z',
+    } as UserProfile;
+    return render(<EventDetailPanel event={event} onClose={() => {}} />);
+  }
+
+  // Happy path: all three manage roles see the button when result exists
+
+  it('shows "Send Post-Game Summary" for coach when event has a result', () => {
+    renderAs('coach', makeEventWithResult());
+    expect(screen.getByRole('button', { name: /send post-game summary/i })).toBeInTheDocument();
+  });
+
+  it('shows "Send Post-Game Summary" for admin when event has a result', () => {
+    renderAs('admin', makeEventWithResult());
+    expect(screen.getByRole('button', { name: /send post-game summary/i })).toBeInTheDocument();
+  });
+
+  it('shows "Send Post-Game Summary" for league_manager when event has a result', () => {
+    renderAs('league_manager', makeEventWithResult());
+    expect(screen.getByRole('button', { name: /send post-game summary/i })).toBeInTheDocument();
+  });
+
+  // Gate: no result → button absent
+
+  it('does NOT show "Send Post-Game Summary" for coach when event has no result', () => {
+    renderAs('coach', makeEvent({ status: 'scheduled', result: undefined }));
+    expect(
+      screen.queryByRole('button', { name: /send post-game summary/i })
+    ).not.toBeInTheDocument();
+  });
+
+  // Gate: read-only roles → button absent (isReadOnly check hides the whole footer)
+
+  it('does NOT show "Send Post-Game Summary" for player even when result exists', () => {
+    renderAs('player', makeEventWithResult());
+    expect(
+      screen.queryByRole('button', { name: /send post-game summary/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('does NOT show "Send Post-Game Summary" for parent even when result exists', () => {
+    renderAs('parent', makeEventWithResult());
+    expect(
+      screen.queryByRole('button', { name: /send post-game summary/i })
+    ).not.toBeInTheDocument();
+  });
+
+  // Both conditions must be true simultaneously
+
+  it('does NOT show the button when canManage is true but result is null', () => {
+    renderAs('coach', makeEvent({ result: undefined }));
+    expect(
+      screen.queryByRole('button', { name: /send post-game summary/i })
+    ).not.toBeInTheDocument();
+  });
+});

@@ -24,8 +24,8 @@ function mapAuthError(e: unknown): string {
     case 'auth/invalid-email': return 'Please enter a valid email address.';
     case 'auth/weak-password': return 'Password must be at least 6 characters.';
     case 'auth/wrong-password':
-    case 'auth/invalid-credential': return 'Incorrect email or password.';
-    case 'auth/user-not-found': return 'No account found with this email.';
+    case 'auth/invalid-credential':
+    case 'auth/user-not-found': return 'Incorrect email or password.';
     case 'auth/too-many-requests': return 'Too many attempts. Please try again later.';
     case 'auth/network-request-failed': return 'Network error. Check your connection and try again.';
     case 'auth/email-not-verified': return 'Please verify your email before signing in. Check your inbox for a verification link.';

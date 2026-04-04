@@ -20,6 +20,9 @@ export function SignupPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const inviteSecret = searchParams.get('inviteSecret') ?? '';
+  if (inviteSecret) {
+    window.history.replaceState({}, '', window.location.pathname);
+  }
   const hasInvite = inviteSecret !== '';
 
   // invite path toggle: 'signup' | 'signin'
