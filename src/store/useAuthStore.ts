@@ -173,7 +173,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         activeContext: 0,
         ...(teamId ? { teamId } : {}),
       };
-      await setDoc(doc(db, 'users', user.uid), profile);
+      // Only write the profile client-side when there is no invite.
+      // When an invite is present, verifyInvitedUser creates the profile
+      // authoritatively inside its transaction.
+      if (!inviteSecret) {
+        await setDoc(doc(db, 'users', user.uid), profile);
+      }
 
       // Check for an invite. If found, the CF verifies the email and links team/player.
       // If not found, send a Firebase verification email and sign out.
