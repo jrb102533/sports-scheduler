@@ -47,7 +47,7 @@ jobs:
 
       - name: Run E2E against staging
         env:
-          STAGING_URL: https://first-whistle-e76f4.web.app
+          E2E_STAGING_URL: https://first-whistle-e76f4.web.app
           E2E_ADMIN_EMAIL: ${{ secrets.E2E_STAGING_ADMIN_EMAIL }}
           E2E_ADMIN_PASSWORD: ${{ secrets.E2E_STAGING_ADMIN_PASSWORD }}
           E2E_PARENT_EMAIL: ${{ secrets.E2E_STAGING_PARENT_EMAIL }}
