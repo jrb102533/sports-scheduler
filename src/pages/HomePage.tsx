@@ -162,7 +162,7 @@ export function HomePage() {
     if (!membership) return;
     const isCoachOrAbove = membership.role === 'coach' || membership.role === 'admin' || membership.role === 'league_manager';
     if (isCoachOrAbove) {
-      navigate('/coach');
+      navigate('/teams');
     } else {
       navigate('/parent');
     }

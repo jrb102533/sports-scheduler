@@ -590,6 +590,12 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
                   <Send size={14} /> Send RSVP
                 </Button>
               )}
+              {canManage && event.result && (
+                <Button variant="secondary" size="sm" onClick={() => setBroadcastOpen(true)}>
+                  {/* TODO: connect sendBroadcast CF */}
+                  <Send size={14} /> Send Post-Game Summary
+                </Button>
+              )}
               {event.status !== 'cancelled' && (
                 <Button variant="ghost" size="sm" onClick={() => setConfirmCancel(true)}>Cancel Event</Button>
               )}

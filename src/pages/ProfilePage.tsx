@@ -159,7 +159,7 @@ export function ProfilePage() {
         </div>
         <Input label="Email" name="email" autoComplete="email" value={profile.email} disabled className="opacity-60 cursor-not-allowed" />
         <div className="flex gap-3">
-          <Button onClick={handleSave} disabled={saving || firstName.trim().length === 0 || lastName.trim().length === 0 || `${firstName.trim()} ${lastName.trim()}`.trim() === profile.displayName}>
+          <Button onClick={handleSave} disabled={saving || `${firstName.trim()} ${lastName.trim()}`.trim() === profile.displayName}>
             {saving ? 'Saving…' : saved ? 'Saved!' : 'Save Changes'}
           </Button>
         </div>
