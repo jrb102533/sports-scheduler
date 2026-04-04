@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import { AuthLayout } from '@/layouts/AuthLayout';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useAuthStore } from '@/store/useAuthStore';
+import { auth } from '@/lib/firebase';
 
 export function LoginPage() {
   const { login, error, clearError, resendVerificationEmail } = useAuthStore();
@@ -13,6 +15,9 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [resentVerification, setResentVerification] = useState(false);
   const [resending, setResending] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [sendingReset, setSendingReset] = useState(false);
 
   async function handleResendVerification() {
     setResending(true);
@@ -23,6 +28,20 @@ export function LoginPage() {
       // error set in store
     } finally {
       setResending(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    if (!email.trim()) { setResetError('Enter your email address above first.'); return; }
+    setSendingReset(true);
+    setResetError('');
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setResetSent(true);
+    } catch {
+      setResetError('Could not send reset email. Check the address and try again.');
+    } finally {
+      setSendingReset(false);
     }
   }
 
@@ -53,17 +72,34 @@ export function LoginPage() {
           placeholder="you@example.com"
           required
         />
-        <Input
-          label="Password"
-          type="password"
-          name="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          placeholder="••••••••"
-          required
-          showToggle
-        />
+        <div>
+          <Input
+            label="Password"
+            type="password"
+            name="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+            showToggle
+          />
+          <div className="mt-1 text-right">
+            {resetSent ? (
+              <span className="text-xs text-green-600">Reset email sent — check your inbox.</span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={sendingReset}
+                className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+              >
+                {sendingReset ? 'Sending…' : 'Forgot password?'}
+              </button>
+            )}
+          </div>
+          {resetError && <p className="text-xs text-red-600 mt-1">{resetError}</p>}
+        </div>
         {error && (
           <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 space-y-2">
             <p>{error}</p>
