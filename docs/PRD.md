@@ -1,288 +1,309 @@
 # First Whistle — Product Requirements Document
+**Version:** 1.1
+**Last updated:** 2026-04-03
+**Owner:** Product Manager
+**Status:** Living document — updated as features are prioritised
+
+---
 
 ## 1. Product Overview
 
-**First Whistle** is a youth sports scheduling and team management platform for coaches, league managers, parents, and players. It handles team rosters, game scheduling, RSVP, attendance tracking, standings, and communication — all from a single app.
+**First Whistle** is a sports league and team scheduling web application for youth and amateur sport. It is a multi-role platform serving five user types: Admins, League Managers, Coaches, Players, and Parents.
 
-### Target Users
+The core value proposition is a single-pane-of-glass that handles scheduling, roster management, communication, attendance, and results — eliminating the fragmentation of spreadsheets, group chats, and separate tools that characterises youth sport administration today.
 
-| Role | Primary Needs |
-|------|---------------|
-| **Admin** | Full platform management, user roles, system settings |
-| **League Manager** | Create leagues, manage seasons, generate schedules, publish standings |
-| **Coach** | Manage roster, schedule events, track attendance, communicate with parents |
-| **Parent** | View schedule, RSVP to games, see team info, receive notifications |
-| **Player** | View schedule, RSVP, see team info |
-
-### Current Platform
-
-- **Web app**: React 19 + TypeScript + Vite + Tailwind CSS + Zustand
-- **Backend**: Firebase (Auth, Firestore, Cloud Functions, Storage)
-- **Hosting**: Firebase Hosting (`first-whistle-e76f4.web.app`)
+**Primary URL:** https://first-whistle-e76f4.web.app
+**Repository:** https://github.com/jrb102533/sports-scheduler
+**Tech stack summary:** React 19 + TypeScript, Firebase (Firestore, Auth, Functions, Hosting), Tailwind CSS v4, Zustand v5
 
 ---
 
-## 2. Feature Summary
+## 2. Target Users & Pain Points
 
-### Core Features (Shipped)
+### Coaches
+1. Communication overhead — chasing RSVPs, sending reminders, re-communicating missed messages
+2. Attendance uncertainty going into game day
+3. Fragmented admin across scheduling, roster, attendance, results, and messaging tools
 
-- **Authentication** — Email/password with email verification, role-based access, multi-membership support
-- **Team Management** — Create/edit teams, roster management, player status tracking (active/injured/suspended), soft delete/restore
-- **Event Scheduling** — Games, practices, tournaments; recurring events; bulk import (CSV/XLSX); conflict detection
-- **Schedule Wizard** — Algorithmic schedule generation for leagues with venue constraints, coach availability, and configurable parameters
-- **RSVP** — In-app and one-tap email RSVP (Yes/Maybe/No) with HMAC-signed links
-- **Snack Volunteers** — Per-game snack slot claiming
-- **Attendance Tracking** — Per-event attendance with absent/excused status
-- **Standings** — Auto-computed standings with manual rank overrides, tiebreaker configuration
-- **Notifications** — In-app + email notifications for events, reminders, cancellations, attendance
-- **Messaging** — Coach-to-team messaging
-- **Venues** — Venue library with fields, availability windows, geocoding
-- **Leagues & Seasons** — League hierarchy, season management, divisions
-- **Parent Portal** — Dedicated parent home screen with upcoming games and team info
-- **Player Invites** — Email invite flow with auto-link on signup, role propagation
-- **Settings** — Kids sports mode, weekly digest toggle
+**First Whistle differentiator:** Single home screen that surfaces who is coming, who hasn't responded, and what action is needed next.
 
-### Planned Features (Backlog)
+### Players
+1. Passive experience — schedule is pushed at them, no agency
+2. Lack of personal context in generic schedules
+3. Clunky RSVP flows requiring full app login
 
-- Schedule wizard draft resume (#202)
-- Incomplete game generation fix (#203)
-- Simplify Seasons tab UX (#204)
-- TopBar user name/login (#205)
-- Logo comparison page
-- Playoff bracket builder
-- Push notifications (mobile)
+**First Whistle differentiator:** Player-centric home screen showing "your next event," RSVP status, and pending actions.
 
----
+### Parents
+1. Schedule uncertainty — cancellations and rescheduling happen without timely notice
+2. Multi-child complexity — juggling multiple teams, apps, and group chats
+3. No visibility into their child's RSVP or attendance status
 
-## 3. Mobile App — Design & Architecture
+**First Whistle differentiator:** Unified parent dashboard aggregating all children's teams with clear action indicators.
 
-### 3.1 Approach: React Native with Expo
+### League Managers
+1. Scheduling conflicts across teams — manual round-robin scheduling is error-prone
+2. Standings and results visibility — chasing coaches for results
+3. No clean channel for league-wide vs team-level communications
 
-**Recommendation: React Native + Expo** — maximizes code sharing with the existing React/TypeScript codebase while producing native iOS and Android apps from a single codebase.
-
-#### Why Expo + React Native
-
-| Factor | Expo + React Native | Flutter | PWA |
-|--------|-------------------|---------|-----|
-| Code reuse with existing app | **High** — same TypeScript, same Firebase SDK, share types/utils | Low — Dart rewrite | **Highest** — same codebase |
-| Native feel (gestures, animations) | **Native** | Native | Web-like |
-| Push notifications | **Native (APNs + FCM)** | Native | Limited (no iOS Safari) |
-| App Store distribution | **Yes** | Yes | No |
-| Offline support | Good (AsyncStorage + Firestore offline) | Good | Limited |
-| Maintenance burden | **1 codebase, 2 platforms** | 1 codebase, 2 platforms | 1 codebase, limited reach |
-| Camera / contacts / calendar | Native APIs | Native APIs | Restricted |
-| Development speed | **Fastest** (Expo Go for dev, EAS for builds) | Moderate | Fastest |
-
-**PWA rejected** because: no iOS push notifications, no App Store presence, limited offline, users expect native apps for sports team management.
-
-**Flutter rejected** because: zero code reuse with existing TypeScript/React codebase, different language (Dart), separate Firebase SDK.
-
-### 3.2 Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    Monorepo                          │
-│                                                      │
-│  packages/                                           │
-│  ├── shared/          ← Types, utils, constants      │
-│  │   ├── types/       (from existing src/types)      │
-│  │   ├── lib/         (dateUtils, constants, etc.)   │
-│  │   └── firebase/    (shared Firebase config)       │
-│  │                                                    │
-│  ├── web/             ← Existing Vite web app        │
-│  │   ├── src/                                        │
-│  │   └── vite.config.ts                              │
-│  │                                                    │
-│  └── mobile/          ← New Expo React Native app    │
-│      ├── app/         (Expo Router file-based routes) │
-│      ├── components/  (native UI components)         │
-│      ├── store/       (Zustand stores — shared logic) │
-│      └── app.json     (Expo config)                  │
-│                                                      │
-│  functions/           ← Cloud Functions (unchanged)   │
-└─────────────────────────────────────────────────────┘
-```
-
-### 3.3 Shared Code Strategy
-
-| Layer | Shared | Platform-Specific |
-|-------|--------|-------------------|
-| **Types** (`shared/types`) | 100% shared | — |
-| **Utilities** (`shared/lib`) | 100% shared (dateUtils, constants) | — |
-| **Firebase config** (`shared/firebase`) | Auth, Firestore, Functions | Storage (different SDKs) |
-| **Zustand stores** | Business logic shared | Subscribe/persistence adapters |
-| **UI components** | — | 100% platform-specific (React DOM vs React Native) |
-| **Navigation** | — | React Router (web) vs Expo Router (mobile) |
-| **Cloud Functions** | 100% shared backend | — |
-
-**Estimated code reuse: ~40-50%** (types, stores, utilities, Firebase logic)
-
-### 3.4 Mobile App Screens
-
-#### Parent/Player Experience (Soft Launch Priority)
-
-| Screen | Description | Priority |
-|--------|-------------|----------|
-| **Login/Signup** | Email auth with deep link invite acceptance | P0 |
-| **Home** | Upcoming games, team card, quick RSVP | P0 |
-| **Game Detail** | Event info, RSVP, snack slot, location map | P0 |
-| **Schedule** | Calendar view of team events | P0 |
-| **Notifications** | Push + in-app notification list | P0 |
-| **Profile** | Edit name, manage memberships | P1 |
-| **Team Roster** | View teammates (name only for parents) | P1 |
-
-#### Coach Experience
-
-| Screen | Description | Priority |
-|--------|-------------|----------|
-| **Dashboard** | Stats, upcoming events, next actions | P1 |
-| **Roster Management** | Add/edit players, track status | P1 |
-| **Event Management** | Create/edit events, record results | P1 |
-| **Attendance** | Mark attendance per event | P1 |
-| **Messaging** | Send messages to team | P2 |
-
-#### League Manager / Admin
-
-| Screen | Description | Priority |
-|--------|-------------|----------|
-| **League Overview** | Teams, standings, schedule | P2 |
-| **Schedule Wizard** | Better suited for web — link to web app | P2 |
-| **User Management** | Role changes, invites | P2 |
-
-### 3.5 Tech Stack
-
-```
-Runtime:        Expo SDK 52+ (React Native 0.76+)
-Language:       TypeScript (shared with web)
-Navigation:     Expo Router (file-based, like Next.js)
-State:          Zustand (same as web)
-Firebase:       @react-native-firebase/* (native SDKs)
-Push:           expo-notifications + FCM/APNs
-UI:             NativeWind (Tailwind for React Native)
-                                  or Tamagui
-Lists:          FlashList (performant lists)
-Calendar:       react-native-calendars
-Maps:           react-native-maps
-Storage:        AsyncStorage (offline cache)
-Build:          EAS Build (Expo Application Services)
-OTA Updates:    EAS Update (push JS updates without App Store review)
-```
-
-### 3.6 Push Notification Architecture
-
-```
-┌──────────────┐     ┌──────────────────┐     ┌─────────────┐
-│ Cloud Func   │────▶│ FCM / APNs       │────▶│ Mobile App  │
-│ (triggers)   │     │ (delivery)       │     │ (receives)  │
-└──────────────┘     └──────────────────┘     └─────────────┘
-
-Triggers:
- • onEventCreated → "New game scheduled"
- • sendEventReminders → "Game tomorrow"
- • RSVP follow-ups → "Haven't responded yet"
- • onEventCancelled → "Game cancelled"
- • Attendance missing → "Record attendance"
- • Score posted → "Results are in"
-```
-
-**Token registration**: On app launch, register FCM token in `users/{uid}/pushTokens/{tokenId}`. Cloud Functions read tokens and send via `admin.messaging()`.
-
-### 3.7 Offline Strategy
-
-| Data | Strategy |
-|------|----------|
-| Team roster | Firestore offline persistence (built-in) |
-| Upcoming events | Firestore offline persistence |
-| RSVP responses | Queue locally, sync when online |
-| Attendance | Queue locally, sync when online |
-| Notifications | Cache in AsyncStorage |
-
-Firestore's built-in offline persistence handles most cases. For writes (RSVP, attendance), queue in AsyncStorage and sync on reconnect.
-
-### 3.8 Build & Distribution
-
-```
-Development:    Expo Go app (instant preview on device)
-Preview:        EAS Build → internal distribution (TestFlight / Play Internal)
-Production:     EAS Build → App Store Connect / Google Play Console
-OTA Updates:    EAS Update (JS-only changes skip App Store review)
-```
-
-**CI/CD**: GitHub Actions → EAS Build → automatic submission to stores.
-
-### 3.9 Migration Path
-
-**Phase 1 — Foundation (2-3 weeks)**
-- Set up monorepo with `packages/shared`, `packages/web`, `packages/mobile`
-- Extract types, utils, constants into `packages/shared`
-- Scaffold Expo app with auth flow
-
-**Phase 2 — Parent MVP (2-3 weeks)**
-- Home screen, game detail, schedule, RSVP
-- Push notifications for game reminders
-- Deep link invite acceptance
-
-**Phase 3 — Coach Features (3-4 weeks)**
-- Dashboard, roster, event management, attendance
-- Messaging
-
-**Phase 4 — Polish & Launch (2 weeks)**
-- Offline support, performance tuning
-- App Store submissions
-- OTA update pipeline
-
-### 3.10 Key Decisions
-
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Monorepo tool | Turborepo or npm workspaces | Simple, fast, TypeScript-native |
-| Native Firebase vs JS SDK | `@react-native-firebase/*` | Better performance, native push support, offline persistence |
-| UI framework | NativeWind | Reuse Tailwind knowledge from web |
-| Navigation | Expo Router | File-based like web routing, deep links built-in |
-| Complex features (schedule wizard) | Web only, link from mobile | Complex multi-step UI better on large screens |
+**First Whistle differentiator:** Automated standings tied to result entry; dedicated league-wide announcement channel; wizard-driven schedule generation.
 
 ---
 
-## 4. Data Model Reference
+## 3. User Roles & Permissions
 
-See `src/types/index.ts` for full TypeScript definitions. Key entities:
+| Role | Key Capabilities |
+|---|---|
+| **Admin** | Full platform access; creates users with temp passwords; platform-wide messaging |
+| **League Manager** | Creates/manages leagues; runs schedule wizard; views standings; league-wide messaging |
+| **Coach** | Manages team roster; creates events; records results and attendance; team messaging |
+| **Player** | Views schedule; RSVPs; views own attendance; receives notifications |
+| **Parent** | Views child's schedule; RSVPs on behalf of child; receives notifications |
 
-- **UserProfile** — uid, email, displayName, role, memberships, teamId, playerId
-- **Team** — name, sportType, ageGroup, color, coachId, leagueIds
-- **Player** — firstName, lastName, teamId, status, jerseyNumber, position, absence
-- **ScheduledEvent** — title, type, date, startTime, teamIds, status, rsvps, result, venueId
-- **League** — name, sportType, season, managedBy
-- **Season** — name, startDate, endDate, gamesPerTeam, status, tiebreakerConfig
-- **Venue** — name, address, lat/lng, fields, defaultAvailabilityWindows
-- **AppNotification** — type, title, message, relatedEventId, isRead
+Roles are multi-tenanted: a user can hold multiple roles across multiple teams and leagues.
 
 ---
 
-## 5. API / Cloud Functions Reference
+## 4. Feature Inventory
 
-| Function | Type | Description |
-|----------|------|-------------|
-| `createUserByAdmin` | Callable | Admin creates user with temp password |
-| `sendEmail` | Callable | Coach sends message to team |
-| `sendInvite` | Callable | Send player invite email |
-| `onNotificationCreated` | Trigger | Send email for in-app notifications |
-| `rsvpEvent` | HTTP | One-tap RSVP from email (HMAC-signed) |
-| `sendEventInvite` | Callable | Send RSVP invite emails |
-| `onEventCreated` | Trigger | Notify team of new event |
-| `sendEventReminders` | Scheduled | 24-hour game reminders |
-| `sendRsvpFollowups` | Scheduled | Nudge non-responders |
-| `onEventCancelled` | Trigger | Notify team of cancellation |
-| `sendPostGameBroadcast` | Callable | Post-game results email |
-| `generateSchedule` | Callable | Schedule generation algorithm |
-| `geocodeVenueAddress` | Callable | Geocode venue addresses |
-| `submitGameResult` | Callable | Coach submits game score |
-| `publishSchedule` | Callable | Publish generated schedule |
-| `resolveDispute` | Callable | LM resolves score dispute |
-| `overrideStandingRank` | Callable | Manual standing override |
-| `sendLeagueInvite` | Callable | Invite coach to league |
-| `acceptLeagueInvite` | Callable | Accept league invitation |
-| `sendGameDayReminders` | Scheduled | Day-before game reminders |
-| `sendSnackReminders` | Scheduled | Snack volunteer reminders |
-| `checkWeatherAlerts` | Scheduled | Weather alert checks |
-| `sendWeeklyDigest` | Scheduled | Weekly summary email |
-| `autoCloseCollections` | Scheduled | Close expired availability collections |
+### 4.1 Shipped Features
+
+| Feature | Description |
+|---|---|
+| Auth & Roles | Email/password auth, email verification, forced first-login password change, role picker, multi-role support |
+| Legal Consent | Signup checkbox, re-consent modal, COPPA attestation, Privacy Centre, legal document versioning |
+| Dashboard | Role-aware home; Smart Attendance Forecast card; Coach "Next Action" card; Upcoming events |
+| League Management | League CRUD; standings (auto-updated from results); league-wide messaging |
+| Team Management | Team CRUD; roster management; join/invite flow; guest players; age groups/divisions |
+| Event Management | Calendar view; event create/edit (series, tournament, duration); RSVP; result entry & broadcast; snack volunteer; import from xlsx |
+| Attendance Tracking | Attendance marking; RSVP pre-populate; configurable warning thresholds |
+| Absence & Injury | Coach marks players injured/suspended with expected return date; private notes; roster flag |
+| Messaging | In-app messaging; email via SMTP Cloud Function; notification panel |
+| Notifications | In-app; email on Firestore trigger |
+| Admin | User creation with temp password; platform-wide messaging |
+| Schedule Wizard | Multi-mode picker (Season, Practice, Playoff, Tournament, Modify); Phase A+B complete (see §5) |
+| Venue Management | Persistent venue library with CRUD; geocoding via Nominatim; directions link in event panel; wizard integration |
+| Profile & Settings | Profile page; role editor; context switcher (multi-league/team) |
+
+### 4.2 Shipped — Phase Tracking
+
+| Component | Status |
+|---|---|
+| Schedule Wizard Phase A (mode picker, preferences, practice mode, recurring venue windows) | ✅ Shipped |
+| Schedule Wizard Phase B (availability collection, wizard draft persistence, heatmap) | ✅ Shipped (branches pushed, pending merge) |
+| Venue Management Phase 1 (CRUD, geocoding, wizard integration, event panel) | ✅ Shipped (branches pushed, pending merge) |
+| Coach Assignment Phase 1 (auto-assign on team creation) | ✅ Shipped |
+
+---
+
+## 5. Schedule Wizard — Detailed Requirements
+
+The Schedule Wizard is the flagship feature for League Managers. It generates conflict-free season, practice, playoff, and tournament schedules.
+
+### 5.1 Modes
+
+| Mode | Description |
+|---|---|
+| Season | Full round-robin or group+knockout schedule; requires availability collection |
+| Practice | Recurring practice sessions for one or more teams |
+| Playoff | Single/double elimination or Swiss bracket from seeded teams |
+| Tournament | Group stage + knockout, multi-day |
+| Modify | Reschedule or swap existing fixtures in-season |
+
+### 5.2 Season Mode Step Sequence
+`mode → config → venues → preferences → availability → generate → preview → publish`
+
+### 5.3 Scheduling Engine — Decision Locked
+The LLM-based `generateLeagueSchedule` Cloud Function is being replaced with a **deterministic constraint-satisfaction algorithm**. See ADR-005.
+
+- Engine: deterministic (no LLM)
+- Format: partial round-robin (all pairs play at least once where game count allows)
+- Hard constraints: venue availability, blackouts, no same-day double-booking
+- Soft constraints (LM-prioritizable): min rest, max consecutive away, home/away balance, even spacing
+- Scale: 4–20 teams, 8–30 games per team
+- Home venue: `homeVenueId` per team per league enrollment
+- Doubleheaders: opt-in; same venue, alternate home/away; configurable buffer (including 0)
+- Rescheduling: regenerate (now); single-fixture patch (Phase C backlog)
+
+### 5.4 Implementation Phases
+
+| Phase | Status |
+|---|---|
+| Phase A — Mode picker, preferences, practice mode, venue windows | ✅ Complete |
+| Phase B — Availability collection, wizard draft, heatmap, season recommendation | ✅ Branches pushed, pending merge |
+| Phase C — In-season modification wizard | Backlog |
+| Phase D — Re-run / diff compare | Backlog |
+| Algorithm redesign — Replace LLM with deterministic CSP | Next sprint — spec to be written first |
+
+---
+
+## 6. Venue Management — Requirements
+
+Venues are first-class persistent entities (not ad-hoc strings on events).
+
+| Requirement | Detail |
+|---|---|
+| Venue library | CRUD page at `/venues`; MapPin in sidebar |
+| Fields | Name, address, lat/lng (geocoded), pitches/courts, recurring availability windows, blackout dates |
+| Geocoding | Automatic on save via Nominatim (OpenStreetMap); free, no API key required |
+| Wizard integration | Step 2 replaced with VenueCombobox + QuickCreateVenueModal |
+| Event panel | "Get directions" link when event.venueId has lat/lng |
+| Weather alerts | `checkWeatherAlerts` Cloud Function updated to use venue lat/lng |
+
+---
+
+## 7. Calendar Integration Features
+
+Two separate features extending First Whistle's event model to interoperate with external calendar applications (Apple Calendar, Google Calendar, Outlook).
+
+---
+
+### 7.1 Calendar Sync — Export & Live Updates
+
+**Summary:** Subscribers (parents, players, coaches) can subscribe to a team or league schedule via a live calendar feed. Events appear in their native calendar app and update automatically when the schedule changes.
+
+**User story:** As a parent, I want my child's game schedule to appear in my iPhone Calendar and stay current, so I never miss a reschedule or cancellation.
+
+**Mechanism: iCalendar feed (iCal/ICS)**
+- Each team exposes a unique, authenticated calendar feed URL: `/api/calendar/{teamId}?token={calToken}`
+- Feed is generated on-demand as a valid `.ics` file (RFC 5545)
+- Native calendar apps poll the feed on their own schedule (Apple: typically every few hours; Google: ~24h)
+- No push mechanism required — polling is standard for calendar subscriptions
+
+**Scope:**
+| Item | Detail |
+|---|---|
+| Feed URL | Unique per team; includes a signed token tied to the subscriber's UID |
+| Event fields | Title, start/end datetime, location (venue name + address), description (event notes), status (CANCELLED maps to `STATUS:CANCELLED` in iCal) |
+| Update propagation | Reschedules, cancellations, and location changes reflected immediately on next poll |
+| Access control | Token validated server-side; revocable; parent/player scope limited to their team(s) |
+| Cancellations | Cancelled events remain in the feed with `STATUS:CANCELLED` so native apps show them struck-through |
+| Subscribe UX | "Add to Calendar" button on team detail page and parent home; copies feed URL or opens `webcal://` deep link |
+| Supported apps | Any app supporting the iCal subscription standard: Apple Calendar, Google Calendar, Outlook, Fantastical |
+
+**Out of scope (v1):**
+- Google Calendar API write-back (push sync)
+- Per-event one-click `.ics` download (separate, simpler feature — add to backlog)
+- Outlook OAuth integration
+
+**Cloud Function:** `getCalendarFeed` — HTTP function (not callable); returns `Content-Type: text/calendar`
+
+**Priority:** P1 — high parent/player value, relatively low implementation complexity
+
+---
+
+### 7.2 Calendar Import — Coach Schedule from External Calendar
+
+**Summary:** A coach can import events from an external calendar file (`.ics`) to bulk-create a team schedule, rather than entering games manually one by one.
+
+**User story:** As a coach, I already have my league's game schedule in a Google Calendar or received an `.ics` file from the league. I want to import it directly into First Whistle so my team sees it immediately.
+
+**Mechanism: ICS file upload**
+- Coach uploads a `.ics` file from their device (no OAuth; no live connection to external calendar)
+- First Whistle parses the file client-side, previews the extracted events, and lets the coach confirm before writing to Firestore
+- Each `VEVENT` block maps to a First Whistle event on the selected team
+
+**Import flow:**
+1. Coach opens team detail → Schedule tab → "Import from Calendar" button
+2. File picker accepts `.ics` files only
+3. App parses the file and shows a preview table: title, date, time, location
+4. Coach selects which events to import (all selected by default; deselectable)
+5. Coach maps the import to a team (pre-filled if on team detail page)
+6. Coach confirms → events created in Firestore as draft or published (coach's choice)
+7. Success: imported events appear on the Schedule tab
+
+**ICS field mapping:**
+| iCal field | First Whistle field |
+|---|---|
+| `SUMMARY` | Event title |
+| `DTSTART` / `DTEND` | Start datetime / end datetime |
+| `LOCATION` | Location string (not auto-linked to Venue library in v1) |
+| `DESCRIPTION` | Event notes |
+| `STATUS:CANCELLED` | Event marked cancelled on import |
+| `UID` | Stored as `externalCalUid` for dedup on re-import |
+
+**Deduplication:** On re-import, events with a matching `externalCalUid` are flagged as "already imported" in the preview; coach can skip or overwrite.
+
+**Out of scope (v1):**
+- Google Calendar OAuth import (requires OAuth consent screen; backlog)
+- Apple Calendar direct connection
+- Automatic re-sync / two-way sync (covered by §7.1 for outbound)
+- Recurring event series expansion (import first occurrence only; flag series to coach)
+
+**Priority:** P2 — high coach value for onboarding existing schedules; depends on ICS parser library (no new backend required)
+
+---
+
+See [BACKLOG.md](BACKLOG.md) for the full prioritised backlog.
+
+**Priority 1 (ship before marketing push):**
+- Player Availability Window
+- Post-Game Summary & Result Broadcast
+- "This Week in Sport" weekly digest
+- Weather Alerts for Outdoor Events
+- **Calendar Sync / iCal feed** (see §7.1)
+
+**Priority 2 (next sprint):**
+- **Calendar Import from .ics** (see §7.2)
+- **SMS Notifications via Twilio** — `sendSms` Cloud Function already written; blocked on Twilio credentials (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`); settings UI to be added once functional (see TD-002 in BACKLOG.md)
+- Milestone Moments (retention hook)
+- Streak Indicators for Players
+- Substitute / Guest Player Request
+- Unified Parent Dashboard / Multi-Child View
+- Event Check-In via QR Code
+
+**Premium candidates:**
+- In-Season Player & Team Stats
+- Season Summary & Statistics
+- Drill & Session Planner
+- Team Photo & Media Gallery
+
+---
+
+## 8. Non-Functional Requirements
+
+| Requirement | Detail |
+|---|---|
+| Architecture | 12-factor app methodology (see CLAUDE.md) |
+| Auth | Firebase Auth; email verification required; no self-assignable admin role |
+| Security | All Cloud Functions gate on `request.auth`; secrets via Firebase `defineSecret`; Firestore rules enforce role-based access |
+| Environments | Local (Firebase Emulator), Test (Firebase test project), Production |
+| Mobile | PWA-first; responsive web tested before native app investment (see ADR-007) |
+| Compliance | COPPA-compliant privacy policy; GDPR/CCPA-aware logging (no PII in INFO logs) |
+| Bundle size | Lazy-load heavy dependencies (xlsx via TD-004) |
+| Hosting | Firebase Hosting; Spark plan constraints: 360 MB/day transfer |
+
+---
+
+## 9. Open Blockers (PM Action Required)
+
+| Item | Action |
+|---|---|
+| FIREBASE_TOKEN | Add to GitHub repo secrets for automated CI/CD deploys |
+| TD-002 — SMS | Twilio account + set secrets: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER |
+| ANTHROPIC_API_KEY | Still required until deterministic algorithm ships and replaces LLM function |
+
+---
+
+## 10. Security Posture
+
+A security audit was conducted on 2026-03-28 covering Cloud Functions and Firestore rules. **Overall rating: HIGH risk** due to three findings in the LLM-based schedule generation function (all resolved when the algorithm replaces the LLM function).
+
+See GitHub Issues (label: `security`) for full finding list and remediation status.
+
+Key findings prior to algorithm replacement:
+- FINDING-01 (HIGH): No league ownership check in `generateLeagueSchedule`
+- FINDING-02 (HIGH): No input size bounds — unbounded API cost exposure
+- FINDING-03 (HIGH): Per-UID rate limit bypassed by account rotation
+
+These three HIGH findings are eliminated when the LLM function is removed (algorithm sprint).
+
+---
+
+## 11. Mobile Strategy
+
+Parked. Decision: test responsive web first before investing in native app. See ADR-007 and project memory for full context.
+
+---
+
+*This document is maintained by the Product Manager. Architectural decisions are recorded in `docs/adr/`. Implementation detail lives in `.claude/` feature specs.*
