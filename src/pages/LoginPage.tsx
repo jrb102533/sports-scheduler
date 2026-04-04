@@ -6,11 +6,25 @@ import { Button } from '@/components/ui/Button';
 import { useAuthStore } from '@/store/useAuthStore';
 
 export function LoginPage() {
-  const { login, error, clearError } = useAuthStore();
+  const { login, error, clearError, resendVerificationEmail } = useAuthStore();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resentVerification, setResentVerification] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  async function handleResendVerification() {
+    setResending(true);
+    try {
+      await resendVerificationEmail(email, password);
+      setResentVerification(true);
+    } catch {
+      // error set in store
+    } finally {
+      setResending(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,8 +65,22 @@ export function LoginPage() {
           showToggle
         />
         {error && (
-          <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
+          <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 space-y-2">
             <p>{error}</p>
+            {error.includes('verify your email') && (
+              resentVerification ? (
+                <p className="text-green-600 text-xs">Verification email sent! Check your inbox.</p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  disabled={resending}
+                  className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+                >
+                  {resending ? 'Sending…' : 'Resend verification email'}
+                </button>
+              )
+            )}
           </div>
         )}
         <Button type="submit" className="w-full" disabled={loading}>
