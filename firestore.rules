@@ -23,7 +23,7 @@ service cloud.firestore {
               .hasAny(['uid', 'memberships'])
           && !(request.resource.data.diff(resource.data).affectedKeys().hasAny(['mustChangePassword'])
                && request.resource.data.mustChangePassword == true)
-          && !(['admin', 'league_manager'].hasAny([request.resource.data.role]))
+          && !(['admin', 'league_manager', 'coach'].hasAny([request.resource.data.role]))
           && request.resource.data.displayName is string
           && request.resource.data.displayName.size() >= 1
           && request.resource.data.displayName.size() <= 100)
