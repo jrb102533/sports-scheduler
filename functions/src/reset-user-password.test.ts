@@ -12,6 +12,9 @@
  *   8.  Happy path: admin caller, valid uid → calls generatePasswordResetLink and sendMail
  *   9.  Happy path: returns { success: true }
  *  10.  Unexpected auth.getUser error re-thrown as 'not-found'
+ *  11.  (SEC-17) Caller rate limit exhausted (10/min) → 'resource-exhausted'
+ *  12.  (SEC-17) Per-target rate limit exhausted (1/5 min) → 'resource-exhausted'
+ *  13.  (SEC-17) Happy path passes when both rate-limit counters are below threshold
  *
  * Mocking strategy: follows the established pattern in send-invite.test.ts.
  * Firebase Functions and firebase-admin are mocked at the module boundary.
@@ -201,6 +204,11 @@ beforeEach(() => {
   seedDoc('users/player1', { role: 'player' });
   seedDoc('users/target1', { role: 'player' });
 
+  // Seed rate-limit docs so checkRateLimit passes on all happy-path tests.
+  // Uses the same key pattern as checkRateLimit: rateLimits/{uid}_{action}
+  seedDoc('rateLimits/admin1_resetUserPassword', { count: 0, windowStart: Date.now() });
+  seedDoc('rateLimits/target1_resetUserPassword-target', { count: 0, windowStart: Date.now() });
+
   // Default: target user has an email address
   mockGetUser.mockResolvedValue({ uid: 'target1', email: 'target@example.com' });
   mockGeneratePasswordResetLink.mockResolvedValue('https://reset.link/abc123');
@@ -294,5 +302,37 @@ describe('resetUserPassword', () => {
     await expect(fn(makeRequest({ uid: 'target1' }, 'admin1'))).rejects.toMatchObject({
       code: 'failed-precondition',
     });
+  });
+
+  // ── SEC-17: rate limiting ─────────────────────────────────────────────────
+
+  it('(11) rejects with resource-exhausted when the caller has hit the 10/min limit', async () => {
+    // Seed the caller's rate-limit doc at the limit (count >= maxCalls triggers the guard).
+    seedDoc('rateLimits/admin1_resetUserPassword', { count: 10, windowStart: Date.now() });
+
+    await expect(fn(makeRequest({ uid: 'target1' }, 'admin1'))).rejects.toMatchObject({
+      code: 'resource-exhausted',
+    });
+  });
+
+  it('(12) rejects with resource-exhausted when the target has already received a reset in the 5-min window', async () => {
+    // Caller is fine; target's per-target counter is at its limit of 1.
+    seedDoc('rateLimits/admin1_resetUserPassword', { count: 0, windowStart: Date.now() });
+    seedDoc('rateLimits/target1_resetUserPassword-target', { count: 1, windowStart: Date.now() });
+
+    await expect(fn(makeRequest({ uid: 'target1' }, 'admin1'))).rejects.toMatchObject({
+      code: 'resource-exhausted',
+    });
+  });
+
+  it('(13) succeeds when both rate-limit counters are below their thresholds', async () => {
+    // Explicit setup: caller at 9/10, target at 0/1 — both under their limits.
+    seedDoc('rateLimits/admin1_resetUserPassword', { count: 9, windowStart: Date.now() });
+    seedDoc('rateLimits/target1_resetUserPassword-target', { count: 0, windowStart: Date.now() });
+
+    const result = await fn(makeRequest({ uid: 'target1' }, 'admin1'));
+    expect(result).toEqual({ success: true });
+    expect(mockGeneratePasswordResetLink).toHaveBeenCalledWith('target@example.com');
+    expect(mockSendMail).toHaveBeenCalledTimes(1);
   });
 });
