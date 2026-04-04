@@ -102,10 +102,16 @@ vi.mock('@/store/useNotificationStore', () => ({
 }));
 
 const EMPTY_VENUE_STATE = { venues: [], subscribe: vi.fn() };
+const useVenueStoreMock = (selector?: (s: typeof EMPTY_VENUE_STATE) => unknown) =>
+  selector ? selector(EMPTY_VENUE_STATE) : EMPTY_VENUE_STATE;
+useVenueStoreMock.getState = () => EMPTY_VENUE_STATE;
 
-vi.mock('@/store/useVenueStore', () => ({
-  useVenueStore: (selector?: (s: typeof EMPTY_VENUE_STATE) => unknown) =>
-    selector ? selector(EMPTY_VENUE_STATE) : EMPTY_VENUE_STATE,
+vi.mock('@/store/useVenueStore', () => ({ useVenueStore: useVenueStoreMock }));
+
+// EventDetailPanel pulls in useRsvpStore/useSnackStore which reach firebase — stub it out
+// since Dashboard.redirect tests are only concerned with routing behaviour.
+vi.mock('@/components/events/EventDetailPanel', () => ({
+  EventDetailPanel: () => null,
 }));
 
 // ─── Import after mocks ───────────────────────────────────────────────────────
