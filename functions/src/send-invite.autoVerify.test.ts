@@ -184,6 +184,8 @@ function seedDoc(path: string, data: DocData) {
 beforeEach(() => {
   _store.clear();
   seedDoc('users/coach1', { role: 'coach' });
+  // SEC-22: team doc required so coach1 passes the team-ownership check.
+  seedDoc('teams/team1', { coachId: 'coach1', name: 'Falcons' });
 });
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -193,7 +195,8 @@ describe('sendInvite — autoVerify field', () => {
   it('(1) writes autoVerify: true to the invite document', async () => {
     await fn(makeRequest('coach1'));
 
-    const invite = _store.get('invites/player@example.com');
+    // SEC-20: invite key is now composite email_teamId_role.
+    const invite = _store.get('invites/player@example.com_team1_player');
     expect(invite).toBeDefined();
     expect(invite?.autoVerify).toBe(true);
   });
@@ -201,7 +204,7 @@ describe('sendInvite — autoVerify field', () => {
   it('(2) autoVerify is a boolean true, not a truthy string', async () => {
     await fn(makeRequest('coach1'));
 
-    const invite = _store.get('invites/player@example.com');
+    const invite = _store.get('invites/player@example.com_team1_player');
     expect(typeof invite?.autoVerify).toBe('boolean');
     expect(invite?.autoVerify).toStrictEqual(true);
   });

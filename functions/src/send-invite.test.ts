@@ -316,6 +316,8 @@ beforeEach(() => {
   seedDoc('users/coach1', { role: 'coach' });
   seedDoc('users/admin1', { role: 'admin' });
   seedDoc('users/player1', { role: 'player' });
+  // SEC-22: team doc required so coach1 passes the team-ownership check.
+  seedDoc('teams/team1', { coachId: 'coach1', name: 'Falcons' });
 });
 
 // ─── sendInvite tests ─────────────────────────────────────────────────────────
@@ -346,10 +348,11 @@ describe('sendInvite', () => {
 
   // ── Invite document write ─────────────────────────────────────────────────
 
-  it('(4) writes the invite record to invites/{normalizedEmail}', async () => {
+  it('(4) writes the invite record to invites/{normalizedEmail}_{teamId}_{role}', async () => {
+    // SEC-20: key is now composite to prevent same-email overwrite.
     await fn(makeRequest(validData({ to: 'Player@Example.COM' }), 'coach1'));
 
-    const stored = _store.get('invites/player@example.com');
+    const stored = _store.get('invites/player@example.com_team1_player');
     expect(stored).toBeDefined();
     expect(stored?.playerId).toBe('player1');
     expect(stored?.teamId).toBe('team1');

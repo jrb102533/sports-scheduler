@@ -436,8 +436,9 @@ export const sendInvite = onCall<SendInviteData>(
   { secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom] },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
-    await assertAdminOrCoach(request.auth.uid);
-    await checkRateLimit(request.auth.uid, 'sendInvite', 20);
+    const uid = request.auth.uid;
+    const callerRole = await assertAdminOrCoach(uid);
+    await checkRateLimit(uid, 'sendInvite', 20);
 
     const { to, playerName, teamName, playerId, teamId, role: requestedRole } = request.data;
     if (!to?.trim()) throw new HttpsError('invalid-argument', 'Email address is required.');
@@ -453,6 +454,18 @@ export const sendInvite = onCall<SendInviteData>(
         : 'player'
     );
 
+    // SEC-22: coaches may only invite players to teams they own.
+    if (callerRole !== 'admin') {
+      const teamDoc = await admin.firestore().doc(`teams/${teamId}`).get();
+      if (!teamDoc.exists) {
+        throw new HttpsError('not-found', 'Team not found.');
+      }
+      const teamData = teamDoc.data()!;
+      if (teamData['coachId'] !== uid && teamData['createdBy'] !== uid) {
+        throw new HttpsError('permission-denied', 'You can only invite players to your own team.');
+      }
+    }
+
     // Generate a one-time secret to prove the invitee received the email (SEC-18).
     // The secret is included in the invite link and must be presented when calling
     // verifyInvitedUser — prevents an attacker registering with the invited email
@@ -461,9 +474,9 @@ export const sendInvite = onCall<SendInviteData>(
     const inviteUrl = `${APP_URL}/signup?inviteSecret=${inviteSecret}`;
 
     // Store invite so auto-link can find it on signup/login.
-    // The document ID is the invitee's email. A single player can have two invite docs —
-    // one at the player's own email (role='player') and one at the parent's email (role='parent').
-    await admin.firestore().doc(`invites/${normalizedEmail}`).set({
+    // The document ID is a composite of email + teamId + role so that a second invite to the
+    // same email for a different team (or role) does not silently overwrite the first (SEC-20).
+    await admin.firestore().doc(`invites/${normalizedEmail}_${teamId}_${inviteRole}`).set({
       email: normalizedEmail,
       playerId,
       teamId,
@@ -520,16 +533,30 @@ export const verifyInvitedUser = onCall<VerifyInvitedUserData, Promise<VerifyInv
     if (!email) throw new HttpsError('invalid-argument', 'No email on auth token.');
 
     const db = admin.firestore();
-    const inviteRef = db.doc(`invites/${email}`);
     const userRef = db.doc(`users/${uid}`);
+
+    // SEC-20: invites are now stored under a composite key (email_teamId_role).
+    // Query by email + secret to locate the correct doc without knowing the key up front.
+    const normalizedEmail = email;
+    const inviteQuery = await db.collection('invites')
+      .where('email', '==', normalizedEmail)
+      .where('inviteSecret', '==', request.data.inviteSecret)
+      .limit(1)
+      .get();
+    if (inviteQuery.empty) {
+      return { found: false };
+    }
+    const inviteRef = inviteQuery.docs[0].ref;
 
     // Use a transaction to atomically consume the invite, write/update the user profile,
     // and update the player record — preventing double-consumption if called concurrently (SEC-19).
+    // The query above runs outside the transaction to obtain the ref; the transaction re-reads
+    // the doc inside to acquire a Firestore lock on it.
     let shouldAutoVerify = false;
     const txResult = await db.runTransaction(async (txn) => {
       const inviteSnap = await txn.get(inviteRef);
 
-      // Idempotency: if the invite doc is already consumed, return success.
+      // Idempotency: if the invite doc was consumed between the query and the transaction, bail.
       if (!inviteSnap.exists) return { found: false };
 
       const invite = inviteSnap.data()!;
@@ -541,11 +568,15 @@ export const verifyInvitedUser = onCall<VerifyInvitedUserData, Promise<VerifyInv
       };
 
       // Read the role from the invite doc — never trust client-supplied role (SEC-20).
+      // FND-2026-001: legacy invites may have been written without a role field; default to
+      // 'player' so they remain usable rather than failing with a hard error.
       const rawRole = invite['role'] as string | undefined;
-      if (!rawRole || !ALLOWED_INVITE_ROLES.includes(rawRole as InviteRole)) {
-        throw new HttpsError('failed-precondition', 'Invite has an invalid or missing role.');
+      if (rawRole && !ALLOWED_INVITE_ROLES.includes(rawRole as InviteRole)) {
+        throw new HttpsError('failed-precondition', 'Invite has an invalid role.');
       }
-      const inviteRole = rawRole as InviteRole;
+      const inviteRole = (rawRole && ALLOWED_INVITE_ROLES.includes(rawRole as InviteRole)
+        ? rawRole
+        : 'player') as InviteRole;
 
       // Validate the invite secret to prevent invite theft (SEC-18).
       // Invites issued before this change won't have a secret — allow them through
