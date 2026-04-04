@@ -22,6 +22,7 @@ import { PrivacyPolicyPage } from '@/pages/legal/PrivacyPolicyPage';
 import { TermsOfServicePage } from '@/pages/legal/TermsOfServicePage';
 import { InviteAcceptancePage } from '@/pages/InviteAcceptancePage';
 import { ParentHomePage } from '@/pages/ParentHomePage';
+import { HomePage } from '@/pages/HomePage';
 
 export const router = createBrowserRouter([
   // Public auth routes
@@ -56,6 +57,7 @@ export const router = createBrowserRouter([
       { path: 'leagues/:leagueId/availability/:collectionId', element: <CoachAvailabilityPage /> },
       { path: 'venues', element: <VenuesPage /> },
       { path: 'invite/league', element: <InviteAcceptancePage /> },
+      { path: 'home', element: <HomePage /> },
       { path: 'parent', element: <ParentHomePage /> },
     ],
   },
