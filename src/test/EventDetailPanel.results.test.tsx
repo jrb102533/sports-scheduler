@@ -87,10 +87,10 @@ vi.mock('@/store/usePlayerStore', () => ({
 
 vi.mock('@/store/useVenueStore', () => {
   const subscribe = vi.fn(() => () => {});
-  return {
-    useVenueStore: (selector: (s: { venues: Venue[]; subscribe: typeof subscribe }) => unknown) =>
-      selector({ venues: [], subscribe }),
-  };
+  const useVenueStore = (selector: (s: { venues: Venue[]; subscribe: typeof subscribe }) => unknown) =>
+    selector({ venues: [], subscribe });
+  useVenueStore.getState = () => ({ venues: [], subscribe });
+  return { useVenueStore };
 });
 
 // ── Sub-component stubs ───────────────────────────────────────────────────────

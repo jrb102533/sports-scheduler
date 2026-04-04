@@ -121,11 +121,9 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   }
 
   const venues = useVenueStore(s => s.venues);
-  const subscribeVenues = useVenueStore(s => s.subscribe);
   useEffect(() => {
-    const unsub = subscribeVenues();
-    return unsub;
-  }, [subscribeVenues]);
+    return useVenueStore.getState().subscribe();
+  }, []);
 
   const canManage = profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach';
   const isReadOnly = profile?.role === 'player' || profile?.role === 'parent';

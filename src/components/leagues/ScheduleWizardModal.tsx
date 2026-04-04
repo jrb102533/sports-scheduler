@@ -360,13 +360,11 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
   // Venue store
   const savedVenues = useVenueStore(s => s.venues);
-  const subscribeVenues = useVenueStore(s => s.subscribe);
   const user = useAuthStore(s => s.user);
 
   useEffect(() => {
-    const unsub = subscribeVenues();
-    return unsub;
-  }, [subscribeVenues]);
+    return useVenueStore.getState().subscribe();
+  }, []);
 
   // Mode & step
   const [mode, setMode] = useState<WizardMode | null>(null);

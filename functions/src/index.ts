@@ -289,6 +289,10 @@ export const resetUserPassword = onCall<ResetUserPasswordData>(
     const { uid } = request.data;
     if (!uid?.trim()) throw new HttpsError('invalid-argument', 'uid is required.');
 
+    // SEC-17: rate-limit caller (10 resets/min) and target (1 per target per 5 min)
+    await checkRateLimit(request.auth.uid, 'resetUserPassword', 10);
+    await checkRateLimit(uid, 'resetUserPassword-target', 1, 5 * 60_000);
+
     let email: string;
     try {
       const userRecord = await admin.auth().getUser(uid);
