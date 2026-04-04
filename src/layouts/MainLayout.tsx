@@ -41,28 +41,20 @@ export function MainLayout() {
 
   const handleTimeout = useCallback(() => { void logout(); }, [logout]);
   const { showWarning, countdown, resetTimer } = useIdleTimeout({ onTimeout: handleTimeout });
-  const subscribeTeams = useTeamStore(s => s.subscribe);
-  const subscribePlayers = usePlayerStore(s => s.subscribe);
-  const subscribeEvents = useEventStore(s => s.subscribe);
-  const subscribeNotifications = useNotificationStore(s => s.subscribe);
-  const subscribeSettings = useSettingsStore(s => s.subscribe);
-  const subscribeLeagues = useLeagueStore(s => s.subscribe);
-  const subscribeOpponents = useOpponentStore(s => s.subscribe);
-
   // Subscribe all Firestore collections when user is authenticated
   useEffect(() => {
     if (!user) return;
     const unsubs = [
-      subscribeTeams(),
-      subscribePlayers(),
-      subscribeEvents(),
-      subscribeNotifications(user.uid),
-      subscribeSettings(user.uid),
-      subscribeLeagues(),
-      subscribeOpponents(),
+      useTeamStore.getState().subscribe(),
+      usePlayerStore.getState().subscribe(),
+      useEventStore.getState().subscribe(),
+      useNotificationStore.getState().subscribe(user.uid),
+      useSettingsStore.getState().subscribe(user.uid),
+      useLeagueStore.getState().subscribe(),
+      useOpponentStore.getState().subscribe(),
     ];
     return () => unsubs.forEach(u => u());
-  }, [user, subscribeTeams, subscribePlayers, subscribeEvents, subscribeNotifications, subscribeSettings, subscribeLeagues, subscribeOpponents]);
+  }, [user]);
 
   const location = useLocation();
   const firstName = profile?.displayName?.split(' ')[0] ?? '';
