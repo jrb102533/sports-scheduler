@@ -65,6 +65,8 @@ export function SignupPage() {
       setSubmittedEmail(email);
       await signup(email, password, displayName, role, undefined, memberships, inviteSecret);
 
+      if (useAuthStore.getState().verificationEmailSent) return;
+
       const uid = auth.currentUser?.uid;
       if (uid) {
         try {
@@ -76,7 +78,6 @@ export function SignupPage() {
         }
       }
 
-      if (useAuthStore.getState().verificationEmailSent) return;
       navigate('/');
     } catch {
       // signup failed — error set in store, stay on form
