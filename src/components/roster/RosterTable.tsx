@@ -66,7 +66,7 @@ interface RosterTableProps {
  * file that could be used to invite them (player email or either parent email).
  */
 function isUnclaimed(player: Player): boolean {
-  if (player.linkedUid) return false;
+  if (player.linkedUid || player.parentUid) return false;
   const hasEmail =
     (player.email ?? '').trim() !== '' ||
     (player.parentContact?.parentEmail ?? '').trim() !== '' ||
