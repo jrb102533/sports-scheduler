@@ -64,7 +64,7 @@ test('adding a player with a parent email creates an invite that appears in the 
   // Get the team ID from the URL after navigating in
   await page.getByText(teamName, { exact: false }).click();
   await page.waitForURL(/\/teams\/(.+)$/);
-  const teamId = page.url().split('/teams/')[1];
+  const _teamId = page.url().split('/teams/')[1];
 
   // Add a player with a parent email — this triggers the sendInvite Cloud Function
   await page.getByRole('tab', { name: /roster/i }).click();
