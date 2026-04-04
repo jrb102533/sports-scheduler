@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Edit, Trash2, Phone, ShieldAlert, Bandage, CalendarX } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Edit, Trash2, Phone, ShieldAlert, Bandage, CalendarX, Mail } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -8,6 +8,7 @@ import { PlayerStatusBadge } from './PlayerStatusBadge';
 import { PlayerStatusModal } from './PlayerStatusModal';
 import { MarkAbsenceModal } from './MarkAbsenceModal';
 import { PlayerAvailabilityModal } from './PlayerAvailabilityModal';
+import { InvitePlayerSheet } from './InvitePlayerSheet';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -57,9 +58,23 @@ function hasUpcomingUnavailability(playerId: string, availability: ReturnType<ty
 interface RosterTableProps {
   players: Player[];
   teamId: string;
+  teamName?: string;
 }
 
-export function RosterTable({ players, teamId }: RosterTableProps) {
+/**
+ * Returns true when a player has no linked account AND no email address on
+ * file that could be used to invite them (player email or either parent email).
+ */
+function isUnclaimed(player: Player): boolean {
+  if (player.linkedUid) return false;
+  const hasEmail =
+    (player.email ?? '').trim() !== '' ||
+    (player.parentContact?.parentEmail ?? '').trim() !== '' ||
+    (player.parentContact2?.parentEmail ?? '').trim() !== '';
+  return !hasEmail;
+}
+
+export function RosterTable({ players, teamId, teamName }: RosterTableProps) {
   const { deletePlayer } = usePlayerStore();
   const team = useTeamStore(s => s.teams.find(t => t.id === teamId));
   const profile = useAuthStore(s => s.profile);
@@ -75,12 +90,53 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
   const [absencePlayer, setAbsencePlayer] = useState<Player | null>(null);
   const [availabilityPlayer, setAvailabilityPlayer] = useState<Player | null>(null);
 
+  // Invite sheet
+  const [invitePlayer, setInvitePlayer] = useState<Player | null>(null);
+
+  // Filter to unclaimed only
+  const [filterUnclaimed, setFilterUnclaimed] = useState(false);
+
+  // Per-player "invite sent" done state — auto-clears after 2 s
+  const [inviteSentIds, setInviteSentIds] = useState<Set<string>>(new Set());
+  const handleInviteSuccess = useCallback((playerId: string) => {
+    setInviteSentIds(prev => new Set(prev).add(playerId));
+    setTimeout(() => {
+      setInviteSentIds(prev => {
+        const next = new Set(prev);
+        next.delete(playerId);
+        return next;
+      });
+    }, 2000);
+  }, []);
+
+  const resolvedTeamName = teamName ?? team?.name ?? '';
+  const unclaimedPlayers = players.filter(isUnclaimed);
+  const displayedPlayers = filterUnclaimed ? unclaimedPlayers : players;
+
   if (players.length === 0) {
     return <p className="text-sm text-gray-500 py-6 text-center">No players yet. Add your first player above.</p>;
   }
 
   return (
     <>
+      {/* Roster summary line */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100">
+        <span className="text-sm text-gray-500">
+          Roster &middot; {players.length} {players.length === 1 ? 'player' : 'players'}
+        </span>
+        {unclaimedPlayers.length > 0 && (
+          <button
+            onClick={() => setFilterUnclaimed(f => !f)}
+            className="text-sm font-medium text-orange-600 hover:text-orange-700 focus:outline-none focus:underline"
+            aria-pressed={filterUnclaimed}
+          >
+            {filterUnclaimed
+              ? 'Show all players'
+              : `${unclaimedPlayers.length} not yet invited \u2192`}
+          </button>
+        )}
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -97,7 +153,7 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
             </tr>
           </thead>
           <tbody>
-            {players.sort((a, b) => (a.jerseyNumber ?? 999) - (b.jerseyNumber ?? 999)).map(player => (
+            {displayedPlayers.sort((a, b) => (a.jerseyNumber ?? 999) - (b.jerseyNumber ?? 999)).map(player => (
               <tr key={player.id} className="border-b border-gray-100 hover:bg-gray-50">
                 <td className="px-3 py-3 text-gray-500 text-sm">{player.jerseyNumber ?? '\u2014'}</td>
                 <td className="px-3 py-3 text-sm">
@@ -111,6 +167,22 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
                           <span className="font-normal"> &middot; returns {formatReturnDate(player.absence.returnDate)}</span>
                         )}
                       </Badge>
+                    )}
+                    {/* Unclaimed chip — only visible to coaches/admins */}
+                    {isCoachOrAdmin && inviteSentIds.has(player.id) && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 border border-green-200 text-green-700">
+                        Invite Sent &#10003;
+                      </span>
+                    )}
+                    {isCoachOrAdmin && !inviteSentIds.has(player.id) && isUnclaimed(player) && (
+                      <button
+                        onClick={() => setInvitePlayer(player)}
+                        aria-label={`Invite ${player.firstName} ${player.lastName}`}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100 focus:outline-none focus:ring-2 focus:ring-orange-300 min-h-[28px]"
+                      >
+                        <Mail size={12} aria-hidden="true" />
+                        Invite Player
+                      </button>
                     )}
                   </div>
                 </td>
@@ -230,6 +302,15 @@ export function RosterTable({ players, teamId }: RosterTableProps) {
           onClose={() => setAvailabilityPlayer(null)}
           player={availabilityPlayer}
           teamId={teamId}
+        />
+      )}
+      {invitePlayer && (
+        <InvitePlayerSheet
+          open={!!invitePlayer}
+          player={invitePlayer}
+          teamName={resolvedTeamName}
+          onClose={() => setInvitePlayer(null)}
+          onSuccess={handleInviteSuccess}
         />
       )}
     </>
