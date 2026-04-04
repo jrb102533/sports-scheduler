@@ -1,4 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// useAuthStore imports @/lib/firebase at module load — mock it to avoid
+// auth/invalid-api-key errors in unit tests that only test pure helper functions.
+vi.mock('@/lib/firebase', () => ({ app: {}, auth: {}, db: {}, functions: {} }));
+
 import { hasRole, canEdit, isReadOnly, getAccessibleTeamIds, getMemberships, getActiveMembership } from '@/store/useAuthStore';
 import type { UserProfile, Team } from '@/types';
 
