@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@/lib/firebase';
 import { Shield, Users, Plus, Trash2, Pencil, Check, X, Copy, RefreshCw, KeyRound } from 'lucide-react';
@@ -80,8 +80,13 @@ export function UsersPage() {
   }
 
   async function handleDeleteUser(user: UserProfile) {
-    await deleteDoc(doc(db, 'users', user.uid));
-    setUsers(prev => prev.filter(u => u.uid !== user.uid));
+    try {
+      const deleteFn = httpsCallable<{ uid: string }, { success: boolean }>(functions, 'deleteUserByAdmin');
+      await deleteFn({ uid: user.uid });
+      setUsers(prev => prev.filter(u => u.uid !== user.uid));
+    } catch (err) {
+      alert(`Failed to delete user: ${(err as Error).message}`);
+    }
     setDeleteTarget(null);
   }
 
