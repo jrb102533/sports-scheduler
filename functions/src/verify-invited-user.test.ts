@@ -289,6 +289,8 @@ vi.mock('firebase-admin', () => {
 
 import { verifyInvitedUser, sendInvite } from './index';
 
+const TEST_SECRET = 'test-invite-secret-abc';
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeVerifyRequest(uid: string | null, email: string | null, inviteSecret?: string) {
@@ -403,12 +405,12 @@ describe('verifyInvitedUser — invite role validation', () => {
       teamId: 'team1',
       playerId: 'player1',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
       // no role field — should default to 'player'
     });
     _store.delete('users/uid1'); // use new-user path so we can inspect the written profile
 
-    const result = await verifyFn(makeVerifyRequest('uid1', 'invited@example.com')) as { found: boolean };
+    const result = await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET)) as { found: boolean };
     expect(result.found).toBe(true);
     const profile = _store.get('users/uid1');
     expect(profile?.role).toBe('player');
@@ -421,10 +423,10 @@ describe('verifyInvitedUser — invite role validation', () => {
       playerId: 'player1',
       role: 'coach',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
-    await expect(verifyFn(makeVerifyRequest('uid1', 'invited@example.com'))).rejects.toMatchObject({
+    await expect(verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET))).rejects.toMatchObject({
       code: 'failed-precondition',
     });
   });
@@ -434,10 +436,10 @@ describe('verifyInvitedUser — invite role validation', () => {
       email: 'invited@example.com',
       teamId: 'team1',
       role: 'admin',
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
-    await expect(verifyFn(makeVerifyRequest('uid1', 'invited@example.com'))).rejects.toMatchObject({
+    await expect(verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET))).rejects.toMatchObject({
       code: 'failed-precondition',
     });
   });
@@ -478,9 +480,9 @@ describe('verifyInvitedUser — invite secret', () => {
   });
 
   it('(6) returns { found: false } for legacy invites without an inviteSecret field', async () => {
-    // SEC-20: the query now filters by inviteSecret. Invites without the field cannot
-    // be located when the client sends an empty/absent secret — this is intentional.
-    // All invites written after SEC-18 will have the secret field.
+    // SEC-25: legacy invite docs without a secret field are explicitly rejected.
+    // The transaction guard rejects any invite where storedSecret is absent, even if
+    // the SEC-20 query filter had somehow matched the doc. Admins must re-send.
     seedDoc('invites/invited@example.com', {
       email: 'invited@example.com',
       teamId: 'team1',
@@ -505,11 +507,11 @@ describe('verifyInvitedUser — autoVerify', () => {
       teamId: 'team1',
       playerId: 'player1',
       role: 'player',
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
       // no autoVerify
     });
 
-    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com'));
+    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET));
     expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 
@@ -520,10 +522,10 @@ describe('verifyInvitedUser — autoVerify', () => {
       playerId: 'player1',
       role: 'player',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
-    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com'));
+    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET));
     expect(mockUpdateUser).toHaveBeenCalledWith('uid1', { emailVerified: true });
   });
 
@@ -533,10 +535,10 @@ describe('verifyInvitedUser — autoVerify', () => {
       teamId: 'team1',
       role: 'player',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
-    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com'));
+    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET));
     expect(_store.has('invites/invited@example.com')).toBe(false);
   });
 
@@ -546,10 +548,10 @@ describe('verifyInvitedUser — autoVerify', () => {
       teamId: 'team1',
       role: 'player',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
-    const result = await verifyFn(makeVerifyRequest('uid1', 'invited@example.com')) as { found: boolean };
+    const result = await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET)) as { found: boolean };
     expect(result.found).toBe(true);
   });
 });
@@ -564,10 +566,10 @@ describe('verifyInvitedUser — email normalisation', () => {
       teamId: 'team1',
       role: 'player',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
-    const result = await verifyFn(makeVerifyRequest('uid1', 'Invited@Example.COM')) as { found: boolean };
+    const result = await verifyFn(makeVerifyRequest('uid1', 'Invited@Example.COM', TEST_SECRET)) as { found: boolean };
     expect(result.found).toBe(true);
     expect(mockUpdateUser).toHaveBeenCalledWith('uid1', { emailVerified: true });
   });
@@ -617,10 +619,10 @@ describe('verifyInvitedUser — new-user path', () => {
       playerId: 'player1',
       role: 'parent',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
-    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com'));
+    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET));
 
     const profile = _store.get('users/uid1');
     expect(profile).toBeDefined();
@@ -634,10 +636,10 @@ describe('verifyInvitedUser — new-user path', () => {
       playerId: 'player1',
       role: 'parent',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
-    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com'));
+    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET));
 
     const profile = _store.get('users/uid1');
     const memberships = profile?.memberships as Array<Record<string, unknown>>;
@@ -658,10 +660,10 @@ describe('verifyInvitedUser — existing-user path', () => {
       playerId: 'player1',
       role: 'player',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
-    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com'));
+    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET));
 
     const profile = _store.get('users/uid1');
     // The original role must not be overwritten.
@@ -679,10 +681,10 @@ describe('verifyInvitedUser — existing-user path', () => {
       playerId: 'player1',
       role: 'player',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
-    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com'));
+    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET));
 
     const profile = _store.get('users/uid1');
     const memberships = profile?.memberships as Array<Record<string, unknown>>;
@@ -698,10 +700,10 @@ describe('verifyInvitedUser — existing-user path', () => {
       playerId: 'player99',
       role: 'player',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
-    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com'));
+    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET));
 
     const profile = _store.get('users/uid1');
     const memberships = profile?.memberships as Array<Record<string, unknown>>;
@@ -729,10 +731,10 @@ describe('verifyInvitedUser — idempotency', () => {
       playerId: 'player1',
       role: 'player',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
-    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com'));
+    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET));
 
     // The existing membership already has role='player', teamId='team-existing'.
     // After processing, the membership array should still have only ONE entry for that combo.
@@ -760,10 +762,10 @@ describe('verifyInvitedUser — player record writes', () => {
       playerId: 'player1',
       role: 'player',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
-    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com'));
+    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET));
 
     const player = _store.get('players/player1');
     expect(player?.linkedUid).toBe('uid1');
@@ -783,10 +785,10 @@ describe('verifyInvitedUser — player record writes', () => {
       playerId: 'player1',
       role: 'parent',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
-    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com'));
+    await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET));
 
     const player = _store.get('players/player1');
     expect(player?.parentUid).toBe('uid1');
@@ -799,12 +801,12 @@ describe('verifyInvitedUser — player record writes', () => {
       teamId: 'team1',
       role: 'player',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
       // no playerId
     });
 
     // Should complete without error and return found: true.
-    const result = await verifyFn(makeVerifyRequest('uid1', 'invited@example.com')) as { found: boolean };
+    const result = await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET)) as { found: boolean };
     expect(result.found).toBe(true);
   });
 
@@ -816,11 +818,11 @@ describe('verifyInvitedUser — player record writes', () => {
       playerId: 'player-missing',
       role: 'player',
       autoVerify: true,
-      inviteSecret: '',
+      inviteSecret: TEST_SECRET,
     });
 
     // Should complete without error.
-    const result = await verifyFn(makeVerifyRequest('uid1', 'invited@example.com')) as { found: boolean };
+    const result = await verifyFn(makeVerifyRequest('uid1', 'invited@example.com', TEST_SECRET)) as { found: boolean };
     expect(result.found).toBe(true);
     expect(_store.has('players/player-missing')).toBe(false);
   });

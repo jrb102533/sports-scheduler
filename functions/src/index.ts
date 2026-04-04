@@ -578,10 +578,10 @@ export const verifyInvitedUser = onCall<VerifyInvitedUserData, Promise<VerifyInv
         ? rawRole
         : 'player') as InviteRole;
 
-      // Validate the invite secret to prevent invite theft (SEC-18).
-      // Invites issued before this change won't have a secret — allow them through
-      // so existing pending invites aren't broken by the upgrade.
-      if (storedSecret && request.data.inviteSecret !== storedSecret) {
+      // Validate the invite secret to prevent invite theft (SEC-18, SEC-25).
+      // Legacy invites without a secret field are rejected — the security risk of
+      // allowing secret-less invites outweighs the inconvenience; admins can re-send.
+      if (!storedSecret || request.data.inviteSecret !== storedSecret) {
         throw new HttpsError('permission-denied', 'Invalid invite link. Please use the link from your invitation email.');
       }
 
