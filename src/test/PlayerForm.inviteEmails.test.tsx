@@ -102,7 +102,7 @@ const DEFAULT_PROPS = {
   teamId: 'team-1',
 };
 
-function renderForm(props?: Partial<typeof DEFAULT_PROPS>) {
+function renderForm(props?: Partial<typeof DEFAULT_PROPS> & Record<string, unknown>) {
   return render(<PlayerForm {...DEFAULT_PROPS} {...props} />);
 }
 
