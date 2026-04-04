@@ -14,13 +14,11 @@ export function SnackSlotButton({ eventId, currentUserUid, currentUserName }: Sn
   const slot = useSnackStore(s => s.slots[eventId] ?? EMPTY_SLOT);
   const claimSlot = useSnackStore(s => s.claimSlot);
   const releaseSlot = useSnackStore(s => s.releaseSlot);
-  const subscribeSlot = useSnackStore(s => s.subscribeSlot);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    const unsub = subscribeSlot(eventId);
-    return unsub;
-  }, [eventId, subscribeSlot]);
+    return useSnackStore.getState().subscribeSlot(eventId);
+  }, [eventId]);
 
   const isClaimedByMe = slot.claimedBy === currentUserUid;
   const isClaimedByOther = slot.claimedBy !== null && !isClaimedByMe;

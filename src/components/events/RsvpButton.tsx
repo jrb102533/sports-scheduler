@@ -13,14 +13,12 @@ interface RsvpButtonProps {
 export function RsvpButton({ eventId, currentUserUid, currentUserName }: RsvpButtonProps) {
   const entries = useRsvpStore(s => s.rsvps[eventId] ?? EMPTY_RSVPS);
   const submitRsvp = useRsvpStore(s => s.submitRsvp);
-  const subscribeRsvps = useRsvpStore(s => s.subscribeRsvps);
   const [submitting, setSubmitting] = useState(false);
   const [showNames, setShowNames] = useState(false);
 
   useEffect(() => {
-    const unsub = subscribeRsvps(eventId);
-    return unsub;
-  }, [eventId, subscribeRsvps]);
+    return useRsvpStore.getState().subscribeRsvps(eventId);
+  }, [eventId]);
 
   const myEntry = entries.find(r => r.uid === currentUserUid);
   const goingList = entries.filter(r => r.response === 'yes');
