@@ -4,8 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockUpdate = vi.fn().mockResolvedValue(undefined);
 const mockDocRef = vi.fn(() => ({ update: mockUpdate }));
-const mockTxGet = vi.fn().mockResolvedValue({ data: () => undefined });
-const mockTx = { get: mockTxGet, set: vi.fn(), update: vi.fn() };
+const mockTx = {
+  get: vi.fn().mockResolvedValue({ exists: false, data: () => undefined }),
+  set: vi.fn(),
+  update: vi.fn(),
+};
 const mockRunTransaction = vi.fn((cb: (tx: typeof mockTx) => Promise<unknown>) => cb(mockTx));
 const mockFirestore = vi.fn(() => ({ doc: mockDocRef, runTransaction: mockRunTransaction }));
 
