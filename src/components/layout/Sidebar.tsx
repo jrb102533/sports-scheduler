@@ -67,21 +67,27 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
 
   const isParentOrPlayer = hasRole(profile, 'player', 'parent') && !hasRole(profile, 'admin', 'league_manager', 'coach');
 
-  const parentNavItems = [
-    { to: '/parent', label: 'My Team', icon: Home, end: true },
-  ];
+  const homeNavItem = { to: '/home', label: 'Home', icon: Home, end: true };
 
-  const allNavItems = isParentOrPlayer ? parentNavItems : [
-    navItems[0], // Home
-    navItems[1], // Calendar
-    navItems[2], // Teams
-    ...(hasRole(profile, 'admin', 'league_manager') ? leagueNavItems : []),
-    ...(hasRole(profile, 'admin', 'league_manager', 'coach') ? venueNavItems : []),
-    navItems[3], // Notifications
-    navItems[4], // Messaging
-    navItems[5], // Settings
-    ...(hasRole(profile, 'admin') ? adminNavItems : []),
-  ];
+  const allNavItems = isParentOrPlayer
+    ? [
+        homeNavItem,
+        { to: '/parent', label: 'My Team', icon: Users, end: true },
+        navItems[3], // Notifications
+        navItems[4], // Messaging
+        navItems[5], // Settings
+      ]
+    : [
+        homeNavItem,
+        navItems[1], // Calendar
+        navItems[2], // Teams
+        ...(hasRole(profile, 'admin', 'league_manager') ? leagueNavItems : []),
+        ...(hasRole(profile, 'admin', 'league_manager', 'coach') ? venueNavItems : []),
+        navItems[3], // Notifications
+        navItems[4], // Messaging
+        navItems[5], // Settings
+        ...(hasRole(profile, 'admin') ? adminNavItems : []),
+      ];
 
   const memberships = getMemberships(profile);
   const activeMembership = getActiveMembership(profile);

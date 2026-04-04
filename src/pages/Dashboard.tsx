@@ -44,10 +44,10 @@ export function Dashboard() {
   const [teamsExpanded, setTeamsExpanded] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
 
-  // Redirect player/parent roles to their dedicated home screen
+  // Redirect all authenticated users to the unified home page
   useEffect(() => {
-    if (profile && (profile.role === 'player' || profile.role === 'parent')) {
-      navigate('/parent', { replace: true });
+    if (profile) {
+      navigate('/home', { replace: true });
     }
   }, [profile, navigate]);
 

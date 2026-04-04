@@ -19,6 +19,7 @@ import { useOpponentStore } from '@/store/useOpponentStore';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Home',
+  '/home': 'Home',
   '/calendar': 'Calendar',
   '/teams': 'Teams',
   '/notifications': 'Notifications',
@@ -58,7 +59,7 @@ export function MainLayout() {
 
   const location = useLocation();
   const firstName = profile?.displayName?.split(' ')[0] ?? '';
-  const isHome = location.pathname === '/';
+  const isHome = location.pathname === '/' || location.pathname === '/home';
   const greeting = isHome ? (firstName ? `Welcome, ${firstName}` : 'Welcome') : '';
   const pageTitle = isHome
     ? ''
