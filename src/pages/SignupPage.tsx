@@ -121,7 +121,10 @@ export function SignupPage() {
       navigate('/');
     } catch (err: unknown) {
       const code = (err as { code?: string }).code ?? '';
-      if (code === 'auth/email-already-in-use') setEmailInUse(true);
+      if (code === 'auth/email-already-in-use') {
+        setEmailInUse(true);
+        setValidationError('An account with that email already exists.');
+      }
     } finally {
       setLoading(false);
     }
