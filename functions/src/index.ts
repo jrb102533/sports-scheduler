@@ -65,6 +65,16 @@ function esc(s: string): string {
  * Returns the highest-privileged role found so callers can enforce finer-grained
  * restrictions without a second Firestore read.
  */
+async function assertAdmin(uid: string): Promise<void> {
+  const userDoc = await admin.firestore().doc(`users/${uid}`).get();
+  const data = userDoc.data();
+  const legacyRole: string = data?.role ?? '';
+  const membershipRoles: string[] = (data?.memberships ?? []).map((m: Record<string, unknown>) => m.role as string);
+  if (![legacyRole, ...membershipRoles].includes('admin')) {
+    throw new HttpsError('permission-denied', 'Only admins can perform this action.');
+  }
+}
+
 async function assertAdminOrCoach(uid: string): Promise<string> {
   const userDoc = await admin.firestore().doc(`users/${uid}`).get();
   const data = userDoc.data();
@@ -220,6 +230,43 @@ export const createUserByAdmin = onCall<CreateUserByAdminData>(
 
     console.log(`createUserByAdmin: created uid=${uid}, role=${role}`);
     return { uid };
+  }
+);
+
+// ─── Admin: delete user ───────────────────────────────────────────────────────
+
+interface DeleteUserData { uid: string }
+
+export const deleteUserByAdmin = onCall<DeleteUserData>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+    await assertAdmin(request.auth.uid);
+
+    const { uid } = request.data;
+    if (!uid?.trim()) throw new HttpsError('invalid-argument', 'uid is required.');
+    if (uid === request.auth.uid) throw new HttpsError('failed-precondition', 'You cannot delete your own account.');
+
+    // SEC-20: prevent admins from deleting other admins
+    const targetDoc = await admin.firestore().doc(`users/${uid}`).get();
+    const targetRole: string = targetDoc.data()?.role ?? '';
+    const targetMembershipRoles: string[] = (targetDoc.data()?.memberships ?? []).map((m: Record<string, unknown>) => m.role as string);
+    if ([targetRole, ...targetMembershipRoles].includes('admin')) {
+      throw new HttpsError('failed-precondition', 'Admin accounts cannot be deleted this way. Remove the admin role first.');
+    }
+
+    // Delete Auth account first; if it doesn't exist, that's fine — still clean up Firestore.
+    try {
+      await admin.auth().deleteUser(uid);
+    } catch (err: any) {
+      if (err?.code !== 'auth/user-not-found') {
+        throw new HttpsError('internal', err?.message ?? 'Failed to delete auth account.');
+      }
+    }
+    // SEC-21: recursiveDelete removes the document and all subcollections (notifications, config, venues, consents)
+    await admin.firestore().recursiveDelete(admin.firestore().doc(`users/${uid}`));
+
+    console.log(`deleteUserByAdmin: deleted uid=${uid} by ${request.auth.uid}`);
+    return { success: true };
   }
 );
 
