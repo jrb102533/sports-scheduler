@@ -57,26 +57,40 @@ service cloud.firestore {
       }
     }
 
+    // NOTE (SEC-29): Firestore rules unit tests for the field-level restrictions below
+    // are not yet implemented — the project has no @firebase/rules-unit-testing setup.
+    // When that infrastructure is added, cover at minimum:
+    //   - Coach updates team name → allowed
+    //   - Coach updates team coachIds → permission-denied
+    //   - LM updates league name/season → allowed
+    //   - LM updates league managerIds → permission-denied
+    //   - Admin updates coachIds → allowed
     match /teams/{teamId} {
       allow read: if request.auth != null;
       allow create: if isAdmin() || isCoach() || isLeagueManager();
       allow delete: if isAdmin();
+      // SEC-29: non-admin writes may not touch access-control fields (coachIds,
+      // coachId, createdBy).  Admins retain unrestricted write access.
       allow update: if isAdmin()
-        || request.auth.uid == resource.data.createdBy
-        || request.auth.uid == resource.data.coachId
-        || (isLeagueManager() && (
-             // LM manages a league the team is already in (profile.leagueId path)
-             ('leagueIds' in resource.data && resource.data.leagueIds.hasAny([getProfile().leagueId]))
-             || resource.data.get('leagueId', '') == getProfile().leagueId
-             || ('leagueIds' in request.resource.data && request.resource.data.leagueIds.hasAny([getProfile().leagueId]))
-             // LM adding/removing via managedBy: only leagueIds + _managedLeagueId may change,
-             // and the referenced league must have managedBy == this LM.
-             || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leagueIds', '_managedLeagueId'])
-                 && '_managedLeagueId' in request.resource.data
-                 && (request.resource.data.leagueIds.hasAny([request.resource.data._managedLeagueId])
-                     || resource.data.get('leagueIds', []).hasAny([request.resource.data._managedLeagueId]))
-                 && get(/databases/$(database)/documents/leagues/$(request.resource.data._managedLeagueId)).data.managedBy == request.auth.uid)
-           ));
+        || (
+          (request.auth.uid == resource.data.createdBy
+            || request.auth.uid == resource.data.coachId
+            || (isLeagueManager() && (
+                 // LM manages a league the team is already in (profile.leagueId path)
+                 ('leagueIds' in resource.data && resource.data.leagueIds.hasAny([getProfile().leagueId]))
+                 || resource.data.get('leagueId', '') == getProfile().leagueId
+                 || ('leagueIds' in request.resource.data && request.resource.data.leagueIds.hasAny([getProfile().leagueId]))
+                 // LM adding/removing via managedBy: only leagueIds + _managedLeagueId may change,
+                 // and the referenced league must have managedBy == this LM.
+                 || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leagueIds', '_managedLeagueId'])
+                     && '_managedLeagueId' in request.resource.data
+                     && (request.resource.data.leagueIds.hasAny([request.resource.data._managedLeagueId])
+                         || resource.data.get('leagueIds', []).hasAny([request.resource.data._managedLeagueId]))
+                     && get(/databases/$(database)/documents/leagues/$(request.resource.data._managedLeagueId)).data.managedBy == request.auth.uid)
+               )))
+          && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['coachIds', 'coachId', 'createdBy'])
+        );
 
       // Player availability windows — any team member can read; players/parents write their own,
       // coaches and admins can write any player's record.
@@ -184,11 +198,17 @@ service cloud.firestore {
       // League managers can create any new league (no prior leagueId to match against).
       allow create: if isAdmin() || isLeagueManager();
       // League managers can update leagues they own via leagueId profile field or managedBy.
+      // SEC-29: non-admin writes may not touch access-control fields (managerIds, managedBy).
+      // Admins retain unrestricted write access.
       allow update: if isAdmin()
-        || (isLeagueManager() && (
-          getProfile().leagueId == leagueId
-          || resource.data.managedBy == request.auth.uid
-        ));
+        || (
+          (isLeagueManager() && (
+            getProfile().leagueId == leagueId
+            || resource.data.managedBy == request.auth.uid
+          ))
+          && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['managerIds', 'managedBy'])
+        );
       allow delete: if isAdmin();
 
       // Wizard draft — one per league, owned by the LM who created it.
