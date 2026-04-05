@@ -28,7 +28,7 @@
  *     - Label falls back to role title when no context name is available
  *
  *   ProfilePage — Edit button visibility
- *     - Edit button is visible for coach users
+ *     - Edit button is hidden for coach users (only admin can self-edit memberships)
  *     - Edit button is hidden for player users
  *     - Edit button is hidden for parent users
  *     - "Roles are assigned by your league administrator." note shown to player
@@ -496,13 +496,13 @@ describe('ProfilePage — Edit button visibility (canEditRoles guard)', () => {
     );
   }
 
-  it('shows the Edit button in My Roles for a coach user', () => {
+  it('hides the Edit button in My Roles for a coach user', () => {
     ppProfile = makeProfile('coach', {
       memberships: [{ role: 'coach', isPrimary: true }],
     });
     renderProfilePage();
 
-    expect(screen.getByRole('button', { name: /edit/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /edit/i })).toBeNull();
   });
 
   it('shows the Edit button in My Roles for an admin user', () => {
@@ -543,15 +543,15 @@ describe('ProfilePage — Edit button visibility (canEditRoles guard)', () => {
     ).toBeTruthy();
   });
 
-  it('does NOT show the admin note for a coach user', () => {
+  it('shows the admin note for a coach user', () => {
     ppProfile = makeProfile('coach', {
       memberships: [{ role: 'coach', isPrimary: true }],
     });
     renderProfilePage();
 
     expect(
-      screen.queryByText(/roles are assigned by your league administrator/i)
-    ).toBeNull();
+      screen.getByText(/roles are assigned by your league administrator/i)
+    ).toBeTruthy();
   });
 
   it('does NOT show the admin note for a parent user when memberships is empty', () => {

@@ -49,7 +49,7 @@ export function ProfilePage() {
   const activeIndex = profile?.activeContext ?? 0;
 
   const isPlayerOrParent = profile?.role === 'player' || profile?.role === 'parent';
-  const canEditRoles = !isPlayerOrParent;
+  const canEditRoles = profile?.role === 'admin';
   const linkedPlayer = profile?.playerId ? players.find(p => p.id === profile.playerId) : undefined;
   const linkedTeam = linkedPlayer
     ? teams.find(t => t.id === linkedPlayer.teamId)
