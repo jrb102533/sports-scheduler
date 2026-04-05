@@ -11,6 +11,7 @@ import { EventForm } from '@/components/events/EventForm';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
 import { StandingsTable } from '@/components/standings/StandingsTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { DeleteTeamModal } from '@/components/teams/DeleteTeamModal';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useEventStore } from '@/store/useEventStore';
@@ -560,22 +561,19 @@ export function TeamDetailPage() {
       />
       <EventDetailPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} />
       {/* Owner soft-delete */}
-      <ConfirmDialog
+      <DeleteTeamModal
         open={confirmDelete}
+        teamName={team.name}
         onClose={() => setConfirmDelete(false)}
-        onConfirm={() => void handleSoftDelete()}
-        title="Delete Team"
-        message={`"${team.name}" will be hidden and can be restored by an admin if needed. Players will not be affected.`}
-        confirmLabel="Delete Team"
+        onConfirm={handleSoftDelete}
       />
       {/* Admin hard-delete */}
-      <ConfirmDialog
+      <DeleteTeamModal
         open={confirmHardDelete}
+        teamName={team.name}
+        permanent
         onClose={() => setConfirmHardDelete(false)}
-        onConfirm={() => void handleHardDelete()}
-        title="Permanently Delete Team"
-        message={`Permanently delete "${team.name}" and all its players? This cannot be undone.`}
-        confirmLabel="Permanently Delete"
+        onConfirm={handleHardDelete}
       />
       {/* Approve join request */}
       <ConfirmDialog
