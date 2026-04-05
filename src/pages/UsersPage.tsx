@@ -845,14 +845,27 @@ function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [tempPassword, setTempPassword] = useState('');
-  const [role, setRole] = useState<UserRole>('coach');
+  const [role, setRole] = useState<UserRole>('player');
+  const [teamId, setTeamId] = useState('');
+  const [leagueId, setLeagueId] = useState('');
+  const [playerId, setPlayerId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [createdPassword, setCreatedPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const teams = useTeamStore(s => s.teams);
+  const leagues = useLeagueStore(s => s.leagues);
+
+  const needsTeam = role === 'coach' || role === 'player' || role === 'parent';
+  const needsLeague = role === 'league_manager';
+  const needsPlayer = role === 'parent';
+
+  const { players: teamPlayers, loading: playersLoading } = useTeamPlayers(teamId, needsPlayer && !!teamId);
+
   function reset() {
-    setFirstName(''); setLastName(''); setEmail(''); setTempPassword(''); setRole('coach');
+    setFirstName(''); setLastName(''); setEmail(''); setTempPassword(''); setRole('player');
+    setTeamId(''); setLeagueId(''); setPlayerId('');
     setError(''); setCreatedPassword(null); setCopied(false);
   }
 
@@ -873,12 +886,23 @@ function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
     if (!firstName.trim()) { setError('First name is required'); return; }
     if (!lastName.trim()) { setError('Last name is required'); return; }
     if (tempPassword.length < 8) { setError('Temporary password must be at least 8 characters'); return; }
+    if (needsTeam && !teamId) { setError('Select a team.'); return; }
+    if (needsLeague && !leagueId) { setError('Select a league.'); return; }
+    if (needsPlayer && !playerId) { setError('Select a child (player).'); return; }
     setLoading(true);
     const displayName = `${firstName.trim()} ${lastName.trim()}`;
     try {
-      const fn = httpsCallable<{ email: string; displayName: string; role: string; tempPassword: string }, { uid: string }>(functions, 'createUserByAdmin');
-      const result = await fn({ email, displayName, role, tempPassword });
-      onCreated({ uid: result.data.uid, email, displayName, role, mustChangePassword: true, createdAt: new Date().toISOString() });
+      const fn = httpsCallable<
+        { email: string; displayName: string; role: string; tempPassword: string; teamId?: string; leagueId?: string; playerId?: string },
+        { uid: string }
+      >(functions, 'createUserByAdmin');
+      const payload: Parameters<typeof fn>[0] = { email, displayName, role, tempPassword };
+      if (needsTeam && teamId) payload.teamId = teamId;
+      if (needsLeague && leagueId) payload.leagueId = leagueId;
+      if (needsPlayer && playerId) payload.playerId = playerId;
+      const result = await fn(payload);
+      const membership: RoleMembership = { role, isPrimary: true, ...(teamId ? { teamId } : {}), ...(leagueId ? { leagueId } : {}), ...(playerId ? { playerId } : {}) };
+      onCreated({ uid: result.data.uid, email, displayName, role, memberships: [membership], mustChangePassword: true, createdAt: new Date().toISOString() });
       setCreatedPassword(tempPassword);
     } catch (e: unknown) {
       setError((e as { message?: string }).message ?? 'Something went wrong. Please try again.');
@@ -936,7 +960,39 @@ function AddUserModal({ open, onClose, onCreated }: AddUserModalProps) {
             </Button>
           </div>
         </div>
-        <Select label="Role" value={role} onChange={e => setRole(e.target.value as UserRole)} options={nonAdminRoleOptions} />
+        <Select
+          label="Role"
+          value={role}
+          onChange={e => { setRole(e.target.value as UserRole); setTeamId(''); setLeagueId(''); setPlayerId(''); setError(''); }}
+          options={nonAdminRoleOptions}
+        />
+        {needsTeam && (
+          <Select
+            label="Team"
+            value={teamId}
+            onChange={e => { setTeamId(e.target.value); setPlayerId(''); setError(''); }}
+            options={[{ value: '', label: 'Select a team…' }, ...teams.map(t => ({ value: t.id, label: t.name }))]}
+          />
+        )}
+        {needsPlayer && teamId && (
+          <Select
+            label="Child (player)"
+            value={playerId}
+            onChange={e => { setPlayerId(e.target.value); setError(''); }}
+            options={[
+              { value: '', label: playersLoading ? 'Loading…' : 'Select a child…' },
+              ...teamPlayers.map(p => ({ value: p.id, label: p.name })),
+            ]}
+          />
+        )}
+        {needsLeague && (
+          <Select
+            label="League"
+            value={leagueId}
+            onChange={e => { setLeagueId(e.target.value); setError(''); }}
+            options={[{ value: '', label: 'Select a league…' }, ...leagues.map(l => ({ value: l.id, label: l.name }))]}
+          />
+        )}
         {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
         <p className="text-xs text-gray-400">The user will be prompted to set a new password when they first sign in.</p>
         <div className="flex justify-end gap-3 pt-2">
