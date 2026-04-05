@@ -328,6 +328,188 @@ export const resetUserPassword = onCall<ResetUserPasswordData>(
   }
 );
 
+// ─── Self-service onboarding: become a coach / league manager ─────────────────
+
+interface CreateTeamAndBecomeCoachData {
+  name: string;
+  sportType: string;
+  color: string;
+  ageGroup?: string;
+  homeVenue?: string;
+  divisionLabel?: string;
+}
+
+interface CreateTeamAndBecomeCoachResult {
+  teamId: string;
+  newMembershipIndex: number;
+}
+
+const ALLOWED_SPORT_TYPES = ['soccer', 'basketball', 'baseball', 'softball', 'volleyball', 'football', 'hockey', 'tennis', 'other'];
+const ALLOWED_TEAM_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f59e0b', '#6366f1'];
+
+export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Promise<CreateTeamAndBecomeCoachResult>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+    const uid = request.auth.uid;
+    const { name, sportType, color, ageGroup, homeVenue, divisionLabel } = request.data;
+
+    if (!name?.trim()) throw new HttpsError('invalid-argument', 'Team name is required.');
+    if (name.trim().length > 100) throw new HttpsError('invalid-argument', 'Team name is too long.');
+    if (!sportType?.trim()) throw new HttpsError('invalid-argument', 'Sport type is required.');
+    if (!ALLOWED_SPORT_TYPES.includes(sportType)) throw new HttpsError('invalid-argument', 'Invalid sport type.');
+    if (color && !ALLOWED_TEAM_COLORS.includes(color)) throw new HttpsError('invalid-argument', 'Invalid team color.');
+
+    await checkRateLimit(uid, 'createTeam', 5);
+
+    try {
+      // Generate ref before transaction — ID generation is safe outside the tx.
+      const teamRef = admin.firestore().collection('teams').doc();
+      const teamId = teamRef.id;
+      const profileRef = admin.firestore().doc(`users/${uid}`);
+      const now = new Date().toISOString();
+
+      let newMembershipIndex!: number;
+      await admin.firestore().runTransaction(async (tx) => {
+        // Read profile INSIDE the transaction (SEC-27: prevents TOCTOU race).
+        const profileSnap = await tx.get(profileRef);
+        if (!profileSnap.exists) throw new HttpsError('not-found', 'User profile not found.');
+        const profile = profileSnap.data()!;
+
+        const teamDoc: Record<string, unknown> = {
+          id: teamId,
+          name: name.trim(),
+          sportType,
+          color,
+          coachId: uid,
+          coachName: profile.displayName ?? '',
+          createdBy: uid,
+          createdAt: now,
+          updatedAt: now,
+          attendanceWarningsEnabled: true,
+          ...(ageGroup ? { ageGroup } : {}),
+          ...(homeVenue ? { homeVenue: homeVenue.trim() } : {}),
+          ...(divisionLabel ? { divisionLabel: divisionLabel.trim() } : {}),
+        };
+
+        const existingMemberships: Record<string, unknown>[] = Array.isArray(profile.memberships)
+          ? profile.memberships
+          : [];
+        const newMembership = {
+          role: 'coach',
+          teamId,
+          isPrimary: existingMemberships.length === 0,
+        };
+        const newMemberships = [...existingMemberships, newMembership];
+        newMembershipIndex = newMemberships.length - 1;
+
+        const profilePatch: Record<string, unknown> = {
+          memberships: newMemberships,
+          activeContext: newMembershipIndex, // Set server-side — client write is blocked by Firestore rules after role elevation (SEC-29).
+        };
+        const nonElevatedRoles = ['player', 'parent'];
+        if (nonElevatedRoles.includes(profile.role as string)) {
+          profilePatch.role = 'coach';
+        }
+
+        tx.set(teamRef, teamDoc);
+        tx.update(profileRef, profilePatch);
+      });
+
+      console.log(`createTeamAndBecomeCoach: uid=${uid}, teamId=${teamId}`);
+      return { teamId, newMembershipIndex };
+    } catch (err: any) {
+      if (err instanceof HttpsError) throw err;
+      throw new HttpsError('internal', err?.message ?? 'Failed to create team.');
+    }
+  }
+);
+
+interface CreateLeagueAndBecomeManagerData {
+  name: string;
+  sportType?: string;
+  season?: string;
+  description?: string;
+}
+
+interface CreateLeagueAndBecomeManagerResult {
+  leagueId: string;
+  newMembershipIndex: number;
+}
+
+export const createLeagueAndBecomeManager = onCall<CreateLeagueAndBecomeManagerData, Promise<CreateLeagueAndBecomeManagerResult>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+    const uid = request.auth.uid;
+    const { name, sportType, season, description } = request.data;
+
+    if (!name?.trim()) throw new HttpsError('invalid-argument', 'League name is required.');
+    if (name.trim().length > 100) throw new HttpsError('invalid-argument', 'League name is too long.');
+    if (sportType && !ALLOWED_SPORT_TYPES.includes(sportType)) throw new HttpsError('invalid-argument', 'Invalid sport type.');
+    if (description && description.trim().length > 2000) throw new HttpsError('invalid-argument', 'Description is too long.');
+
+    await checkRateLimit(uid, 'createLeague', 3);
+
+    try {
+      // Generate ref before transaction — ID generation is safe outside the tx.
+      const leagueRef = admin.firestore().collection('leagues').doc();
+      const leagueId = leagueRef.id;
+      const profileRef = admin.firestore().doc(`users/${uid}`);
+      const now = new Date().toISOString();
+
+      let newMembershipIndex!: number;
+      await admin.firestore().runTransaction(async (tx) => {
+        // Read profile INSIDE the transaction (SEC-27: prevents TOCTOU race).
+        const profileSnap = await tx.get(profileRef);
+        if (!profileSnap.exists) throw new HttpsError('not-found', 'User profile not found.');
+        const profile = profileSnap.data()!;
+
+        const leagueDoc: Record<string, unknown> = {
+          id: leagueId,
+          name: name.trim(),
+          managedBy: uid,
+          createdAt: now,
+          updatedAt: now,
+          ...(sportType ? { sportType } : {}),
+          ...(season ? { season: season.trim() } : {}),
+          ...(description ? { description: description.trim() } : {}),
+        };
+
+        const existingMemberships: Record<string, unknown>[] = Array.isArray(profile.memberships)
+          ? profile.memberships
+          : [];
+        const newMembership = {
+          role: 'league_manager',
+          leagueId,
+          isPrimary: existingMemberships.length === 0,
+        };
+        const newMemberships = [...existingMemberships, newMembership];
+        newMembershipIndex = newMemberships.length - 1;
+
+        const profilePatch: Record<string, unknown> = {
+          memberships: newMemberships,
+          activeContext: newMembershipIndex, // Set server-side — client write is blocked by Firestore rules after role elevation (SEC-29).
+        };
+        // SEC-28: only elevate player/parent → league_manager. Coaches keep their top-level role
+        // (they gain LM access via the membership entry). Pending PM decision on whether coaches
+        // should be auto-promoted at the top-level role field.
+        const nonLmRoles = ['player', 'parent'];
+        if (nonLmRoles.includes(profile.role as string)) {
+          profilePatch.role = 'league_manager';
+        }
+
+        tx.set(leagueRef, leagueDoc);
+        tx.update(profileRef, profilePatch);
+      });
+
+      console.log(`createLeagueAndBecomeManager: uid=${uid}, leagueId=${leagueId}`);
+      return { leagueId, newMembershipIndex };
+    } catch (err: any) {
+      if (err instanceof HttpsError) throw err;
+      throw new HttpsError('internal', err?.message ?? 'Failed to create league.');
+    }
+  }
+);
+
 // ─── SMS (TD-002 — disabled until Twilio account is set up) ──────────────────
 // Uncomment and restore Twilio secrets above to re-enable.
 // export const sendSms = ...
