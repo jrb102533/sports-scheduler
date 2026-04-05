@@ -4,8 +4,7 @@
  * Tests that the red "Dispute" badge appears when and only when
  * event.disputeStatus === 'open'.
  *
- * EventCard calls useAuthStore() WITHOUT a selector (destructures result),
- * so the mock returns the state object directly.
+ * EventCard uses granular selectors: useAuthStore(s => s.user), useAuthStore(s => s.profile)
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -23,9 +22,10 @@ vi.mock('firebase/firestore', () => ({
 
 // ── Store mocks ───────────────────────────────────────────────────────────────
 
-// EventCard calls useAuthStore() with NO selector — must return object directly.
+// EventCard uses granular selectors — mock must apply the selector to the state object.
 vi.mock('@/store/useAuthStore', () => ({
-  useAuthStore: () => ({ user: null, profile: null }),
+  useAuthStore: (s: (state: { user: null; profile: null }) => unknown) =>
+    s({ user: null, profile: null }),
   getActiveMembership: vi.fn(() => null),
 }));
 
