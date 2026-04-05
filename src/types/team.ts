@@ -19,6 +19,7 @@ export interface Team {
   createdBy: string;
   ownerName: string;
   coachId?: string;
+  coachIds?: string[];  // Denormalized access list. Present on all docs after Phase 1 backfill.
   leagueIds?: string[]; // optional: ids of the leagues this team belongs to
   _managedLeagueId?: string; // internal: last league added/removed by an LM (auth hint for Firestore rules)
   isPending?: boolean;
