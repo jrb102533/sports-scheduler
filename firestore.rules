@@ -62,8 +62,10 @@ service cloud.firestore {
     // When that infrastructure is added, cover at minimum:
     //   - Coach updates team name → allowed
     //   - Coach updates team coachIds → permission-denied
+    //   - Coach updates team name + coachIds simultaneously → permission-denied
     //   - LM updates league name/season → allowed
     //   - LM updates league managerIds → permission-denied
+    //   - LM updates league name + managerIds simultaneously → permission-denied
     //   - Admin updates coachIds → allowed
     match /teams/{teamId} {
       allow read: if request.auth != null;
