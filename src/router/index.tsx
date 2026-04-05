@@ -58,7 +58,7 @@ export const router = createBrowserRouter([
       { path: 'venues', element: <VenuesPage /> },
       { path: 'invite/league', element: <InviteAcceptancePage /> },
       { path: 'home', element: <HomePage /> },
-      { path: 'parent', element: <ParentHomePage /> },
+      { path: 'parent', element: <RoleGuard roles={['player', 'parent']} redirect><ParentHomePage /></RoleGuard> },
     ],
   },
 
