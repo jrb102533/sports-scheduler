@@ -218,6 +218,25 @@ export const createUserByAdmin = onCall<CreateUserByAdminData>(
 
     await admin.firestore().doc(`users/${uid}`).set(profile);
 
+    // Keep access-list fields in sync when admin creates a user with an elevated role
+    try {
+      if (role === 'coach' && teamId) {
+        await admin.firestore().doc(`teams/${teamId}`).update({
+          coachIds: admin.firestore.FieldValue.arrayUnion(uid),
+        });
+      }
+      if (role === 'league_manager' && leagueId) {
+        await admin.firestore().doc(`leagues/${leagueId}`).update({
+          managerIds: admin.firestore.FieldValue.arrayUnion(uid),
+        });
+      }
+      if (role === 'admin') {
+        await admin.auth().setCustomUserClaims(uid, { admin: true });
+      }
+    } catch (err: unknown) {
+      console.warn('createUserByAdmin: access-list sync failed (non-fatal):', (err as Error)?.message);
+    }
+
     // When signup is restricted (SIGNUP_ALLOWLIST_ENABLED=true), add the email
     // to the allowlist so the user can reset their password and re-register if needed.
     if (process.env.SIGNUP_ALLOWLIST_ENABLED === 'true') {
@@ -232,6 +251,83 @@ export const createUserByAdmin = onCall<CreateUserByAdminData>(
     return { uid };
   }
 );
+
+// ─── Admin: backfill RBAC access-control fields ───────────────────────────────
+
+export const backfillAccessControl = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+  await assertAdmin(request.auth.uid);
+
+  const db = admin.firestore();
+  const results = { teams: 0, leagues: 0, adminClaims: 0, usersBackfilled: 0 };
+
+  // 1. Backfill team.coachIds
+  const teamsSnap = await db.collection('teams').get();
+  let batch = db.batch(); let ops = 0;
+  for (const doc of teamsSnap.docs) {
+    const data = doc.data();
+    if (Array.isArray(data.coachIds)) continue;
+    const coachSet = new Set<string>();
+    if (data.coachId) coachSet.add(data.coachId);
+    if (data.createdBy) coachSet.add(data.createdBy);
+    batch.update(doc.ref, { coachIds: [...coachSet] });
+    results.teams++;
+    if (++ops >= 499) { await batch.commit(); batch = db.batch(); ops = 0; }
+  }
+  if (ops > 0) await batch.commit();
+
+  // 2. Backfill league.managerIds
+  const leaguesSnap = await db.collection('leagues').get();
+  batch = db.batch(); ops = 0;
+  for (const doc of leaguesSnap.docs) {
+    const data = doc.data();
+    if (Array.isArray(data.managerIds)) continue;
+    const managerSet = new Set<string>();
+    if (data.managedBy) managerSet.add(data.managedBy);
+    batch.update(doc.ref, { managerIds: [...managerSet] });
+    results.leagues++;
+    if (++ops >= 499) { await batch.commit(); batch = db.batch(); ops = 0; }
+  }
+  if (ops > 0) await batch.commit();
+
+  // 3. Synthesize memberships[] for legacy user docs (no memberships array yet)
+  const usersSnap = await db.collection('users').get();
+  batch = db.batch(); ops = 0;
+  for (const doc of usersSnap.docs) {
+    const data = doc.data();
+    if (Array.isArray(data.memberships) && data.memberships.length > 0) continue;
+    const m: Record<string, unknown> = { role: data.role ?? 'player', isPrimary: true };
+    if (data.teamId) m.teamId = data.teamId;
+    if (data.playerId) m.playerId = data.playerId;
+    if (data.leagueId) m.leagueId = data.leagueId;
+    batch.update(doc.ref, { memberships: [m] });
+    results.usersBackfilled++;
+    if (++ops >= 499) { await batch.commit(); batch = db.batch(); ops = 0; }
+  }
+  if (ops > 0) await batch.commit();
+
+  // 4. Set admin custom claims (Auth SDK has no batch API — serial is correct)
+  // Re-use the same usersSnap; no second collection read needed.
+  for (const doc of usersSnap.docs) {
+    const data = doc.data();
+    const allRoles: string[] = [
+      data.role,
+      ...((data.memberships ?? []) as Array<{ role?: string }>).map(m => m.role ?? ''),
+    ];
+    if (!allRoles.includes('admin')) continue;
+    try {
+      const userRecord = await admin.auth().getUser(doc.id);
+      if (userRecord.customClaims?.admin === true) continue;
+      await admin.auth().setCustomUserClaims(doc.id, { admin: true });
+      results.adminClaims++;
+    } catch (err: unknown) {
+      console.warn(`backfillAccessControl: could not set claims for ${doc.id}:`, (err as Error)?.message);
+    }
+  }
+
+  console.log('backfillAccessControl complete:', results);
+  return results;
+});
 
 // ─── Admin: delete user ───────────────────────────────────────────────────────
 
