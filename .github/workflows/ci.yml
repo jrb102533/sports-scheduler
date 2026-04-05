@@ -34,11 +34,21 @@ jobs:
         # Once issue #92 is resolved, replace with: npm run lint -- --max-warnings 0
         run: npm run lint -- --max-warnings 600
 
-      - name: Check Zustand action deps
-        # Catches the pattern: useXxxStore(s => s.action) result used in a
-        # useEffect/useCallback/useMemo dep array. This causes stale closures
-        # and infinite render loops. See GitHub issue #192.
-        # Fix: use useXxxStore.getState().action() inside the effect body.
+      - name: Check Zustand render-loop anti-patterns
+        # Two checks that prevent React error #185 (infinite render loop / site outage):
+        #
+        # 1. Action-in-deps: useXxxStore(s => s.action) result placed in a
+        #    useEffect/useCallback/useMemo dep array. Actions have unstable refs
+        #    and re-trigger effects on every render -> infinite loop.
+        #    Fix: use useXxxStore.getState().action() inside the effect body.
+        #
+        # 2. No-selector bare call: useXxxStore() with no selector subscribes the
+        #    component to the ENTIRE store. Any store write causes a re-render.
+        #    Combined with a mutating effect -> infinite loop (closes issue #192).
+        #    Fix: use useXxxStore(s => s.field) to select only what you need.
+        #
+        # Pre-existing violations are allowlisted in scripts/lint-zustand-deps.js.
+        # Remove an allowlist entry once the source file is fixed.
         run: npm run lint:zustand-deps
 
       - name: Run frontend tests

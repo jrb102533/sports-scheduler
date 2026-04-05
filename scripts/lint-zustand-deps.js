@@ -2,26 +2,28 @@
 /**
  * lint-zustand-deps.js
  *
- * Detects the dangerous pattern where a Zustand store action (a function selector)
- * is assigned via `useXxxStore(s => s.someAction)` and then used in a useEffect
- * (or useCallback/useMemo) dependency array.
+ * Two related Zustand anti-pattern checks that can cause React error #185
+ * (infinite render loop / complete site outage):
  *
- * Why this matters: store actions accessed this way can cause stale-closure bugs
- * and — when combined with reactive dep arrays — render loops. The confirmed
- * instance (SeasonDashboard.tsx subscribeVenues, issue #192) triggered an
- * infinite render loop in staging.
+ * CHECK 1 — Action-in-deps (original check):
+ *   Detects where a Zustand store action is selected via
+ *   `useXxxStore(s => s.someAction)` and then placed in a useEffect/useCallback/
+ *   useMemo dependency array. Actions have unstable references and re-trigger
+ *   effects on every render, causing infinite loops.
  *
- * The script maintains an ALLOWLIST of pre-existing violations so it blocks only
- * NEW occurrences without failing CI on debt that predates this check.
- * Remove an entry from the allowlist once the source file is fixed.
+ * CHECK 2 — No-selector bare call (new check for issue #192):
+ *   Detects `useXxxStore()` called with NO selector argument at all, e.g.:
+ *     const { fetchSeasons } = useSeasonStore();   // BAD — subscribes to entire store
+ *   This subscribes the component to the entire store state. Any store mutation
+ *   (from any field) re-renders the component. When combined with a useEffect
+ *   that mutates the store, this creates an infinite render loop.
  *
- * Scope: flags selectors returning store ACTIONS (functions matching action naming
- * conventions: subscribe, fetch*, load*, add*, update*, delete*, soft*, create*,
- * remove*, set*, reset*, clear*, save*, init*, refresh*, sync*). Data state
- * fields (teams, events, user, loading, etc.) are intentionally excluded.
+ * Both checks maintain an ALLOWLIST of pre-existing violations so CI blocks only
+ * NEW occurrences. Remove entries from the allowlist once the source file is fixed.
  *
- * Safe fix: call `useXxxStore.getState().action()` inside the effect body so the
- * function reference never enters the dep array.
+ * Safe fix for both patterns:
+ *   - Data state:  const value = useXxxStore(s => s.field)
+ *   - Actions:     useXxxStore.getState().action() inside the effect body
  *
  * Usage:
  *   node scripts/lint-zustand-deps.js [--dir src]
@@ -36,12 +38,11 @@ const ROOT_DIR = process.argv.includes('--dir')
   : 'src';
 
 // ---------------------------------------------------------------------------
-// ALLOWLIST — pre-existing violations as of GitHub issue #192.
+// CHECK 1 ALLOWLIST — action-in-deps pre-existing violations (issue #192).
 // Format: "<relative-file-path>:<varName>"
-// Each entry silences exactly one (file, variable) pair.
-// Remove the entry once the source file is fixed.
+// Remove an entry once the source file is fixed.
 // ---------------------------------------------------------------------------
-const ALLOWLIST = new Set([
+const ACTION_DEPS_ALLOWLIST = new Set([
   // TODO #192: migrate these to useXxxStore.getState().action() pattern
   'src/pages/CoachAvailabilityPage.tsx:loadCollection',
   'src/pages/LeagueDetailPage.tsx:fetchSeasons',
@@ -52,6 +53,54 @@ const ALLOWLIST = new Set([
   'src/pages/SeasonDashboard.tsx:subscribeVenues',
   'src/pages/TeamDetailPage.tsx:loadAvailability',
   'src/pages/VenuesPage.tsx:subscribe',
+]);
+
+// ---------------------------------------------------------------------------
+// CHECK 2 ALLOWLIST — no-selector bare calls pre-existing as of issue #192.
+// Format: "<relative-file-path>:<line-number>"
+// Each entry silences exactly one (file, line) pair.
+// Remove the entry once the source file is migrated to selector form.
+// ---------------------------------------------------------------------------
+const NO_SELECTOR_ALLOWLIST = new Set([
+  // TODO #192: migrate these to useXxxStore(s => s.field) or getState() pattern
+  'src/components/attendance/AttendanceTracker.tsx:19',
+  'src/components/roster/PlayerAvailabilityModal.tsx:30',
+  'src/components/roster/AbsenceFormModal.tsx:28',
+  'src/components/roster/MarkAbsenceModal.tsx:40',
+  'src/components/roster/PlayerStatusModal.tsx:24',
+  'src/components/roster/RosterTable.tsx:78',
+  'src/components/roster/PlayerForm.tsx:66',
+  'src/components/auth/ProtectedRoute.tsx:9',
+  'src/components/layout/TopBar.tsx:13',
+  'src/components/layout/NotificationPanel.tsx:7',
+  'src/components/layout/Sidebar.tsx:51',
+  'src/components/leagues/AvailabilityStatusPanel.tsx:104',
+  'src/components/leagues/CoachAvailabilityModal.tsx:73',
+  'src/components/leagues/CoachAvailabilityForm.tsx:90',
+  'src/components/leagues/ScheduleWizardModal.tsx:358',
+  'src/components/leagues/ScheduleWizardModal.tsx:359',
+  'src/components/teams/TeamForm.tsx:32',
+  'src/components/events/EventForm.tsx:91',
+  'src/components/events/EventForm.tsx:95',
+  'src/components/events/SnackVolunteerForm.tsx:14',
+  'src/components/events/ImportEventsModal.tsx:152',
+  'src/layouts/MainLayout.tsx:40',
+  'src/pages/LoginPage.tsx:11',
+  'src/pages/SettingsPage.tsx:15',
+  'src/pages/ProfilePage.tsx:31',
+  'src/pages/TeamsPage.tsx:20',
+  'src/pages/NotificationsPage.tsx:11',
+  'src/pages/LeaguesPage.tsx:15',
+  'src/pages/LeaguesPage.tsx:16',
+  'src/pages/LeaguesPage.tsx:17',
+  'src/pages/TeamDetailPage.tsx:49',
+  'src/pages/TeamDetailPage.tsx:51',
+  'src/pages/StandingsPage.tsx:11',
+  'src/pages/LeagueDetailPage.tsx:33',
+  'src/pages/LeagueDetailPage.tsx:34',
+  'src/pages/SignupPage.tsx:19',
+  'src/pages/CoachAvailabilityPage.tsx:21',
+  'src/pages/VenuesPage.tsx:491',
 ]);
 
 /**
@@ -114,7 +163,7 @@ function walkFiles(dir) {
 }
 
 /**
- * Scan one file for the dangerous pattern (line-level heuristic, no AST).
+ * CHECK 1: Scan one file for the action-in-deps pattern.
  *
  * 1. Find `const <varName> = use<Xxx>Store(s => s.<actionField>)` lines where
  *    <actionField> matches action naming conventions.
@@ -126,7 +175,7 @@ function walkFiles(dir) {
  * @param {string} source
  * @returns {Array<{file:string, relPath:string, depLine:number, selectorLine:number, varName:string, storeCall:string, allowlisted:boolean}>}
  */
-function scanFile(filePath, relPath, source) {
+function scanActionDeps(filePath, relPath, source) {
   const lines = source.split('\n');
   const violations = [];
 
@@ -167,9 +216,58 @@ function scanFile(filePath, relPath, source) {
           selectorLine: sel.lineNumber,
           varName: dep,
           storeCall: `${sel.storeName}(s => s.${sel.field})`,
-          allowlisted: ALLOWLIST.has(allowlistKey),
+          allowlisted: ACTION_DEPS_ALLOWLIST.has(allowlistKey),
         });
       }
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * CHECK 2: Scan one file for no-selector bare store calls.
+ *
+ * Detects: useXxxStore() with no arguments (or only whitespace).
+ * These subscribe the component to the entire store and cause unnecessary
+ * re-renders on every state change — the root cause of React error #185.
+ *
+ * Excludes test files (.test.ts, .test.tsx, .spec.ts, .spec.tsx) and __mocks__
+ * since test infrastructure legitimately intercepts store calls.
+ *
+ * @param {string} filePath  Absolute path
+ * @param {string} relPath   Path relative to cwd (used for allowlist lookup)
+ * @param {string} source
+ * @returns {Array<{file:string, relPath:string, lineNumber:number, match:string, allowlisted:boolean}>}
+ */
+function scanNoSelector(filePath, relPath, source) {
+  // Skip test and mock files — they legitimately use bare calls for mocking
+  if (
+    /\.(test|spec)\.(tsx?|jsx?)$/.test(filePath) ||
+    filePath.includes('__mocks__')
+  ) {
+    return [];
+  }
+
+  const lines = source.split('\n');
+  const violations = [];
+
+  // Match: useXxxStore() — zero or whitespace-only args
+  // Excludes: useXxxStore(s => ...) and useXxxStore.getState()
+  const noSelectorPattern = /\buse[A-Z][a-zA-Z]*Store\(\s*\)/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(noSelectorPattern);
+    if (m) {
+      const allowlistKey = `${relPath}:${i + 1}`;
+      violations.push({
+        file: filePath,
+        relPath,
+        lineNumber: i + 1,
+        match: m[0],
+        line: lines[i].trim(),
+        allowlisted: NO_SELECTOR_ALLOWLIST.has(allowlistKey),
+      });
     }
   }
 
@@ -180,53 +278,85 @@ function scanFile(filePath, relPath, source) {
 
 const cwd = process.cwd();
 const files = walkFiles(ROOT_DIR);
-const allViolations = [];
+
+const allActionDepsViolations = [];
+const allNoSelectorViolations = [];
 
 for (const file of files) {
   const source = readFileSync(file, 'utf8');
   const relPath = file.startsWith(cwd + '/') ? file.slice(cwd.length + 1) : file;
-  const violations = scanFile(file, relPath, source);
-  allViolations.push(...violations);
+  allActionDepsViolations.push(...scanActionDeps(file, relPath, source));
+  allNoSelectorViolations.push(...scanNoSelector(file, relPath, source));
 }
 
-const newViolations = allViolations.filter(v => !v.allowlisted);
-const allowlistedCount = allViolations.length - newViolations.length;
+const newActionDepsViolations = allActionDepsViolations.filter(v => !v.allowlisted);
+const allowlistedActionDepsCount = allActionDepsViolations.length - newActionDepsViolations.length;
 
-if (allViolations.length === 0) {
-  console.log('lint-zustand-deps: OK — no Zustand action dep patterns found.');
-  process.exit(0);
-}
+const newNoSelectorViolations = allNoSelectorViolations.filter(v => !v.allowlisted);
+const allowlistedNoSelectorCount = allNoSelectorViolations.length - newNoSelectorViolations.length;
 
-if (newViolations.length === 0) {
-  console.log(
-    `lint-zustand-deps: OK — ${allowlistedCount} allowlisted violation(s) (pre-existing debt, tracked in issue #192).`
-  );
+const totalNew = newActionDepsViolations.length + newNoSelectorViolations.length;
+const totalAllowlisted = allowlistedActionDepsCount + allowlistedNoSelectorCount;
+
+// ---- Report ----
+
+if (totalNew === 0) {
+  if (totalAllowlisted > 0) {
+    console.log(
+      `lint-zustand-deps: OK — ${totalAllowlisted} allowlisted violation(s) (pre-existing debt, tracked in issue #192).`
+    );
+  } else {
+    console.log('lint-zustand-deps: OK — no Zustand anti-patterns found.');
+  }
   process.exit(0);
 }
 
 // Report new violations
 console.error(
-  `lint-zustand-deps: FAIL — ${newViolations.length} new Zustand action dep violation(s) found.\n`
-);
-console.error(
-  'Store actions accessed via selector (useStore(s => s.action)) must not appear\n' +
-  'in useEffect/useCallback/useMemo dependency arrays. This creates stale-closure\n' +
-  'risk and can cause infinite render loops.\n\n' +
-  'Fix: call useXxxStore.getState().action() inside the effect body instead,\n' +
-  'so the function reference never enters the dep array.\n'
+  `lint-zustand-deps: FAIL — ${totalNew} new Zustand anti-pattern violation(s) found.\n`
 );
 
-for (const v of newViolations) {
+if (newActionDepsViolations.length > 0) {
+  console.error('── CHECK 1: Action-in-deps violations ──────────────────────────────────');
   console.error(
-    `  ${v.file}\n` +
-    `    Line ${v.selectorLine}: const ${v.varName} = ${v.storeCall}\n` +
-    `    Line ${v.depLine}:   ${v.varName} appears in hook dependency array\n`
+    'Store actions accessed via selector (useStore(s => s.action)) must not appear\n' +
+    'in useEffect/useCallback/useMemo dependency arrays. This creates stale-closure\n' +
+    'risk and can cause infinite render loops.\n\n' +
+    'Fix: call useXxxStore.getState().action() inside the effect body instead,\n' +
+    'so the function reference never enters the dep array.\n'
   );
+
+  for (const v of newActionDepsViolations) {
+    console.error(
+      `  ${v.file}\n` +
+      `    Line ${v.selectorLine}: const ${v.varName} = ${v.storeCall}\n` +
+      `    Line ${v.depLine}:   ${v.varName} appears in hook dependency array\n`
+    );
+  }
 }
 
-if (allowlistedCount > 0) {
+if (newNoSelectorViolations.length > 0) {
+  console.error('── CHECK 2: No-selector bare store call violations ─────────────────────');
   console.error(
-    `\n(${allowlistedCount} pre-existing violation(s) suppressed via allowlist — tracked in issue #192)`
+    'useXxxStore() called with no selector subscribes the component to the ENTIRE\n' +
+    'store. Any store mutation causes a re-render. Combined with a useEffect that\n' +
+    'mutates the store, this creates an infinite render loop (React error #185).\n\n' +
+    'Fix: select only the fields you need:\n' +
+    '  const value = useXxxStore(s => s.field)       // for data\n' +
+    '  useXxxStore.getState().action()                // for actions inside effects\n'
+  );
+
+  for (const v of newNoSelectorViolations) {
+    console.error(
+      `  ${v.file}\n` +
+      `    Line ${v.lineNumber}: ${v.line}\n`
+    );
+  }
+}
+
+if (totalAllowlisted > 0) {
+  console.error(
+    `\n(${totalAllowlisted} pre-existing violation(s) suppressed via allowlist — tracked in issue #192)`
   );
 }
 
