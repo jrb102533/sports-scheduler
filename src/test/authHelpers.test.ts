@@ -10,7 +10,7 @@ vi.mock('@/lib/buildInfo', () => ({
   buildInfo: { version: 'test', sha: 'test', time: '', branch: '', pr: null, env: 'development' },
 }));
 
-import { hasRole, canEdit, isReadOnly, getAccessibleTeamIds, getMemberships, getActiveMembership } from '@/store/useAuthStore';
+import { hasRole, canEdit, isReadOnly, getAccessibleTeamIds, getMemberships, getActiveMembership, isCoachOfTeam, isManagerOfLeague, isMemberOfTeam } from '@/store/useAuthStore';
 import type { UserProfile, Team } from '@/types';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -311,6 +311,172 @@ describe('isReadOnly (multi-membership)', () => {
       ],
     });
     expect(isReadOnly(profile)).toBe(true);
+  });
+});
+
+// ── isCoachOfTeam ─────────────────────────────────────────────────────────────
+
+describe('isCoachOfTeam', () => {
+  it('returns false for null profile', () => {
+    expect(isCoachOfTeam(null, 'team1')).toBe(false);
+  });
+
+  it('returns true for admin regardless of teamId', () => {
+    expect(isCoachOfTeam(makeProfile({ role: 'admin' }), 'any-team')).toBe(true);
+  });
+
+  it('returns true when membership matches role=coach and teamId', () => {
+    const profile = makeProfile({
+      role: 'coach',
+      memberships: [{ role: 'coach', teamId: 'team1', isPrimary: true }],
+    });
+    expect(isCoachOfTeam(profile, 'team1')).toBe(true);
+  });
+
+  it('returns false when coach membership teamId does not match', () => {
+    const profile = makeProfile({
+      role: 'coach',
+      memberships: [{ role: 'coach', teamId: 'team-A', isPrimary: true }],
+    });
+    expect(isCoachOfTeam(profile, 'team-B')).toBe(false);
+  });
+
+  it('returns false for a player membership even if teamId matches', () => {
+    const profile = makeProfile({
+      role: 'player',
+      memberships: [{ role: 'player', teamId: 'team1', isPrimary: true }],
+    });
+    expect(isCoachOfTeam(profile, 'team1')).toBe(false);
+  });
+
+  it('returns true when one of multiple memberships matches', () => {
+    const profile = makeProfile({
+      role: 'coach',
+      memberships: [
+        { role: 'coach', teamId: 'team-A', isPrimary: true },
+        { role: 'parent', teamId: 'team-B' },
+      ],
+    });
+    expect(isCoachOfTeam(profile, 'team-A')).toBe(true);
+    expect(isCoachOfTeam(profile, 'team-B')).toBe(false);
+  });
+
+  it('uses legacy scalar teamId fallback when memberships absent', () => {
+    const profile = makeProfile({ role: 'coach', teamId: 'team1' });
+    expect(isCoachOfTeam(profile, 'team1')).toBe(true);
+    expect(isCoachOfTeam(profile, 'other-team')).toBe(false);
+  });
+});
+
+// ── isManagerOfLeague ─────────────────────────────────────────────────────────
+
+describe('isManagerOfLeague', () => {
+  it('returns false for null profile', () => {
+    expect(isManagerOfLeague(null, 'league1')).toBe(false);
+  });
+
+  it('returns true for admin regardless of leagueId', () => {
+    expect(isManagerOfLeague(makeProfile({ role: 'admin' }), 'any-league')).toBe(true);
+  });
+
+  it('returns true when membership matches role=league_manager and leagueId', () => {
+    const profile = makeProfile({
+      role: 'league_manager',
+      memberships: [{ role: 'league_manager', leagueId: 'league1', isPrimary: true }],
+    });
+    expect(isManagerOfLeague(profile, 'league1')).toBe(true);
+  });
+
+  it('returns false when league_manager membership leagueId does not match', () => {
+    const profile = makeProfile({
+      role: 'league_manager',
+      memberships: [{ role: 'league_manager', leagueId: 'league-A', isPrimary: true }],
+    });
+    expect(isManagerOfLeague(profile, 'league-B')).toBe(false);
+  });
+
+  it('returns false for a coach membership even if leagueId were set', () => {
+    const profile = makeProfile({
+      role: 'coach',
+      memberships: [{ role: 'coach', teamId: 'team1', isPrimary: true }],
+    });
+    expect(isManagerOfLeague(profile, 'league1')).toBe(false);
+  });
+
+  it('returns true when one of multiple memberships matches', () => {
+    const profile = makeProfile({
+      role: 'league_manager',
+      memberships: [
+        { role: 'league_manager', leagueId: 'league-A', isPrimary: true },
+        { role: 'coach', teamId: 'team-B' },
+      ],
+    });
+    expect(isManagerOfLeague(profile, 'league-A')).toBe(true);
+    expect(isManagerOfLeague(profile, 'league-B')).toBe(false);
+  });
+
+  it('uses legacy scalar leagueId fallback when memberships absent', () => {
+    const profile = makeProfile({ role: 'league_manager', leagueId: 'league1' });
+    expect(isManagerOfLeague(profile, 'league1')).toBe(true);
+    expect(isManagerOfLeague(profile, 'other-league')).toBe(false);
+  });
+});
+
+// ── isMemberOfTeam ────────────────────────────────────────────────────────────
+
+describe('isMemberOfTeam', () => {
+  it('returns false for null profile', () => {
+    expect(isMemberOfTeam(null, 'team1')).toBe(false);
+  });
+
+  it('returns true for admin regardless of teamId', () => {
+    expect(isMemberOfTeam(makeProfile({ role: 'admin' }), 'any-team')).toBe(true);
+  });
+
+  it('returns true when any membership teamId matches', () => {
+    const profile = makeProfile({
+      role: 'player',
+      memberships: [{ role: 'player', teamId: 'team1', isPrimary: true }],
+    });
+    expect(isMemberOfTeam(profile, 'team1')).toBe(true);
+  });
+
+  it('returns false when no membership teamId matches', () => {
+    const profile = makeProfile({
+      role: 'player',
+      memberships: [{ role: 'player', teamId: 'team-A', isPrimary: true }],
+    });
+    expect(isMemberOfTeam(profile, 'team-B')).toBe(false);
+  });
+
+  it('works across all role types — coach, parent, player', () => {
+    for (const role of ['coach', 'parent', 'player'] as const) {
+      const profile = makeProfile({
+        role,
+        memberships: [{ role, teamId: 'team1', isPrimary: true }],
+      });
+      expect(isMemberOfTeam(profile, 'team1')).toBe(true);
+      expect(isMemberOfTeam(profile, 'other-team')).toBe(false);
+    }
+  });
+
+  it('returns true when one of multiple memberships matches', () => {
+    const profile = makeProfile({
+      role: 'coach',
+      memberships: [
+        { role: 'coach', teamId: 'team-A', isPrimary: true },
+        { role: 'parent', teamId: 'team-B' },
+      ],
+    });
+    expect(isMemberOfTeam(profile, 'team-A')).toBe(true);
+    expect(isMemberOfTeam(profile, 'team-B')).toBe(true);
+    expect(isMemberOfTeam(profile, 'team-C')).toBe(false);
+  });
+
+  it('uses legacy scalar teamId fallback when memberships absent', () => {
+    const profile = makeProfile({ role: 'player', teamId: 'team1' });
+    expect(isMemberOfTeam(profile, 'team1')).toBe(true);
+    expect(isMemberOfTeam(profile, 'other-team')).toBe(false);
   });
 });
 
