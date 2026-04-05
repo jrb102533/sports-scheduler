@@ -51,6 +51,10 @@ vi.mock('@/store/useAuthStore', () => ({
     if (!profile) return false;
     return roles.includes(profile.role);
   }),
+  isManagerOfLeague: vi.fn((profile: UserProfile | null) => {
+    if (!profile) return false;
+    return profile.role === 'league_manager' || profile.role === 'admin';
+  }),
 }));
 
 // Stable team fixtures — defined inside the factory so the same array reference

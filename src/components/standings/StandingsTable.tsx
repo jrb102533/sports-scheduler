@@ -6,7 +6,7 @@ import { Pencil } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useEventStore } from '@/store/useEventStore';
-import { useAuthStore, hasRole } from '@/store/useAuthStore';
+import { useAuthStore, hasRole, isManagerOfLeague } from '@/store/useAuthStore';
 import { computeStandings, firestoreToStandingRow } from '@/lib/standingsUtils';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
@@ -278,7 +278,10 @@ export function StandingsTable({ teamIds, leagueId, seasonId }: StandingsTablePr
     return unsub;
   }, [useFirestore, leagueId, seasonId, allTeams]);
 
-  const canOverride = useFirestore && hasRole(profile, 'admin', 'league_manager');
+  const canOverride = useFirestore && (
+    hasRole(profile, 'admin') ||
+    (leagueId != null && isManagerOfLeague(profile, leagueId))
+  );
   const [modalState, setModalState] = useState<OverrideModalState | null>(null);
 
   // ── Firestore path ──

@@ -17,7 +17,7 @@ import { useEventStore } from '@/store/useEventStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useAvailabilityStore } from '@/store/useAvailabilityStore';
 import { RoleGuard } from '@/components/auth/RoleGuard';
-import { useAuthStore, canEdit } from '@/store/useAuthStore';
+import { useAuthStore, canEdit, hasRole, isCoachOfTeam } from '@/store/useAuthStore';
 import { SPORT_TYPE_LABELS, AGE_GROUP_LABELS } from '@/constants';
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { db, functions } from '@/lib/firebase';
@@ -75,7 +75,7 @@ export function TeamDetailPage() {
   const [pendingReject, setPendingReject] = useState<JoinRequest | null>(null);
 
   const canSeeRequests = profile && team && (
-    profile.role === 'admin' ||
+    isCoachOfTeam(profile, team.id) ||
     team.createdBy === profile.uid ||
     team.coachId === profile.uid
   );
@@ -134,9 +134,9 @@ export function TeamDetailPage() {
     .filter(e => e.teamIds.includes(teamId))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
-  const isAdmin = profile?.role === 'admin';
-  const isOwner = !isAdmin && (
-    team?.createdBy === profile?.uid || team?.coachId === profile?.uid
+  const isAdminUser = hasRole(profile, 'admin');
+  const isOwner = !isAdminUser && (
+    team?.createdBy === profile?.uid || isCoachOfTeam(profile, team?.id ?? '')
   );
 
   // Attendance summary: events with attendance recorded
@@ -274,7 +274,7 @@ export function TeamDetailPage() {
             <Trash2 size={14} /> Delete
           </Button>
         )}
-        {isAdmin && (
+        {isAdminUser && (
           <Button variant="danger" size="sm" onClick={() => setConfirmHardDelete(true)}>
             <Trash2 size={14} /> Delete
           </Button>
@@ -333,7 +333,7 @@ export function TeamDetailPage() {
             <div className="space-y-2">
               {teamEvents.map(e => {
                 // For parents: show attendance badge on past events with recorded attendance
-                const isParent = profile?.role === 'parent';
+                const isParent = hasRole(profile, 'parent');
                 let attendanceBadge: React.ReactNode = null;
                 if (isParent && e.attendanceRecorded && e.attendance && e.attendance.length > 0) {
                   // Find the tracked player: prefer profile.playerId, fall back to all players

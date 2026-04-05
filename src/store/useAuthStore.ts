@@ -315,6 +315,30 @@ export function isReadOnly(profile: UserProfile | null): boolean {
   return getMemberships(profile).every(m => m.role === 'player' || m.role === 'parent');
 }
 
+/** Returns true if the user is a coach of the given team. Admin bypass included. */
+export function isCoachOfTeam(profile: UserProfile | null, teamId: string): boolean {
+  if (!profile) return false;
+  const memberships = getMemberships(profile);
+  if (memberships.some(m => m.role === 'admin')) return true;
+  return memberships.some(m => m.role === 'coach' && m.teamId === teamId);
+}
+
+/** Returns true if the user is a manager of the given league. Admin bypass included. */
+export function isManagerOfLeague(profile: UserProfile | null, leagueId: string): boolean {
+  if (!profile) return false;
+  const memberships = getMemberships(profile);
+  if (memberships.some(m => m.role === 'admin')) return true;
+  return memberships.some(m => m.role === 'league_manager' && m.leagueId === leagueId);
+}
+
+/** Returns true if the user has any membership in the given team. Admin bypass included. */
+export function isMemberOfTeam(profile: UserProfile | null, teamId: string): boolean {
+  if (!profile) return false;
+  const memberships = getMemberships(profile);
+  if (memberships.some(m => m.role === 'admin')) return true;
+  return memberships.some(m => m.teamId === teamId);
+}
+
 /**
  * Returns the set of team IDs the user is allowed to see across ALL memberships.
  * Returns null for users with any admin membership (meaning all teams).
