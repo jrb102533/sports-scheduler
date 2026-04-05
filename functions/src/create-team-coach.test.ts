@@ -19,7 +19,7 @@
  *       newMembershipIndex=1, role unchanged, isPrimary:false on new membership
  *   6.  Happy path — parent user: role elevated to 'coach'
  *   7.  Happy path — admin user: role unchanged (stays 'admin')
- *   8.  Optional fields (ageGroup, homeVenue, divisionLabel) present when provided;
+ *   8.  Optional fields (ageGroup, homeVenue) present when provided;
  *       absent when omitted
  *   9.  Both coachId and createdBy set to caller uid
  */
@@ -244,7 +244,6 @@ type CreateTeamData = {
   color?: string;
   ageGroup?: string;
   homeVenue?: string;
-  divisionLabel?: string;
 };
 
 const VALID_BASE: CreateTeamData = { name: 'Test Team', sportType: 'soccer', color: '#3b82f6' };
@@ -500,21 +499,19 @@ describe('createTeamAndBecomeCoach — admin user', () => {
 
 describe('createTeamAndBecomeCoach — optional fields', () => {
 
-  it('(8) ageGroup, homeVenue, divisionLabel present in team doc when provided', async () => {
+  it('(8) ageGroup and homeVenue present in team doc when provided', async () => {
     const result = await fn(makeRequest('player1', {
       name: 'Thunder FC',
       ageGroup: 'U12',
       homeVenue: 'Riverside Park',
-      divisionLabel: 'Division 1',
     })) as { teamId: string; newMembershipIndex: number };
 
     const team = _store.get(`teams/${result.teamId}`);
     expect(team?.ageGroup).toBe('U12');
     expect(team?.homeVenue).toBe('Riverside Park');
-    expect(team?.divisionLabel).toBe('Division 1');
   });
 
-  it('(8) ageGroup, homeVenue, divisionLabel absent from team doc when not provided', async () => {
+  it('(8) ageGroup and homeVenue absent from team doc when not provided', async () => {
     const result = await fn(makeRequest('player1', { name: 'Thunder FC' })) as {
       teamId: string;
       newMembershipIndex: number;
@@ -523,7 +520,6 @@ describe('createTeamAndBecomeCoach — optional fields', () => {
     const team = _store.get(`teams/${result.teamId}`);
     expect(team).not.toHaveProperty('ageGroup');
     expect(team).not.toHaveProperty('homeVenue');
-    expect(team).not.toHaveProperty('divisionLabel');
   });
 });
 
