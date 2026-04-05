@@ -49,6 +49,7 @@ export function ProfilePage() {
   const activeIndex = profile?.activeContext ?? 0;
 
   const isPlayerOrParent = profile?.role === 'player' || profile?.role === 'parent';
+  const canEditRoles = !isPlayerOrParent;
   const linkedPlayer = profile?.playerId ? players.find(p => p.id === profile.playerId) : undefined;
   const linkedTeam = linkedPlayer
     ? teams.find(t => t.id === linkedPlayer.teamId)
@@ -169,7 +170,7 @@ export function ProfilePage() {
         <Card className="p-4 sm:p-6 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Shield size={16} /> My Roles</h3>
-            {!editingRoles && (
+            {canEditRoles && !editingRoles && (
               <button
                 onClick={openRoleEdit}
                 className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
@@ -178,6 +179,9 @@ export function ProfilePage() {
               </button>
             )}
           </div>
+          {!canEditRoles && !editingRoles && (
+            <p className="text-xs text-gray-400">Roles are assigned by your league administrator.</p>
+          )}
 
           {editingRoles ? (
             <div className="space-y-4">
