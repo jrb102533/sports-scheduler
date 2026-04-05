@@ -136,7 +136,9 @@ export function TeamDetailPage() {
 
   const isAdminUser = hasRole(profile, 'admin');
   const isOwner = !isAdminUser && (
-    team?.createdBy === profile?.uid || isCoachOfTeam(profile, team?.id ?? '')
+    team?.createdBy === profile?.uid ||
+    team?.coachId === profile?.uid ||        // legacy fallback: coachId before memberships backfill
+    isCoachOfTeam(profile, team?.id ?? '')
   );
 
   // Attendance summary: events with attendance recorded

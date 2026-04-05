@@ -51,9 +51,10 @@ vi.mock('@/store/useAuthStore', () => ({
     if (!profile) return false;
     return roles.includes(profile.role);
   }),
-  isManagerOfLeague: vi.fn((profile: UserProfile | null) => {
+  isManagerOfLeague: vi.fn((profile: UserProfile | null, leagueId: string) => {
     if (!profile) return false;
-    return profile.role === 'league_manager' || profile.role === 'admin';
+    if (profile.role === 'admin') return true;
+    return profile.role === 'league_manager' && profile.leagueId === leagueId;
   }),
 }));
 
@@ -117,6 +118,7 @@ function lmProfile(): UserProfile {
     email: 'lm@example.com',
     displayName: 'LM',
     role: 'league_manager',
+    leagueId: 'league-1',  // matches the leagueId prop used in all Firestore-path tests
     createdAt: '2024-01-01T00:00:00.000Z',
   } as UserProfile;
 }
