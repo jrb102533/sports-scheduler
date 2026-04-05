@@ -432,7 +432,6 @@ interface CreateTeamAndBecomeCoachData {
   color: string;
   ageGroup?: string;
   homeVenue?: string;
-  divisionLabel?: string;
 }
 
 interface CreateTeamAndBecomeCoachResult {
@@ -447,7 +446,7 @@ export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Pro
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
     const uid = request.auth.uid;
-    const { name, sportType, color, ageGroup, homeVenue, divisionLabel } = request.data;
+    const { name, sportType, color, ageGroup, homeVenue } = request.data;
 
     if (!name?.trim()) throw new HttpsError('invalid-argument', 'Team name is required.');
     if (name.trim().length > 100) throw new HttpsError('invalid-argument', 'Team name is too long.');
@@ -485,7 +484,6 @@ export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Pro
           attendanceWarningsEnabled: true,
           ...(ageGroup ? { ageGroup } : {}),
           ...(homeVenue ? { homeVenue: homeVenue.trim() } : {}),
-          ...(divisionLabel ? { divisionLabel: divisionLabel.trim() } : {}),
         };
 
         const existingMemberships: Record<string, unknown>[] = Array.isArray(profile.memberships)

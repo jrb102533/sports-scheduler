@@ -40,7 +40,6 @@ export function BecomeCoachModal({ open, onClose }: BecomeCoachModalProps) {
   const [color, setColor] = useState(TEAM_COLORS[0]);
   const [ageGroup, setAgeGroup] = useState('');
   const [homeVenue, setHomeVenue] = useState('');
-  const [divisionLabel, setDivisionLabel] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -53,7 +52,6 @@ export function BecomeCoachModal({ open, onClose }: BecomeCoachModalProps) {
       setColor(TEAM_COLORS[0]);
       setAgeGroup('');
       setHomeVenue('');
-      setDivisionLabel('');
       setNameError(null);
       setError(null);
     }
@@ -80,7 +78,6 @@ export function BecomeCoachModal({ open, onClose }: BecomeCoachModalProps) {
           color: string;
           ageGroup?: AgeGroup;
           homeVenue?: string;
-          divisionLabel?: string;
         },
         CreateTeamResult
       >(functions, 'createTeamAndBecomeCoach');
@@ -91,7 +88,6 @@ export function BecomeCoachModal({ open, onClose }: BecomeCoachModalProps) {
         color,
         ageGroup: (ageGroup as AgeGroup) || undefined,
         homeVenue: homeVenue.trim() || undefined,
-        divisionLabel: divisionLabel.trim() || undefined,
       });
 
       // activeContext is set server-side in the CF (client write is blocked by Firestore rules post role-elevation)
@@ -158,13 +154,6 @@ export function BecomeCoachModal({ open, onClose }: BecomeCoachModalProps) {
             label="Home Venue"
             value={homeVenue}
             onChange={e => setHomeVenue(e.target.value)}
-            disabled={saving}
-          />
-
-          <Input
-            label="Division"
-            value={divisionLabel}
-            onChange={e => setDivisionLabel(e.target.value)}
             disabled={saving}
           />
 
