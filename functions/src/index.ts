@@ -381,6 +381,7 @@ export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Pro
           sportType,
           color,
           coachId: uid,
+          coachIds: [uid], // Denormalized access list for membership-scoped Firestore rules
           coachName: profile.displayName ?? '',
           createdBy: uid,
           createdAt: now,
@@ -467,6 +468,7 @@ export const createLeagueAndBecomeManager = onCall<CreateLeagueAndBecomeManagerD
           id: leagueId,
           name: name.trim(),
           managedBy: uid,
+          managerIds: [uid], // Denormalized access list for membership-scoped Firestore rules
           createdAt: now,
           updatedAt: now,
           ...(sportType ? { sportType } : {}),

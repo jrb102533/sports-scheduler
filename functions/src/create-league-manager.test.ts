@@ -359,6 +359,7 @@ describe('createLeagueAndBecomeManager — player user happy path', () => {
     const league = _store.get(`leagues/${result.leagueId}`);
     expect(league).toBeDefined();
     expect(league?.managedBy).toBe('player1');
+    expect(league?.managerIds).toEqual(['player1']);
     expect(league?.name).toBe('Summer League');
   });
 

@@ -367,6 +367,7 @@ describe('createTeamAndBecomeCoach — player user happy path', () => {
     const team = _store.get(`teams/${result.teamId}`);
     expect(team).toBeDefined();
     expect(team?.coachId).toBe('player1');
+    expect(team?.coachIds).toEqual(['player1']);
     expect(team?.coachName).toBe('Alice Player');
     expect(team?.createdBy).toBe('player1');
     expect(team?.attendanceWarningsEnabled).toBe(true);
