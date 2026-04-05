@@ -149,7 +149,6 @@ export function ProfilePage() {
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Shield size={16} /> My Roles</h3>
           </div>
-
           <ul className="space-y-2">
               {memberships.map((m, i) => {
                 const memberTeam = m.teamId ? teams.find(t => t.id === m.teamId) : undefined;
