@@ -7,8 +7,33 @@ service cloud.firestore {
     }
     function role() { return getProfile().role; }
     function isAdmin() { return role() == 'admin'; }
+    // isCoach() and isLeagueManager() are retained for paths that have no
+    // resource-scoped access list to check against (events, players, invites).
     function isCoach() { return role() == 'coach'; }
     function isLeagueManager() { return role() == 'league_manager'; }
+
+    // ── Phase 2: resource-scoped access helpers ───────────────────────────
+    // These check the denormalized access lists backfilled in Phase 1.
+    // No cross-doc profile read required — eliminates SEC-16 TOCTOU race.
+
+    // Returns true if the caller's UID is in the team document's coachIds array.
+    function isCoachOfTeam(teamData) {
+      return teamData.coachIds is list && teamData.coachIds.hasAny([request.auth.uid]);
+    }
+
+    // Returns true if the caller's UID is in the league document's managerIds array.
+    function isManagerOfLeague(leagueData) {
+      return leagueData.managerIds is list && leagueData.managerIds.hasAny([request.auth.uid]);
+    }
+
+    // Cross-doc read variant for league subcollections where the league document
+    // is not the match resource (e.g. /leagues/{leagueId}/seasons/{seasonId}).
+    // Single get() call — avoids billing two reads per evaluation.
+    function isManagerOfLeagueById(leagueId) {
+      return isManagerOfLeague(
+        get(/databases/$(database)/documents/leagues/$(leagueId)).data
+      );
+    }
 
     match /users/{uid} {
       allow read: if request.auth != null;
@@ -71,34 +96,37 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow create: if isAdmin() || isCoach() || isLeagueManager();
       allow delete: if isAdmin();
+      // Phase 2: use coachIds access list instead of profile.leagueId cross-doc read.
       // SEC-29: non-admin writes may not touch access-control fields (coachIds,
       // coachId, createdBy).  Admins retain unrestricted write access.
+      //
+      // LM path: the client must supply _managedLeagueId (the league being
+      // added/removed) so that rules can do a single get() to verify the LM
+      // holds that league's managerIds membership.  Only leagueIds and
+      // _managedLeagueId may change in that operation.
       allow update: if isAdmin()
         || (
-          (request.auth.uid == resource.data.createdBy
-            || request.auth.uid == resource.data.coachId
-            || (isLeagueManager() && (
-                 // LM manages a league the team is already in (profile.leagueId path)
-                 ('leagueIds' in resource.data && resource.data.leagueIds.hasAny([getProfile().leagueId]))
-                 || resource.data.get('leagueId', '') == getProfile().leagueId
-                 || ('leagueIds' in request.resource.data && request.resource.data.leagueIds.hasAny([getProfile().leagueId]))
-                 // LM adding/removing via managedBy: only leagueIds + _managedLeagueId may change,
-                 // and the referenced league must have managedBy == this LM.
-                 || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leagueIds', '_managedLeagueId'])
-                     && '_managedLeagueId' in request.resource.data
-                     && (request.resource.data.leagueIds.hasAny([request.resource.data._managedLeagueId])
-                         || resource.data.get('leagueIds', []).hasAny([request.resource.data._managedLeagueId]))
-                     && get(/databases/$(database)/documents/leagues/$(request.resource.data._managedLeagueId)).data.managedBy == request.auth.uid)
-               )))
+          isCoachOfTeam(resource.data)
           && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['coachIds', 'coachId', 'createdBy'])
+        )
+        || (
+          isLeagueManager()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leagueIds', '_managedLeagueId'])
+          && '_managedLeagueId' in request.resource.data
+          && (request.resource.data.leagueIds.hasAny([request.resource.data._managedLeagueId])
+              || resource.data.get('leagueIds', []).hasAny([request.resource.data._managedLeagueId]))
+          && isManagerOfLeague(
+               get(/databases/$(database)/documents/leagues/$(request.resource.data._managedLeagueId)).data
+             )
         );
 
       // Player availability windows — any team member can read; players/parents write their own,
       // coaches and admins can write any player's record.
       match /availability/{playerId} {
         allow read: if request.auth != null;
-        allow write: if isAdmin() || isCoach()
+        allow write: if isAdmin()
+          || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(teamId)).data)
           || (request.auth != null
               && exists(/databases/$(database)/documents/players/$(playerId))
               && get(/databases/$(database)/documents/players/$(playerId)).data.linkedUid == request.auth.uid);
@@ -108,11 +136,9 @@ service cloud.firestore {
         allow create: if request.auth.uid == requestUid;
         allow read: if request.auth.uid == requestUid
           || isAdmin()
-          || request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.createdBy
-          || request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.coachId;
+          || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(teamId)).data);
         allow update: if isAdmin()
-          || request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.createdBy
-          || request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.coachId;
+          || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(teamId)).data);
       }
     }
 
@@ -199,15 +225,12 @@ service cloud.firestore {
       allow read: if request.auth != null;
       // League managers can create any new league (no prior leagueId to match against).
       allow create: if isAdmin() || isLeagueManager();
-      // League managers can update leagues they own via leagueId profile field or managedBy.
+      // Phase 2: use managerIds access list instead of profile.leagueId cross-doc read.
       // SEC-29: non-admin writes may not touch access-control fields (managerIds, managedBy).
       // Admins retain unrestricted write access.
       allow update: if isAdmin()
         || (
-          (isLeagueManager() && (
-            getProfile().leagueId == leagueId
-            || resource.data.managedBy == request.auth.uid
-          ))
+          isManagerOfLeague(resource.data)
           && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['managerIds', 'managedBy'])
         );
@@ -217,33 +240,21 @@ service cloud.firestore {
       // Coaches and players have no access.
       match /wizardDraft/draft {
         allow read, write: if isAdmin()
-          || (isLeagueManager() && (
-            getProfile().leagueId == leagueId
-            || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
-          ));
+          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
       }
 
       // Availability collections — created/managed by LM; coaches read their own response only.
       match /availabilityCollections/{collectionId} {
         allow read: if isAdmin()
-          || (isLeagueManager() && (
-            getProfile().leagueId == leagueId
-            || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
-          ));
+          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
         allow create, update, delete: if isAdmin()
-          || (isLeagueManager() && (
-            getProfile().leagueId == leagueId
-            || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
-          ));
+          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
 
         // Coach responses — coaches read/write only their own; LM reads all.
         match /responses/{coachUid} {
           allow read: if isAdmin()
             || request.auth.uid == coachUid
-            || (isLeagueManager() && (
-              getProfile().leagueId == leagueId
-              || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
-            ));
+            || (isLeagueManager() && isManagerOfLeagueById(leagueId));
           allow create, update: if request.auth != null
             && request.auth.uid == coachUid
             && request.resource.data.coachUid == request.auth.uid;
@@ -255,13 +266,13 @@ service cloud.firestore {
       match /fixtures/{fixtureId} {
         allow read: if request.auth != null;
         allow write: if isAdmin()
-          || (isLeagueManager() && getProfile().leagueId == leagueId);
+          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
       }
 
       // Schedule draft (backlog: async generation storage).
       match /drafts/{draftId} {
         allow read, write: if isAdmin()
-          || (isLeagueManager() && getProfile().leagueId == leagueId);
+          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
       }
 
       // Generation status — written only by Cloud Functions via Admin SDK.
@@ -277,10 +288,7 @@ service cloud.firestore {
           || getProfile().leagueId == leagueId
         );
         allow write: if isAdmin()
-          || (isLeagueManager() && (
-            getProfile().leagueId == leagueId
-            || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
-          ));
+          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
 
         // Standings subcollection — same access as the parent season.
         match /standings/{standingId} {
@@ -298,10 +306,7 @@ service cloud.firestore {
             || getProfile().leagueId == leagueId
           );
           allow write: if isAdmin()
-            || (isLeagueManager() && (
-              getProfile().leagueId == leagueId
-              || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
-            ));
+            || (isLeagueManager() && isManagerOfLeagueById(leagueId));
         }
       }
 
@@ -312,10 +317,7 @@ service cloud.firestore {
           || getProfile().leagueId == leagueId
         );
         allow write: if isAdmin()
-          || (isLeagueManager() && (
-            getProfile().leagueId == leagueId
-            || get(/databases/$(database)/documents/leagues/$(leagueId)).data.managedBy == request.auth.uid
-          ));
+          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
       }
 
       // Pending result submissions — written by callable function, readable by league managers/coaches.
