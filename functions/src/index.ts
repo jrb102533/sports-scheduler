@@ -18,6 +18,7 @@ import {
   type GenerateScheduleInput,
   type ScheduleAlgorithmOutput,
 } from './scheduleAlgorithm';
+import { isCoachOfTeamDoc, isManagerOfLeagueDoc } from './rbacHelpers';
 
 const APP_URL = process.env.APP_URL ?? 'https://first-whistle-e76f4.web.app';
 const FUNCTIONS_BASE = 'https://us-central1-first-whistle-e76f4.cloudfunctions.net';
@@ -739,7 +740,7 @@ export const sendInvite = onCall<SendInviteData>(
         throw new HttpsError('not-found', 'Team not found.');
       }
       const teamData = teamDoc.data()!;
-      if (teamData['coachId'] !== uid && teamData['createdBy'] !== uid) {
+      if (!isCoachOfTeamDoc(teamData, uid)) {
         throw new HttpsError('permission-denied', 'You can only invite players to your own team.');
       }
     }
@@ -2343,7 +2344,7 @@ export const requestAvailability = onCall<RequestAvailabilityData, Promise<{ not
       const leagueData = leagueDoc.data()!;
       const userDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
       const profile = userDoc.data();
-      const ownsLeague = leagueData.managedBy === request.auth.uid
+      const ownsLeague = isManagerOfLeagueDoc(leagueData as Record<string, unknown>, request.auth.uid)
         || profile?.leagueId === leagueId;
       if (!ownsLeague) throw new HttpsError('permission-denied', 'You do not manage this league.');
     }
@@ -2465,7 +2466,7 @@ export const sendAvailabilityReminder = onCall<SendAvailabilityReminderData, Pro
       const leagueData = leagueDoc.data()!;
       const userDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
       const profile = userDoc.data();
-      const ownsLeague = leagueData.managedBy === request.auth.uid
+      const ownsLeague = isManagerOfLeagueDoc(leagueData as Record<string, unknown>, request.auth.uid)
         || profile?.leagueId === leagueId;
       if (!ownsLeague) throw new HttpsError('permission-denied', 'You do not manage this league.');
     }
@@ -2772,7 +2773,7 @@ export const generateSchedule = onCall(
         const userDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
         const profile = userDoc.data();
         const ownsLeague =
-          leagueData.managedBy === request.auth.uid ||
+          isManagerOfLeagueDoc(leagueData as Record<string, unknown>, request.auth.uid) ||
           profile?.leagueId === input.leagueId;
         if (!ownsLeague) {
           throw new HttpsError('permission-denied', 'You do not manage this league.');
@@ -3252,12 +3253,8 @@ export const submitGameResult = onCall<SubmitGameResultData, Promise<SubmitGameR
     const homeTeamSnap = await db.doc(`teams/${homeTeamId}`).get();
     const awayTeamSnap = await db.doc(`teams/${awayTeamId}`).get();
 
-    const isHomeCoach = homeTeamSnap.exists && (
-      homeTeamSnap.data()?.coachId === uid || homeTeamSnap.data()?.createdBy === uid
-    );
-    const isAwayCoach = awayTeamSnap.exists && (
-      awayTeamSnap.data()?.coachId === uid || awayTeamSnap.data()?.createdBy === uid
-    );
+    const isHomeCoach = homeTeamSnap.exists && isCoachOfTeamDoc(homeTeamSnap.data()!, uid);
+    const isAwayCoach = awayTeamSnap.exists && isCoachOfTeamDoc(awayTeamSnap.data()!, uid);
 
     if (!isHomeCoach && !isAwayCoach) {
       throw new HttpsError('permission-denied', 'Only a coach of one of the teams in this event may submit a result.');
@@ -3376,7 +3373,7 @@ export const publishSchedule = onCall<PublishScheduleData, Promise<PublishSchedu
     const userData = userSnap.data();
     const isLeagueManager = role === 'admin'
       || userData?.leagueId === leagueId
-      || leagueData.managedBy === uid;
+      || isManagerOfLeagueDoc(leagueData as Record<string, unknown>, uid);
 
     if (!isLeagueManager) {
       throw new HttpsError('permission-denied', 'You are not a manager of this league.');
@@ -3493,7 +3490,7 @@ export const resolveDispute = onCall<ResolveDisputeData, Promise<ResolveDisputeO
     const userData = userSnap.data();
     const isAuthorized = role === 'admin'
       || userData?.leagueId === leagueId
-      || leagueData.managedBy === uid;
+      || isManagerOfLeagueDoc(leagueData as Record<string, unknown>, uid);
 
     if (!isAuthorized) {
       throw new HttpsError('permission-denied', 'You are not a manager of this league.');
@@ -3606,7 +3603,7 @@ export const overrideStandingRank = onCall<OverrideStandingRankData, Promise<Ove
     const userData = userSnap.data();
     const isAuthorized = role === 'admin'
       || userData?.leagueId === leagueId
-      || leagueData.managedBy === uid;
+      || isManagerOfLeagueDoc(leagueData as Record<string, unknown>, uid);
 
     if (!isAuthorized) {
       throw new HttpsError('permission-denied', 'You are not a manager of this league.');
@@ -3691,7 +3688,7 @@ export const sendLeagueInvite = onCall<SendLeagueInviteData, Promise<SendLeagueI
       managedBy?: string;
       sportType?: string;
     };
-    if (role !== 'admin' && league.managedBy !== uid) {
+    if (role !== 'admin' && !isManagerOfLeagueDoc(league as Record<string, unknown>, uid)) {
       throw new HttpsError('permission-denied', 'You do not own this league.');
     }
 
@@ -3829,7 +3826,7 @@ export const resendLeagueInvite = onCall<ResendLeagueInviteData, Promise<{ succe
       throw new HttpsError('not-found', `League ${leagueId} not found.`);
     }
     const league = leagueSnap.data() as { name: string; managedBy?: string };
-    if (role !== 'admin' && league.managedBy !== uid) {
+    if (role !== 'admin' && !isManagerOfLeagueDoc(league as Record<string, unknown>, uid)) {
       throw new HttpsError('permission-denied', 'You do not own this league.');
     }
 
@@ -3942,7 +3939,7 @@ export const acceptLeagueInvite = onCall<AcceptLeagueInviteData, Promise<{ succe
         throw new HttpsError('not-found', 'Real team not found.');
       }
       const realTeam = realTeamSnap.data() as { createdBy?: string };
-      if (!isAdmin && realTeam.createdBy !== uid) {
+      if (!isAdmin && !isCoachOfTeamDoc(realTeam as Record<string, unknown>, uid)) {
         throw new HttpsError('permission-denied', 'You do not own this team.');
       }
     }
