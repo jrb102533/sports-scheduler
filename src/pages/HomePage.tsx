@@ -178,6 +178,7 @@ export function HomePage() {
   }
 
   const isLoading = teamsLoading || eventsLoading;
+  const isAdminUser = profile?.role === 'admin';
 
   // Empty state: determine user's primary role for messaging
   const isCoachOrAbove = hasRole(profile, 'coach', 'admin', 'league_manager');
@@ -190,53 +191,68 @@ export function HomePage() {
         <p className="text-sm text-gray-500 mt-0.5">Here's what's happening across your teams</p>
       </div>
 
-      {/* My Teams section */}
-      <section aria-labelledby="my-teams-heading">
-        <div className="flex items-center gap-2 mb-3">
-          <Users size={16} className="text-purple-500" />
-          <h2 id="my-teams-heading" className="font-semibold text-gray-900">My Teams</h2>
-        </div>
+      {/* My Teams section — hidden for admins, who manage all teams via the Teams page */}
+      {isAdminUser ? (
+        <Card className="p-4 flex items-center gap-3 bg-purple-50 border-purple-100">
+          <Users size={16} className="text-purple-500 flex-shrink-0" />
+          <p className="text-sm text-purple-700">
+            You have admin access to all teams.{' '}
+            <button
+              onClick={() => navigate('/teams')}
+              className="font-medium underline underline-offset-2 hover:text-purple-900 transition-colors"
+            >
+              Go to Teams
+            </button>
+          </p>
+        </Card>
+      ) : (
+        <section aria-labelledby="my-teams-heading">
+          <div className="flex items-center gap-2 mb-3">
+            <Users size={16} className="text-purple-500" />
+            <h2 id="my-teams-heading" className="font-semibold text-gray-900">My Teams</h2>
+          </div>
 
-        {isLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {[1, 2].map(i => (
-              <div key={i} className="h-28 bg-gray-100 rounded-xl animate-pulse" />
-            ))}
-          </div>
-        ) : myTeams.length === 0 ? (
-          <Card className="p-6 text-center">
-            <p className="text-sm text-gray-500 font-medium">
-              {isCoachOrAbove ? 'You have no teams yet.' : 'You are not linked to a team yet.'}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              {isCoachOrAbove
-                ? 'Create your first team to get started.'
-                : 'Ask your coach to send you an invite.'}
-            </p>
-            {isCoachOrAbove && (
-              <button
-                onClick={() => navigate('/teams')}
-                className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
-              >
-                <Users size={14} />
-                Create your first team
-              </button>
-            )}
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {myTeams.map(team => (
-              <TeamCard
-                key={team.id}
-                team={team}
-                membership={membershipByTeam.get(team.id)!}
-                upcomingCount={upcomingCountForTeam(team.id)}
-                onClick={() => handleTeamClick(team)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {[1, 2].map(i => (
+                <div key={i} className="h-28 bg-gray-100 rounded-xl animate-pulse" />
+              ))}
+            </div>
+          ) : myTeams.length === 0 ? (
+            <Card className="p-6 text-center">
+              <p className="text-sm text-gray-500 font-medium">
+                {isCoachOrAbove ? 'You have no teams yet.' : 'You are not linked to a team yet.'}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                {isCoachOrAbove
+                  ? 'Create your first team to get started.'
+                  : 'Ask your coach to send you an invite.'}
+              </p>
+              {isCoachOrAbove && (
+                <button
+                  onClick={() => navigate('/teams')}
+                  className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+                >
+                  <Users size={14} />
+                  Create your first team
+                </button>
+              )}
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {myTeams.map(team => (
+                <TeamCard
+                  key={team.id}
+                  team={team}
+                  membership={membershipByTeam.get(team.id)!}
+                  upcomingCount={upcomingCountForTeam(team.id)}
+                  onClick={() => handleTeamClick(team)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Get started CTA — visible only to players/parents with no elevated role */}
       {!hasElevatedMembership && !isLoading && (
@@ -281,7 +297,7 @@ export function HomePage() {
         ) : upcomingAll.length === 0 ? (
           <Card className="p-6 text-center">
             <p className="text-sm text-gray-400">
-              {myTeams.length === 0
+              {!isAdminUser && myTeams.length === 0
                 ? 'No events yet — join a team to see your schedule here.'
                 : 'No upcoming events scheduled.'}
             </p>
