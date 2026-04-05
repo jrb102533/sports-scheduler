@@ -86,7 +86,9 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
         navItems[3], // Notifications
         navItems[4], // Messaging
         navItems[5], // Settings
-        ...(hasRole(profile, 'admin') ? adminNavItems : []),
+        // admin is an exclusive role — use the scalar directly to avoid any membership
+        // cross-contamination during the RBAC migration window.
+        ...(profile?.role === 'admin' ? adminNavItems : []),
       ];
 
   const memberships = getMemberships(profile);
