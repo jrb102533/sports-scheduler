@@ -1,6 +1,9 @@
-import { CalendarDays, Users } from 'lucide-react';
+import { CalendarDays, Trophy, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { BecomeCoachModal } from '@/components/onboarding/BecomeCoachModal';
+import { BecomeLeagueManagerModal } from '@/components/onboarding/BecomeLeagueManagerModal';
 import { EventCard } from '@/components/events/EventCard';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
 import { useEventStore } from '@/store/useEventStore';
@@ -114,12 +117,18 @@ export function HomePage() {
   const eventsLoading = useEventStore(s => s.loading);
   const navigate = useNavigate();
   const [selected, setSelected] = useState<ScheduledEvent | null>(null);
+  const [becomeCoachOpen, setBecomeCoachOpen] = useState(false);
+  const [becomeLMOpen, setBecomeLMOpen] = useState(false);
 
   const firstName = profile?.displayName?.split(' ')[0] ?? '';
   const greeting = `${timeGreeting()}${firstName ? `, ${firstName}` : ''}`;
 
   const memberships = getMemberships(profile);
   const uid = profile?.uid ?? '';
+
+  const hasElevatedMembership = memberships.some(
+    m => m.role === 'coach' || m.role === 'league_manager' || m.role === 'admin'
+  );
 
   // Deduplicate teams across memberships
   const myTeamIds = new Set<string>();
@@ -229,6 +238,33 @@ export function HomePage() {
         )}
       </section>
 
+      {/* Get started CTA — visible only to players/parents with no elevated role */}
+      {!hasElevatedMembership && !isLoading && (
+        <section>
+          <Card className="p-5 border-2 border-dashed border-blue-200 bg-blue-50/40">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <Users size={18} className="text-blue-600" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-gray-900 text-sm">Get started as a coach or league manager</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Create a team to coach, or set up a league to manage schedules and standings.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => setBecomeCoachOpen(true)}>
+                <Users size={14} className="mr-1" /> Create a Team
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => setBecomeLMOpen(true)}>
+                <Trophy size={14} className="mr-1" /> Create a League
+              </Button>
+            </div>
+          </Card>
+        </section>
+      )}
+
       {/* Upcoming Events section */}
       <section aria-labelledby="upcoming-events-heading">
         <div className="flex items-center gap-2 mb-3">
@@ -265,6 +301,9 @@ export function HomePage() {
       </section>
 
       <EventDetailPanel event={selected} onClose={() => setSelected(null)} />
+
+      <BecomeCoachModal open={becomeCoachOpen} onClose={() => setBecomeCoachOpen(false)} />
+      <BecomeLeagueManagerModal open={becomeLMOpen} onClose={() => setBecomeLMOpen(false)} />
     </div>
   );
 }
