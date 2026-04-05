@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { collection, getDocs, doc, updateDoc, arrayUnion, arrayRemove, writeBatch } from 'firebase/firestore';
+import { useState, useEffect, useRef } from 'react';
+import { collection, getDocs, query, where, doc, updateDoc, arrayUnion, arrayRemove, writeBatch } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@/lib/firebase';
 import {
@@ -35,17 +35,20 @@ const nonAdminRoleOptions = ALL_ROLES
 
 // ── UserCard ─────────────────────────────────────────────────────────────────
 
-interface UserCardProps {
-  user: UserProfile;
-  teams: { id: string; name: string }[];
-  leagues: { id: string; name: string }[];
-  isSelf: boolean;
-  onClick: () => void;
-}
+interface Player { id: string; name: string; teamId?: string; }
 
-function membershipLabel(m: RoleMembership, teams: { id: string; name: string }[], leagues: { id: string; name: string }[]): string {
+function membershipLabel(
+  m: RoleMembership,
+  teams: { id: string; name: string }[],
+  leagues: { id: string; name: string }[],
+  players: Player[] = [],
+): string {
   const role = ROLE_LABELS[m.role];
   if (m.role === 'admin') return role;
+  if (m.role === 'parent' && m.playerId) {
+    const player = players.find(p => p.id === m.playerId);
+    return player ? `${role} — ${player.name}` : role;
+  }
   if (m.teamId) {
     const team = teams.find(t => t.id === m.teamId);
     return team ? `${role} — ${team.name}` : role;
@@ -57,7 +60,16 @@ function membershipLabel(m: RoleMembership, teams: { id: string; name: string }[
   return role;
 }
 
-function UserCard({ user, teams, leagues, isSelf, onClick }: UserCardProps) {
+interface UserCardProps {
+  user: UserProfile;
+  teams: { id: string; name: string }[];
+  leagues: { id: string; name: string }[];
+  players: Player[];
+  isSelf: boolean;
+  onClick: () => void;
+}
+
+function UserCard({ user, teams, leagues, players, isSelf, onClick }: UserCardProps) {
   const memberships = user.memberships ?? [{ role: user.role, isPrimary: true, teamId: user.teamId, leagueId: user.leagueId }];
   const visiblePills = memberships.slice(0, 2);
   const overflow = memberships.length - visiblePills.length;
@@ -89,7 +101,7 @@ function UserCard({ user, teams, leagues, isSelf, onClick }: UserCardProps) {
             key={i}
             className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[m.role]}`}
           >
-            {membershipLabel(m, teams, leagues)}
+            {membershipLabel(m, teams, leagues, players)}
           </span>
         ))}
         {overflow > 0 && (
@@ -112,33 +124,58 @@ function UserCard({ user, teams, leagues, isSelf, onClick }: UserCardProps) {
 
 // ── MembershipRow ─────────────────────────────────────────────────────────────
 
+// Lazily loads players for a given teamId. Shared between MembershipRow and AddMembershipForm.
+function useTeamPlayers(teamId: string, active: boolean): { players: Player[]; loading: boolean } {
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [loading, setLoading] = useState(false);
+  const fetched = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!active || !teamId || fetched.current.has(teamId)) return;
+    fetched.current.add(teamId);
+    setLoading(true);
+    getDocs(query(collection(db, 'players'), where('teamId', '==', teamId)))
+      .then(snap => setPlayers(snap.docs.map(d => ({ id: d.id, name: d.data().name as string, teamId }))))
+      .finally(() => setLoading(false));
+  }, [active, teamId]);
+
+  return { players, loading };
+}
+
 interface MembershipRowProps {
   membership: RoleMembership;
   index: number;
   teams: { id: string; name: string }[];
   leagues: { id: string; name: string }[];
+  players: Player[]; // all known players (for display label)
   onSetPrimary: (index: number) => void;
   onUpdate: (index: number, updated: Omit<RoleMembership, 'isPrimary'>) => void;
   onRemove: (index: number) => void;
   isOnly: boolean;
 }
 
-function MembershipRow({ membership, index, teams, leagues, onSetPrimary, onUpdate, onRemove, isOnly }: MembershipRowProps) {
+function MembershipRow({ membership, index, teams, leagues, players, onSetPrimary, onUpdate, onRemove, isOnly }: MembershipRowProps) {
   const [editing, setEditing] = useState(false);
   const [editRole, setEditRole] = useState<UserRole>(membership.role);
   const [editTeamId, setEditTeamId] = useState(membership.teamId ?? '');
   const [editLeagueId, setEditLeagueId] = useState(membership.leagueId ?? '');
+  const [editPlayerId, setEditPlayerId] = useState(membership.playerId ?? '');
   const [editError, setEditError] = useState('');
 
   const needsTeam = editRole === 'coach' || editRole === 'player' || editRole === 'parent';
   const needsLeague = editRole === 'league_manager';
+  const needsPlayer = editRole === 'parent';
+
+  const { players: teamPlayers, loading: playersLoading } = useTeamPlayers(editTeamId, editing && needsPlayer);
 
   function handleEditSave() {
     if (needsTeam && !editTeamId) { setEditError('Select a team.'); return; }
     if (needsLeague && !editLeagueId) { setEditError('Select a league.'); return; }
+    if (needsPlayer && !editPlayerId) { setEditError('Select a child.'); return; }
     const updated: Omit<RoleMembership, 'isPrimary'> = { role: editRole };
     if (needsTeam && editTeamId) updated.teamId = editTeamId;
     if (needsLeague && editLeagueId) updated.leagueId = editLeagueId;
+    if (needsPlayer && editPlayerId) updated.playerId = editPlayerId;
     onUpdate(index, updated);
     setEditing(false);
     setEditError('');
@@ -148,6 +185,7 @@ function MembershipRow({ membership, index, teams, leagues, onSetPrimary, onUpda
     setEditRole(membership.role);
     setEditTeamId(membership.teamId ?? '');
     setEditLeagueId(membership.leagueId ?? '');
+    setEditPlayerId(membership.playerId ?? '');
     setEditError('');
     setEditing(false);
   }
@@ -158,15 +196,26 @@ function MembershipRow({ membership, index, teams, leagues, onSetPrimary, onUpda
         <Select
           label="Role"
           value={editRole}
-          onChange={e => { setEditRole(e.target.value as UserRole); setEditError(''); }}
+          onChange={e => { setEditRole(e.target.value as UserRole); setEditPlayerId(''); setEditError(''); }}
           options={nonAdminRoleOptions}
         />
         {needsTeam && (
           <Select
             label="Team"
             value={editTeamId}
-            onChange={e => { setEditTeamId(e.target.value); setEditError(''); }}
+            onChange={e => { setEditTeamId(e.target.value); setEditPlayerId(''); setEditError(''); }}
             options={[{ value: '', label: 'Select a team…' }, ...teams.map(t => ({ value: t.id, label: t.name }))]}
+          />
+        )}
+        {needsPlayer && editTeamId && (
+          <Select
+            label="Child"
+            value={editPlayerId}
+            onChange={e => { setEditPlayerId(e.target.value); setEditError(''); }}
+            options={[
+              { value: '', label: playersLoading ? 'Loading…' : 'Select a child…' },
+              ...teamPlayers.map(p => ({ value: p.id, label: p.name })),
+            ]}
           />
         )}
         {needsLeague && (
@@ -186,7 +235,7 @@ function MembershipRow({ membership, index, teams, leagues, onSetPrimary, onUpda
     );
   }
 
-  const label = membershipLabel(membership, teams, leagues);
+  const label = membershipLabel(membership, teams, leagues, players);
   return (
     <div className="flex items-center gap-2 py-2.5 px-3 bg-gray-50 rounded-lg group">
       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${ROLE_COLORS[membership.role]}`}>
@@ -232,17 +281,23 @@ function AddMembershipForm({ teams, leagues, onAdd, onCancel }: AddMembershipFor
   const [role, setRole] = useState<UserRole>('coach');
   const [teamId, setTeamId] = useState('');
   const [leagueId, setLeagueId] = useState('');
+  const [playerId, setPlayerId] = useState('');
   const [error, setError] = useState('');
 
   const needsTeam = role === 'coach' || role === 'player' || role === 'parent';
   const needsLeague = role === 'league_manager';
+  const needsPlayer = role === 'parent';
+
+  const { players: teamPlayers, loading: playersLoading } = useTeamPlayers(teamId, needsPlayer && !!teamId);
 
   function handleAdd() {
     if (needsTeam && !teamId) { setError('Select a team.'); return; }
     if (needsLeague && !leagueId) { setError('Select a league.'); return; }
+    if (needsPlayer && !playerId) { setError('Select a child.'); return; }
     const m: Omit<RoleMembership, 'isPrimary'> = { role };
     if (needsTeam && teamId) m.teamId = teamId;
     if (needsLeague && leagueId) m.leagueId = leagueId;
+    if (needsPlayer && playerId) m.playerId = playerId;
     onAdd(m);
   }
 
@@ -251,15 +306,26 @@ function AddMembershipForm({ teams, leagues, onAdd, onCancel }: AddMembershipFor
       <Select
         label="Role"
         value={role}
-        onChange={e => { setRole(e.target.value as UserRole); setError(''); }}
+        onChange={e => { setRole(e.target.value as UserRole); setPlayerId(''); setError(''); }}
         options={nonAdminRoleOptions}
       />
       {needsTeam && (
         <Select
           label="Team"
           value={teamId}
-          onChange={e => { setTeamId(e.target.value); setError(''); }}
+          onChange={e => { setTeamId(e.target.value); setPlayerId(''); setError(''); }}
           options={[{ value: '', label: 'Select a team…' }, ...teams.map(t => ({ value: t.id, label: t.name }))]}
+        />
+      )}
+      {needsPlayer && teamId && (
+        <Select
+          label="Child"
+          value={playerId}
+          onChange={e => { setPlayerId(e.target.value); setError(''); }}
+          options={[
+            { value: '', label: playersLoading ? 'Loading…' : 'Select a child…' },
+            ...teamPlayers.map(p => ({ value: p.id, label: p.name })),
+          ]}
         />
       )}
       {needsLeague && (
@@ -301,10 +367,33 @@ function EditPanel({
   const [saving, setSaving] = useState(false);
   const [addingMembership, setAddingMembership] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<number | null>(null);
+  const [players, setPlayers] = useState<Player[]>([]);
 
   const memberships: RoleMembership[] = user.memberships ?? [
     { role: user.role, isPrimary: true, ...(user.teamId ? { teamId: user.teamId } : {}), ...(user.leagueId ? { leagueId: user.leagueId } : {}) },
   ];
+
+  // Load players for any parent memberships so labels can show child names
+  const parentTeamKey = memberships
+    .filter(m => m.role === 'parent' && m.teamId)
+    .map(m => m.teamId!)
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .sort()
+    .join(',');
+
+  useEffect(() => {
+    if (!parentTeamKey) return;
+    const ids = parentTeamKey.split(',');
+    Promise.all(
+      ids.map(teamId =>
+        getDocs(query(collection(db, 'players'), where('teamId', '==', teamId)))
+          .then(snap => snap.docs.map(d => ({ id: d.id, name: d.data().name as string, teamId })))
+      )
+    )
+      .then(results => setPlayers(results.flat()))
+      .catch(err => console.error('Failed to load players for parent memberships:', err));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parentTeamKey]);
 
   const avatarColor = ROLE_AVATAR_COLORS[user.role] ?? 'bg-gray-500';
   const isDirty = displayName.trim() !== user.displayName;
@@ -399,6 +488,7 @@ function EditPanel({
                 index={i}
                 teams={teams}
                 leagues={leagues}
+                players={players}
                 onSetPrimary={handleSetPrimary}
                 onUpdate={handleUpdateMembership}
                 onRemove={idx => setRemoveTarget(idx)}
@@ -677,6 +767,7 @@ export function UsersPage() {
               user={user}
               teams={teams}
               leagues={leagues}
+              players={[]}
               isSelf={user.uid === currentUid}
               onClick={() => setSelectedUser(user)}
             />

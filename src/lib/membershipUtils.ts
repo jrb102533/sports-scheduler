@@ -8,11 +8,12 @@ import type { RoleMembership, UserProfile, UserRole } from '@/types';
  */
 export function syncLegacyScalars(memberships: RoleMembership[]): Record<string, unknown> {
   const primary = memberships.find(m => m.isPrimary) ?? memberships[0];
-  if (!primary) return { role: 'player', teamId: deleteField(), leagueId: deleteField() };
+  if (!primary) return { role: 'player', teamId: deleteField(), leagueId: deleteField(), playerId: deleteField() };
   return {
     role: primary.role,
     teamId: primary.teamId ?? deleteField(),
     leagueId: primary.leagueId ?? deleteField(),
+    playerId: primary.playerId ?? deleteField(),
   };
 }
 
