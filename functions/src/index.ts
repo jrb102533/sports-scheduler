@@ -3929,20 +3929,9 @@ export const acceptLeagueInvite = onCall<AcceptLeagueInviteData, Promise<{ succe
     const { leagueId, placeholderTeamId } = invite;
     const now = new Date().toISOString();
 
-    let realTeamRef: admin.firestore.DocumentReference | null = null;
-
-    if (realTeamId) {
-      // Pre-validate ownership outside the transaction (read-only, no write risk).
-      realTeamRef = db.doc(`teams/${realTeamId}`);
-      const realTeamSnap = await realTeamRef.get();
-      if (!realTeamSnap.exists) {
-        throw new HttpsError('not-found', 'Real team not found.');
-      }
-      const realTeam = realTeamSnap.data() as { createdBy?: string };
-      if (!isAdmin && !isCoachOfTeamDoc(realTeam as Record<string, unknown>, uid)) {
-        throw new HttpsError('permission-denied', 'You do not own this team.');
-      }
-    }
+    const realTeamRef: admin.firestore.DocumentReference | null = realTeamId
+      ? db.doc(`teams/${realTeamId}`)
+      : null;
 
     await db.runTransaction(async (tx) => {
       const freshInviteSnap = await tx.get(inviteRef);
@@ -3959,6 +3948,15 @@ export const acceptLeagueInvite = onCall<AcceptLeagueInviteData, Promise<{ succe
       tx.update(inviteRef, { acceptedAt: now });
 
       if (realTeamRef) {
+        // SEC-32: read and verify ownership inside the transaction to prevent TOCTOU race
+        // (coach removed from team between the pre-check and the write).
+        const realTeamSnap = await tx.get(realTeamRef);
+        if (!realTeamSnap.exists) {
+          throw new HttpsError('not-found', 'Real team not found.');
+        }
+        if (!isAdmin && !isCoachOfTeamDoc(realTeamSnap.data()! as Record<string, unknown>, uid)) {
+          throw new HttpsError('permission-denied', 'You do not own this team.');
+        }
         // Add leagueId to real team atomically with the invite stamp.
         tx.update(realTeamRef, {
           leagueIds: admin.firestore.FieldValue.arrayUnion(leagueId),
