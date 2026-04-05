@@ -3,8 +3,8 @@ import { collection, getDocs, doc, updateDoc, arrayUnion, arrayRemove, writeBatc
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@/lib/firebase';
 import {
-  Shield, Users, Plus, Trash2, Check, X, Copy, RefreshCw, KeyRound,
-  ChevronRight, Search, Star,
+  Users, Plus, Trash2, Check, X, Copy, RefreshCw, KeyRound,
+  ChevronRight, Search, Star, Pencil,
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
@@ -12,7 +12,6 @@ import { SlideOver } from '@/components/ui/SlideOver';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
@@ -30,8 +29,9 @@ import type { UserProfile, UserRole, RoleMembership } from '@/types';
 
 const ALL_ROLES: UserRole[] = ['admin', 'coach', 'league_manager', 'player', 'parent'];
 
-const roleOptions = ALL_ROLES.map(r => ({ value: r, label: ROLE_LABELS[r] === 'LM' ? 'League Manager' : ROLE_LABELS[r] }));
-const nonAdminRoleOptions = roleOptions.filter(o => o.value !== 'admin');
+const nonAdminRoleOptions = ALL_ROLES
+  .filter(r => r !== 'admin')
+  .map(r => ({ value: r, label: r === 'league_manager' ? 'League Manager' : ROLE_LABELS[r] }));
 
 // ── UserCard ─────────────────────────────────────────────────────────────────
 
@@ -118,18 +118,88 @@ interface MembershipRowProps {
   teams: { id: string; name: string }[];
   leagues: { id: string; name: string }[];
   onSetPrimary: (index: number) => void;
+  onUpdate: (index: number, updated: Omit<RoleMembership, 'isPrimary'>) => void;
   onRemove: (index: number) => void;
   isOnly: boolean;
 }
 
-function MembershipRow({ membership, index, teams, leagues, onSetPrimary, onRemove, isOnly }: MembershipRowProps) {
+function MembershipRow({ membership, index, teams, leagues, onSetPrimary, onUpdate, onRemove, isOnly }: MembershipRowProps) {
+  const [editing, setEditing] = useState(false);
+  const [editRole, setEditRole] = useState<UserRole>(membership.role);
+  const [editTeamId, setEditTeamId] = useState(membership.teamId ?? '');
+  const [editLeagueId, setEditLeagueId] = useState(membership.leagueId ?? '');
+  const [editError, setEditError] = useState('');
+
+  const needsTeam = editRole === 'coach' || editRole === 'player' || editRole === 'parent';
+  const needsLeague = editRole === 'league_manager';
+
+  function handleEditSave() {
+    if (needsTeam && !editTeamId) { setEditError('Select a team.'); return; }
+    if (needsLeague && !editLeagueId) { setEditError('Select a league.'); return; }
+    const updated: Omit<RoleMembership, 'isPrimary'> = { role: editRole };
+    if (needsTeam && editTeamId) updated.teamId = editTeamId;
+    if (needsLeague && editLeagueId) updated.leagueId = editLeagueId;
+    onUpdate(index, updated);
+    setEditing(false);
+    setEditError('');
+  }
+
+  function handleEditCancel() {
+    setEditRole(membership.role);
+    setEditTeamId(membership.teamId ?? '');
+    setEditLeagueId(membership.leagueId ?? '');
+    setEditError('');
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg space-y-2">
+        <Select
+          label="Role"
+          value={editRole}
+          onChange={e => { setEditRole(e.target.value as UserRole); setEditError(''); }}
+          options={nonAdminRoleOptions}
+        />
+        {needsTeam && (
+          <Select
+            label="Team"
+            value={editTeamId}
+            onChange={e => { setEditTeamId(e.target.value); setEditError(''); }}
+            options={[{ value: '', label: 'Select a team…' }, ...teams.map(t => ({ value: t.id, label: t.name }))]}
+          />
+        )}
+        {needsLeague && (
+          <Select
+            label="League"
+            value={editLeagueId}
+            onChange={e => { setEditLeagueId(e.target.value); setEditError(''); }}
+            options={[{ value: '', label: 'Select a league…' }, ...leagues.map(l => ({ value: l.id, label: l.name }))]}
+          />
+        )}
+        {editError && <p className="text-xs text-red-600">{editError}</p>}
+        <div className="flex gap-2 pt-1">
+          <Button size="sm" onClick={handleEditSave}>Save</Button>
+          <Button size="sm" variant="secondary" onClick={handleEditCancel}>Cancel</Button>
+        </div>
+      </div>
+    );
+  }
+
   const label = membershipLabel(membership, teams, leagues);
   return (
-    <div className="flex items-center gap-3 py-2.5 px-3 bg-gray-50 rounded-lg">
+    <div className="flex items-center gap-2 py-2.5 px-3 bg-gray-50 rounded-lg group">
       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${ROLE_COLORS[membership.role]}`}>
         {ROLE_LABELS[membership.role]}
       </span>
       <span className="text-sm text-gray-700 flex-1 min-w-0 truncate">{label}</span>
+      <button
+        onClick={() => setEditing(true)}
+        title="Edit membership"
+        className="flex-shrink-0 text-gray-300 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100"
+      >
+        <Pencil size={13} />
+      </button>
       <button
         onClick={() => !membership.isPrimary && onSetPrimary(index)}
         title={membership.isPrimary ? 'Primary membership' : 'Set as primary'}
@@ -228,22 +298,21 @@ function EditPanel({
   onSave, onMembershipsChange, onDelete, onResetPassword, onClose,
 }: EditPanelProps) {
   const [displayName, setDisplayName] = useState(user.displayName);
-  const [role, setRole] = useState<UserRole>(user.role);
   const [saving, setSaving] = useState(false);
   const [addingMembership, setAddingMembership] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<number | null>(null);
 
   const memberships: RoleMembership[] = user.memberships ?? [
-    { role: user.role, isPrimary: true, teamId: user.teamId, leagueId: user.leagueId },
+    { role: user.role, isPrimary: true, ...(user.teamId ? { teamId: user.teamId } : {}), ...(user.leagueId ? { leagueId: user.leagueId } : {}) },
   ];
 
   const avatarColor = ROLE_AVATAR_COLORS[user.role] ?? 'bg-gray-500';
-  const isDirty = displayName !== user.displayName || role !== user.role;
+  const isDirty = displayName.trim() !== user.displayName;
 
   async function handleSave() {
     setSaving(true);
     try {
-      await onSave({ displayName: displayName.trim(), role });
+      await onSave({ displayName: displayName.trim() });
     } finally {
       setSaving(false);
     }
@@ -255,9 +324,16 @@ function EditPanel({
     setAddingMembership(false);
   }
 
+  async function handleUpdateMembership(index: number, updated: Omit<RoleMembership, 'isPrimary'>) {
+    const next = memberships.map((m, i) =>
+      i === index ? { ...updated, isPrimary: m.isPrimary } : m
+    );
+    await onMembershipsChange(next, user.uid);
+  }
+
   async function handleRemoveMembership(index: number) {
     const next = removeMembership(memberships, index);
-    if (!next) return; // blocked
+    if (!next) return;
     await onMembershipsChange(next, user.uid);
     setRemoveTarget(null);
   }
@@ -291,31 +367,23 @@ function EditPanel({
           </div>
         </div>
 
-        {/* Section 2 — Basic Info */}
-        <div className="px-6 py-5 border-b border-gray-100 space-y-4">
+        {/* Section 2 — Display Name */}
+        <div className="px-6 py-5 border-b border-gray-100">
           <Input
             label="Display Name"
             value={displayName}
             onChange={e => setDisplayName(e.target.value)}
             disabled={isSelf}
           />
-          {!isSelf && (
-            <div>
-              <Select
-                label="Primary Role"
-                value={role}
-                onChange={e => setRole(e.target.value as UserRole)}
-                options={roleOptions}
-              />
-              <p className="text-xs text-gray-400 mt-1">Controls navigation and access. Should match the primary membership below.</p>
-            </div>
-          )}
         </div>
 
         {/* Section 3 — Memberships */}
         <div className="px-6 py-5 border-b border-gray-100">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-gray-700">Memberships</h3>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700">Memberships</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Star sets the primary role. Hover a row to edit or remove.</p>
+            </div>
             {!isSelf && (
               <Button size="sm" variant="secondary" onClick={() => setAddingMembership(v => !v)}>
                 <Plus size={13} className="mr-1" /> Add
@@ -332,6 +400,7 @@ function EditPanel({
                 teams={teams}
                 leagues={leagues}
                 onSetPrimary={handleSetPrimary}
+                onUpdate={handleUpdateMembership}
                 onRemove={idx => setRemoveTarget(idx)}
                 isOnly={memberships.length === 1}
               />
@@ -376,7 +445,7 @@ function EditPanel({
         )}
       </div>
 
-      {/* Sticky footer — only for name/role edits */}
+      {/* Sticky footer — display name save */}
       {!isSelf && (
         <div className="flex-shrink-0 sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
@@ -451,7 +520,7 @@ export function UsersPage() {
     if (!prev) return;
 
     const legacyScalars = syncLegacyScalars(nextMemberships);
-    const userPatch: Partial<UserProfile> = { memberships: nextMemberships, ...legacyScalars };
+    const userPatch: Record<string, unknown> = { memberships: nextMemberships, ...legacyScalars };
     const next = { ...prev, ...userPatch };
 
     setUsers(us => us.map(u => u.uid === uid ? next : u));

@@ -1,16 +1,18 @@
+import { deleteField } from 'firebase/firestore';
 import type { RoleMembership, UserProfile, UserRole } from '@/types';
 
 /**
  * Derives the top-level legacy scalar fields from the primary membership.
- * Always call this after mutating memberships[] to keep the profile in sync.
+ * Returns a Firestore-safe object: absent fields use deleteField() so that
+ * stale teamId/leagueId scalars are cleared rather than left as undefined.
  */
-export function syncLegacyScalars(memberships: RoleMembership[]): Pick<UserProfile, 'role' | 'teamId' | 'leagueId'> {
+export function syncLegacyScalars(memberships: RoleMembership[]): Record<string, unknown> {
   const primary = memberships.find(m => m.isPrimary) ?? memberships[0];
-  if (!primary) return { role: 'player' };
+  if (!primary) return { role: 'player', teamId: deleteField(), leagueId: deleteField() };
   return {
     role: primary.role,
-    ...(primary.teamId ? { teamId: primary.teamId } : { teamId: undefined }),
-    ...(primary.leagueId ? { leagueId: primary.leagueId } : { leagueId: undefined }),
+    teamId: primary.teamId ?? deleteField(),
+    leagueId: primary.leagueId ?? deleteField(),
   };
 }
 
