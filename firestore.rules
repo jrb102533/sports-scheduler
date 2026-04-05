@@ -28,9 +28,11 @@ service cloud.firestore {
 
     // Cross-doc read variant for league subcollections where the league document
     // is not the match resource (e.g. /leagues/{leagueId}/seasons/{seasonId}).
+    // Single get() call — avoids billing two reads per evaluation.
     function isManagerOfLeagueById(leagueId) {
-      return get(/databases/$(database)/documents/leagues/$(leagueId)).data.managerIds is list
-        && get(/databases/$(database)/documents/leagues/$(leagueId)).data.managerIds.hasAny([request.auth.uid]);
+      return isManagerOfLeague(
+        get(/databases/$(database)/documents/leagues/$(leagueId)).data
+      );
     }
 
     match /users/{uid} {
