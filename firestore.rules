@@ -56,8 +56,9 @@ service cloud.firestore {
         || (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamId']) &&
           exists(/databases/$(database)/documents/teams/$(request.resource.data.teamId)) &&
-          (get(/databases/$(database)/documents/teams/$(request.resource.data.teamId)).data.createdBy == request.auth.uid ||
-           get(/databases/$(database)/documents/teams/$(request.resource.data.teamId)).data.coachId == request.auth.uid)
+          isCoachOfTeam(
+            get(/databases/$(database)/documents/teams/$(request.resource.data.teamId)).data
+          )
         );
       allow delete: if isAdmin();
 
