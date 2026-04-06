@@ -16,7 +16,7 @@ import type { CoachInfo } from '@/components/leagues/AvailabilityStatusPanel';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useEventStore } from '@/store/useEventStore';
-import { useAuthStore } from '@/store/useAuthStore';
+import { useAuthStore, hasRole } from '@/store/useAuthStore';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useCollectionStore } from '@/store/useCollectionStore';
 import { RoleGuard } from '@/components/auth/RoleGuard';
@@ -83,12 +83,19 @@ export function LeagueDetailPage() {
   }));
 
   const isAdmin = profile?.role === 'admin';
-  const isLeagueManager = profile?.role === 'league_manager';
-  const canManage = isAdmin || (isLeagueManager && (profile?.leagueId === id || league?.managedBy === profile?.uid));
+  // Use hasRole + memberships array so multi-role users (e.g. coach who became LM) work correctly
+  const isLeagueManager = hasRole(profile ?? null, 'league_manager');
+  const managedLeagueIds = new Set([
+    ...(profile?.memberships ?? [])
+      .filter(m => m.role === 'league_manager' && m.leagueId)
+      .map(m => m.leagueId!),
+    ...(profile?.leagueId ? [profile.leagueId] : []),
+  ]);
+  const canManage = isAdmin || (isLeagueManager && (managedLeagueIds.has(id ?? '') || league?.managedBy === profile?.uid));
 
   if (!league) return <div className="p-4 sm:p-6 text-gray-500">League not found.</div>;
 
-  const canSoftDelete = isLeagueManager && league.managedBy === profile?.uid;
+  const canSoftDelete = isLeagueManager && (managedLeagueIds.has(league.id) || league.managedBy === profile?.uid);
 
 
   async function handleSaveLeague(
