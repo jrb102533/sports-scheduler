@@ -548,6 +548,11 @@ export const approveJoinRequest = onCall<ApproveJoinRequestData, Promise<{ succe
     const { teamId, requestUid, role = 'player' } = request.data;
     if (!teamId?.trim()) throw new HttpsError('invalid-argument', 'teamId is required.');
     if (!requestUid?.trim()) throw new HttpsError('invalid-argument', 'requestUid is required.');
+    // SEC-30: runtime allowlist — TypeScript types are not a security boundary
+    const ALLOWED_JOIN_ROLES = ['player', 'parent'];
+    if (!ALLOWED_JOIN_ROLES.includes(role)) {
+      throw new HttpsError('invalid-argument', 'Invalid role. Must be "player" or "parent".');
+    }
 
     const db = admin.firestore();
     const callerUid = request.auth.uid;
