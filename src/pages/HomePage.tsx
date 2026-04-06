@@ -126,9 +126,7 @@ export function HomePage() {
   const memberships = getMemberships(profile);
   const uid = profile?.uid ?? '';
 
-  const hasElevatedMembership = memberships.some(
-    m => m.role === 'coach' || m.role === 'league_manager' || m.role === 'admin'
-  );
+  const hasLMMembership = memberships.some(m => m.role === 'league_manager');
 
   // Deduplicate teams across memberships
   const myTeamIds = new Set<string>();
@@ -254,8 +252,8 @@ export function HomePage() {
         </section>
       )}
 
-      {/* Get started CTA — visible only to players/parents with no elevated role */}
-      {!hasElevatedMembership && !isLoading && (
+      {/* Get started CTA — visible to all non-admins; League button hidden once user is already an LM */}
+      {!isAdminUser && !isLoading && (
         <section>
           <Card className="p-5 border-2 border-dashed border-blue-200 bg-blue-50/40">
             <div className="flex items-start gap-3 mb-4">
@@ -273,9 +271,11 @@ export function HomePage() {
               <Button size="sm" onClick={() => setBecomeCoachOpen(true)}>
                 <Users size={14} className="mr-1" /> Create a Team
               </Button>
-              <Button size="sm" variant="secondary" onClick={() => setBecomeLMOpen(true)}>
-                <Trophy size={14} className="mr-1" /> Create a League
-              </Button>
+              {!hasLMMembership && (
+                <Button size="sm" variant="secondary" onClick={() => setBecomeLMOpen(true)}>
+                  <Trophy size={14} className="mr-1" /> Create a League
+                </Button>
+              )}
             </div>
           </Card>
         </section>
