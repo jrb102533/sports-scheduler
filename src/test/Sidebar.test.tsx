@@ -505,13 +505,13 @@ describe('ProfilePage — Edit button visibility (canEditRoles guard)', () => {
     expect(screen.queryByRole('button', { name: /edit/i })).toBeNull();
   });
 
-  it('shows the Edit button in My Roles for an admin user', () => {
+  it('does not show an Edit button in My Roles for an admin user (role editor removed in #279)', () => {
     ppProfile = makeProfile('admin', {
       memberships: [{ role: 'admin', isPrimary: true }],
     });
     renderProfilePage();
 
-    expect(screen.getByRole('button', { name: /edit/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /edit/i })).toBeNull();
   });
 
   it('hides the Edit button in My Roles for a player user', () => {
@@ -532,40 +532,35 @@ describe('ProfilePage — Edit button visibility (canEditRoles guard)', () => {
     expect(screen.queryByRole('button', { name: /edit/i })).toBeNull();
   });
 
-  it('shows the admin note for a player user', () => {
+  it('does not show the admin note for a player user (note removed in #279)', () => {
     ppProfile = makeProfile('player', {
       memberships: [{ role: 'player', teamId: 't1', isPrimary: true }],
     });
     renderProfilePage();
 
     expect(
-      screen.getByText(/roles are assigned by your league administrator/i)
-    ).toBeTruthy();
+      screen.queryByText(/roles are assigned by your league administrator/i)
+    ).toBeNull();
   });
 
-  it('shows the admin note for a coach user', () => {
+  it('does not show the admin note for a coach user (note removed in #279)', () => {
     ppProfile = makeProfile('coach', {
       memberships: [{ role: 'coach', isPrimary: true }],
     });
     renderProfilePage();
 
     expect(
-      screen.getByText(/roles are assigned by your league administrator/i)
-    ).toBeTruthy();
+      screen.queryByText(/roles are assigned by your league administrator/i)
+    ).toBeNull();
   });
 
-  it('does NOT show the admin note for a parent user when memberships is empty', () => {
-    // isPlayerOrParent guard is based on profile.role; the note should
-    // still appear even when the memberships array is absent (legacy user).
+  it('does not show the admin note for a parent user when memberships is empty (note removed in #279)', () => {
     ppProfile = makeProfile('parent');
     delete (ppProfile as Partial<UserProfile>).memberships;
     renderProfilePage();
 
-    // With no memberships array, getMemberships() synthesises one from
-    // profile.role, so memberships.length > 0 is still true and the
-    // My Roles section renders. The admin note should appear.
     expect(
-      screen.getByText(/roles are assigned by your league administrator/i)
-    ).toBeTruthy();
+      screen.queryByText(/roles are assigned by your league administrator/i)
+    ).toBeNull();
   });
 });
