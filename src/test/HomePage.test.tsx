@@ -223,11 +223,12 @@ describe('HomePage — empty state (no teams)', () => {
     expect(screen.getByText('Create your first team to get started.')).toBeTruthy();
   });
 
-  it('shows admin-specific empty message when admin has no teams', () => {
+  it('shows admin banner instead of empty-state when admin has no teams', () => {
     currentProfile = makeProfile('admin');
     renderHomePage();
 
-    expect(screen.getByText('You have no teams yet.')).toBeTruthy();
+    expect(screen.getByText(/you have admin access to all teams/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /go to teams/i })).toBeTruthy();
   });
 
   it('shows league_manager-specific empty message when league_manager has no teams', () => {
@@ -355,12 +356,12 @@ describe('HomePage — team card navigation', () => {
     });
   });
 
-  it('navigates admin to /teams when team card is clicked', async () => {
+  it('navigates admin to /teams via the "Go to Teams" button in the admin banner', async () => {
     currentProfile = makeProfile('admin');
     currentTeams = [makeTeam('t1', { createdBy: 'uid-1' })];
     renderHomePage();
 
-    fireEvent.click(screen.getByText('Team t1').closest('button')!);
+    fireEvent.click(screen.getByRole('button', { name: /go to teams/i }));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/teams');
@@ -397,8 +398,9 @@ describe('HomePage — team card navigation', () => {
 });
 
 describe('HomePage — admin sees all teams', () => {
-  it('admin with no memberships array sees every team', () => {
-    // Admin using legacy role field (no memberships array)
+  it('admin with no memberships array sees the admin banner instead of team cards', () => {
+    // Admin users are directed to the Teams page for team management —
+    // the home page shows a banner card with a "Go to Teams" link instead.
     currentProfile = makeProfile('admin');
     currentTeams = [
       makeTeam('t1', { coachId: 'other-uid', createdBy: 'other-uid' }),
@@ -407,9 +409,11 @@ describe('HomePage — admin sees all teams', () => {
     ];
     renderHomePage();
 
-    expect(screen.getByText('Team t1')).toBeTruthy();
-    expect(screen.getByText('Team t2')).toBeTruthy();
-    expect(screen.getByText('Team t3')).toBeTruthy();
+    expect(screen.getByText(/you have admin access to all teams/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /go to teams/i })).toBeTruthy();
+    expect(screen.queryByText('Team t1')).toBeNull();
+    expect(screen.queryByText('Team t2')).toBeNull();
+    expect(screen.queryByText('Team t3')).toBeNull();
   });
 });
 
