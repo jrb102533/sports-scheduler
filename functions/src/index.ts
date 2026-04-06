@@ -21,7 +21,7 @@ import {
 import { isCoachOfTeamDoc, isManagerOfLeagueDoc } from './rbacHelpers';
 
 const APP_URL = process.env.APP_URL ?? 'https://first-whistle-e76f4.web.app';
-const FUNCTIONS_BASE = 'https://us-central1-first-whistle-e76f4.cloudfunctions.net';
+const FUNCTIONS_BASE = process.env.FUNCTIONS_BASE ?? 'https://us-central1-first-whistle-e76f4.cloudfunctions.net';
 
 admin.initializeApp();
 
@@ -932,6 +932,8 @@ export const verifyInvitedUser = onCall<VerifyInvitedUserData, Promise<VerifyInv
           };
           txn.update(userRef, {
             memberships: admin.firestore.FieldValue.arrayUnion(newMembership),
+            // Write top-level playerId scalar so ProfilePage "Team Connection" resolves correctly
+            ...(playerId ? { playerId } : {}),
           });
         }
       }
