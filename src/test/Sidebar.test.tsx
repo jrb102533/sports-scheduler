@@ -67,12 +67,10 @@ vi.mock('@/store/useAuthStore', async () => {
   const real = await vi.importActual<typeof import('@/store/useAuthStore')>('@/store/useAuthStore');
   return {
     ...real,
-    useAuthStore: () => ({
-      user: { uid: 'uid-1', email: 'user@example.com' },
-      profile: currentProfile,
-      logout: mockLogout,
-      updateProfile: mockUpdateProfile,
-    }),
+    useAuthStore: (selector?: (s: object) => unknown) => {
+      const state = { user: { uid: 'uid-1', email: 'user@example.com' }, profile: currentProfile, logout: mockLogout, updateProfile: mockUpdateProfile };
+      return selector ? selector(state) : state;
+    },
   };
 });
 
@@ -465,11 +463,10 @@ describe('ProfilePage — Edit button visibility (canEditRoles guard)', () => {
       const real = await vi.importActual<typeof import('@/store/useAuthStore')>('@/store/useAuthStore');
       return {
         ...real,
-        useAuthStore: () => ({
-          profile: ppProfile,
-          updateProfile: mockUpdateProfilePP,
-          logout: mockLogoutPP,
-        }),
+        useAuthStore: (selector?: (s: object) => unknown) => {
+          const state = { profile: ppProfile, updateProfile: mockUpdateProfilePP, logout: mockLogoutPP };
+          return selector ? selector(state) : state;
+        },
       };
     });
     vi.doMock('@/store/useTeamStore', () => ({

@@ -30,7 +30,9 @@ function membershipContextLabel(m: RoleMembership, teamName?: string, leagueName
 }
 
 export function ProfilePage() {
-  const { profile, updateProfile, logout } = useAuthStore();
+  const profile = useAuthStore(s => s.profile);
+  const updateProfile = useAuthStore(s => s.updateProfile);
+  const logout = useAuthStore(s => s.logout);
   const teams = useTeamStore(s => s.teams);
   const leagues = useLeagueStore(s => s.leagues);
   const players = usePlayerStore(s => s.players);
