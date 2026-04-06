@@ -31,8 +31,11 @@ export function LeagueDetailPage() {
   const navigate = useNavigate();
 
   const leagues = useLeagueStore(s => s.leagues);
-  const { updateLeague, softDeleteLeague } = useLeagueStore();
-  const { teams, addTeamToLeague, removeTeamFromLeague } = useTeamStore();
+  const updateLeague = useLeagueStore(s => s.updateLeague);
+  const softDeleteLeague = useLeagueStore(s => s.softDeleteLeague);
+  const teams = useTeamStore(s => s.teams);
+  const addTeamToLeague = useTeamStore(s => s.addTeamToLeague);
+  const removeTeamFromLeague = useTeamStore(s => s.removeTeamFromLeague);
   const allEvents = useEventStore(s => s.events);
   const profile = useAuthStore(s => s.profile);
 

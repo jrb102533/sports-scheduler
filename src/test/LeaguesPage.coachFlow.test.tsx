@@ -47,12 +47,10 @@ vi.mock('@/store/useAuthStore', async () => {
   const real = await vi.importActual<typeof import('@/store/useAuthStore')>('@/store/useAuthStore');
   return {
     ...real,
-    // LeaguesPage calls useAuthStore() without a selector: const { profile, updateProfile } = useAuthStore()
-    // so the mock must return the state object directly.
-    useAuthStore: () => ({
-      profile: currentProfile,
-      updateProfile: vi.fn().mockResolvedValue(undefined),
-    }),
+    useAuthStore: (selector?: (s: object) => unknown) => {
+      const state = { profile: currentProfile, updateProfile: vi.fn().mockResolvedValue(undefined) };
+      return selector ? selector(state) : state;
+    },
   };
 });
 
@@ -63,21 +61,18 @@ const mockUpdateLeague = vi.fn().mockResolvedValue(undefined);
 const mockDeleteLeague = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@/store/useLeagueStore', () => ({
-  useLeagueStore: () => ({
-    leagues: currentLeagues,
-    addLeague: mockAddLeague,
-    updateLeague: mockUpdateLeague,
-    deleteLeague: mockDeleteLeague,
-  }),
+  useLeagueStore: (selector?: (s: object) => unknown) => {
+    const state = { leagues: currentLeagues, addLeague: mockAddLeague, updateLeague: mockUpdateLeague, deleteLeague: mockDeleteLeague };
+    return selector ? selector(state) : state;
+  },
 }));
 
 // ─── Team store ───────────────────────────────────────────────────────────────
 vi.mock('@/store/useTeamStore', () => ({
-  useTeamStore: () => ({
-    teams: [] as Team[],
-    addTeamToLeague: vi.fn(),
-    removeTeamFromLeague: vi.fn(),
-  }),
+  useTeamStore: (selector?: (s: object) => unknown) => {
+    const state = { teams: [] as Team[], addTeamToLeague: vi.fn(), removeTeamFromLeague: vi.fn() };
+    return selector ? selector(state) : state;
+  },
 }));
 
 // ─── Stub sub-components that have their own complex dependencies ─────────────

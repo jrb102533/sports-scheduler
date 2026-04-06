@@ -36,16 +36,11 @@ function makeProfile(overrides: Partial<UserProfile> = {}): UserProfile {
 }
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
-// useAuthStore is called WITHOUT a selector in ProfilePage:
-//   const { profile, updateProfile, logout } = useAuthStore();
-// So the mock must return the state object directly, not call a selector.
-
 vi.mock('@/store/useAuthStore', () => ({
-  useAuthStore: () => ({
-    profile: currentProfile,
-    updateProfile: mockUpdateProfile,
-    logout: mockLogout,
-  }),
+  useAuthStore: (selector?: (s: object) => unknown) => {
+    const state = { profile: currentProfile, updateProfile: mockUpdateProfile, logout: mockLogout };
+    return selector ? selector(state) : state;
+  },
   getMemberships: () => [],
 }));
 

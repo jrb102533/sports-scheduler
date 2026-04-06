@@ -61,7 +61,10 @@ vi.mock('@/store/useAuthStore', () => ({
 const mockUpdateTeam = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@/store/useTeamStore', () => ({
-  useTeamStore: () => ({ updateTeam: mockUpdateTeam }),
+  useTeamStore: (selector?: (s: object) => unknown) => {
+    const state = { updateTeam: mockUpdateTeam };
+    return selector ? selector(state) : state;
+  },
 }));
 
 // ─── Settings store ───────────────────────────────────────────────────────────
