@@ -919,6 +919,11 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
   async function saveFixtures(publishNow: boolean) {
     if (!result) return;
+    // A5: Cannot publish without a season context — show error instead of silent draft
+    if (publishNow && !season?.id) {
+      setGenError('A season is required to publish. Save as draft instead, then publish from the Season Dashboard.');
+      return;
+    }
     setPublishing(true);
     const now = new Date().toISOString();
     try {
