@@ -173,8 +173,10 @@ export function TeamDetailPage() {
   async function handleApprove(request: JoinRequest) {
     setProcessingUids(prev => new Set(prev).add(request.uid));
     try {
-      await setDoc(doc(db, 'users', request.uid), { teamId }, { merge: true });
-      await updateDoc(doc(db, 'teams', teamId, 'joinRequests', request.uid), { status: 'approved' });
+      await httpsCallable<{ teamId: string; requestUid: string }, { success: boolean }>(
+        functions,
+        'approveJoinRequest',
+      )({ teamId, requestUid: request.uid });
       // Write in-app notification to approved user
       const notifId = `join-approved-${teamId}-${Date.now()}`;
       await setDoc(doc(db, 'users', request.uid, 'notifications', notifId), {

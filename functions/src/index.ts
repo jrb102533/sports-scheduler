@@ -488,6 +488,7 @@ export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Pro
           coachId: uid,
           coachIds: [uid], // Denormalized access list for membership-scoped Firestore rules
           coachName: profile.displayName ?? '',
+          ownerName: profile.displayName ?? '',
           createdBy: uid,
           createdAt: now,
           updatedAt: now,
@@ -531,6 +532,82 @@ export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Pro
       if (err instanceof HttpsError) throw err;
       throw new HttpsError('internal', err?.message ?? 'Failed to create team.');
     }
+  }
+);
+
+interface ApproveJoinRequestData {
+  teamId: string;
+  requestUid: string;
+  role?: 'player' | 'parent'; // defaults to 'player'
+}
+
+export const approveJoinRequest = onCall<ApproveJoinRequestData, Promise<{ success: boolean }>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required.');
+
+    const { teamId, requestUid, role = 'player' } = request.data;
+    if (!teamId?.trim()) throw new HttpsError('invalid-argument', 'teamId is required.');
+    if (!requestUid?.trim()) throw new HttpsError('invalid-argument', 'requestUid is required.');
+
+    const db = admin.firestore();
+    const callerUid = request.auth.uid;
+
+    // Verify caller is coach of this team or admin
+    const callerRole = await assertAdminOrCoach(callerUid);
+    if (callerRole !== 'admin') {
+      const teamSnap = await db.doc(`teams/${teamId}`).get();
+      if (!teamSnap.exists) throw new HttpsError('not-found', 'Team not found.');
+      const teamData = teamSnap.data()!;
+      const coachIds: string[] = teamData.coachIds ?? [];
+      if (!coachIds.includes(callerUid) && teamData.coachId !== callerUid) {
+        throw new HttpsError('permission-denied', 'Only team coaches can approve join requests.');
+      }
+    }
+
+    const userRef = db.doc(`users/${requestUid}`);
+    const requestRef = db.doc(`teams/${teamId}/joinRequests/${requestUid}`);
+
+    await db.runTransaction(async (tx) => {
+      const userSnap = await tx.get(userRef);
+      if (!userSnap.exists) throw new HttpsError('not-found', 'User not found.');
+
+      const userData = userSnap.data()!;
+      const existingMemberships: Record<string, unknown>[] = Array.isArray(userData.memberships)
+        ? userData.memberships
+        : [];
+
+      // Avoid duplicates
+      const alreadyMember = existingMemberships.some(
+        (m) => m['role'] === role && m['teamId'] === teamId
+      );
+
+      const profilePatch: Record<string, unknown> = {
+        teamId, // legacy scalar
+      };
+
+      if (!alreadyMember) {
+        const newMembership = {
+          role,
+          teamId,
+          isPrimary: existingMemberships.length === 0,
+        };
+        profilePatch.memberships = admin.firestore.FieldValue.arrayUnion(newMembership);
+      }
+
+      // Only promote role scalar if user is a plain 'player' or 'parent' and role matches
+      const nonElevatedRoles = ['player', 'parent'];
+      if (nonElevatedRoles.includes(userData.role as string) && userData.role !== role) {
+        // Don't demote — only set if unset or matches
+      } else if (!userData.role || nonElevatedRoles.includes(userData.role as string)) {
+        profilePatch.role = role;
+      }
+
+      tx.update(userRef, profilePatch);
+      tx.update(requestRef, { status: 'approved' });
+    });
+
+    console.log(`approveJoinRequest: teamId=${teamId} requestUid=${requestUid} role=${role}`);
+    return { success: true };
   }
 );
 
@@ -1788,10 +1865,27 @@ export const sendPostGameBroadcast = onCall<SendPostGameBroadcastData, Promise<S
       ? `${message.trim()}${motmLine}`
       : `Great effort today, team!${motmLine}`;
 
-    // Query all users on this team
-    const usersSnap = await db.collection('users').where('teamId', '==', teamId).get();
+    // Collect all UIDs to notify: legacy scalar + players collection + coachIds
+    const allUids = new Set<string>();
 
-    if (usersSnap.empty) {
+    // 1. Legacy scalar — users with teamId field
+    const legacyUsersSnap = await db.collection('users').where('teamId', '==', teamId).get();
+    legacyUsersSnap.docs.forEach(d => allUids.add(d.id));
+
+    // 2. Team doc coachIds
+    const teamSnap = await db.doc(`teams/${teamId}`).get();
+    const coachIds: string[] = teamSnap.exists ? (teamSnap.data()?.coachIds ?? []) : [];
+    coachIds.forEach((uid: string) => allUids.add(uid));
+
+    // 3. Players collection — linked users and parents
+    const playersSnap = await db.collection('players').where('teamId', '==', teamId).get();
+    playersSnap.docs.forEach(d => {
+      const data = d.data();
+      if (data.linkedUid) allUids.add(data.linkedUid as string);
+      if (data.parentUid) allUids.add(data.parentUid as string);
+    });
+
+    if (allUids.size === 0) {
       console.log(`sendPostGameBroadcast: no users found for teamId=${teamId}`);
       return { sent: 0 };
     }
@@ -1800,9 +1894,9 @@ export const sendPostGameBroadcast = onCall<SendPostGameBroadcastData, Promise<S
     const batch = db.batch();
     let notifCount = 0;
 
-    for (const userDoc of usersSnap.docs) {
+    for (const uid of allUids) {
       const notifRef = db
-        .collection('users').doc(userDoc.id)
+        .collection('users').doc(uid)
         .collection('notifications').doc();
       batch.set(notifRef, {
         id: notifRef.id,

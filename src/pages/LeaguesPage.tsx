@@ -119,6 +119,7 @@ export function LeaguesPage() {
                 createdAt: now,
                 updatedAt: now,
                 ...(managedBy ? { managedBy } : {}),
+                managerIds: profile?.uid ? [profile.uid] : [],
               });
               // Link the league manager's profile to this league if not yet set
               if (isLeagueManager && !profile?.leagueId) {
