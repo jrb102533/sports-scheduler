@@ -156,6 +156,7 @@ interface CreateUserByAdminData {
   tempPassword: string;
   teamId?: string;
   leagueId?: string;
+  playerId?: string;
 }
 
 export const createUserByAdmin = onCall<CreateUserByAdminData>(
@@ -163,7 +164,7 @@ export const createUserByAdmin = onCall<CreateUserByAdminData>(
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
     const callerRole = await assertAdminOrCoach(request.auth.uid);
 
-    const { email, displayName, role, tempPassword, teamId, leagueId } = request.data;
+    const { email, displayName, role, tempPassword, teamId, leagueId, playerId } = request.data;
     if (!email?.trim()) throw new HttpsError('invalid-argument', 'Email is required.');
 
     // Only admins may create elevated roles. Coaches may only create player/parent accounts.
@@ -211,11 +212,13 @@ export const createUserByAdmin = onCall<CreateUserByAdminData>(
           isPrimary: true,
           ...(teamId ? { teamId } : {}),
           ...(leagueId ? { leagueId } : {}),
+          ...(playerId ? { playerId } : {}),
         },
       ],
     };
     if (teamId) profile.teamId = teamId;
     if (leagueId) profile.leagueId = leagueId;
+    if (playerId) profile.playerId = playerId;
 
     await admin.firestore().doc(`users/${uid}`).set(profile);
 

@@ -223,11 +223,13 @@ describe('HomePage — empty state (no teams)', () => {
     expect(screen.getByText('Create your first team to get started.')).toBeTruthy();
   });
 
-  it('shows admin-specific empty message when admin has no teams', () => {
+  it('shows admin-specific banner (not team-empty message) when admin has no teams', () => {
     currentProfile = makeProfile('admin');
     renderHomePage();
 
-    expect(screen.getByText('You have no teams yet.')).toBeTruthy();
+    // Admins see a fixed "admin access to all teams" banner — not the team-empty state
+    expect(screen.getByText(/you have admin access to all teams/i)).toBeTruthy();
+    expect(screen.queryByText('You have no teams yet.')).toBeNull();
   });
 
   it('shows league_manager-specific empty message when league_manager has no teams', () => {
@@ -355,12 +357,13 @@ describe('HomePage — team card navigation', () => {
     });
   });
 
-  it('navigates admin to /teams when team card is clicked', async () => {
+  it('navigates admin to /teams when the "Go to Teams" link is clicked', async () => {
     currentProfile = makeProfile('admin');
     currentTeams = [makeTeam('t1', { createdBy: 'uid-1' })];
     renderHomePage();
 
-    fireEvent.click(screen.getByText('Team t1').closest('button')!);
+    // Admins see an admin banner with a "Go to Teams" link, not individual team cards
+    fireEvent.click(screen.getByRole('button', { name: /go to teams/i }));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/teams');
@@ -397,8 +400,10 @@ describe('HomePage — team card navigation', () => {
 });
 
 describe('HomePage — admin sees all teams', () => {
-  it('admin with no memberships array sees every team', () => {
-    // Admin using legacy role field (no memberships array)
+  it('admin with no memberships array sees the admin banner (not per-team cards)', () => {
+    // Admin using legacy role field (no memberships array).
+    // The redesign shows a single "admin access to all teams" banner instead of
+    // rendering individual team cards — admins manage teams via /teams.
     currentProfile = makeProfile('admin');
     currentTeams = [
       makeTeam('t1', { coachId: 'other-uid', createdBy: 'other-uid' }),
@@ -407,9 +412,11 @@ describe('HomePage — admin sees all teams', () => {
     ];
     renderHomePage();
 
-    expect(screen.getByText('Team t1')).toBeTruthy();
-    expect(screen.getByText('Team t2')).toBeTruthy();
-    expect(screen.getByText('Team t3')).toBeTruthy();
+    expect(screen.getByText(/you have admin access to all teams/i)).toBeTruthy();
+    // Individual team cards are not rendered for admin
+    expect(screen.queryByText('Team t1')).toBeNull();
+    expect(screen.queryByText('Team t2')).toBeNull();
+    expect(screen.queryByText('Team t3')).toBeNull();
   });
 });
 
