@@ -7,7 +7,8 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
-import { useAuthStore } from '@/store/useAuthStore';
+import { useAuthStore, getMemberships } from '@/store/useAuthStore';
+import { addMembership, syncLegacyScalars } from '@/lib/membershipUtils';
 import { FLAGS } from '@/lib/flags';
 import { SPORT_TYPES, SPORT_TYPE_LABELS, TEAM_COLORS, AGE_GROUPS, AGE_GROUP_LABELS, SPORT_FORFEIT_THRESHOLDS } from '@/constants';
 import { Upload, X, Image } from 'lucide-react';
@@ -30,6 +31,7 @@ const ageGroupOptions = AGE_GROUPS.map(g => ({
 
 export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const { addTeam, updateTeam } = useTeamStore();
+  const { updateProfile } = useAuthStore();
   const kidsSetting = useSettingsStore(s => s.settings.kidsSportsMode);
   const kidsMode = FLAGS.KIDS_MODE && kidsSetting;
   const profile = useAuthStore(s => s.profile);
@@ -165,7 +167,9 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         if (editTeam) {
           await updateTeam({ ...editTeam, ...base });
         } else {
-          await addTeam({ id: teamId, ...base, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now });
+          await addTeam({ id: teamId, ...base, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now, coachIds: [user!.uid] });
+          const nextMemberships = addMembership(getMemberships(profile), { role: 'coach', teamId });
+          await updateProfile({ memberships: nextMemberships, ...syncLegacyScalars(nextMemberships) });
         }
         onClose();
         return;
@@ -195,7 +199,10 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         if (!logoUrl) delete updated.logoUrl;
         await updateTeam(updated);
       } else {
-        await addTeam({ id: crypto.randomUUID(), ...base as Omit<Team, 'id' | 'createdBy' | 'ownerName' | 'createdAt'>, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now });
+        const teamId = crypto.randomUUID();
+        await addTeam({ id: teamId, ...base as Omit<Team, 'id' | 'createdBy' | 'ownerName' | 'createdAt'>, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now, coachIds: [user!.uid] });
+        const nextMemberships = addMembership(getMemberships(profile), { role: 'coach', teamId });
+        await updateProfile({ memberships: nextMemberships, ...syncLegacyScalars(nextMemberships) });
       }
       onClose();
     } catch (e: unknown) {

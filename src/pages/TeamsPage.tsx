@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Users, ChevronDown, ChevronRight, RotateCcw, Trash2 } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TeamCard } from '@/components/teams/TeamCard';
-import { BecomeCoachModal } from '@/components/onboarding/BecomeCoachModal';
+import { TeamForm } from '@/components/teams/TeamForm';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
 import { useTeamStore } from '@/store/useTeamStore';
@@ -212,7 +212,7 @@ export function TeamsPage() {
         </div>
       )}
 
-      <BecomeCoachModal open={becomeCoachOpen} onClose={() => setBecomeCoachOpen(false)} />
+      <TeamForm open={becomeCoachOpen} onClose={() => setBecomeCoachOpen(false)} />
 
       <ConfirmDialog
         open={!!hardDeleteTarget}
