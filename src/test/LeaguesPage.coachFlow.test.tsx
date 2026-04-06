@@ -281,7 +281,6 @@ describe('LeaguesPage — canEdit on league cards', () => {
     renderPage();
 
     // Edit button should be visible — it's a pencil icon button
-    const editButtons = document.querySelectorAll('button[title], button svg.lucide-pencil');
     // Admin sees edit; verify by clicking the pencil button
     const pencilBtns = Array.from(document.querySelectorAll('button')).filter(b =>
       b.querySelector('svg') && b.className.includes('hover:text-blue')

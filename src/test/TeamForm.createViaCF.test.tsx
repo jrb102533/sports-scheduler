@@ -34,10 +34,10 @@ const mockDeleteObject = vi.fn().mockResolvedValue(undefined);
 const mockRef = vi.fn((_storage: unknown, path: string) => ({ path }));
 
 vi.mock('firebase/storage', () => ({
-  ref: (...args: unknown[]) => mockRef(...args),
-  uploadBytes: (...args: unknown[]) => mockUploadBytes(...args),
-  getDownloadURL: (...args: unknown[]) => mockGetDownloadURL(...args),
-  deleteObject: (...args: unknown[]) => mockDeleteObject(...args),
+  ref: (...args: unknown[]) => mockRef(args[0], args[1] as string),
+  uploadBytes: (...args: unknown[]) => mockUploadBytes(args[0], args[1]),
+  getDownloadURL: (...args: unknown[]) => mockGetDownloadURL(args[0]),
+  deleteObject: (...args: unknown[]) => mockDeleteObject(args[0]),
 }));
 
 vi.mock('@/lib/firebase', () => ({

@@ -130,7 +130,7 @@ function UserCard({ user, teams, leagues, players, isSelf, onClick }: UserCardPr
       {/* Status + chevron */}
       <div className="flex items-center gap-2 flex-shrink-0 ml-1">
         {user.mustChangePassword && (
-          <KeyRound size={14} className="text-amber-500" title="Temp password — user must change on next login" />
+          <KeyRound size={14} className="text-amber-500" aria-label="Temp password — user must change on next login" />
         )}
         <ChevronRight size={16} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
       </div>

@@ -1,5 +1,5 @@
 import { deleteField } from 'firebase/firestore';
-import type { RoleMembership, UserProfile, UserRole } from '@/types';
+import type { RoleMembership, UserRole } from '@/types';
 
 /**
  * Derives the top-level legacy scalar fields from the primary membership.
