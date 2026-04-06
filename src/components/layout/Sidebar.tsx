@@ -83,6 +83,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
         navItems[2], // Teams
         ...(hasRole(profile, 'admin', 'league_manager') ? leagueNavItems : []),
         ...(hasRole(profile, 'admin', 'league_manager', 'coach') ? venueNavItems : []),
+        ...(hasRole(profile, 'player', 'parent') ? [{ to: '/parent', label: "My Child's Team", icon: Users, end: true as const }] : []),
         navItems[3], // Notifications
         navItems[4], // Messaging
         navItems[5], // Settings

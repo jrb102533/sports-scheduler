@@ -21,7 +21,7 @@ export function TeamsPage() {
   const players = usePlayerStore(s => s.players);
   const profile = useAuthStore(s => s.profile);
   const user = useAuthStore(s => s.user);
-  const [formOpen, setFormOpen] = useState(false);
+  const [becomeCoachOpen, setBecomeCoachOpen] = useState(false);
   const [findTeamOpen, setFindTeamOpen] = useState(false);
   const [deletedOpen, setDeletedOpen] = useState(false);
   const [hardDeleteTarget, setHardDeleteTarget] = useState<Team | null>(null);
@@ -110,7 +110,7 @@ export function TeamsPage() {
             : `${myTeams.length} ${myTeams.length === 1 ? 'team' : 'teams'}`}
         </p>
         {user && (
-          <Button onClick={() => setFormOpen(true)}>
+          <Button onClick={() => setBecomeCoachOpen(true)}>
             <Plus size={16} /> New Team
           </Button>
         )}
@@ -123,7 +123,7 @@ export function TeamsPage() {
           title="No teams yet"
           description="Create your first team to start managing rosters and scheduling events."
           action={
-            user ? <Button onClick={() => setFormOpen(true)}><Plus size={16} /> Create Team</Button> : undefined
+            user ? <Button onClick={() => setBecomeCoachOpen(true)}><Plus size={16} /> Create Team</Button> : undefined
           }
         />
       )}
@@ -212,7 +212,7 @@ export function TeamsPage() {
         </div>
       )}
 
-      <TeamForm open={formOpen} onClose={() => setFormOpen(false)} />
+      <TeamForm open={becomeCoachOpen} onClose={() => setBecomeCoachOpen(false)} />
 
       <ConfirmDialog
         open={!!hardDeleteTarget}

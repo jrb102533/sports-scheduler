@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -29,7 +31,7 @@ const ageGroupOptions = AGE_GROUPS.map(g => ({
 }));
 
 export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
-  const { addTeam, updateTeam } = useTeamStore();
+  const { updateTeam } = useTeamStore();
   const kidsSetting = useSettingsStore(s => s.settings.kidsSportsMode);
   const kidsMode = FLAGS.KIDS_MODE && kidsSetting;
   const profile = useAuthStore(s => s.profile);
@@ -165,7 +167,8 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         if (editTeam) {
           await updateTeam({ ...editTeam, ...base });
         } else {
-          await addTeam({ id: teamId, ...base, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now });
+          const createFn = httpsCallable<Record<string, unknown>, { teamId: string }>(functions, 'createTeamAndBecomeCoach');
+          await createFn({ name: name.trim(), sportType, color, ...(ageGroup ? { ageGroup } : {}), ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}), ...(coachName.trim() ? { coachName: coachName.trim() } : {}), ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}), ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}), ...(logoUrl ? { logoUrl } : {}), attendanceWarningsEnabled, ...(parsedThreshold !== undefined && !isNaN(parsedThreshold) ? { attendanceWarningThreshold: parsedThreshold } : {}) });
         }
         onClose();
         return;
@@ -195,7 +198,8 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         if (!logoUrl) delete updated.logoUrl;
         await updateTeam(updated);
       } else {
-        await addTeam({ id: crypto.randomUUID(), ...base as Omit<Team, 'id' | 'createdBy' | 'ownerName' | 'createdAt'>, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now });
+        const createFn = httpsCallable<Record<string, unknown>, { teamId: string }>(functions, 'createTeamAndBecomeCoach');
+        await createFn({ name: name.trim(), sportType, color, ...(ageGroup ? { ageGroup } : {}), ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}), ...(coachName.trim() ? { coachName: coachName.trim() } : {}), ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}), ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}), attendanceWarningsEnabled, ...(parsedThreshold2 !== undefined && !isNaN(parsedThreshold2) ? { attendanceWarningThreshold: parsedThreshold2 } : {}) });
       }
       onClose();
     } catch (e: unknown) {

@@ -8,7 +8,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { LeagueForm } from '@/components/leagues/LeagueForm';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useTeamStore } from '@/store/useTeamStore';
-import { useAuthStore } from '@/store/useAuthStore';
+import { useAuthStore, hasRole } from '@/store/useAuthStore';
+import { BecomeLeagueManagerModal } from '@/components/onboarding/BecomeLeagueManagerModal';
 import type { League, Team } from '@/types';
 
 export function LeaguesPage() {
@@ -19,14 +20,24 @@ export function LeaguesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<League | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<League | null>(null);
+  const [becomeLMOpen, setBecomeLMOpen] = useState(false);
 
   const isAdmin = profile?.role === 'admin';
-  const isLeagueManager = profile?.role === 'league_manager';
-  const canCreateLeague = isAdmin || isLeagueManager;
+  const isLeagueManager = hasRole(profile ?? null, 'league_manager');
+  const isCoach = hasRole(profile ?? null, 'coach');
+  const canCreateLeague = isAdmin || isLeagueManager || isCoach;
+
+  // Build the set of league IDs this user manages (via memberships array or legacy scalar)
+  const myLeagueIds = new Set([
+    ...(profile?.memberships ?? [])
+      .filter(m => m.role === 'league_manager' && m.leagueId)
+      .map(m => m.leagueId!),
+    ...(profile?.leagueId ? [profile.leagueId] : []),
+  ]);
 
   const visibleLeagues = isAdmin
     ? leagues
-    : leagues.filter(l => l.managedBy === profile?.uid || l.id === profile?.leagueId);
+    : leagues.filter(l => myLeagueIds.has(l.id));
 
   function openEdit(league: League, e: React.MouseEvent) {
     e.stopPropagation();
@@ -35,8 +46,12 @@ export function LeaguesPage() {
   }
 
   function openAdd() {
-    setEditTarget(null);
-    setFormOpen(true);
+    if (isAdmin || isLeagueManager) {
+      setEditTarget(null);
+      setFormOpen(true);
+    } else {
+      setBecomeLMOpen(true);
+    }
   }
 
   async function handleDelete(league: League) {
@@ -71,7 +86,7 @@ export function LeaguesPage() {
                 key={league.id}
                 league={league}
                 leagueTeams={leagueTeams}
-                canEdit={isAdmin || (isLeagueManager && (league.managedBy === profile?.uid || league.id === profile?.leagueId))}
+                canEdit={isAdmin || myLeagueIds.has(league.id)}
                 canDelete={isAdmin}
                 onClick={() => navigate(`/leagues/${league.id}`)}
                 onEdit={e => openEdit(league, e)}
@@ -127,6 +142,8 @@ export function LeaguesPage() {
         title="Delete League"
         message={`Delete "${deleteTarget?.name}"? Teams in this league will be unassigned but not deleted.`}
       />
+
+      <BecomeLeagueManagerModal open={becomeLMOpen} onClose={() => setBecomeLMOpen(false)} />
     </div>
   );
 }
