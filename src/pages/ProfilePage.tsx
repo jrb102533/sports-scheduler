@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, Shield, Star, Link, Pencil } from 'lucide-react';
+import { User, Shield, Star, Link } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -8,8 +8,8 @@ import { useAuthStore, getMemberships } from '@/store/useAuthStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
-import { ROLE_DEFINITIONS, RoleCardPicker } from '@/components/auth/RoleCardPicker';
-import type { RoleMembership, UserRole } from '@/types';
+import { ROLE_DEFINITIONS } from '@/components/auth/RoleCardPicker';
+import type { RoleMembership } from '@/types';
 
 const roleColors: Record<string, string> = {
   admin: 'bg-purple-100 text-purple-700',
@@ -19,8 +19,10 @@ const roleColors: Record<string, string> = {
   parent: 'bg-orange-100 text-orange-700',
 };
 
-function membershipContextLabel(m: RoleMembership, teamName?: string, leagueName?: string): string | null {
+function membershipContextLabel(m: RoleMembership, teamName?: string, leagueName?: string, childName?: string): string | null {
+  if (m.role === 'admin') return 'Platform admin';
   if (m.role === 'league_manager' && leagueName) return leagueName;
+  if (m.role === 'parent' && childName) return childName;
   if (teamName) return teamName;
   if (m.teamId) return m.teamId;
   if (m.leagueId) return m.leagueId;
@@ -39,10 +41,6 @@ export function ProfilePage() {
   const [lastNameTouched, setLastNameTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [editingRoles, setEditingRoles] = useState(false);
-  const [editPrimary, setEditPrimary] = useState<UserRole>('coach');
-  const [editAdditional, setEditAdditional] = useState<UserRole[]>([]);
-  const [rolesSaving, setRolesSaving] = useState(false);
 
   const team = teams.find(t => t.id === profile?.teamId);
   const memberships = getMemberships(profile ?? null);
@@ -55,25 +53,6 @@ export function ProfilePage() {
     : profile?.teamId
     ? teams.find(t => t.id === profile.teamId)
     : undefined;
-
-  function openRoleEdit() {
-    const primary = memberships.find(m => m.isPrimary) ?? memberships[0];
-    setEditPrimary(primary?.role ?? 'coach');
-    setEditAdditional(memberships.filter(m => !m.isPrimary).map(m => m.role));
-    setEditingRoles(true);
-  }
-
-  async function handleSaveRoles() {
-    if (!profile) return;
-    setRolesSaving(true);
-    const newMemberships: RoleMembership[] = [
-      { role: editPrimary, isPrimary: true },
-      ...editAdditional.map(r => ({ role: r })),
-    ];
-    await updateProfile({ memberships: newMemberships, role: editPrimary });
-    setEditingRoles(false);
-    setRolesSaving(false);
-  }
 
   async function handleSetPrimary(index: number) {
     if (!profile) return;
@@ -169,43 +148,14 @@ export function ProfilePage() {
         <Card className="p-4 sm:p-6 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Shield size={16} /> My Roles</h3>
-            {!editingRoles && (
-              <button
-                onClick={openRoleEdit}
-                className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
-              >
-                <Pencil size={12} /> Edit
-              </button>
-            )}
           </div>
 
-          {editingRoles ? (
-            <div className="space-y-4">
-              <RoleCardPicker
-                primaryRole={editPrimary}
-                additionalRoles={editAdditional}
-                onPrimaryChange={r => {
-                  setEditPrimary(r);
-                  setEditAdditional(prev => prev.filter(x => x !== r));
-                }}
-                onAddSecondary={r => setEditAdditional(prev => prev.includes(r) || r === editPrimary ? prev : [...prev, r])}
-                onRemoveSecondary={r => setEditAdditional(prev => prev.filter(x => x !== r))}
-              />
-              <div className="flex gap-3 pt-1">
-                <Button onClick={handleSaveRoles} disabled={rolesSaving}>
-                  {rolesSaving ? 'Saving…' : 'Save Roles'}
-                </Button>
-                <Button variant="secondary" onClick={() => setEditingRoles(false)} disabled={rolesSaving}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <ul className="space-y-2">
+          <ul className="space-y-2">
               {memberships.map((m, i) => {
                 const memberTeam = m.teamId ? teams.find(t => t.id === m.teamId) : undefined;
                 const memberLeague = m.leagueId ? leagues.find(l => l.id === m.leagueId) : undefined;
-                const contextLabel = membershipContextLabel(m, memberTeam?.name, memberLeague?.name);
+                const memberChild = m.playerId ? players.find(p => p.id === m.playerId) : undefined;
+                const contextLabel = membershipContextLabel(m, memberTeam?.name, memberLeague?.name, memberChild ? `${memberChild.firstName} ${memberChild.lastName}` : undefined);
                 const isActive = i === activeIndex;
                 const roleDef = ROLE_DEFINITIONS.find(d => d.role === m.role);
                 const RoleIcon = roleDef?.icon ?? Shield;
@@ -251,7 +201,6 @@ export function ProfilePage() {
                 );
               })}
             </ul>
-          )}
         </Card>
       )}
 
