@@ -150,11 +150,19 @@ vi.mock('firebase-admin', () => {
     default: {
       initializeApp: vi.fn(),
       firestore: firestoreFn,
-      auth: vi.fn(() => ({ createUser: vi.fn(), updateUser: vi.fn() })),
+      auth: vi.fn(() => ({
+        createUser: vi.fn(),
+        getUserByEmail: vi.fn().mockRejectedValue({ code: 'auth/user-not-found' }),
+        updateUser: vi.fn().mockResolvedValue({}),
+      })),
     },
     initializeApp: vi.fn(),
     firestore: firestoreFn,
-    auth: vi.fn(() => ({ createUser: vi.fn(), updateUser: vi.fn() })),
+    auth: vi.fn(() => ({
+      createUser: vi.fn(),
+      getUserByEmail: vi.fn().mockRejectedValue({ code: 'auth/user-not-found' }),
+      updateUser: vi.fn().mockResolvedValue({}),
+    })),
   };
 });
 

@@ -266,6 +266,7 @@ const mockDb = {
 
 const mockUpdateUser = vi.fn().mockResolvedValue({});
 const mockCreateUser = vi.fn().mockResolvedValue({ uid: 'new-uid' });
+const mockGetUserByEmail = vi.fn().mockRejectedValue({ code: 'auth/user-not-found' });
 
 vi.mock('firebase-admin', () => {
   const FieldValue = {
@@ -279,11 +280,11 @@ vi.mock('firebase-admin', () => {
     default: {
       initializeApp: vi.fn(),
       firestore: firestoreFn,
-      auth: vi.fn(() => ({ createUser: mockCreateUser, updateUser: mockUpdateUser })),
+      auth: vi.fn(() => ({ createUser: mockCreateUser, updateUser: mockUpdateUser, getUserByEmail: mockGetUserByEmail })),
     },
     initializeApp: vi.fn(),
     firestore: firestoreFn,
-    auth: vi.fn(() => ({ createUser: mockCreateUser, updateUser: mockUpdateUser })),
+    auth: vi.fn(() => ({ createUser: mockCreateUser, updateUser: mockUpdateUser, getUserByEmail: mockGetUserByEmail })),
   };
 });
 
@@ -341,6 +342,7 @@ beforeEach(() => {
   clearStore();
   mockUpdateUser.mockClear();
   mockCreateUser.mockClear();
+  mockGetUserByEmail.mockClear();
 
   // Seed rate-limit docs so checkRateLimit doesn't throw.
   seedDoc('rateLimits/uid1_verifyInvitedUser', { count: 0, windowStart: Date.now() });

@@ -486,6 +486,7 @@ export const sendInvite = onCall<SendInviteData>(
       inviteSecret,
       invitedAt: new Date().toISOString(),
       autoVerify: true,
+      status: 'pending',
     });
 
     // If the invitee already has a Firebase Auth account, auto-verify their email now so they
@@ -699,6 +700,7 @@ export const checkInviteAutoVerify = onCall<Record<string, never>, Promise<Check
     const inviteQuery = await db.collection('invites')
       .where('email', '==', email)
       .where('autoVerify', '==', true)
+      .where('status', '==', 'pending')
       .limit(1)
       .get();
 
