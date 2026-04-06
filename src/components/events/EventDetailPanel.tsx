@@ -503,7 +503,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
                 const count = noResponse ?? (rosterSize - respondedCount);
                 // TODO: wire to sendEventReminder CF when available — sendAvailabilityReminder
                 // requires { leagueId, collectionId } but ScheduledEvent carries neither field.
-                console.warn('nudge: no per-event CF wired for event', event.id);
+                console.warn('nudge: no per-event CF wired for event', event?.id);
                 setNudgeToast(`Reminder sent to ${count} player${count !== 1 ? 's' : ''}`);
                 setTimeout(() => setNudgeToast(null), 3500);
               }
