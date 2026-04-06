@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Baby, Bell, Info, MessageSquare, ShieldCheck } from 'lucide-react';
+import { Baby, Bell, Info, ShieldCheck } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
@@ -72,18 +72,6 @@ export function SettingsPage() {
               label="Weekly digest"
               description="Receive a Monday morning summary of your week's events"
             />
-          </div>
-        </Card>
-
-        {/* Messaging */}
-        <Card className="overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-            <MessageSquare size={18} className="text-green-500" />
-            <h2 className="font-semibold text-gray-900">SMS Messaging</h2>
-          </div>
-          <div className="px-5 py-4 text-sm text-gray-600 space-y-2">
-            <p>SMS messages are sent using your device's native messaging app. No account or subscription required.</p>
-            <p>To enable messaging for players, add parent contact info (name and phone number) when creating or editing a player.</p>
           </div>
         </Card>
 
