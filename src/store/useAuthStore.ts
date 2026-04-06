@@ -209,8 +209,30 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       const cred = await signInWithEmailAndPassword(auth, email, password);
       if (!cred.user.emailVerified) {
-        await signOut(auth);
-        throw Object.assign(new Error('Email not verified'), { code: 'auth/email-not-verified' });
+        // Before blocking the sign-in, check whether this user has a pending invite
+        // with autoVerify: true. If so, the CF marks their Firebase Auth email as verified
+        // and we reload the user token so emailVerified becomes true.
+        try {
+          const checkFn = httpsCallable<Record<string, never>, { verified: boolean }>(
+            functions, 'checkInviteAutoVerify'
+          );
+          const result = await checkFn({});
+          if (result.data.verified) {
+            // The CF has updated the Auth record — reload to get the fresh token.
+            await cred.user.reload();
+          } else {
+            await signOut(auth);
+            throw Object.assign(new Error('Email not verified'), { code: 'auth/email-not-verified' });
+          }
+        } catch (inviteErr: unknown) {
+          // If the CF call itself fails (network, etc.), treat as not verified.
+          const code = (inviteErr as { code?: string }).code ?? '';
+          if (code !== 'auth/email-not-verified') {
+            // Unexpected CF error — sign out and surface the verification message.
+            await signOut(auth);
+          }
+          throw Object.assign(new Error('Email not verified'), { code: 'auth/email-not-verified' });
+        }
       }
     } catch (e: unknown) {
       set({ error: mapAuthError(e) });
