@@ -1,15 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { doc, updateDoc } from 'firebase/firestore';
-import { storage, db } from '@/lib/firebase';
+import { storage } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
-import { useAuthStore, getMemberships } from '@/store/useAuthStore';
-import { addMembership, syncLegacyScalars } from '@/lib/membershipUtils';
+import { useAuthStore } from '@/store/useAuthStore';
 import { FLAGS } from '@/lib/flags';
 import { SPORT_TYPES, SPORT_TYPE_LABELS, TEAM_COLORS, AGE_GROUPS, AGE_GROUP_LABELS, SPORT_FORFEIT_THRESHOLDS } from '@/constants';
 import { Upload, X, Image } from 'lucide-react';
@@ -31,7 +31,7 @@ const ageGroupOptions = AGE_GROUPS.map(g => ({
 }));
 
 export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
-  const { addTeam, updateTeam } = useTeamStore();
+  const { updateTeam } = useTeamStore();
   const kidsSetting = useSettingsStore(s => s.settings.kidsSportsMode);
   const kidsMode = FLAGS.KIDS_MODE && kidsSetting;
   const profile = useAuthStore(s => s.profile);
@@ -167,9 +167,8 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         if (editTeam) {
           await updateTeam({ ...editTeam, ...base });
         } else {
-          await addTeam({ id: teamId, ...base, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now, coachIds: [user!.uid] });
-          const nextMemberships = addMembership(getMemberships(profile), { role: 'coach', teamId });
-          await updateDoc(doc(db, 'users', user!.uid), { memberships: nextMemberships, ...syncLegacyScalars(nextMemberships) });
+          const createFn = httpsCallable<Record<string, unknown>, { teamId: string }>(functions, 'createTeamAndBecomeCoach');
+          await createFn({ name: name.trim(), sportType, color, ...(ageGroup ? { ageGroup } : {}), ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}), ...(coachName.trim() ? { coachName: coachName.trim() } : {}), ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}), ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}), ...(logoUrl ? { logoUrl } : {}), attendanceWarningsEnabled, ...(parsedThreshold !== undefined && !isNaN(parsedThreshold) ? { attendanceWarningThreshold: parsedThreshold } : {}) });
         }
         onClose();
         return;
@@ -199,10 +198,8 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         if (!logoUrl) delete updated.logoUrl;
         await updateTeam(updated);
       } else {
-        const teamId = crypto.randomUUID();
-        await addTeam({ id: teamId, ...base as Omit<Team, 'id' | 'createdBy' | 'ownerName' | 'createdAt'>, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now, coachIds: [user!.uid] });
-        const nextMemberships = addMembership(getMemberships(profile), { role: 'coach', teamId });
-        await updateDoc(doc(db, 'users', user!.uid), { memberships: nextMemberships, ...syncLegacyScalars(nextMemberships) });
+        const createFn = httpsCallable<Record<string, unknown>, { teamId: string }>(functions, 'createTeamAndBecomeCoach');
+        await createFn({ name: name.trim(), sportType, color, ...(ageGroup ? { ageGroup } : {}), ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}), ...(coachName.trim() ? { coachName: coachName.trim() } : {}), ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}), ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}), attendanceWarningsEnabled, ...(parsedThreshold2 !== undefined && !isNaN(parsedThreshold2) ? { attendanceWarningThreshold: parsedThreshold2 } : {}) });
       }
       onClose();
     } catch (e: unknown) {
