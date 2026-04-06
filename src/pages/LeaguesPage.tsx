@@ -23,7 +23,7 @@ export function LeaguesPage() {
   const [becomeLMOpen, setBecomeLMOpen] = useState(false);
 
   const isAdmin = profile?.role === 'admin';
-  const isLeagueManager = profile?.role === 'league_manager';
+  const isLeagueManager = hasRole(profile ?? null, 'league_manager');
   const isCoach = hasRole(profile ?? null, 'coach');
   const canCreateLeague = isAdmin || isLeagueManager || isCoach;
 
