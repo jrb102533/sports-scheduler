@@ -4,11 +4,14 @@ import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut
 import { clsx } from 'clsx';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
-import { useAuthStore, hasRole, getMemberships, getActiveMembership } from '@/store/useAuthStore';
+import { useAuthStore, getMemberships, getActiveMembership } from '@/store/useAuthStore';
 import { useEventStore } from '@/store/useEventStore';
+import { useTeamStore } from '@/store/useTeamStore';
+import { useLeagueStore } from '@/store/useLeagueStore';
 import { FLAGS } from '@/lib/flags';
 import { todayISO, formatTime } from '@/lib/dateUtils';
 import { format, parseISO, isToday, isTomorrow } from 'date-fns';
+import type { RoleMembership } from '@/types';
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -44,6 +47,12 @@ const roleColors: Record<string, string> = {
   parent: 'text-orange-300',
 };
 
+function membershipLabel(m: RoleMembership, teamName?: string, leagueName?: string): string {
+  const roleTitle = m.role.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const context = m.role === 'league_manager' ? leagueName : teamName;
+  return context ? `${roleTitle} — ${context}` : roleTitle;
+}
+
 function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   const unread = useNotificationStore(s => s.notifications.filter(n => !n.isRead).length);
   const kidsSetting = useSettingsStore(s => s.settings.kidsSportsMode);
@@ -52,6 +61,8 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   const navigate = useNavigate();
   const [contextOpen, setContextOpen] = useState(false);
   const allEvents = useEventStore(s => s.events);
+  const teams = useTeamStore(s => s.teams);
+  const leagues = useLeagueStore(s => s.leagues);
 
   const today = todayISO();
   const nextEvent = allEvents
@@ -65,7 +76,12 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
     return format(d, 'EEE, MMM d');
   }
 
-  const isParentOrPlayer = hasRole(profile, 'player', 'parent') && !hasRole(profile, 'admin', 'league_manager', 'coach');
+  const memberships = getMemberships(profile);
+  const activeMembership = getActiveMembership(profile);
+  const activeIndex = profile?.activeContext ?? 0;
+  const activeRole = activeMembership?.role ?? profile?.role ?? 'player';
+
+  const isParentOrPlayer = activeRole === 'player' || activeRole === 'parent';
 
   const homeNavItem = { to: '/home', label: 'Home', icon: Home, end: true };
 
@@ -81,20 +97,13 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
         homeNavItem,
         navItems[1], // Calendar
         navItems[2], // Teams
-        ...(hasRole(profile, 'admin', 'league_manager') ? leagueNavItems : []),
-        ...(hasRole(profile, 'admin', 'league_manager', 'coach') ? venueNavItems : []),
-        ...(hasRole(profile, 'player', 'parent') ? [{ to: '/parent', label: "My Child's Team", icon: Users, end: true as const }] : []),
+        ...(activeRole === 'admin' || activeRole === 'league_manager' ? leagueNavItems : []),
+        ...(activeRole === 'admin' || activeRole === 'league_manager' || activeRole === 'coach' ? venueNavItems : []),
         navItems[3], // Notifications
         navItems[4], // Messaging
         navItems[5], // Settings
-        // admin is an exclusive role — use the scalar directly to avoid any membership
-        // cross-contamination during the RBAC migration window.
-        ...(profile?.role === 'admin' ? adminNavItems : []),
+        ...(activeRole === 'admin' ? adminNavItems : []),
       ];
-
-  const memberships = getMemberships(profile);
-  const activeMembership = getActiveMembership(profile);
-  const activeIndex = profile?.activeContext ?? 0;
 
   return (
     <>
@@ -152,7 +161,11 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
           >
             <Shield size={12} className={clsx('flex-shrink-0', roleColors[activeMembership?.role ?? ''] ?? 'text-gray-400')} />
             <span className="flex-1 min-w-0 text-xs font-semibold text-white truncate uppercase tracking-wide">
-              {activeMembership?.role.replace('_', ' ')}
+              {activeMembership ? membershipLabel(
+                activeMembership,
+                activeMembership.teamId ? teams.find(t => t.id === activeMembership.teamId)?.name : undefined,
+                activeMembership.leagueId ? leagues.find(l => l.id === activeMembership.leagueId)?.name : undefined,
+              ) : ''}
             </span>
             <ChevronDown size={14} className={clsx('text-blue-300 flex-shrink-0 transition-transform', contextOpen && 'rotate-180')} />
           </button>
@@ -170,7 +183,11 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
                   )}
                 >
                   <Shield size={10} className={clsx('flex-shrink-0', roleColors[m.role] ?? 'text-gray-400')} />
-                  <span className="font-medium capitalize">{m.role.replace('_', ' ')}</span>
+                  <span className="font-medium capitalize">{membershipLabel(
+                    m,
+                    m.teamId ? teams.find(t => t.id === m.teamId)?.name : undefined,
+                    m.leagueId ? leagues.find(l => l.id === m.leagueId)?.name : undefined,
+                  )}</span>
                   {i === activeIndex && <span className="ml-auto text-[10px] text-blue-300">Active</span>}
                 </button>
               ))}
