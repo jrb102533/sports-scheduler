@@ -219,8 +219,9 @@ export function TeamsPage() {
         onClose={() => setHardDeleteTarget(null)}
         onConfirm={() => hardDeleteTarget && void hardDeleteTeam(hardDeleteTarget.id)}
         title="Permanently Delete Team"
-        message={`Permanently delete "${hardDeleteTarget?.name}"? This cannot be undone.`}
+        message={`Permanently delete "${hardDeleteTarget?.name}"? This cannot be undone. All team data, roster, and events will be lost.`}
         confirmLabel="Permanently Delete"
+        typeToConfirm={hardDeleteTarget?.name}
       />
     </div>
   );
