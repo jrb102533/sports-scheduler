@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { storage } from '@/lib/firebase';
+import { doc, updateDoc } from 'firebase/firestore';
+import { storage, db } from '@/lib/firebase';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -31,7 +32,6 @@ const ageGroupOptions = AGE_GROUPS.map(g => ({
 
 export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const { addTeam, updateTeam } = useTeamStore();
-  const { updateProfile } = useAuthStore();
   const kidsSetting = useSettingsStore(s => s.settings.kidsSportsMode);
   const kidsMode = FLAGS.KIDS_MODE && kidsSetting;
   const profile = useAuthStore(s => s.profile);
@@ -169,7 +169,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         } else {
           await addTeam({ id: teamId, ...base, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now, coachIds: [user!.uid] });
           const nextMemberships = addMembership(getMemberships(profile), { role: 'coach', teamId });
-          await updateProfile({ memberships: nextMemberships, ...syncLegacyScalars(nextMemberships) });
+          await updateDoc(doc(db, 'users', user!.uid), { memberships: nextMemberships, ...syncLegacyScalars(nextMemberships) });
         }
         onClose();
         return;
@@ -202,7 +202,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         const teamId = crypto.randomUUID();
         await addTeam({ id: teamId, ...base as Omit<Team, 'id' | 'createdBy' | 'ownerName' | 'createdAt'>, createdBy: user!.uid, ownerName: profile!.displayName, createdAt: now, coachIds: [user!.uid] });
         const nextMemberships = addMembership(getMemberships(profile), { role: 'coach', teamId });
-        await updateProfile({ memberships: nextMemberships, ...syncLegacyScalars(nextMemberships) });
+        await updateDoc(doc(db, 'users', user!.uid), { memberships: nextMemberships, ...syncLegacyScalars(nextMemberships) });
       }
       onClose();
     } catch (e: unknown) {
