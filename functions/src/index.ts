@@ -488,6 +488,14 @@ export const sendInvite = onCall<SendInviteData>(
       autoVerify: true,
     });
 
+    // If the invitee already has a Firebase Auth account, auto-verify their email now so they
+    // can sign in immediately without waiting for a verification email.
+    // If they don't have an account yet, the autoVerify flag on the invite doc handles it at signup
+    // (via verifyInvitedUser) and at first sign-in (via checkInviteAutoVerify).
+    await admin.auth().getUserByEmail(normalizedEmail)
+      .then(userRecord => admin.auth().updateUser(userRecord.uid, { emailVerified: true }))
+      .catch(() => { /* user doesn't have an account yet — autoVerify flag on invite doc covers both paths */ });
+
     // Add to signup allowlist so the invitee can register even when signups are restricted
     await admin.firestore().doc('system/signupConfig').set(
       { allowedEmails: admin.firestore.FieldValue.arrayUnion(normalizedEmail) },
@@ -661,6 +669,48 @@ export const verifyInvitedUser = onCall<VerifyInvitedUserData, Promise<VerifyInv
     }
 
     return { found: true };
+  }
+);
+
+// ─── Check invite auto-verify (login path) ────────────────────────────────────
+// Called after signInWithEmailAndPassword when emailVerified is false.
+// Unlike verifyInvitedUser (which requires an invite secret and consumes the invite),
+// this function only checks whether the authenticated user has a pending autoVerify invite
+// and, if so, marks their Firebase Auth email as verified.  The invite is not consumed here —
+// that happens when the user goes through the invite link flow during signup.
+
+interface CheckInviteAutoVerifyResult {
+  verified: boolean;
+}
+
+export const checkInviteAutoVerify = onCall<Record<string, never>, Promise<CheckInviteAutoVerifyResult>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+    await checkRateLimit(request.auth.uid, 'checkInviteAutoVerify', 10);
+
+    const uid = request.auth.uid;
+    const email = request.auth.token.email?.toLowerCase();
+    if (!email) throw new HttpsError('invalid-argument', 'No email on auth token.');
+
+    const db = admin.firestore();
+
+    // Query for any pending invite for this email with autoVerify set.
+    // The invite may not yet have been consumed (user hasn't gone through signup link yet).
+    const inviteQuery = await db.collection('invites')
+      .where('email', '==', email)
+      .where('autoVerify', '==', true)
+      .limit(1)
+      .get();
+
+    if (inviteQuery.empty) {
+      return { verified: false };
+    }
+
+    // An invite exists — mark the Firebase Auth account as verified.
+    await admin.auth().updateUser(uid, { emailVerified: true });
+    console.log(`checkInviteAutoVerify: auto-verified uid=${uid} email=${email} via pending invite`);
+
+    return { verified: true };
   }
 );
 
