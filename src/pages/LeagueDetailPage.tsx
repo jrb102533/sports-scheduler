@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2, Layers } from 'lucide-react';
+import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2, Layers, Search } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { EventCard } from '@/components/events/EventCard';
@@ -8,6 +8,7 @@ import { EventForm } from '@/components/events/EventForm';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
 import { StandingsTable } from '@/components/standings/StandingsTable';
 import { LeagueForm } from '@/components/leagues/LeagueForm';
+import { TeamForm } from '@/components/teams/TeamForm';
 import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
 import { DeleteLeagueModal } from '@/components/leagues/DeleteLeagueModal';
 import { SeasonCreateModal } from '@/components/seasons/SeasonCreateModal';
@@ -55,6 +56,11 @@ export function LeagueDetailPage() {
   const [softDeleteOpen, setSoftDeleteOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [seasonCreateOpen, setSeasonCreateOpen] = useState(false);
+  const [addTeamOpen, setAddTeamOpen] = useState(false);
+  const [createTeamOpen, setCreateTeamOpen] = useState(false);
+  const [teamSearch, setTeamSearch] = useState('');
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
+  const [addingTeams, setAddingTeams] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -229,38 +235,60 @@ export function LeagueDetailPage() {
 
       {/* Teams Tab */}
       {tab === 'teams' && (
-        <div className="bg-white rounded-xl border border-gray-200">
-          {leagueTeams.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-400">No teams assigned to this league yet.</div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {leagueTeams.map(team => (
-                <div key={team.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
-                  <button
-                    onClick={() => navigate(`/teams/${team.id}`)}
-                    className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                  >
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style={{ backgroundColor: team.color }}>
-                      {team.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">{team.name}</p>
-                      <p className="text-xs text-gray-500">{SPORT_TYPE_LABELS[team.sportType]}</p>
-                    </div>
-                  </button>
-                  {canManage && (
-                    <button
-                      onClick={() => removeTeamFromLeague(team.id, id!)}
-                      className="text-xs text-gray-400 hover:text-red-600 transition-colors flex-shrink-0 px-2 py-1 rounded hover:bg-red-50"
-                      title="Remove from league"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  )}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm text-gray-500">{leagueTeams.length} {leagueTeams.length === 1 ? 'team' : 'teams'}</p>
+            {canManage && (
+              <Button size="sm" onClick={() => setAddTeamOpen(true)}>
+                <Plus size={14} /> Add Team
+              </Button>
+            )}
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200">
+            {leagueTeams.length === 0 ? (
+              canManage ? (
+                <div className="p-8 text-center space-y-3">
+                  <p className="text-sm text-gray-500">No teams in this league yet.</p>
+                  <p className="text-xs text-gray-400">Add your first team to get started.</p>
+                  <div className="flex justify-center">
+                    <Button size="sm" onClick={() => setAddTeamOpen(true)}>
+                      <Plus size={14} /> Add Team
+                    </Button>
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
+              ) : (
+                <div className="p-8 text-center text-sm text-gray-400">No teams assigned to this league yet.</div>
+              )
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {leagueTeams.map(team => (
+                  <div key={team.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
+                    <button
+                      onClick={() => navigate(`/teams/${team.id}`)}
+                      className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                    >
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style={{ backgroundColor: team.color }}>
+                        {team.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{team.name}</p>
+                        <p className="text-xs text-gray-500">{SPORT_TYPE_LABELS[team.sportType]}</p>
+                      </div>
+                    </button>
+                    {canManage && (
+                      <button
+                        onClick={() => removeTeamFromLeague(team.id, id!)}
+                        className="text-xs text-gray-400 hover:text-red-600 transition-colors flex-shrink-0 px-2 py-1 rounded hover:bg-red-50"
+                        title="Remove from league"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -361,6 +389,102 @@ export function LeagueDetailPage() {
           onConfirm={() => softDeleteLeague(league.id).then(() => navigate('/leagues'))}
         />
       )}
+
+      {/* Add Team to League modal */}
+      {addTeamOpen && (() => {
+        const availableTeams = teams.filter(t => !leagueTeamIds.includes(t.id));
+        const filteredTeams = teamSearch.trim()
+          ? availableTeams.filter(t => t.name.toLowerCase().includes(teamSearch.trim().toLowerCase()))
+          : availableTeams;
+
+        async function handleAddSelected() {
+          setAddingTeams(true);
+          try {
+            await Promise.all(selectedTeamIds.map(tid => addTeamToLeague(tid, id!)));
+          } finally {
+            setAddingTeams(false);
+            setAddTeamOpen(false);
+            setSelectedTeamIds([]);
+            setTeamSearch('');
+          }
+        }
+
+        function toggleTeam(tid: string) {
+          setSelectedTeamIds(prev =>
+            prev.includes(tid) ? prev.filter(x => x !== tid) : [...prev, tid]
+          );
+        }
+
+        return (
+          <Modal open onClose={() => { setAddTeamOpen(false); setSelectedTeamIds([]); setTeamSearch(''); }} title="Add Team to League">
+            <div className="space-y-4">
+              {availableTeams.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-4">
+                  All existing teams are already in this league.
+                </p>
+              ) : (
+                <>
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="Search teams…"
+                      value={teamSearch}
+                      onChange={e => setTeamSearch(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      aria-label="Search teams"
+                    />
+                  </div>
+                  <div className="max-h-60 overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-lg">
+                    {filteredTeams.length === 0 ? (
+                      <p className="text-sm text-gray-400 text-center py-6">No teams match your search.</p>
+                    ) : (
+                      filteredTeams.map(team => (
+                        <label key={team.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedTeamIds.includes(team.id)}
+                            onChange={() => toggleTeam(team.id)}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+                          />
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ backgroundColor: team.color }}>
+                            {team.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900">{team.name}</p>
+                            <p className="text-xs text-gray-500">{SPORT_TYPE_LABELS[team.sportType]}</p>
+                          </div>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+              <div className="flex justify-end gap-3 pt-1">
+                <Button variant="secondary" onClick={() => { setAddTeamOpen(false); setSelectedTeamIds([]); setTeamSearch(''); }}>
+                  Cancel
+                </Button>
+                <Button onClick={() => void handleAddSelected()} disabled={selectedTeamIds.length === 0 || addingTeams}>
+                  {addingTeams ? 'Adding…' : `Add Selected${selectedTeamIds.length > 0 ? ` (${selectedTeamIds.length})` : ''}`}
+                </Button>
+              </div>
+              <div className="border-t border-gray-100 pt-3 text-center">
+                <button
+                  className="text-sm text-blue-600 underline"
+                  onClick={() => { setAddTeamOpen(false); setSelectedTeamIds([]); setTeamSearch(''); setCreateTeamOpen(true); }}
+                >
+                  + Create a new team
+                </button>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
+
+      <TeamForm
+        open={createTeamOpen}
+        onClose={() => { setCreateTeamOpen(false); setAddTeamOpen(true); }}
+      />
     </div>
   );
 }
