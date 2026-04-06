@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2, Layers, Search } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -357,7 +359,12 @@ export function LeagueDetailPage() {
           <AvailabilityStatusPanel
             leagueId={id!}
             coaches={coaches}
-            onSendReminder={async () => { /* wire to Cloud Function later */ }}
+            onSendReminder={async (_coachUids: string[]) => {
+              await httpsCallable<{ leagueId: string; collectionId: string }, { reminded: number }>(
+                functions,
+                'sendAvailabilityReminder',
+              )({ leagueId: id!, collectionId: activeCollection!.id });
+            }}
             onClose={() => setCollectionPanelOpen(false)}
           />
         </Modal>
