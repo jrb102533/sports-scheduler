@@ -425,6 +425,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   const [bufferMinutes, setBufferMinutes] = useState('15');
   const [gamesPerTeam, setGamesPerTeam] = useState(String(season?.gamesPerTeam ?? 10));
   const [homeAwayBalance, setHomeAwayBalance] = useState(season?.homeAwayBalance ?? true);
+  const [useHomeVenues, setUseHomeVenues] = useState(false);
   const [format, setFormat] = useState<Format>('single_round_robin');
   const [playoffFormat, setPlayoffFormat] = useState<Format>('single_elimination');
   const [groupCount, setGroupCount] = useState('2');
@@ -854,11 +855,13 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
               id: t.id,
               name: t.name,
               homeVenue: venuesPayload.length === 1 ? venuesPayload[0].name : undefined,
+              ...(useHomeVenues && t.homeVenueId ? { homeVenueId: t.homeVenueId } : {}),
             })),
         venues: venuesPayload,
         blackoutDates: seasonBlackouts,
         softConstraintPriority,
         homeAwayMode: homeAwayBalance ? 'strict' : 'relaxed',
+        ...(useHomeVenues ? { homeVenueEnforcement: 'soft' } : {}),
         coachAvailability,
         ...(isPractice
           ? {
@@ -1193,8 +1196,12 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     return { start: seasonStart, end: seasonEnd };
   }, [seasonStart, seasonEnd]);
 
-  const hardConflicts = result?.conflicts.filter(c => c.severity === 'hard') ?? [];
-  const softConflicts = result?.conflicts.filter(c => c.severity === 'soft') ?? [];
+  const HOME_VENUE_CONSTRAINT_IDS = new Set(['no_home_venue', 'home_venue_mismatch']);
+  const visibleConflicts = result?.conflicts.filter(
+    c => useHomeVenues || !HOME_VENUE_CONSTRAINT_IDS.has(c.constraintId ?? '')
+  ) ?? [];
+  const hardConflicts = visibleConflicts.filter(c => c.severity === 'hard');
+  const softConflicts = visibleConflicts.filter(c => c.severity === 'soft');
   const fallbackFixtures = result?.fallbackFixtures ?? [];
   const allFallbacksAcknowledged = fallbackFixtures.length === 0 || fallbackFixtures.every((_, i) => acknowledgedFallbacks.has(i));
   const canPublish = result && hardConflicts.length === 0 && allFallbacksAcknowledged;
@@ -1316,6 +1323,27 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                         When a pair meets more than once, home and away alternate.
                       </p>
                     )}
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useHomeVenues}
+                    onChange={e => setUseHomeVenues(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Respect Team Home Venues</span>
+                    <p className="text-xs text-gray-500 mt-0.5">Schedule home games at each team's configured home venue when possible.</p>
+                    {useHomeVenues && (() => {
+                      const teamsWithoutHomeVenue = leagueTeams.filter(t => !t.homeVenueId);
+                      return teamsWithoutHomeVenue.length > 0 ? (
+                        <p className="text-xs text-amber-600 mt-0.5">
+                          {teamsWithoutHomeVenue.length} team{teamsWithoutHomeVenue.length !== 1 ? 's' : ''} without a home venue: {teamsWithoutHomeVenue.map(t => t.name).join(', ')}
+                        </p>
+                      ) : null;
+                    })()}
                   </div>
                 </label>
 
