@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { addDays, addWeeks, addMonths, parseISO, format, isAfter } from 'date-fns';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
@@ -6,6 +6,7 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
+import { useVenueStore } from '@/store/useVenueStore';
 import { useOpponentStore } from '@/store/useOpponentStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
@@ -95,6 +96,12 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const { opponents, addOpponent } = useOpponentStore();
   const profile = useAuthStore(s => s.profile);
   const user = useAuthStore(s => s.user);
+  const savedVenues = useVenueStore(s => s.venues);
+
+  useEffect(() => {
+    return useVenueStore.getState().subscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Teams the user can schedule for
   const myTeams = useMemo(() => {
@@ -112,6 +119,8 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const [startTime, setStartTime] = useState(editEvent?.startTime ?? initial?.startTime ?? '09:00');
   const [duration, setDuration] = useState<number>(editEvent?.duration ?? initial?.duration ?? DEFAULT_DURATION);
   const [location, setLocation] = useState(editEvent?.location ?? initial?.location ?? '');
+  const [venueId, setVenueId] = useState(editEvent?.venueId ?? initial?.venueId ?? '');
+  const [fieldId, setFieldId] = useState(editEvent?.fieldId ?? initial?.fieldId ?? '');
   const [notes, setNotes] = useState(editEvent?.notes ?? initial?.notes ?? '');
   const [isOutdoor, setIsOutdoor] = useState<boolean>(editEvent?.isOutdoor ?? initial?.isOutdoor ?? true);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -222,11 +231,19 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
       resolvedOpponentName = trimmedOpponent;
     }
 
+    const selectedVenue = venueId ? savedVenues.find(v => v.id === venueId) : undefined;
+    const selectedField = fieldId && selectedVenue ? selectedVenue.fields.find(f => f.id === fieldId) : undefined;
+
     const optionals = {
       duration,
       endTime: computedEndTime,
       isOutdoor,
       ...(location.trim() ? { location: location.trim() } : {}),
+      ...(venueId ? { venueId } : {}),
+      ...(selectedVenue?.lat != null && selectedVenue?.lng != null
+        ? { venueLat: selectedVenue.lat, venueLng: selectedVenue.lng }
+        : {}),
+      ...(selectedField ? { fieldId: selectedField.id, fieldName: selectedField.name } : {}),
       ...(effectiveHomeTeamId ? { homeTeamId: effectiveHomeTeamId } : {}),
       ...(effectiveAwayTeamId ? { awayTeamId: effectiveAwayTeamId } : {}),
       ...(resolvedOpponentId ? { opponentId: resolvedOpponentId } : {}),
@@ -335,6 +352,32 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           error={errors.duration}
           placeholder="e.g. 90"
         />
+        {savedVenues.length > 0 && (
+          <Select
+            label="Venue (optional)"
+            value={venueId}
+            onChange={e => {
+              const selected = savedVenues.find(v => v.id === e.target.value);
+              setVenueId(e.target.value);
+              setFieldId('');
+              if (selected) setLocation(selected.name);
+            }}
+            options={savedVenues.map(v => ({ value: v.id, label: v.name }))}
+            placeholder="Select a venue"
+          />
+        )}
+        {venueId && (() => {
+          const selectedVenue = savedVenues.find(v => v.id === venueId);
+          return selectedVenue && selectedVenue.fields.length > 1 ? (
+            <Select
+              label="Field (optional)"
+              value={fieldId}
+              onChange={e => setFieldId(e.target.value)}
+              options={selectedVenue.fields.map(f => ({ value: f.id, label: f.name }))}
+              placeholder="Select a field"
+            />
+          ) : null;
+        })()}
         <Input label="Location (optional)" name="event-location" autoComplete="off" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. City Park Field 1" />
 
         {/* Outdoor toggle */}

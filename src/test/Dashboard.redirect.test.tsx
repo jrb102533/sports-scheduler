@@ -96,10 +96,14 @@ vi.mock('@/store/useNotificationStore', () => ({
     selector({ notifications: [] }),
 }));
 
-const EMPTY_VENUE_STATE = { venues: [], subscribe: vi.fn() };
-const useVenueStoreMock = (selector?: (s: typeof EMPTY_VENUE_STATE) => unknown) =>
-  selector ? selector(EMPTY_VENUE_STATE) : EMPTY_VENUE_STATE;
-useVenueStoreMock.getState = () => EMPTY_VENUE_STATE;
+const useVenueStoreMock = vi.hoisted(() => {
+  const subscribe = vi.fn().mockReturnValue(() => {});
+  const state = { venues: [] as never[], subscribe };
+  const mock = (selector?: (s: typeof state) => unknown) =>
+    selector ? selector(state) : state;
+  mock.getState = () => state;
+  return mock;
+});
 
 vi.mock('@/store/useVenueStore', () => ({ useVenueStore: useVenueStoreMock }));
 
