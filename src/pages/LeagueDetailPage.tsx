@@ -13,6 +13,7 @@ import { LeagueForm } from '@/components/leagues/LeagueForm';
 import { TeamForm } from '@/components/teams/TeamForm';
 import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
 import { DeleteLeagueModal } from '@/components/leagues/DeleteLeagueModal';
+import { AssignCoManagerModal } from '@/components/leagues/AssignCoManagerModal';
 import { SeasonCreateModal } from '@/components/seasons/SeasonCreateModal';
 import { AvailabilityStatusPanel } from '@/components/leagues/AvailabilityStatusPanel';
 import type { CoachInfo } from '@/components/leagues/AvailabilityStatusPanel';
@@ -66,6 +67,7 @@ export function LeagueDetailPage() {
   const [teamSearch, setTeamSearch] = useState('');
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [addingTeams, setAddingTeams] = useState(false);
+  const [assignCoManagerOpen, setAssignCoManagerOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -162,12 +164,20 @@ export function LeagueDetailPage() {
         </div>
         {canManage && (
           <div className="flex gap-2 flex-shrink-0">
+            <Button variant="secondary" size="sm" onClick={() => setAssignCoManagerOpen(true)}><Users size={14} /> Add Co-Manager</Button>
             <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}><Pencil size={14} /> Edit</Button>
             {(isAdmin || canSoftDelete) && (
               <Button variant="danger" size="sm" onClick={() => setSoftDeleteOpen(true)} aria-label="Delete league"><Trash2 size={14} /></Button>
             )}
           </div>
         )}
+
+        <AssignCoManagerModal
+          open={assignCoManagerOpen}
+          onClose={() => setAssignCoManagerOpen(false)}
+          leagueId={league.id}
+          leagueName={league.name}
+        />
       </div>
 
       {/* Tabs */}
