@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2, Layers, Search } from 'lucide-react';
+import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2, Layers, Search, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { EventCard } from '@/components/events/EventCard';
@@ -13,6 +13,8 @@ import { LeagueForm } from '@/components/leagues/LeagueForm';
 import { TeamForm } from '@/components/teams/TeamForm';
 import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
 import { DeleteLeagueModal } from '@/components/leagues/DeleteLeagueModal';
+import { AssignCoManagerModal } from '@/components/leagues/AssignCoManagerModal';
+import { LeagueVenueTab } from '@/components/leagues/LeagueVenueTab';
 import { SeasonCreateModal } from '@/components/seasons/SeasonCreateModal';
 import { AvailabilityStatusPanel } from '@/components/leagues/AvailabilityStatusPanel';
 import type { CoachInfo } from '@/components/leagues/AvailabilityStatusPanel';
@@ -22,11 +24,12 @@ import { useEventStore } from '@/store/useEventStore';
 import { useAuthStore, hasRole, getMemberships } from '@/store/useAuthStore';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useCollectionStore } from '@/store/useCollectionStore';
+import { useLeagueVenueStore } from '@/store/useLeagueVenueStore';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { SPORT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent } from '@/types';
 
-type Tab = 'schedule' | 'standings' | 'teams' | 'seasons';
+type Tab = 'schedule' | 'standings' | 'teams' | 'seasons' | 'venues';
 
 export function LeagueDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -66,6 +69,7 @@ export function LeagueDetailPage() {
   const [teamSearch, setTeamSearch] = useState('');
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [addingTeams, setAddingTeams] = useState(false);
+  const [assignCoManagerOpen, setAssignCoManagerOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -78,6 +82,12 @@ export function LeagueDetailPage() {
     const unsub1 = useCollectionStore.getState().loadCollection(id);
     const unsub2 = useCollectionStore.getState().loadWizardDraft(id);
     return () => { unsub1(); unsub2(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    return useLeagueVenueStore.getState().subscribe(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -107,6 +117,8 @@ export function LeagueDetailPage() {
   ]);
   const canManage = isAdmin || (isLeagueManager && (managedLeagueIds.has(id ?? '') || league?.managedBy === profile?.uid));
 
+  const leagueVenueCount = useLeagueVenueStore(s => s.venues.length);
+
   if (!league) return <div className="p-4 sm:p-6 text-gray-500">League not found.</div>;
 
   const canSoftDelete = isLeagueManager && (managedLeagueIds.has(league.id) || league.managedBy === profile?.uid);
@@ -133,6 +145,7 @@ export function LeagueDetailPage() {
     { key: 'standings', label: 'Standings', icon: <Trophy size={14} /> },
     { key: 'teams', label: `Teams (${leagueTeams.length})`, icon: <Users size={14} /> },
     { key: 'seasons', label: `Seasons (${seasons.length})`, icon: <Layers size={14} /> },
+    { key: 'venues', label: `Venues (${leagueVenueCount})`, icon: <MapPin size={14} /> },
   ];
 
   return (
@@ -162,12 +175,20 @@ export function LeagueDetailPage() {
         </div>
         {canManage && (
           <div className="flex gap-2 flex-shrink-0">
+            <Button variant="secondary" size="sm" onClick={() => setAssignCoManagerOpen(true)}><Users size={14} /> Add Co-Manager</Button>
             <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}><Pencil size={14} /> Edit</Button>
             {(isAdmin || canSoftDelete) && (
               <Button variant="danger" size="sm" onClick={() => setSoftDeleteOpen(true)} aria-label="Delete league"><Trash2 size={14} /></Button>
             )}
           </div>
         )}
+
+        <AssignCoManagerModal
+          open={assignCoManagerOpen}
+          onClose={() => setAssignCoManagerOpen(false)}
+          leagueId={league.id}
+          leagueName={league.name}
+        />
       </div>
 
       {/* Tabs */}
@@ -354,8 +375,16 @@ export function LeagueDetailPage() {
         </div>
       )}
 
+      {tab === 'venues' && (
+        <LeagueVenueTab
+          leagueId={league.id}
+          canManage={canManage}
+          lmUid={profile?.uid ?? ''}
+        />
+      )}
+
       <EventForm open={eventFormOpen} onClose={() => setEventFormOpen(false)} />
-      <EventDetailPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      <EventDetailPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} leagueId={id} />
 
       {wizardOpen && (
         <ScheduleWizardModal

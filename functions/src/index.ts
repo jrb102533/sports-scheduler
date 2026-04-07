@@ -436,6 +436,7 @@ interface CreateTeamAndBecomeCoachData {
   color: string;
   ageGroup?: string;
   homeVenue?: string;
+  homeVenueId?: string;
   coachName?: string;
   coachEmail?: string;
   divisionLabel?: string;
@@ -456,7 +457,7 @@ export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Pro
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
     const uid = request.auth.uid;
-    const { name, sportType, color, ageGroup, homeVenue, coachName: coachNameOverride, coachEmail, divisionLabel, logoUrl, attendanceWarningsEnabled, attendanceWarningThreshold } = request.data;
+    const { name, sportType, color, ageGroup, homeVenue, homeVenueId, coachName: coachNameOverride, coachEmail, divisionLabel, logoUrl, attendanceWarningsEnabled, attendanceWarningThreshold } = request.data;
 
     if (!name?.trim()) throw new HttpsError('invalid-argument', 'Team name is required.');
     if (name.trim().length > 100) throw new HttpsError('invalid-argument', 'Team name is too long.');
@@ -495,6 +496,7 @@ export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Pro
           attendanceWarningsEnabled: attendanceWarningsEnabled ?? true,
           ...(ageGroup ? { ageGroup } : {}),
           ...(homeVenue ? { homeVenue: homeVenue.trim() } : {}),
+          ...(homeVenueId ? { homeVenueId } : {}),
           ...(coachNameOverride?.trim() ? { coachName: coachNameOverride.trim() } : {}),
           ...(coachEmail?.trim() ? { coachEmail: coachEmail.trim() } : {}),
           ...(divisionLabel?.trim() ? { divisionLabel: divisionLabel.trim() } : {}),
@@ -4540,5 +4542,163 @@ export const sendSnackReminders = onSchedule(
     }
 
     console.log(`sendSnackReminders: sent ${totalSent} snack reminder(s) for ${eventsSnap.size} event(s) on ${inTwoDaysStr}`);
+  }
+);
+
+// ─── Scoped Role Assignment ────────────────────────────────────────────────────
+
+interface AssignScopedRoleData {
+  email: string;
+  role: 'coach' | 'league_manager';
+  teamId?: string;
+  leagueId?: string;
+}
+
+interface AssignScopedRoleResult {
+  success: boolean;
+  targetUid: string;
+  displayName: string;
+}
+
+/**
+ * Assign a scoped role (co-coach or co-manager) to a user identified by email.
+ *
+ * Authorization:
+ * - role='coach' + teamId: caller must be a coach of that team (coachIds) or admin
+ * - role='league_manager' + leagueId: caller must be an LM of that league (managerIds) or admin
+ *
+ * Writes (Admin SDK, bypasses Firestore rules):
+ * - Appends membership to target user's memberships[]
+ * - Adds target uid to team.coachIds or league.managerIds
+ */
+export const assignScopedRole = onCall<AssignScopedRoleData, Promise<AssignScopedRoleResult>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required.');
+
+    const { email, role, teamId, leagueId } = request.data;
+    const callerUid = request.auth.uid;
+
+    // ── Input validation ──────────────────────────────────────────────────────
+    if (!email?.trim()) throw new HttpsError('invalid-argument', 'email is required.');
+    if (role !== 'coach' && role !== 'league_manager') {
+      throw new HttpsError('invalid-argument', 'role must be "coach" or "league_manager".');
+    }
+    if (role === 'coach' && !teamId?.trim()) {
+      throw new HttpsError('invalid-argument', 'teamId is required when role is "coach".');
+    }
+    if (role === 'league_manager' && !leagueId?.trim()) {
+      throw new HttpsError('invalid-argument', 'leagueId is required when role is "league_manager".');
+    }
+    if (teamId && leagueId) {
+      throw new HttpsError('invalid-argument', 'Provide teamId or leagueId, not both.');
+    }
+
+    await checkRateLimit(callerUid, 'assignScopedRole', 10);
+
+    const db = admin.firestore();
+
+    // ── Resolve target user by email ─────────────────────────────────────────
+    let targetUid: string;
+    let displayName: string;
+    try {
+      const targetUser = await admin.auth().getUserByEmail(email.trim().toLowerCase());
+      targetUid = targetUser.uid;
+      displayName = targetUser.displayName ?? email;
+    } catch {
+      // SEC-31: generic message — do not confirm whether email has an account
+      throw new HttpsError('not-found', 'No account found for that email address.');
+    }
+
+    if (targetUid === callerUid) {
+      throw new HttpsError('invalid-argument', 'You cannot assign a role to yourself.');
+    }
+
+    // ── Resolve caller profile (needed for membership-based admin check) ──────
+    const callerDoc = await db.doc(`users/${callerUid}`).get();
+    if (!callerDoc.exists) throw new HttpsError('not-found', 'Caller profile not found.');
+    const callerData = callerDoc.data()!;
+    const callerLegacyRole: string = callerData.role ?? '';
+    const callerMembershipRoles: string[] = (callerData.memberships ?? []).map(
+      (m: Record<string, unknown>) => m.role as string
+    );
+    const callerIsAdmin = [callerLegacyRole, ...callerMembershipRoles].includes('admin');
+
+    // ── Atomic write + authorization (SEC-30: auth check inside transaction) ──
+    // Reading the entity doc inside the transaction eliminates the TOCTOU window
+    // between verifying the caller's coach/LM membership and writing the assignment.
+    const targetUserRef = db.doc(`users/${targetUid}`);
+    const entityRef = teamId ? db.doc(`teams/${teamId}`) : db.doc(`leagues/${leagueId!}`);
+
+    await db.runTransaction(async (tx) => {
+      const [targetSnap, entitySnap] = await Promise.all([
+        tx.get(targetUserRef),
+        tx.get(entityRef),
+      ]);
+
+      if (!targetSnap.exists) throw new HttpsError('not-found', 'Target user profile not found.');
+      if (!entitySnap.exists) {
+        throw new HttpsError('not-found', teamId ? 'Team not found.' : 'League not found.');
+      }
+
+      // Authorization: verify caller is still coach/LM at transaction time
+      if (!callerIsAdmin) {
+        const entityData = entitySnap.data()!;
+        if (role === 'coach' && teamId) {
+          // SEC-30: rely solely on entity doc arrays — callerData.memberships is read
+          // outside the transaction and can be stale (revoked coach bypasses check).
+          const coachIds: string[] = entityData.coachIds ?? [];
+          const isCoachOfTeam = coachIds.includes(callerUid) || entityData.coachId === callerUid;
+          if (!isCoachOfTeam) {
+            throw new HttpsError('permission-denied', 'Only coaches of this team can assign co-coaches.');
+          }
+        } else if (role === 'league_manager' && leagueId) {
+          const managerIds: string[] = entityData.managerIds ?? [];
+          const isManagerOfLeague =
+            managerIds.includes(callerUid) || entityData.managedBy === callerUid;
+          if (!isManagerOfLeague) {
+            throw new HttpsError('permission-denied', 'Only league managers of this league can assign co-managers.');
+          }
+        }
+      }
+
+      const targetData = targetSnap.data()!;
+      const existingMemberships: Record<string, unknown>[] = Array.isArray(targetData.memberships)
+        ? targetData.memberships
+        : [];
+
+      // Check for duplicate membership
+      const alreadyAssigned = existingMemberships.some((m) => {
+        if (role === 'coach') return m.role === 'coach' && m.teamId === teamId;
+        return m.role === 'league_manager' && m.leagueId === leagueId;
+      });
+
+      if (!alreadyAssigned) {
+        const newMembership: Record<string, unknown> = {
+          role,
+          isPrimary: existingMemberships.length === 0,
+          ...(teamId ? { teamId } : { leagueId }),
+        };
+        tx.update(targetUserRef, {
+          memberships: admin.firestore.FieldValue.arrayUnion(newMembership),
+        });
+      }
+
+      // Add uid to denormalized access list on team or league
+      if (teamId) {
+        tx.update(entityRef, {
+          coachIds: admin.firestore.FieldValue.arrayUnion(targetUid),
+        });
+      } else {
+        tx.update(entityRef, {
+          managerIds: admin.firestore.FieldValue.arrayUnion(targetUid),
+        });
+      }
+    });
+
+    console.log(
+      `assignScopedRole: caller=${callerUid} assigned role=${role} to target=${targetUid}` +
+        (teamId ? ` teamId=${teamId}` : ` leagueId=${leagueId}`)
+    );
+    return { success: true, targetUid, displayName };
   }
 );

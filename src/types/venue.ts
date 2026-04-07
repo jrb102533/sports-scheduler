@@ -9,6 +9,13 @@ export interface RecurringVenueWindow {
   endTime: string;   // "HH:MM"
 }
 
+export interface LeagueVenue extends Venue {
+  /** The original users/{uid}/venues/{venueId} doc this was copied from. */
+  sourceVenueId: string;
+  importedBy: string;  // uid of the LM who imported it
+  importedAt: string;  // ISO datetime
+}
+
 export interface Venue {
   id: string;
   ownerUid: string;

@@ -44,13 +44,15 @@ export const useVenueStore = create<VenueStore>((set) => ({
   addVenue: async (venue) => {
     const uid = useAuthStore.getState().user?.uid;
     if (!uid) throw new Error('Not authenticated');
-    await setDoc(doc(db, 'users', uid, 'venues', venue.id), venue);
+    const data = Object.fromEntries(Object.entries(venue).filter(([, v]) => v !== undefined));
+    await setDoc(doc(db, 'users', uid, 'venues', venue.id), data);
   },
 
   updateVenue: async (venue) => {
     const uid = useAuthStore.getState().user?.uid;
     if (!uid) throw new Error('Not authenticated');
-    await setDoc(doc(db, 'users', uid, 'venues', venue.id), venue);
+    const data = Object.fromEntries(Object.entries(venue).filter(([, v]) => v !== undefined));
+    await setDoc(doc(db, 'users', uid, 'venues', venue.id), data);
   },
 
   softDeleteVenue: async (id) => {

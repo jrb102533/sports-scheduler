@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { httpsCallable, getFunctions } from 'firebase/functions';
-import { collection, getDocs, setDoc, doc, query, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, setDoc, updateDoc, doc, query, orderBy, limit } from 'firebase/firestore';
 import {
   Calendar, MapPin, Users, Wand2, CheckCircle2, AlertTriangle,
   AlertCircle, ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
@@ -14,10 +14,11 @@ import { db } from '@/lib/firebase';
 import { useEventStore } from '@/store/useEventStore';
 import { useCollectionStore } from '@/store/useCollectionStore';
 import { useVenueStore } from '@/store/useVenueStore';
+import { useLeagueVenueStore } from '@/store/useLeagueVenueStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { DEFAULT_CONSTRAINTS } from '@/types/wizard';
 import { getTopCoverageSlots } from '@/lib/coverageUtils';
-import type { Venue, RecurringVenueWindow } from '@/types/venue';
+import type { Venue, LeagueVenue, RecurringVenueWindow } from '@/types/venue';
 import type { League, Team, ScheduledEvent, Season, WizardMode, ScheduleConstraint, CoachAvailabilityResponse } from '@/types';
 import type { ScheduleConfig, ScheduleVenueConfig } from '@/types/scheduleConfig';
 
@@ -246,16 +247,20 @@ function QuickCreateVenueModal({ open, onClose, onCreated, ownerUid }: QuickCrea
 interface VenueComboboxProps {
   venueConfig: WizardVenueConfig;
   savedVenues: Venue[];
+  leagueVenues: LeagueVenue[];
   onSelectSaved: (venue: Venue) => void;
   onCreateNew: () => void;
 }
 
-function VenueCombobox({ venueConfig, savedVenues, onSelectSaved, onCreateNew }: VenueComboboxProps) {
+function VenueCombobox({ venueConfig, savedVenues, leagueVenues, onSelectSaved, onCreateNew }: VenueComboboxProps) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const filtered = savedVenues.filter(v =>
+  const filteredLeague = leagueVenues.filter(v =>
+    v.name.toLowerCase().includes(query.toLowerCase())
+  );
+  const filteredSaved = savedVenues.filter(v =>
     v.name.toLowerCase().includes(query.toLowerCase())
   );
 
@@ -281,11 +286,16 @@ function VenueCombobox({ venueConfig, savedVenues, onSelectSaved, onCreateNew }:
     onCreateNew();
   }
 
+  const allVenues: Venue[] = [...leagueVenues, ...savedVenues];
   const displayValue = venueConfig.selectedVenueId
-    ? (savedVenues.find(v => v.id === venueConfig.selectedVenueId)?.name ?? venueConfig.name)
+    ? (allVenues.find(v => v.id === venueConfig.selectedVenueId)?.name ?? venueConfig.name)
     : venueConfig.name
       ? venueConfig.name
       : '';
+
+  const isLeagueVenue = venueConfig.selectedVenueId
+    ? leagueVenues.some(v => v.id === venueConfig.selectedVenueId)
+    : false;
 
   return (
     <div ref={containerRef} className="relative">
@@ -300,36 +310,63 @@ function VenueCombobox({ venueConfig, savedVenues, onSelectSaved, onCreateNew }:
         <input
           type="text"
           className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400"
-          placeholder={displayValue || 'Search saved venues…'}
+          placeholder={displayValue || 'Search venues…'}
           value={open ? query : displayValue}
           onChange={e => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
         />
         {venueConfig.selectedVenueId && !open && (
-          <span className="text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-medium flex-shrink-0">Saved</span>
+          isLeagueVenue
+            ? <span className="text-xs bg-indigo-100 text-indigo-700 rounded-full px-2 py-0.5 font-medium flex-shrink-0">League</span>
+            : <span className="text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-medium flex-shrink-0">Saved</span>
         )}
       </div>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-          {filtered.length === 0 && query && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-72 overflow-y-auto">
+          {filteredLeague.length === 0 && filteredSaved.length === 0 && query && (
             <div className="px-3 py-2 text-xs text-gray-400">No venues match "{query}"</div>
           )}
-          {filtered.map(venue => (
-            <button
-              key={venue.id}
-              className="w-full text-left px-3 py-2.5 text-sm hover:bg-blue-50 flex items-start gap-2 border-b border-gray-100 last:border-0"
-              onMouseDown={e => { e.preventDefault(); handleSelect(venue); }}
-            >
-              <MapPin size={13} className="text-gray-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <span className="font-medium text-gray-800">{venue.name}</span>
-                {venue.address && (
-                  <span className="block text-xs text-gray-400 mt-0.5">{venue.address}</span>
-                )}
-              </div>
-            </button>
-          ))}
+          {filteredLeague.length > 0 && (
+            <>
+              <div className="px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 border-b border-indigo-100">League Pool</div>
+              {filteredLeague.map(venue => (
+                <button
+                  key={venue.id}
+                  className="w-full text-left px-3 py-2.5 text-sm hover:bg-indigo-50 flex items-start gap-2 border-b border-gray-100 last:border-0"
+                  onMouseDown={e => { e.preventDefault(); handleSelect(venue); }}
+                >
+                  <MapPin size={13} className="text-indigo-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-medium text-gray-800">{venue.name}</span>
+                    {venue.address && (
+                      <span className="block text-xs text-gray-400 mt-0.5">{venue.address}</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </>
+          )}
+          {filteredSaved.length > 0 && (
+            <>
+              <div className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border-b border-blue-100">My Venues</div>
+              {filteredSaved.map(venue => (
+                <button
+                  key={venue.id}
+                  className="w-full text-left px-3 py-2.5 text-sm hover:bg-blue-50 flex items-start gap-2 border-b border-gray-100 last:border-0"
+                  onMouseDown={e => { e.preventDefault(); handleSelect(venue); }}
+                >
+                  <MapPin size={13} className="text-gray-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-medium text-gray-800">{venue.name}</span>
+                    {venue.address && (
+                      <span className="block text-xs text-gray-400 mt-0.5">{venue.address}</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </>
+          )}
           <button
             className="w-full text-left px-3 py-2.5 text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-2 font-medium border-t border-gray-100"
             onMouseDown={e => { e.preventDefault(); handleCreateNew(); }}
@@ -358,13 +395,24 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   const { addEvent } = useEventStore();
   const { createCollection, saveWizardDraft, wizardDraft, activeCollection, responses, loadCollection } = useCollectionStore();
 
-  // Venue store
+  // Venue stores
   const savedVenues = useVenueStore(s => s.venues);
+  const leagueVenues = useLeagueVenueStore(s => s.venues);
   const user = useAuthStore(s => s.user);
 
   useEffect(() => {
     return useVenueStore.getState().subscribe();
   }, []);
+
+  useEffect(() => {
+    return useLeagueVenueStore.getState().subscribe(league.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [league.id]);
+
+  // Resolve a venueId from either the league pool or personal saved venues
+  function resolveVenue(venueId: string): Venue | undefined {
+    return leagueVenues.find(v => v.id === venueId) ?? savedVenues.find(v => v.id === venueId);
+  }
 
   // Mode & step
   const [mode, setMode] = useState<WizardMode | null>(null);
@@ -377,6 +425,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   const [bufferMinutes, setBufferMinutes] = useState('15');
   const [gamesPerTeam, setGamesPerTeam] = useState(String(season?.gamesPerTeam ?? 10));
   const [homeAwayBalance, setHomeAwayBalance] = useState(season?.homeAwayBalance ?? true);
+  const [useHomeVenues, setUseHomeVenues] = useState(false);
   const [format, setFormat] = useState<Format>('single_round_robin');
   const [playoffFormat, setPlayoffFormat] = useState<Format>('single_elimination');
   const [groupCount, setGroupCount] = useState('2');
@@ -806,11 +855,13 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
               id: t.id,
               name: t.name,
               homeVenue: venuesPayload.length === 1 ? venuesPayload[0].name : undefined,
+              ...(useHomeVenues && t.homeVenueId ? { homeVenueId: t.homeVenueId } : {}),
             })),
         venues: venuesPayload,
         blackoutDates: seasonBlackouts,
         softConstraintPriority,
         homeAwayMode: homeAwayBalance ? 'strict' : 'relaxed',
+        ...(useHomeVenues ? { homeVenueEnforcement: 'soft' } : {}),
         coachAvailability,
         ...(isPractice
           ? {
@@ -846,6 +897,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     setPublishing(true);
     const now = new Date().toISOString();
     const durationMins = parseInt(mode === 'practice' ? practiceDuration : matchDuration);
+    // Auto field assignment: round-robin across fields per venue+date+time slot
+    const fieldSlotCounter = new Map<string, number>();
 
     try {
       await Promise.all(
@@ -858,17 +911,24 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
           const isPracticeFixture = fixture.awayTeamId === '';
 
-          // Attach venue library fields if matched
+          // Attach venue library fields if matched (searches league pool first, then personal)
           const fixtureName = fixture.venueName ?? fixture.venue ?? '';
           const matchedConfig = venueConfigs.find(vc => vc.name === fixtureName);
           const venueFields = matchedConfig?.selectedVenueId ? (() => {
-            const selectedVenue = savedVenues.find(v => v.id === matchedConfig.selectedVenueId);
+            const selectedVenue = resolveVenue(matchedConfig.selectedVenueId);
+            const slotKey = `${matchedConfig.selectedVenueId}|${fixture.date}|${fixture.startTime}`;
+            const slotIdx = fieldSlotCounter.get(slotKey) ?? 0;
+            fieldSlotCounter.set(slotKey, slotIdx + 1);
+            const assignedField = selectedVenue?.fields && selectedVenue.fields.length > 1
+              ? selectedVenue.fields[slotIdx % selectedVenue.fields.length]
+              : undefined;
             return {
               venueId: matchedConfig.selectedVenueId,
               ...(selectedVenue?.lat != null && selectedVenue?.lng != null ? {
                 venueLat: selectedVenue.lat,
                 venueLng: selectedVenue.lng,
               } : {}),
+              ...(assignedField ? { fieldId: assignedField.id, fieldName: assignedField.name } : {}),
             };
           })() : {};
 
@@ -934,6 +994,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     }
     setPublishing(true);
     const now = new Date().toISOString();
+    // Auto field assignment: round-robin across fields per venue+date+time slot
+    const fieldSlotCounter = new Map<string, number>();
     try {
       // SEC-15: Always save events as draft. The transition to 'scheduled' is
       // handled exclusively by the publishSchedule Cloud Function, which
@@ -947,13 +1009,20 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
           const fixtureName = fixture.venueName ?? fixture.venue ?? '';
           const matchedConfig = venueConfigs.find(vc => vc.name === fixtureName);
           const venueFields = matchedConfig?.selectedVenueId ? (() => {
-            const selectedVenue = savedVenues.find(v => v.id === matchedConfig.selectedVenueId);
+            const selectedVenue = resolveVenue(matchedConfig.selectedVenueId);
+            const slotKey = `${matchedConfig.selectedVenueId}|${fixture.date}|${fixture.startTime}`;
+            const slotIdx = fieldSlotCounter.get(slotKey) ?? 0;
+            fieldSlotCounter.set(slotKey, slotIdx + 1);
+            const assignedField = selectedVenue?.fields && selectedVenue.fields.length > 1
+              ? selectedVenue.fields[slotIdx % selectedVenue.fields.length]
+              : undefined;
             return {
               venueId: matchedConfig.selectedVenueId,
               ...(selectedVenue?.lat != null && selectedVenue?.lng != null ? {
                 venueLat: selectedVenue.lat,
                 venueLng: selectedVenue.lng,
               } : {}),
+              ...(assignedField ? { fieldId: assignedField.id, fieldName: assignedField.name } : {}),
             };
           })() : {};
           const event: ScheduledEvent = {
@@ -974,6 +1043,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             createdAt: now,
             updatedAt: now,
             ...venueFields,
+            leagueId: league.id,
             ...(season?.id ? { seasonId: season.id } : {}),
             ...(divisionId ? { divisionId } : {}),
           };
@@ -989,6 +1059,12 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
           seasonId: season.id,
           ...(divisionId ? { divisionId } : {}),
         });
+      } else if (!publishNow && divisionId && season?.id) {
+        // Mark division as having a draft schedule so the dashboard CTA updates.
+        await updateDoc(
+          doc(db, 'leagues', league.id, 'divisions', divisionId),
+          { scheduleStatus: 'draft', updatedAt: now }
+        );
       }
 
       setPublished(true);
@@ -1120,8 +1196,12 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     return { start: seasonStart, end: seasonEnd };
   }, [seasonStart, seasonEnd]);
 
-  const hardConflicts = result?.conflicts.filter(c => c.severity === 'hard') ?? [];
-  const softConflicts = result?.conflicts.filter(c => c.severity === 'soft') ?? [];
+  const HOME_VENUE_CONSTRAINT_IDS = new Set(['no_home_venue', 'home_venue_mismatch']);
+  const visibleConflicts = result?.conflicts.filter(
+    c => useHomeVenues || !HOME_VENUE_CONSTRAINT_IDS.has(c.constraintId ?? '')
+  ) ?? [];
+  const hardConflicts = visibleConflicts.filter(c => c.severity === 'hard');
+  const softConflicts = visibleConflicts.filter(c => c.severity === 'soft');
   const fallbackFixtures = result?.fallbackFixtures ?? [];
   const allFallbacksAcknowledged = fallbackFixtures.length === 0 || fallbackFixtures.every((_, i) => acknowledgedFallbacks.has(i));
   const canPublish = result && hardConflicts.length === 0 && allFallbacksAcknowledged;
@@ -1243,6 +1323,27 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                         When a pair meets more than once, home and away alternate.
                       </p>
                     )}
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useHomeVenues}
+                    onChange={e => setUseHomeVenues(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Respect Team Home Venues</span>
+                    <p className="text-xs text-gray-500 mt-0.5">Schedule home games at each team's configured home venue when possible.</p>
+                    {useHomeVenues && (() => {
+                      const teamsWithoutHomeVenue = leagueTeams.filter(t => !t.homeVenueId);
+                      return teamsWithoutHomeVenue.length > 0 ? (
+                        <p className="text-xs text-amber-600 mt-0.5">
+                          {teamsWithoutHomeVenue.length} team{teamsWithoutHomeVenue.length !== 1 ? 's' : ''} without a home venue: {teamsWithoutHomeVenue.map(t => t.name).join(', ')}
+                        </p>
+                      ) : null;
+                    })()}
                   </div>
                 </label>
 
@@ -1450,6 +1551,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                 <VenueCombobox
                   venueConfig={venueConfig}
                   savedVenues={savedVenues}
+                  leagueVenues={leagueVenues}
                   onSelectSaved={venue => selectSavedVenue(i, venue)}
                   onCreateNew={() => openQuickCreate(i)}
                 />

@@ -178,6 +178,12 @@ vi.mock('@/store/useVenueStore', () => ({
 vi.mock('@/store/useAuthStore', () => ({
   useAuthStore: (selector: (s: { profile: { uid: string; role: string; leagueId: string } }) => unknown) =>
     selector({ profile: { uid: 'uid-1', role: 'admin', leagueId: 'league-1' } }),
+  isManagerOfLeague: vi.fn(() => false),
+}));
+
+vi.mock('@/store/useEventStore', () => ({
+  useEventStore: (selector: (s: { events: never[] }) => unknown) =>
+    selector({ events: [] }),
 }));
 
 // ── ScheduleWizardModal mock ──────────────────────────────────────────────────

@@ -19,6 +19,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { useEventStore } from '@/store/useEventStore';
 import { useVenueStore } from '@/store/useVenueStore';
+import { useLeagueVenueStore } from '@/store/useLeagueVenueStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
@@ -29,9 +30,10 @@ import type { ScheduledEvent } from '@/types';
 interface EventDetailPanelProps {
   event: ScheduledEvent | null;
   onClose: () => void;
+  leagueId?: string;
 }
 
-export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
+export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelProps) {
   const deleteEvent = useEventStore(s => s.deleteEvent);
   const recordResult = useEventStore(s => s.recordResult);
   const updateEvent = useEventStore(s => s.updateEvent);
@@ -121,9 +123,15 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   }
 
   const venues = useVenueStore(s => s.venues);
+  const leagueVenues = useLeagueVenueStore(s => s.venues);
   useEffect(() => {
     return useVenueStore.getState().subscribe();
   }, []);
+  useEffect(() => {
+    if (!leagueId) return;
+    return useLeagueVenueStore.getState().subscribe(leagueId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leagueId]);
 
   const canManage = profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach';
   const isReadOnly = profile?.role === 'player' || profile?.role === 'parent';
@@ -131,7 +139,9 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   if (!event) return null;
 
   const currentEvent = event;
-  const eventVenue = event.venueId ? venues.find(v => v.id === event.venueId) : null;
+  const eventVenue = event.venueId
+    ? (venues.find(v => v.id === event.venueId) ?? leagueVenues.find(v => v.id === event.venueId))
+    : null;
   const mapsUrl = eventVenue?.lat != null && eventVenue?.lng != null
     ? `https://www.google.com/maps/search/?api=1&query=${eventVenue.lat},${eventVenue.lng}`
     : null;
@@ -271,6 +281,13 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
                 </div>
               )}
             </div>
+
+            {eventVenue?.notes && (
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-gray-600">
+                <p className="text-xs font-semibold text-blue-700 mb-1">Venue Notes</p>
+                <p>{eventVenue.notes}</p>
+              </div>
+            )}
 
             {event.notes && (
               <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">{event.notes}</div>

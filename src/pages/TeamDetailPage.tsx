@@ -12,6 +12,7 @@ import { EventDetailPanel } from '@/components/events/EventDetailPanel';
 import { StandingsTable } from '@/components/standings/StandingsTable';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DeleteTeamModal } from '@/components/teams/DeleteTeamModal';
+import { AssignCoCoachModal } from '@/components/teams/AssignCoCoachModal';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useEventStore } from '@/store/useEventStore';
@@ -68,6 +69,7 @@ export function TeamDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmHardDelete, setConfirmHardDelete] = useState(false);
   const [rosterCopied, setRosterCopied] = useState(false);
+  const [assignCoCoachOpen, setAssignCoCoachOpen] = useState(false);
 
   // Join requests state
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
@@ -474,8 +476,22 @@ export function TeamDetailPage() {
           {team.coachName && <div><span className="font-medium text-gray-700">Coach:</span> <span className="text-gray-600 ml-2">{team.coachName}</span></div>}
           {team.coachEmail && <div><span className="font-medium text-gray-700">Email:</span> <span className="text-gray-600 ml-2">{team.coachEmail}</span></div>}
           {league && <div><span className="font-medium text-gray-700">League:</span> <span className="text-gray-600 ml-2">{league.name}</span></div>}
+          {(isOwner || isAdminUser) && (
+            <div className="pt-2 border-t border-gray-100">
+              <Button size="sm" variant="secondary" onClick={() => setAssignCoCoachOpen(true)}>
+                <Users size={14} /> Add Co-Coach
+              </Button>
+            </div>
+          )}
         </div>
       )}
+
+      <AssignCoCoachModal
+        open={assignCoCoachOpen}
+        onClose={() => setAssignCoCoachOpen(false)}
+        teamId={teamId}
+        teamName={team.name}
+      />
 
       {/* Requests Tab */}
       {tab === 'requests' && canSeeRequests && (
