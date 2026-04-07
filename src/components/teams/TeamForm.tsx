@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useVenueStore } from '@/store/useVenueStore';
 import { FLAGS } from '@/lib/flags';
 import { SPORT_TYPES, SPORT_TYPE_LABELS, TEAM_COLORS, AGE_GROUPS, AGE_GROUP_LABELS, SPORT_FORFEIT_THRESHOLDS } from '@/constants';
 import { Upload, X, Image } from 'lucide-react';
@@ -36,6 +37,12 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const kidsMode = FLAGS.KIDS_MODE && kidsSetting;
   const profile = useAuthStore(s => s.profile);
   const user = useAuthStore(s => s.user);
+  const savedVenues = useVenueStore(s => s.venues);
+
+  useEffect(() => {
+    return useVenueStore.getState().subscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [name, setName] = useState(editTeam?.name ?? '');
   const [sportType, setSportType] = useState<SportType>(editTeam?.sportType ?? 'soccer');
   const [color, setColor] = useState(editTeam?.color ?? TEAM_COLORS[0]);
@@ -44,6 +51,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const [ageGroup, setAgeGroup] = useState<AgeGroup | ''>(editTeam?.ageGroup ?? '');
   const [divisionLabel, setDivisionLabel] = useState(editTeam?.divisionLabel ?? '');
   const [homeVenue, setHomeVenue] = useState(editTeam?.homeVenue ?? '');
+  const [homeVenueId, setHomeVenueId] = useState(editTeam?.homeVenueId ?? '');
   const [coachId, setCoachId] = useState(editTeam?.coachId ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [attendanceWarningsEnabled, setAttendanceWarningsEnabled] = useState<boolean>(editTeam?.attendanceWarningsEnabled !== false);
@@ -70,6 +78,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
     setAgeGroup('');
     setDivisionLabel('');
     setHomeVenue('');
+    setHomeVenueId('');
     setCoachId('');
     setErrors({});
     setSaveError('');
@@ -160,6 +169,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
           ...(ageGroup ? { ageGroup } : {}),
           ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}),
           ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
+          ...(homeVenueId ? { homeVenueId } : {}),
           ...(coachId ? { coachId } : {}),
           attendanceWarningsEnabled,
           ...(parsedThreshold !== undefined && !isNaN(parsedThreshold) ? { attendanceWarningThreshold: parsedThreshold } : {}),
@@ -168,7 +178,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
           await updateTeam({ ...editTeam, ...base });
         } else {
           const createFn = httpsCallable<Record<string, unknown>, { teamId: string }>(functions, 'createTeamAndBecomeCoach');
-          await createFn({ name: name.trim(), sportType, color, ...(ageGroup ? { ageGroup } : {}), ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}), ...(coachName.trim() ? { coachName: coachName.trim() } : {}), ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}), ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}), ...(logoUrl ? { logoUrl } : {}), attendanceWarningsEnabled, ...(parsedThreshold !== undefined && !isNaN(parsedThreshold) ? { attendanceWarningThreshold: parsedThreshold } : {}) });
+          await createFn({ name: name.trim(), sportType, color, ...(ageGroup ? { ageGroup } : {}), ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}), ...(homeVenueId ? { homeVenueId } : {}), ...(coachName.trim() ? { coachName: coachName.trim() } : {}), ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}), ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}), ...(logoUrl ? { logoUrl } : {}), attendanceWarningsEnabled, ...(parsedThreshold !== undefined && !isNaN(parsedThreshold) ? { attendanceWarningThreshold: parsedThreshold } : {}) });
         }
         onClose();
         return;
@@ -186,6 +196,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         ...(ageGroup ? { ageGroup } : {}),
         ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}),
         ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
+        ...(homeVenueId ? { homeVenueId } : {}),
         ...(coachId ? { coachId } : {}),
         attendanceWarningsEnabled,
         ...(parsedThreshold2 !== undefined && !isNaN(parsedThreshold2) ? { attendanceWarningThreshold: parsedThreshold2 } : {}),
@@ -199,7 +210,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         await updateTeam(updated);
       } else {
         const createFn = httpsCallable<Record<string, unknown>, { teamId: string }>(functions, 'createTeamAndBecomeCoach');
-        await createFn({ name: name.trim(), sportType, color, ...(ageGroup ? { ageGroup } : {}), ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}), ...(coachName.trim() ? { coachName: coachName.trim() } : {}), ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}), ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}), attendanceWarningsEnabled, ...(parsedThreshold2 !== undefined && !isNaN(parsedThreshold2) ? { attendanceWarningThreshold: parsedThreshold2 } : {}) });
+        await createFn({ name: name.trim(), sportType, color, ...(ageGroup ? { ageGroup } : {}), ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}), ...(homeVenueId ? { homeVenueId } : {}), ...(coachName.trim() ? { coachName: coachName.trim() } : {}), ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}), ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}), attendanceWarningsEnabled, ...(parsedThreshold2 !== undefined && !isNaN(parsedThreshold2) ? { attendanceWarningThreshold: parsedThreshold2 } : {}) });
       }
       onClose();
     } catch (e: unknown) {
@@ -285,7 +296,21 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
 
         <Input label={kidsMode ? 'Head Coach' : 'Coach Name (optional)'} name="coach-name" autoComplete="off" value={coachName} onChange={e => setCoachName(e.target.value)} />
         <Input label="Coach Email (optional)" type="email" name="coach-email" autoComplete="off" value={coachEmail} onChange={e => setCoachEmail(e.target.value)} />
-        <Input label="Home Venue (optional)" name="home-venue" autoComplete="off" value={homeVenue} onChange={e => setHomeVenue(e.target.value)} placeholder="e.g. City Park" />
+        {savedVenues.length > 0 ? (
+          <Select
+            label="Home Venue (optional)"
+            value={homeVenueId}
+            onChange={e => {
+              const selected = savedVenues.find(v => v.id === e.target.value);
+              setHomeVenueId(e.target.value);
+              setHomeVenue(selected?.name ?? '');
+            }}
+            options={savedVenues.map(v => ({ value: v.id, label: v.name }))}
+            placeholder="Select a venue"
+          />
+        ) : (
+          <Input label="Home Venue (optional)" name="home-venue" autoComplete="off" value={homeVenue} onChange={e => setHomeVenue(e.target.value)} placeholder="e.g. City Park" />
+        )}
         {/* Attendance Warnings */}
         <div className="border-t border-gray-100 pt-4 space-y-3">
           <h3 className="text-sm font-semibold text-gray-700">Attendance Warnings</h3>

@@ -73,6 +73,17 @@ vi.mock('@/store/useSettingsStore', () => ({
     selector({ settings: { kidsSportsMode: false } }),
 }));
 
+// ─── Venue store ──────────────────────────────────────────────────────────────
+vi.mock('@/store/useVenueStore', () => {
+  const subscribe = vi.fn().mockReturnValue(() => {});
+  const useVenueStore = (sel?: (s: { venues: never[]; subscribe: typeof subscribe }) => unknown) => {
+    const state = { venues: [] as never[], subscribe };
+    return sel ? sel(state) : state;
+  };
+  useVenueStore.getState = () => ({ venues: [] as never[], subscribe });
+  return { useVenueStore };
+});
+
 // ─── Import after mocks ───────────────────────────────────────────────────────
 import { TeamForm } from '@/components/teams/TeamForm';
 
