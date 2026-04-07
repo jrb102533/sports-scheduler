@@ -12,7 +12,9 @@ export default defineConfig({
     __BUILD_TIME__:   JSON.stringify(process.env.VITE_BUILD_TIME   ?? new Date().toISOString()),
     __BUILD_BRANCH__: JSON.stringify(process.env.VITE_BUILD_BRANCH ?? 'local'),
     __BUILD_PR__:     JSON.stringify(process.env.VITE_BUILD_PR     ?? null),
-    __APP_ENV__:      JSON.stringify(process.env.VITE_APP_ENV      ?? 'development'),
+    // Default to 'production' so an unset env var never shows the dev banner in prod.
+    // Override to 'development' in .env.local and 'staging' in .env.staging.
+    __APP_ENV__:      JSON.stringify(process.env.VITE_APP_ENV      ?? 'production'),
   },
   resolve: {
     alias: {
