@@ -718,7 +718,14 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
     try {
       const isPractice = mode === 'practice';
-      const activeFormat = mode === 'playoff' ? playoffFormat : format;
+      // Auto-derive format from gamesPerTeam + team count so the LM doesn't need to pick it manually.
+      // single_round_robin: max gamesPerTeam = N-1; double_round_robin: max = 2*(N-1).
+      const N = isPractice
+        ? leagueTeams.filter(t => practiceTeamIds.has(t.id)).length
+        : leagueTeams.length;
+      const gpt = parseInt(gamesPerTeam) || 1;
+      const derivedSeasonFormat: Format = gpt > N - 1 ? 'double_round_robin' : 'single_round_robin';
+      const activeFormat = mode === 'playoff' ? playoffFormat : (mode === 'practice' ? format : derivedSeasonFormat);
 
       // Resolve which collection to read responses from.
       const resolvedCollectionId = collectionId ?? wizardDraft?.collectionId ?? null;
@@ -811,6 +818,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
               practiceMaxPerWeek: parseInt(practiceMaxPerWeek),
             }
           : {
+              gamesPerTeam: gpt,
               minRestDays: parseInt(minRestDays),
               maxConsecutiveAway: parseInt(maxConsecAway),
               ...(activeFormat === 'group_then_knockout'
@@ -1201,11 +1209,33 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                   onChange={e => setGamesPerTeam(e.target.value)}
                 />
 
+                {/* Ceiling warning — gamesPerTeam exceeds what's achievable with this team count */}
+                {(() => {
+                  const gpt = parseInt(gamesPerTeam);
+                  const teamCount = leagueTeams.length;
+                  if (!isNaN(gpt) && gpt > 0 && teamCount > 1) {
+                    const maxGames = 2 * (teamCount - 1);
+                    if (gpt > maxGames) {
+                      return (
+                        <div className="flex items-start gap-2 text-xs bg-red-50 border border-red-200 rounded-lg p-2.5 text-red-800">
+                          <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+                          <span>
+                            With {teamCount} teams, the maximum is <strong>{maxGames} games per team</strong> (double round-robin).
+                            Add more teams or lower the games per team to {maxGames} or fewer.
+                          </span>
+                        </div>
+                      );
+                    }
+                  }
+                  return null;
+                })()}
+
                 {/* Round-down warning */}
                 {(() => {
                   const gpt = parseInt(gamesPerTeam);
                   const teamCount = leagueTeams.length;
-                  if (!isNaN(gpt) && gpt > 0 && teamCount > 0 && (gpt * teamCount) % 2 !== 0) {
+                  const maxGames = 2 * (teamCount - 1);
+                  if (!isNaN(gpt) && gpt > 0 && gpt <= maxGames && teamCount > 0 && (gpt * teamCount) % 2 !== 0) {
                     return (
                       <div className="flex items-start gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-amber-800">
                         <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
@@ -1995,7 +2025,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             {step === 'generate' && generatePhase === 'configure' ? (
               <Button
                 onClick={() => void handleGenerate()}
-                disabled={!seasonStart || !seasonEnd}
+                disabled={!seasonStart || !seasonEnd || (mode === 'season' && parseInt(gamesPerTeam) > 2 * (leagueTeams.length - 1))}
               >
                 <Wand2 size={15} /> Generate Schedule
               </Button>
