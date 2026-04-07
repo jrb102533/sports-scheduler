@@ -18,7 +18,7 @@ import { useLeagueStore } from '@/store/useLeagueStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useVenueStore } from '@/store/useVenueStore';
-import { useAuthStore } from '@/store/useAuthStore';
+import { useAuthStore, isManagerOfLeague } from '@/store/useAuthStore';
 import type { Division, Season, Team } from '@/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -348,7 +348,9 @@ export function SeasonDashboard() {
   }, []);
 
   const isAdmin = profile?.role === 'admin';
-  const canManage = isAdmin || (profile?.role === 'league_manager' && profile?.leagueId === leagueId);
+  // CVR-2026-008: use membership-aware helper so co-managers added via
+  // assignScopedRole (memberships[] only, no legacy scalar leagueId) also get access.
+  const canManage = isAdmin || isManagerOfLeague(profile ?? null, leagueId ?? '');
   const hasPublishedDivision = divisions.some(d => d.scheduleStatus === 'published');
 
   // Draft/published schedule detection

@@ -4644,22 +4644,18 @@ export const assignScopedRole = onCall<AssignScopedRoleData, Promise<AssignScope
       if (!callerIsAdmin) {
         const entityData = entitySnap.data()!;
         if (role === 'coach' && teamId) {
+          // SEC-30: rely solely on entity doc arrays — callerData.memberships is read
+          // outside the transaction and can be stale (revoked coach bypasses check).
           const coachIds: string[] = entityData.coachIds ?? [];
           const isCoachOfTeam = coachIds.includes(callerUid) || entityData.coachId === callerUid;
-          const membershipCoach = (callerData.memberships ?? []).some(
-            (m: Record<string, unknown>) => m.role === 'coach' && m.teamId === teamId
-          );
-          if (!isCoachOfTeam && !membershipCoach) {
+          if (!isCoachOfTeam) {
             throw new HttpsError('permission-denied', 'Only coaches of this team can assign co-coaches.');
           }
         } else if (role === 'league_manager' && leagueId) {
           const managerIds: string[] = entityData.managerIds ?? [];
           const isManagerOfLeague =
             managerIds.includes(callerUid) || entityData.managedBy === callerUid;
-          const membershipLM = (callerData.memberships ?? []).some(
-            (m: Record<string, unknown>) => m.role === 'league_manager' && m.leagueId === leagueId
-          );
-          if (!isManagerOfLeague && !membershipLM) {
+          if (!isManagerOfLeague) {
             throw new HttpsError('permission-denied', 'Only league managers of this league can assign co-managers.');
           }
         }

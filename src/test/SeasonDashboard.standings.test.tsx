@@ -157,6 +157,9 @@ vi.mock('@/store/useAuthStore', () => ({
     if (!profile) return false;
     return roles.includes(profile.role);
   }),
+  isManagerOfLeague: vi.fn((profile: UserProfile | null, _leagueId: string) => {
+    return profile?.role === 'league_manager';
+  }),
 }));
 
 // ── Stub StandingsTable so it doesn't fire Firestore listeners ────────────────
