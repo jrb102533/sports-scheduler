@@ -1,17 +1,13 @@
-import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, Shield, UserCog, Layers, MapPin, X, CalendarClock, ChevronDown, Home } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, UserCog, Layers, MapPin, X, CalendarClock, Home } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
-import { useAuthStore, getMemberships, getActiveMembership } from '@/store/useAuthStore';
+import { useAuthStore, getMemberships } from '@/store/useAuthStore';
 import { useEventStore } from '@/store/useEventStore';
-import { useTeamStore } from '@/store/useTeamStore';
-import { useLeagueStore } from '@/store/useLeagueStore';
 import { FLAGS } from '@/lib/flags';
 import { todayISO, formatTime } from '@/lib/dateUtils';
 import { format, parseISO, isToday, isTomorrow } from 'date-fns';
-import type { RoleMembership } from '@/types';
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -39,20 +35,6 @@ const venueNavItems = [
   { to: '/venues', label: 'Venues', icon: MapPin, end: undefined },
 ];
 
-const roleColors: Record<string, string> = {
-  admin: 'text-purple-300',
-  league_manager: 'text-indigo-300',
-  coach: 'text-blue-300',
-  player: 'text-green-300',
-  parent: 'text-orange-300',
-};
-
-function membershipLabel(m: RoleMembership, teamName?: string, leagueName?: string): string {
-  const roleTitle = m.role.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
-  const context = m.role === 'league_manager' ? leagueName : teamName;
-  return context ? `${roleTitle} — ${context}` : roleTitle;
-}
-
 function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   const unread = useNotificationStore(s => s.notifications.filter(n => !n.isRead).length);
   const kidsSetting = useSettingsStore(s => s.settings.kidsSportsMode);
@@ -60,12 +42,8 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   const user = useAuthStore(s => s.user);
   const profile = useAuthStore(s => s.profile);
   const logout = useAuthStore(s => s.logout);
-  const updateProfile = useAuthStore(s => s.updateProfile);
   const navigate = useNavigate();
-  const [contextOpen, setContextOpen] = useState(false);
   const allEvents = useEventStore(s => s.events);
-  const teams = useTeamStore(s => s.teams);
-  const leagues = useLeagueStore(s => s.leagues);
 
   const today = todayISO();
   const nextEvent = allEvents
@@ -80,15 +58,14 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   }
 
   const memberships = getMemberships(profile);
-  const activeMembership = getActiveMembership(profile);
-  const activeIndex = profile?.activeContext ?? 0;
-  const activeRole = activeMembership?.role ?? profile?.role ?? 'player';
 
-  const isParentOrPlayer = activeRole === 'player' || activeRole === 'parent';
+  const roles = new Set(memberships.map(m => m.role));
+  const isElevatedNav = roles.has('admin') || roles.has('league_manager') || roles.has('coach');
+  const isAdminNav = roles.has('admin');
 
   const homeNavItem = { to: '/home', label: 'Home', icon: Home, end: true };
 
-  const allNavItems = isParentOrPlayer
+  const allNavItems = !isElevatedNav
     ? [
         homeNavItem,
         { to: '/parent', label: 'My Team', icon: Users, end: true },
@@ -100,12 +77,12 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
         homeNavItem,
         navItems[1], // Calendar
         navItems[2], // Teams
-        ...(activeRole === 'admin' || activeRole === 'league_manager' ? leagueNavItems : []),
-        ...(activeRole === 'admin' || activeRole === 'league_manager' || activeRole === 'coach' ? venueNavItems : []),
+        ...(roles.has('admin') || roles.has('league_manager') ? leagueNavItems : []),
+        ...(isElevatedNav ? venueNavItems : []),
         navItems[3], // Notifications
         navItems[4], // Messaging
         navItems[5], // Settings
-        ...(activeRole === 'admin' ? adminNavItems : []),
+        ...(isAdminNav ? adminNavItems : []),
       ];
 
   return (
@@ -156,48 +133,6 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
         </div>
       )}
 
-      {profile && memberships.length > 1 && (
-        <div className="mx-3 mb-3 rounded-lg bg-white/5 border border-white/10">
-          <button
-            onClick={() => setContextOpen(o => !o)}
-            className="w-full flex items-center gap-2 px-3 py-2.5 text-left"
-          >
-            <Shield size={12} className={clsx('flex-shrink-0', roleColors[activeMembership?.role ?? ''] ?? 'text-gray-400')} />
-            <span className="flex-1 min-w-0 text-xs font-semibold text-white truncate uppercase tracking-wide">
-              {activeMembership ? membershipLabel(
-                activeMembership,
-                activeMembership.teamId ? teams.find(t => t.id === activeMembership.teamId)?.name : undefined,
-                activeMembership.leagueId ? leagues.find(l => l.id === activeMembership.leagueId)?.name : undefined,
-              ) : ''}
-            </span>
-            <ChevronDown size={14} className={clsx('text-blue-300 flex-shrink-0 transition-transform', contextOpen && 'rotate-180')} />
-          </button>
-          {contextOpen && (
-            <div className="border-t border-white/10 py-1">
-              {memberships.map((m, i) => (
-                <button
-                  key={i}
-                  onClick={() => { updateProfile({ activeContext: i }); setContextOpen(false); }}
-                  className={clsx(
-                    'w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors',
-                    i === activeIndex
-                      ? 'text-white bg-white/10'
-                      : 'text-blue-200 hover:text-white hover:bg-white/10'
-                  )}
-                >
-                  <Shield size={10} className={clsx('flex-shrink-0', roleColors[m.role] ?? 'text-gray-400')} />
-                  <span className="font-medium capitalize">{membershipLabel(
-                    m,
-                    m.teamId ? teams.find(t => t.id === m.teamId)?.name : undefined,
-                    m.leagueId ? leagues.find(l => l.id === m.leagueId)?.name : undefined,
-                  )}</span>
-                  {i === activeIndex && <span className="ml-auto text-[10px] text-blue-300">Active</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {user && (
         <div className="border-t border-white/10 px-3 py-3">
@@ -211,9 +146,6 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-white text-sm font-medium truncate">{profile.displayName}</p>
-                <p className={clsx('text-xs flex items-center gap-1', roleColors[profile.role] ?? 'text-gray-400')}>
-                  <Shield size={10} /> {profile.role.replace('_', ' ')}
-                </p>
               </div>
             </button>
           ) : (

@@ -1,14 +1,14 @@
 /**
- * Sidebar — fix/sidebar-multirole
+ * Sidebar — union-role nav derivation
  *
  * Behaviors under test:
  *
- *   Nav derivation from active context
- *     - Player active context shows player/parent nav (My Team, not Calendar/Teams)
- *     - Coach active context shows coach nav (Calendar, Teams, Venues)
- *     - Admin active context shows admin nav (Calendar, Teams, Leagues, Venues, Manage Users)
- *     - league_manager active context shows LM nav (Calendar, Teams, Leagues, Venues)
- *     - Context switch from player to coach causes coach nav to appear
+ *   Nav derivation from union of ALL memberships
+ *     - Player-only user shows player/parent nav (My Team, not Calendar/Teams)
+ *     - Coach user shows coach nav (Calendar, Teams, Venues)
+ *     - Admin user shows admin nav (Calendar, Teams, Leagues, Venues, Manage Users)
+ *     - league_manager user shows LM nav (Calendar, Teams, Leagues, Venues)
+ *     - User with BOTH player and coach memberships sees elevated (coach) nav
  *
  *   Legacy fallback (no memberships array)
  *     - Legacy user with profile.role='coach' and no memberships array gets coach nav
@@ -16,16 +16,6 @@
  *
  *   Null/undefined profile
  *     - Sidebar renders without crashing when profile is null
- *
- *   Context switcher visibility
- *     - Context switcher does NOT appear when user has exactly 1 membership
- *     - Context switcher DOES appear when user has 2+ memberships
- *     - Context switcher displays enriched labels ("Coach — U10 Red")
- *
- *   membershipLabel helper
- *     - Label for coach includes team name when team is present
- *     - Label for league_manager includes league name
- *     - Label falls back to role title when no context name is available
  *
  *   ProfilePage — Edit button visibility
  *     - Edit button is hidden for coach users (only admin can self-edit memberships)
@@ -156,9 +146,9 @@ beforeEach(() => {
   currentTeams = [];
 });
 
-// ── Tests: nav derivation from active context ─────────────────────────────────
+// ── Tests: nav derivation from union of memberships ──────────────────────────
 
-describe('Sidebar — nav derivation from active context', () => {
+describe('Sidebar — nav derivation from union of memberships', () => {
   it('shows "My Team" nav item for a player active context', () => {
     currentProfile = makeProfile('player', {
       memberships: [{ role: 'player', teamId: 't1', isPrimary: true }],
@@ -262,39 +252,11 @@ describe('Sidebar — nav derivation from active context', () => {
   });
 
   /**
-   * KEY REGRESSION TEST — the bug this PR fixes.
-   *
-   * Before: hasRole() across ALL memberships meant a coach+player dual-role
-   * user always saw the coach nav, even when their active context was player.
-   * After: nav is derived only from the ACTIVE membership's role.
-   *
-   * Simulate: user has two memberships: [player, coach]. activeContext = 1
-   * (coach). Switch to context 0 (player) → should render player-only nav.
+   * Union-role behavior: a user holding BOTH player and coach memberships
+   * always sees elevated (coach) nav regardless of activeContext, because the
+   * nav is derived from the union of ALL memberships.
    */
-  it('shows full coach nav after active context switches from player to coach', () => {
-    // Active context is coach (index 1)
-    currentProfile = makeProfile('player', {
-      role: 'player',
-      memberships: [
-        { role: 'player', teamId: 't1' },
-        { role: 'coach', teamId: 't2', isPrimary: true },
-      ],
-      activeContext: 1,
-    });
-    renderSidebar();
-
-    // Coach nav items present
-    expect(screen.getByRole('link', { name: /^calendar$/i })).toBeTruthy();
-    expect(screen.getByRole('link', { name: /^teams$/i })).toBeTruthy();
-    expect(screen.getByRole('link', { name: /^venues$/i })).toBeTruthy();
-
-    // Player-only item absent
-    expect(screen.queryByRole('link', { name: /my team/i })).toBeNull();
-  });
-
-  it('shows player-only nav when active context is player even though user also holds coach role', () => {
-    // Active context is player (index 0) — the old hasRole() bug would have
-    // given this user coach nav because they hold a coach membership too.
+  it('shows elevated nav when user holds both player and coach memberships', () => {
     currentProfile = makeProfile('player', {
       role: 'player',
       memberships: [
@@ -305,12 +267,15 @@ describe('Sidebar — nav derivation from active context', () => {
     });
     renderSidebar();
 
-    // Player nav present
-    expect(screen.getByRole('link', { name: /my team/i })).toBeTruthy();
+    // Coach nav items present (coach is in the union)
+    expect(screen.getByRole('link', { name: /^calendar$/i })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /^teams$/i })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /^venues$/i })).toBeTruthy();
 
-    // Coach-only items absent
-    expect(screen.queryByRole('link', { name: /^calendar$/i })).toBeNull();
-    expect(screen.queryByRole('link', { name: /^teams$/i })).toBeNull();
+    // Player-only item absent (elevated nav takes over)
+    expect(screen.queryByRole('link', { name: /my team/i })).toBeNull();
+
+    // Admin-only items absent
     expect(screen.queryByRole('link', { name: /manage users/i })).toBeNull();
   });
 });
@@ -347,25 +312,24 @@ describe('Sidebar — legacy fallback (profile.role, no memberships array)', () 
   });
 });
 
-// ── Tests: context switcher visibility ───────────────────────────────────────
+// ── Tests: no context switcher (removed) ─────────────────────────────────────
 
-describe('Sidebar — context switcher', () => {
-  it('does NOT render the context switcher when user has exactly 1 membership', () => {
+describe('Sidebar — context switcher removed', () => {
+  it('does not render any "Active" badge text regardless of membership count', () => {
+    currentTeams = [makeTeam('t1', 'U10 Red'), makeTeam('t2', 'U12 Blue')];
     currentProfile = makeProfile('coach', {
-      memberships: [{ role: 'coach', teamId: 't1', isPrimary: true }],
+      memberships: [
+        { role: 'coach', teamId: 't1', isPrimary: true },
+        { role: 'parent', teamId: 't2' },
+      ],
+      activeContext: 0,
     });
     renderSidebar();
 
-    // The switcher button is identified by the ChevronDown it contains;
-    // alternatively, the Shield inside it uses a role color.  We look for the
-    // "Active" badge text which only appears inside an open switcher dropdown.
-    // More robustly: with 1 membership there is no switcher button at all, so
-    // looking for the active context label text asserts presence while the
-    // switcher dropdown being absent asserts correct single-membership behaviour.
     expect(screen.queryByText('Active')).toBeNull();
   });
 
-  it('renders the context switcher when user has 2 memberships', () => {
+  it('does not render a team-name context toggle button for multi-membership users', () => {
     currentTeams = [makeTeam('t1', 'U10 Red'), makeTeam('t2', 'U12 Blue')];
     currentProfile = makeProfile('coach', {
       memberships: [
@@ -376,68 +340,11 @@ describe('Sidebar — context switcher', () => {
     });
     renderSidebar();
 
-    // Clicking the switcher toggle opens the dropdown that shows "Active"
-    // next to the current context. Find the switcher by its role label text.
-    // The switcher toggle shows the active membership label as uppercase text.
-    const switcher = screen.getByText(/coach/i, { selector: 'span' });
-    expect(switcher).toBeTruthy();
-  });
-
-  it('context switcher shows enriched labels including team name', () => {
-    currentTeams = [makeTeam('t1', 'U10 Red'), makeTeam('t2', 'U12 Blue')];
-    currentProfile = makeProfile('coach', {
-      memberships: [
-        { role: 'coach', teamId: 't1', isPrimary: true },
-        { role: 'parent', teamId: 't2' },
-      ],
-      activeContext: 0,
-    });
-    renderSidebar();
-
-    // Open the dropdown to see all membership labels
-    // The toggle button itself shows the active membership label.
-    // Find the chevron button by its parent container.
-    const toggleButtons = screen.getAllByRole('button');
-    // The context switcher is the button that contains a chevron — it's the
-    // one with the role label and team name in uppercase.
-    const contextToggle = toggleButtons.find(btn =>
+    const buttons = screen.getAllByRole('button');
+    const contextToggle = buttons.find(btn =>
       btn.textContent?.toLowerCase().includes('u10 red')
     );
-    expect(contextToggle).toBeTruthy();
-
-    // Open the dropdown
-    fireEvent.click(contextToggle!);
-
-    // Both membership labels should now be visible (the toggle header shows the
-    // active label; the dropdown shows all labels — use getAllByText since the
-    // active label appears in both the toggle span and the dropdown row).
-    expect(screen.getAllByText(/U10 Red/i).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText(/U12 Blue/i)).toBeTruthy();
-  });
-
-  it('calls updateProfile with the correct activeContext index when a context is selected', () => {
-    currentTeams = [makeTeam('t1', 'U10 Red'), makeTeam('t2', 'U12 Blue')];
-    currentProfile = makeProfile('coach', {
-      memberships: [
-        { role: 'coach', teamId: 't1', isPrimary: true },
-        { role: 'parent', teamId: 't2' },
-      ],
-      activeContext: 0,
-    });
-    renderSidebar();
-
-    // Open dropdown
-    const toggleButtons = screen.getAllByRole('button');
-    const contextToggle = toggleButtons.find(btn =>
-      btn.textContent?.toLowerCase().includes('u10 red')
-    );
-    fireEvent.click(contextToggle!);
-
-    // Select the second membership (Parent — U12 Blue)
-    const parentOption = screen.getByText(/U12 Blue/i).closest('button');
-    fireEvent.click(parentOption!);
-
-    expect(mockUpdateProfile).toHaveBeenCalledWith({ activeContext: 1 });
+    expect(contextToggle).toBeUndefined();
   });
 });
 

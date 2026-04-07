@@ -19,7 +19,7 @@ import type { CoachInfo } from '@/components/leagues/AvailabilityStatusPanel';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useEventStore } from '@/store/useEventStore';
-import { useAuthStore, hasRole } from '@/store/useAuthStore';
+import { useAuthStore, hasRole, getMemberships } from '@/store/useAuthStore';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useCollectionStore } from '@/store/useCollectionStore';
 import { RoleGuard } from '@/components/auth/RoleGuard';
@@ -93,6 +93,9 @@ export function LeagueDetailPage() {
     hasAccount: !!team.coachId,
   }));
 
+  const myLeagueMembership = getMemberships(profile ?? null).find(
+    m => m.leagueId === id && m.role === 'league_manager'
+  );
   const isAdmin = profile?.role === 'admin';
   // Use hasRole + memberships array so multi-role users (e.g. coach who became LM) work correctly
   const isLeagueManager = hasRole(profile ?? null, 'league_manager');
@@ -144,7 +147,14 @@ export function LeagueDetailPage() {
           <Trophy size={22} className="text-indigo-600" />
         </div>
         <div className="flex-1">
-          <h2 className="text-xl font-bold text-gray-900">{league.name}</h2>
+          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            {league.name}
+            {myLeagueMembership && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-medium">
+                League Manager
+              </span>
+            )}
+          </h2>
           <p className="text-sm text-gray-500">
             {[league.season, league.sportType ? SPORT_TYPE_LABELS[league.sportType] : null].filter(Boolean).join(' · ')}
           </p>
