@@ -1220,8 +1220,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                     return (
                       <div className="flex items-start gap-2 text-xs bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-blue-800">
                         <span>
-                          With {teamCount} teams and {gpt} games per team, <strong>{total} games</strong> will be scheduled.
-                          {hasRepeats && ' Some pairs will meet more than once.'}
+                          With {teamCount} teams and {gpt} games per team, <strong>{total} total games</strong> will be scheduled.
                         </span>
                       </div>
                     );
@@ -1824,16 +1823,38 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         {/* ── Preview ──────────────────────────────────────────────────────────── */}
         {step === 'preview' && result && (
           <div className="space-y-4">
-            <div className={`rounded-lg p-3 border text-sm ${result.stats.feasible ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+            {result.stats.unassignedFixtures > 0 && !isPracticeMode && (
+              <div className="rounded-lg p-3 border border-amber-300 bg-amber-50 text-sm space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="font-semibold text-amber-900">
+                    {result.stats.unassignedFixtures} of {result.stats.assignedFixtures + result.stats.unassignedFixtures} committed games couldn't be scheduled
+                  </p>
+                </div>
+                <p className="text-amber-800 text-xs pl-6">
+                  Your venues and dates don't have enough available slots to fit the full commitment. To schedule all games, try:
+                </p>
+                <ul className="text-xs text-amber-800 pl-6 space-y-0.5">
+                  <li>• <strong>Extend your season</strong> — add more weeks at the end</li>
+                  <li>• <strong>Add another venue</strong> — more concurrent fields means more slots</li>
+                  <li>• <strong>Add a game day</strong> — open an additional day of the week in your venue schedule</li>
+                </ul>
+                <p className="text-xs text-amber-700 pl-6">
+                  Or proceed with {result.stats.assignedFixtures} games now and add the remaining {result.stats.unassignedFixtures} manually from the season dashboard.
+                </p>
+              </div>
+            )}
+
+            <div className={`rounded-lg p-3 border text-sm ${result.stats.feasible ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
               <div className="flex items-start gap-2">
                 {result.stats.feasible
                   ? <CheckCircle2 size={16} className="text-green-600 flex-shrink-0 mt-0.5" />
-                  : <AlertTriangle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                  : <CheckCircle2 size={16} className="text-gray-400 flex-shrink-0 mt-0.5" />
                 }
                 <div>
-                  <p className={`font-medium ${result.stats.feasible ? 'text-green-800' : 'text-amber-800'}`}>
-                    {result.stats.assignedFixtures}/{(result.stats.totalFixtures ?? result.stats.totalFixturesRequired ?? result.stats.assignedFixtures)} {isPracticeMode ? 'sessions' : 'fixtures'} scheduled
-                    {result.stats.unassignedFixtures > 0 && ` · ${result.stats.unassignedFixtures} unassigned`}
+                  <p className={`font-medium ${result.stats.feasible ? 'text-green-800' : 'text-gray-700'}`}>
+                    {result.stats.assignedFixtures} {isPracticeMode ? 'sessions' : 'games'} scheduled
+                    {result.stats.unassignedFixtures > 0 && ` · ${result.stats.unassignedFixtures} need manual scheduling`}
                   </p>
                   <p className="text-gray-600 mt-0.5">{result.summary}</p>
                   {(() => {
@@ -2011,7 +2032,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                     {!isPracticeMode && <li>• "Publish Now" — immediately visible to coaches and players</li>}
                     {isPracticeMode && <li>• Events will appear immediately in team and league calendars</li>}
                     {result && result.stats.unassignedFixtures > 0 && (
-                      <li className="text-amber-700">• {result.stats.unassignedFixtures} {isPracticeMode ? 'session' : 'fixture'}{result.stats.unassignedFixtures !== 1 ? 's' : ''} could not be scheduled and will not be saved</li>
+                      <li className="text-amber-700">• {result.stats.unassignedFixtures} game{result.stats.unassignedFixtures !== 1 ? 's' : ''} couldn't fit in your schedule — add them manually from the season dashboard after publishing</li>
                     )}
                   </ul>
                 </div>
