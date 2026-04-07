@@ -117,6 +117,8 @@ export function LeagueDetailPage() {
   ]);
   const canManage = isAdmin || (isLeagueManager && (managedLeagueIds.has(id ?? '') || league?.managedBy === profile?.uid));
 
+  const leagueVenueCount = useLeagueVenueStore(s => s.venues.length);
+
   if (!league) return <div className="p-4 sm:p-6 text-gray-500">League not found.</div>;
 
   const canSoftDelete = isLeagueManager && (managedLeagueIds.has(league.id) || league.managedBy === profile?.uid);
@@ -137,8 +139,6 @@ export function LeagueDetailPage() {
     ]);
     setEditOpen(false);
   }
-
-  const leagueVenueCount = useLeagueVenueStore(s => s.venues.length);
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'schedule', label: 'Schedule', icon: <CalendarDays size={14} /> },
