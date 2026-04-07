@@ -384,7 +384,7 @@ export function LeagueDetailPage() {
       )}
 
       <EventForm open={eventFormOpen} onClose={() => setEventFormOpen(false)} />
-      <EventDetailPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      <EventDetailPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} leagueId={id} />
 
       {wizardOpen && (
         <ScheduleWizardModal
