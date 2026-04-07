@@ -55,6 +55,27 @@ All emails use `buildEmail()` from `functions/src/emailTemplate.ts` with the bra
 - Admin can do anything; coaches manage their teams; parents/players read-only on team data
 - Sensitive player data (PII) in restricted subcollections
 
+## Environment Labeling
+
+The app uses `VITE_APP_ENV` to control environment-specific behavior, including the dev/staging banner in `MainLayout.tsx`. This value is baked into the build via `vite.config.ts` → `__APP_ENV__` and exposed through `src/lib/buildInfo.ts`.
+
+### Environments & Workflows
+
+| Environment | `VITE_APP_ENV` | Firebase Project | Workflow | Banner |
+|-------------|---------------|------------------|----------|--------|
+| Local dev | `development` (default) | emulator or `first-whistle-e76f4` | `npm run dev` | Purple "development" |
+| PR preview | `staging` | `first-whistle-e76f4` (preview channel) | `.github/workflows/preview.yml` | Amber "staging" |
+| Production | `production` | `first-whistle-e76f4` | `.github/workflows/deploy.yml` (push to main) | Hidden |
+| Release | `production` | `first-whistle-prod` | `.github/workflows/release.yml` (manual) | Hidden |
+
+### Rules
+
+1. **Every CI workflow that builds the frontend MUST explicitly set `VITE_APP_ENV`** in the build step's `env:` block. Never rely on the fallback default (`development`).
+2. **`VITE_APP_ENV: production`** — required for any deploy that serves real users. This hides the environment banner and enables production behavior.
+3. **`VITE_APP_ENV: staging`** — use only for preview/PR deployments where the banner should be visible.
+4. **When adding a new workflow or build target**, always include `VITE_APP_ENV` and verify the banner behavior before merging.
+5. **The banner logic** lives in `src/layouts/MainLayout.tsx` and checks `buildInfo.isProduction` from `src/lib/buildInfo.ts`. Do not modify this check without updating all workflows.
+
 ## 12-factor config
 
 Follow 12-factor app methodology for all development:

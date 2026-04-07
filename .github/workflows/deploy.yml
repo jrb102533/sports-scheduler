@@ -37,7 +37,7 @@ jobs:
           VITE_BUILD_TIME: ${{ github.event.head_commit.timestamp }}
           VITE_BUILD_BRANCH: ${{ github.ref_name }}
           VITE_BUILD_PR: ${{ github.event.pull_request.number }}
-          VITE_APP_ENV: staging
+          VITE_APP_ENV: production
           VITE_SIGNUP_ALLOWED_PREFIXES: ${{ secrets.VITE_SIGNUP_ALLOWED_PREFIXES }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
