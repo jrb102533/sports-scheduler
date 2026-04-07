@@ -94,6 +94,7 @@ export function LeaguesPage() {
                 leagueTeams={leagueTeams}
                 canEdit={isAdmin || myLeagueIds.has(league.id)}
                 canDelete={isAdmin}
+                isManager={myLeagueIds.has(league.id)}
                 onClick={() => navigate(`/leagues/${league.id}`)}
                 onEdit={e => openEdit(league, e)}
                 onDelete={e => { e.stopPropagation(); setDeleteTarget(league); }}
@@ -162,12 +163,13 @@ interface LeagueCardProps {
   leagueTeams: Team[];
   canEdit: boolean;
   canDelete: boolean;
+  isManager: boolean;
   onClick: () => void;
   onEdit: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
 }
 
-function LeagueCard({ league, leagueTeams, canEdit, canDelete, onClick, onEdit, onDelete }: LeagueCardProps) {
+function LeagueCard({ league, leagueTeams, canEdit, canDelete, isManager, onClick, onEdit, onDelete }: LeagueCardProps) {
   return (
     <Card className="p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={onClick}>
       <div className="flex items-start justify-between gap-2 mb-3">
@@ -176,7 +178,14 @@ function LeagueCard({ league, leagueTeams, canEdit, canDelete, onClick, onEdit, 
             <Trophy size={18} className="text-indigo-600" />
           </div>
           <div>
-            <h3 className="font-semibold text-gray-900 text-sm">{league.name}</h3>
+            <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
+              {league.name}
+              {isManager && (
+                <span className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-medium">
+                  League Manager
+                </span>
+              )}
+            </h3>
             {league.season && <p className="text-xs text-gray-500">{league.season}</p>}
           </div>
         </div>
