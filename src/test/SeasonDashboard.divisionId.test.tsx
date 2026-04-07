@@ -180,6 +180,11 @@ vi.mock('@/store/useAuthStore', () => ({
     selector({ profile: { uid: 'uid-1', role: 'admin', leagueId: 'league-1' } }),
 }));
 
+vi.mock('@/store/useEventStore', () => ({
+  useEventStore: (selector: (s: { events: never[] }) => unknown) =>
+    selector({ events: [] }),
+}));
+
 // ── ScheduleWizardModal mock ──────────────────────────────────────────────────
 
 const capturedWizardProps: Array<{ divisionId?: string }> = [];

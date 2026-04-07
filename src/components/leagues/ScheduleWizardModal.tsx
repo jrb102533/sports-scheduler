@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { httpsCallable, getFunctions } from 'firebase/functions';
-import { collection, getDocs, setDoc, doc, query, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, setDoc, updateDoc, doc, query, orderBy, limit } from 'firebase/firestore';
 import {
   Calendar, MapPin, Users, Wand2, CheckCircle2, AlertTriangle,
   AlertCircle, ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
@@ -1040,6 +1040,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             createdAt: now,
             updatedAt: now,
             ...venueFields,
+            leagueId: league.id,
             ...(season?.id ? { seasonId: season.id } : {}),
             ...(divisionId ? { divisionId } : {}),
           };
@@ -1055,6 +1056,12 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
           seasonId: season.id,
           ...(divisionId ? { divisionId } : {}),
         });
+      } else if (!publishNow && divisionId && season?.id) {
+        // Mark division as having a draft schedule so the dashboard CTA updates.
+        await updateDoc(
+          doc(db, 'leagues', league.id, 'divisions', divisionId),
+          { scheduleStatus: 'draft', updatedAt: now }
+        );
       }
 
       setPublished(true);

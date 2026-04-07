@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { httpsCallable, getFunctions } from 'firebase/functions';
 import {
   ArrowLeft, MapPin, Users, Wand2, Plus, CheckCircle2,
   AlertTriangle, AlertCircle, Clock, ChevronRight, Settings,
+  Send, Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -14,6 +16,7 @@ import { useSeasonStore } from '@/store/useSeasonStore';
 import { useDivisionStore } from '@/store/useDivisionStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useTeamStore } from '@/store/useTeamStore';
+import { useEventStore } from '@/store/useEventStore';
 import { useVenueStore } from '@/store/useVenueStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import type { Division, Season, Team } from '@/types';
@@ -289,6 +292,10 @@ export function SeasonDashboard() {
 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [addDivisionOpen, setAddDivisionOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState('');
+
+  const allEvents = useEventStore(s => s.events);
 
   const league = leagues.find(l => l.id === leagueId);
   const season = seasons.find(s => s.id === seasonId);
@@ -343,6 +350,37 @@ export function SeasonDashboard() {
   const isAdmin = profile?.role === 'admin';
   const canManage = isAdmin || (profile?.role === 'league_manager' && profile?.leagueId === leagueId);
   const hasPublishedDivision = divisions.some(d => d.scheduleStatus === 'published');
+
+  // Draft/published schedule detection
+  // For division-based seasons: use division.scheduleStatus
+  // For undivided seasons: look for draft/scheduled events in the event store
+  const seasonDraftEvents = allEvents.filter(e => e.seasonId === seasonId && e.status === 'draft');
+  const seasonScheduledEvents = allEvents.filter(e => e.seasonId === seasonId && e.status === 'scheduled');
+  const hasDraftDivision = divisions.some(d => d.scheduleStatus === 'draft');
+  const hasDraftSchedule = hasDraftDivision || (divisions.length === 0 && seasonDraftEvents.length > 0);
+  const hasFullyPublished = divisions.length > 0
+    ? divisions.every(d => d.scheduleStatus === 'published')
+    : seasonScheduledEvents.length > 0;
+
+  const draftDivisions = divisions.filter(d => d.scheduleStatus === 'draft');
+
+  async function handlePublishDraft(divId?: string) {
+    if (!leagueId || !seasonId) return;
+    setPublishing(true);
+    setPublishError('');
+    try {
+      const publishFn = httpsCallable<
+        { leagueId: string; seasonId: string; divisionId?: string },
+        { publishedCount: number }
+      >(getFunctions(), 'publishSchedule');
+      await publishFn({ leagueId, seasonId, ...(divId ? { divisionId: divId } : {}) });
+    } catch (err: unknown) {
+      const msg = (err as { message?: string }).message ?? 'Publish failed.';
+      setPublishError(msg);
+    } finally {
+      setPublishing(false);
+    }
+  }
 
   if (!leagueId || !seasonId) return null;
   if (!league) return <div className="p-4 sm:p-6 text-gray-500">League not found.</div>;
@@ -436,35 +474,90 @@ export function SeasonDashboard() {
           />
         </div>
 
-        {/* Card 4: Generate Schedule CTA */}
-        <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                <Wand2 size={16} className="text-indigo-600" />
-                Generate Schedule
-              </h3>
-              <p className="text-xs text-gray-600 mt-1">
-                {!canGenerate && venues.length === 0
-                  ? 'Configure at least one venue before generating.'
-                  : !canGenerate && feasibilityCritical
-                  ? 'Not enough venue slots — add more venue time or reduce games per team.'
-                  : `Ready to schedule ${leagueTeams.length} team${leagueTeams.length !== 1 ? 's' : ''} across ${season.gamesPerTeam} games each.`}
-              </p>
+        {/* Card 4: Schedule CTA — adapts based on draft / published state */}
+        {hasFullyPublished ? (
+          <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-green-600" />
+                  Schedule Published
+                </h3>
+                <p className="text-xs text-gray-600 mt-1">
+                  All games are live and visible to coaches and players.
+                </p>
+              </div>
+              {canManage && (
+                <Button variant="secondary" size="sm" onClick={() => setWizardOpen(true)}>
+                  <Wand2 size={14} /> Re-generate
+                </Button>
+              )}
             </div>
-            <Button
-              onClick={() => setWizardOpen(true)}
-              disabled={!canGenerate || leagueTeams.length < 2}
-            >
-              <Wand2 size={14} /> Open Wizard
-            </Button>
           </div>
-          {leagueTeams.length < 2 && (
-            <p className="text-xs text-amber-700 mt-3">
-              At least 2 teams are required. Add teams to the league first.
-            </p>
-          )}
-        </div>
+        ) : hasDraftSchedule ? (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                  <AlertTriangle size={16} className="text-amber-600" />
+                  Draft Schedule Ready
+                </h3>
+                <p className="text-xs text-gray-600 mt-1">
+                  {draftDivisions.length > 0
+                    ? `${draftDivisions.length} division${draftDivisions.length !== 1 ? 's' : ''} have a draft schedule waiting to be published.`
+                    : `${seasonDraftEvents.length} draft game${seasonDraftEvents.length !== 1 ? 's' : ''} waiting to be published.`}
+                </p>
+                {publishError && (
+                  <p className="text-xs text-red-600 mt-1">{publishError}</p>
+                )}
+              </div>
+              {canManage && (
+                <div className="flex gap-2 flex-wrap">
+                  <Button variant="secondary" size="sm" onClick={() => setWizardOpen(true)}>
+                    <Wand2 size={14} /> Edit Draft
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => void handlePublishDraft()}
+                    disabled={publishing}
+                  >
+                    {publishing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    {publishing ? 'Publishing…' : 'Publish Now'}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                  <Wand2 size={16} className="text-indigo-600" />
+                  Generate Schedule
+                </h3>
+                <p className="text-xs text-gray-600 mt-1">
+                  {!canGenerate && venues.length === 0
+                    ? 'Configure at least one venue before generating.'
+                    : !canGenerate && feasibilityCritical
+                    ? 'Not enough venue slots — add more venue time or reduce games per team.'
+                    : `Ready to schedule ${leagueTeams.length} team${leagueTeams.length !== 1 ? 's' : ''} across ${season.gamesPerTeam} games each.`}
+                </p>
+              </div>
+              <Button
+                onClick={() => setWizardOpen(true)}
+                disabled={!canGenerate || leagueTeams.length < 2}
+              >
+                <Wand2 size={14} /> Open Wizard
+              </Button>
+            </div>
+            {leagueTeams.length < 2 && (
+              <p className="text-xs text-amber-700 mt-3">
+                At least 2 teams are required. Add teams to the league first.
+              </p>
+            )}
+          </div>
+        )}
       </section>
 
       {/* ── Divisions ── */}
@@ -492,6 +585,15 @@ export function SeasonDashboard() {
                 >
                   <span className="text-sm font-medium text-gray-800">{div.name}</span>
                   <DivisionStatusBadge status={div.scheduleStatus} />
+                  {canManage && div.scheduleStatus === 'draft' && (
+                    <button
+                      className="text-xs text-amber-700 hover:text-amber-900 font-medium underline ml-1"
+                      onClick={() => void handlePublishDraft(div.id)}
+                      disabled={publishing}
+                    >
+                      Publish
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

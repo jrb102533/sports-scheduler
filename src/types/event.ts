@@ -78,6 +78,8 @@ export interface ScheduledEvent {
   venueLat?: number;
   /** Longitude of the venue — stamped directly onto the event at publish time for weather lookups */
   venueLng?: number;
+  /** References leagues/{leagueId} — set when generated via Schedule Wizard (enables server-side publish query) */
+  leagueId?: string;
   /** References leagues/{leagueId}/seasons/{seasonId} — set when generated via Schedule Wizard */
   seasonId?: string;
   /** References leagues/{leagueId}/divisions/{divisionId} — set when generated for a division */
