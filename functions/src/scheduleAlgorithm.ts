@@ -386,14 +386,12 @@ export function validateInput(input: GenerateScheduleInput): void {
   }
 
   // gamesPerTeam validation
-  const N = input.teams.length;
   if (input.gamesPerTeam !== undefined) {
+    if (input.gamesPerTeam < 1)
+      err('gamesPerTeam must be at least 1');
     // SEC-19: Absolute cap to prevent excessive computation
     if (input.gamesPerTeam > 100)
       err('gamesPerTeam must be at most 100');
-    const max = input.format === 'single_round_robin' ? N - 1 : 2 * (N - 1);
-    if (input.gamesPerTeam < 1 || input.gamesPerTeam > max)
-      err(`gamesPerTeam ${input.gamesPerTeam} exceeds maximum ${max} for ${input.format} with ${N} teams`);
   }
 
   // Doubleheader validation
@@ -414,9 +412,11 @@ export function validateInput(input: GenerateScheduleInput): void {
 export function feasibilityPreCheck(input: GenerateScheduleInput): void {
   let N = input.teams.length;
   if (N % 2 === 1) N += 1;
-  const requiredFixtures = input.format === 'single_round_robin'
-    ? (N * (N - 1)) / 2
-    : N * (N - 1);
+  const requiredFixtures = input.gamesPerTeam !== undefined
+    ? Math.ceil((input.gamesPerTeam * input.teams.length) / 2)
+    : input.format === 'single_round_robin'
+      ? (N * (N - 1)) / 2
+      : N * (N - 1);
 
   const seasonBlackouts = new Set(input.blackoutDates ?? []);
   let totalAvailableSlots = 0;
@@ -535,6 +535,36 @@ export function generateSlots(input: GenerateScheduleInput): Slot[] {
 // ─── §4 Round-Robin Formula ───────────────────────────────────────────────
 
 /**
+ * Truncates a fixture list to `targetTotal` by preferentially removing fixtures
+ * from the most-repeated matchup pairs (latest occurrence first).
+ * Guarantees matchup imbalance of at most ±1 across all pairs.
+ */
+function truncateEvenly(fixtures: Pairing[], targetTotal: number): Pairing[] {
+  if (fixtures.length <= targetTotal) return fixtures;
+
+  // Count occurrences of each pair
+  const pairCount = new Map<string, number>();
+  for (const f of fixtures) {
+    const key = [f.homeTeamId, f.awayTeamId].sort().join('|');
+    pairCount.set(key, (pairCount.get(key) ?? 0) + 1);
+  }
+
+  // Build removal candidates: prefer removing from most-repeated pairs,
+  // among ties prefer removing from higher index (later in the list)
+  const candidates = fixtures
+    .map((f, idx) => {
+      const key = [f.homeTeamId, f.awayTeamId].sort().join('|');
+      return { idx, count: pairCount.get(key) ?? 0 };
+    })
+    .sort((a, b) => b.count - a.count || b.idx - a.idx);
+
+  const toRemove = fixtures.length - targetTotal;
+  const removeSet = new Set(candidates.slice(0, toRemove).map(c => c.idx));
+
+  return fixtures.filter((_, idx) => !removeSet.has(idx));
+}
+
+/**
  * Generate all pairings using the circle method.
  * Handles odd N (adds BYE), double round-robin, and partial gamesPerTeam.
  */
@@ -590,28 +620,49 @@ export function generatePairings(input: GenerateScheduleInput): Pairing[] {
 
   }
 
-  let result = allPairings;
-
-  // Double round-robin: add return fixtures
-  if (input.format === 'double_round_robin') {
-    const secondLeg: Pairing[] = allPairings.map((p, i) => ({
-      homeTeamId:   p.awayTeamId,
-      homeTeamName: p.awayTeamName,
-      awayTeamId:   p.homeTeamId,
-      awayTeamName: p.homeTeamName,
-      round:        p.round + (N - 1),
-      pairingIndex: allPairings.length + i,
-    }));
-    result = [...allPairings, ...secondLeg];
-  }
-
-  // Partial round-robin: truncate to gamesPerTeam
+  // Multi-pass: cycle through round-robin passes until gamesPerTeam is reached.
+  // When gamesPerTeam is not provided, fall back to format-based 1 or 2 passes (backward compat).
   if (input.gamesPerTeam !== undefined) {
-    const targetTotal = Math.floor((input.gamesPerTeam * input.teams.length) / 2);
-    result = result.slice(0, targetTotal);
+    const realN = input.teams.length; // actual team count, excluding BYE
+    const targetTotal = Math.ceil((input.gamesPerTeam * realN) / 2);
+    const multiPass: Pairing[] = [];
+    let passIndex = 0;
+    while (multiPass.length < targetTotal) {
+      for (const p of allPairings) {
+        if (multiPass.length >= targetTotal) break;
+        // Alternate home/away each pass for balance
+        if (passIndex % 2 === 0) {
+          multiPass.push({ ...p, pairingIndex: multiPass.length });
+        } else {
+          multiPass.push({
+            homeTeamId:   p.awayTeamId,
+            homeTeamName: p.awayTeamName,
+            awayTeamId:   p.homeTeamId,
+            awayTeamName: p.homeTeamName,
+            round:        p.round + passIndex * (N - 1),
+            pairingIndex: multiPass.length,
+          });
+        }
+      }
+      passIndex++;
+    }
+    return truncateEvenly(multiPass, targetTotal);
+  } else {
+    // Backward compat: format-driven 1 or 2 passes
+    let result = allPairings;
+    if (input.format === 'double_round_robin') {
+      const secondLeg: Pairing[] = allPairings.map((p, i) => ({
+        homeTeamId:   p.awayTeamId,
+        homeTeamName: p.awayTeamName,
+        awayTeamId:   p.homeTeamId,
+        awayTeamName: p.homeTeamName,
+        round:        p.round + (N - 1),
+        pairingIndex: allPairings.length + i,
+      }));
+      result = [...allPairings, ...secondLeg];
+    }
+    return result;
   }
-
-  return result;
 }
 
 // ─── §3 Step 4 — Soft Constraint Scoring ─────────────────────────────────
@@ -1046,7 +1097,7 @@ export function buildOutput(
       ? (Nf * (Nf - 1)) / 2
       : Nf * (Nf - 1);
     if (input.gamesPerTeam !== undefined) {
-      return Math.floor((input.gamesPerTeam * input.teams.length) / 2);
+      return Math.ceil((input.gamesPerTeam * input.teams.length) / 2);
     }
     return base;
   })();

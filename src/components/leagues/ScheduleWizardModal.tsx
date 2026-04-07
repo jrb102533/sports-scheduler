@@ -1208,40 +1208,20 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                   value={gamesPerTeam}
                   onChange={e => setGamesPerTeam(e.target.value)}
                 />
+                <p className="text-xs text-gray-500 -mt-2">How many games should each team play this season?</p>
 
-                {/* Ceiling warning — gamesPerTeam exceeds what's achievable with this team count */}
+                {/* Neutral info block — game count summary */}
                 {(() => {
                   const gpt = parseInt(gamesPerTeam);
                   const teamCount = leagueTeams.length;
-                  if (!isNaN(gpt) && gpt > 0 && teamCount > 1) {
-                    const maxGames = 2 * (teamCount - 1);
-                    if (gpt > maxGames) {
-                      return (
-                        <div className="flex items-start gap-2 text-xs bg-red-50 border border-red-200 rounded-lg p-2.5 text-red-800">
-                          <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
-                          <span>
-                            With {teamCount} teams, the maximum is <strong>{maxGames} games per team</strong> (double round-robin).
-                            Add more teams or lower the games per team to {maxGames} or fewer.
-                          </span>
-                        </div>
-                      );
-                    }
-                  }
-                  return null;
-                })()}
-
-                {/* Round-down warning */}
-                {(() => {
-                  const gpt = parseInt(gamesPerTeam);
-                  const teamCount = leagueTeams.length;
-                  const maxGames = 2 * (teamCount - 1);
-                  if (!isNaN(gpt) && gpt > 0 && gpt <= maxGames && teamCount > 0 && (gpt * teamCount) % 2 !== 0) {
+                  if (!isNaN(gpt) && gpt > 0 && teamCount >= 2) {
+                    const total = Math.ceil((gpt * teamCount) / 2);
+                    const hasRepeats = gpt > teamCount - 1;
                     return (
-                      <div className="flex items-start gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-amber-800">
-                        <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+                      <div className="flex items-start gap-2 text-xs bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-blue-800">
                         <span>
-                          With {teamCount} team{teamCount !== 1 ? 's' : ''} and {gpt} games per team, {teamCount % 2 === 0 ? 'some' : 'all'} teams will play {gpt - 1} games.
-                          The schedule will round down to balance the remainder.
+                          With {teamCount} teams and {gpt} games per team, <strong>{total} games</strong> will be scheduled.
+                          {hasRepeats && ' Some pairs will meet more than once.'}
                         </span>
                       </div>
                     );
@@ -1259,6 +1239,11 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                   <div>
                     <span className="text-sm font-medium text-gray-700">Home/Away Balance</span>
                     <p className="text-xs text-gray-500 mt-0.5">Distribute home and away games evenly across teams.</p>
+                    {homeAwayBalance && parseInt(gamesPerTeam) > leagueTeams.length - 1 && (
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        When a pair meets more than once, home and away alternate.
+                      </p>
+                    )}
                   </div>
                 </label>
 
@@ -1277,16 +1262,18 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                     onClick={() => setDistributionExpanded(v => !v)}
                     className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                   >
-                    <span className="font-medium">About game distribution</span>
+                    <span className="font-medium">How does the scheduler distribute games?</span>
                     <ChevronDown size={14} className={`text-gray-400 transition-transform ${distributionExpanded ? 'rotate-180' : ''}`} />
                   </button>
                   {distributionExpanded && (
                     <div className="px-3 pb-3 pt-1 text-xs text-gray-600 border-t border-gray-100 bg-gray-50">
-                      The scheduler uses a round-robin algorithm to distribute games evenly. Each team plays{' '}
-                      {gamesPerTeam || 'N'} games against{' '}
-                      {leagueTeams.length > 0
-                        ? `up to ${Math.min(leagueTeams.length - 1, parseInt(gamesPerTeam) || 0)} different opponent${Math.min(leagueTeams.length - 1, parseInt(gamesPerTeam) || 0) !== 1 ? 's' : ''}`
-                        : 'various opponents'}.
+                      <p>
+                        Games are distributed as evenly as possible across your available dates and venues.
+                        Each team plays {gamesPerTeam || 'N'} games.
+                        {leagueTeams.length > 0 && parseInt(gamesPerTeam) > leagueTeams.length - 1 && (
+                          <> With {leagueTeams.length} teams, some pairs may meet more than once — this is normal when your game count is higher than the number of unique matchups available. Home and away assignments rotate across repeated meetings.</>
+                        )}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1849,6 +1836,25 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                     {result.stats.unassignedFixtures > 0 && ` · ${result.stats.unassignedFixtures} unassigned`}
                   </p>
                   <p className="text-gray-600 mt-0.5">{result.summary}</p>
+                  {(() => {
+                    if (!result) return null;
+                    const pairCounts = new Map<string, number>();
+                    for (const f of result.fixtures) {
+                      const key = [f.homeTeamId, f.awayTeamId].sort().join('|');
+                      pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
+                    }
+                    const counts = Array.from(pairCounts.values());
+                    const maxCount = Math.max(...counts);
+                    if (maxCount <= 1) return null;
+                    const freq = new Map<number, number>();
+                    for (const c of counts) freq.set(c, (freq.get(c) ?? 0) + 1);
+                    const parts = Array.from(freq.entries())
+                      .sort(([a], [b]) => a - b)
+                      .map(([times, pairs]) => `${pairs} pair${pairs !== 1 ? 's' : ''} meet${pairs === 1 ? 's' : ''} ${times}×`);
+                    return (
+                      <p className="text-xs text-gray-500 mt-1">{parts.join(' · ')}</p>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -2025,7 +2031,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             {step === 'generate' && generatePhase === 'configure' ? (
               <Button
                 onClick={() => void handleGenerate()}
-                disabled={!seasonStart || !seasonEnd || (mode === 'season' && parseInt(gamesPerTeam) > 2 * (leagueTeams.length - 1))}
+                disabled={!seasonStart || !seasonEnd}
               >
                 <Wand2 size={15} /> Generate Schedule
               </Button>
