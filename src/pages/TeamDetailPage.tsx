@@ -18,7 +18,7 @@ import { useEventStore } from '@/store/useEventStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useAvailabilityStore } from '@/store/useAvailabilityStore';
 import { RoleGuard } from '@/components/auth/RoleGuard';
-import { useAuthStore, canEdit, hasRole, isCoachOfTeam } from '@/store/useAuthStore';
+import { useAuthStore, canEdit, hasRole, isCoachOfTeam, getMemberships } from '@/store/useAuthStore';
 import { SPORT_TYPE_LABELS, AGE_GROUP_LABELS } from '@/constants';
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { db, functions } from '@/lib/firebase';
@@ -136,6 +136,7 @@ export function TeamDetailPage() {
     .filter(e => e.teamIds.includes(teamId))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
+  const myTeamMembership = getMemberships(profile).find(m => m.teamId === teamId);
   const isAdminUser = hasRole(profile, 'admin');
   const isOwner = !isAdminUser && (
     team?.createdBy === profile?.uid ||
@@ -174,8 +175,10 @@ export function TeamDetailPage() {
   async function handleApprove(request: JoinRequest) {
     setProcessingUids(prev => new Set(prev).add(request.uid));
     try {
-      await setDoc(doc(db, 'users', request.uid), { teamId }, { merge: true });
-      await updateDoc(doc(db, 'teams', teamId, 'joinRequests', request.uid), { status: 'approved' });
+      await httpsCallable<{ teamId: string; requestUid: string }, { success: boolean }>(
+        functions,
+        'approveJoinRequest',
+      )({ teamId, requestUid: request.uid });
       // Write in-app notification to approved user
       const notifId = `join-approved-${teamId}-${Date.now()}`;
       await setDoc(doc(db, 'users', request.uid, 'notifications', notifId), {
@@ -253,7 +256,14 @@ export function TeamDetailPage() {
           }
         </div>
         <div className="flex-1">
-          <h2 className="text-xl font-bold text-gray-900">{team.name}</h2>
+          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            {team.name}
+            {myTeamMembership && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 capitalize font-medium">
+                {myTeamMembership.role.replace('_', ' ')}
+              </span>
+            )}
+          </h2>
           <p className="text-sm text-gray-500">
             {SPORT_TYPE_LABELS[team.sportType]}
             {team.ageGroup && (

@@ -48,7 +48,8 @@ service cloud.firestore {
               .hasAny(['uid', 'memberships'])
           && !(request.resource.data.diff(resource.data).affectedKeys().hasAny(['mustChangePassword'])
                && request.resource.data.mustChangePassword == true)
-          && !(['admin', 'league_manager', 'coach'].hasAny([request.resource.data.role]))
+          && !(request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+               && ['admin', 'league_manager', 'coach'].hasAny([request.resource.data.role]))
           && request.resource.data.displayName is string
           && request.resource.data.displayName.size() >= 1
           && request.resource.data.displayName.size() <= 100)
@@ -225,7 +226,11 @@ service cloud.firestore {
     match /leagues/{leagueId} {
       allow read: if request.auth != null;
       // League managers can create any new league (no prior leagueId to match against).
-      allow create: if isAdmin() || isLeagueManager();
+      // SEC-28: coaches who became LMs via createLeagueAndBecomeManager CF retain scalar
+      // role='coach' (pending PM decision to auto-promote). Allow coach to create if their
+      // UID is in the managerIds they're writing — the CF always sets this.
+      allow create: if isAdmin() || isLeagueManager()
+        || (isCoach() && isManagerOfLeague(request.resource.data));
       // Phase 2: use managerIds access list instead of profile.leagueId cross-doc read.
       // SEC-29: non-admin writes may not touch access-control fields (managerIds, managedBy).
       // Admins retain unrestricted write access.
