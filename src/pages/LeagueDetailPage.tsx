@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2, Layers, Search } from 'lucide-react';
+import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2, Layers, Search, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { EventCard } from '@/components/events/EventCard';
@@ -14,6 +14,7 @@ import { TeamForm } from '@/components/teams/TeamForm';
 import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
 import { DeleteLeagueModal } from '@/components/leagues/DeleteLeagueModal';
 import { AssignCoManagerModal } from '@/components/leagues/AssignCoManagerModal';
+import { LeagueVenueTab } from '@/components/leagues/LeagueVenueTab';
 import { SeasonCreateModal } from '@/components/seasons/SeasonCreateModal';
 import { AvailabilityStatusPanel } from '@/components/leagues/AvailabilityStatusPanel';
 import type { CoachInfo } from '@/components/leagues/AvailabilityStatusPanel';
@@ -23,11 +24,12 @@ import { useEventStore } from '@/store/useEventStore';
 import { useAuthStore, hasRole, getMemberships } from '@/store/useAuthStore';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useCollectionStore } from '@/store/useCollectionStore';
+import { useLeagueVenueStore } from '@/store/useLeagueVenueStore';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { SPORT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent } from '@/types';
 
-type Tab = 'schedule' | 'standings' | 'teams' | 'seasons';
+type Tab = 'schedule' | 'standings' | 'teams' | 'seasons' | 'venues';
 
 export function LeagueDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -83,6 +85,12 @@ export function LeagueDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  useEffect(() => {
+    if (!id) return;
+    return useLeagueVenueStore.getState().subscribe(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
   const hasActiveCollection = activeCollection?.status === 'open';
   const respondedCount = responses.length;
   const totalCoaches = leagueTeams.filter(t => t.coachId).length;
@@ -130,11 +138,14 @@ export function LeagueDetailPage() {
     setEditOpen(false);
   }
 
+  const leagueVenueCount = useLeagueVenueStore(s => s.venues.length);
+
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'schedule', label: 'Schedule', icon: <CalendarDays size={14} /> },
     { key: 'standings', label: 'Standings', icon: <Trophy size={14} /> },
     { key: 'teams', label: `Teams (${leagueTeams.length})`, icon: <Users size={14} /> },
     { key: 'seasons', label: `Seasons (${seasons.length})`, icon: <Layers size={14} /> },
+    { key: 'venues', label: `Venues (${leagueVenueCount})`, icon: <MapPin size={14} /> },
   ];
 
   return (
@@ -362,6 +373,14 @@ export function LeagueDetailPage() {
             </div>
           )}
         </div>
+      )}
+
+      {tab === 'venues' && (
+        <LeagueVenueTab
+          leagueId={league.id}
+          canManage={canManage}
+          lmUid={profile?.uid ?? ''}
+        />
       )}
 
       <EventForm open={eventFormOpen} onClose={() => setEventFormOpen(false)} />

@@ -337,6 +337,18 @@ service cloud.firestore {
         allow read: if request.auth != null && (isAdmin() || isLeagueManager());
         allow write: if false; // written exclusively by Cloud Functions (Admin SDK)
       }
+
+      // League venue pool — LMs manage their own league's venue list; all auth'd users read.
+      // Venues are copied from the LM's personal venue library (copy-based import).
+      match /venues/{venueId} {
+        allow read: if request.auth != null;
+        allow create: if isAdmin()
+          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
+        allow update: if isAdmin()
+          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
+        allow delete: if isAdmin()
+          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
+      }
     }
 
     // Invite records — written and deleted exclusively by Cloud Functions (Admin SDK).

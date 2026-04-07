@@ -10,7 +10,8 @@ export interface Team {
   sportType: SportType;
   color: string;
   logoUrl?: string;
-  homeVenue?: string;
+  homeVenue?: string;      // kept — existing string label
+  homeVenueId?: string;   // new — references users/{uid}/venues/{venueId}
   coachName?: string;
   coachEmail?: string;
   coachPhone?: string;

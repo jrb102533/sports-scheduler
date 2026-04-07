@@ -161,6 +161,14 @@ vi.mock('@/store/useCollectionStore', () => {
   return { useCollectionStore };
 });
 
+// ── League venue store ────────────────────────────────────────────────────────
+vi.mock('@/store/useLeagueVenueStore', () => {
+  const state = { venues: [] as never[], leagueId: null, loading: false, subscribe: vi.fn(() => () => {}), importVenue: vi.fn(), updateLeagueVenue: vi.fn(), removeLeagueVenue: vi.fn() };
+  const useLeagueVenueStore = (sel?: (s: typeof state) => unknown) => typeof sel === 'function' ? sel(state) : state;
+  useLeagueVenueStore.getState = () => state;
+  return { useLeagueVenueStore };
+});
+
 // ── Notification store ────────────────────────────────────────────────────────
 vi.mock('@/store/useNotificationStore', () => ({
   useNotificationStore: (sel: (s: { notifications: never[] }) => unknown) =>

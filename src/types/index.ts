@@ -10,7 +10,7 @@ export type { JoinRequest } from './joinRequest';
 export type { Opponent } from './opponent';
 export type { WizardMode, WizardVenueInput, ScheduleConstraint, CoachAvailabilityInput, CollectionStatus, AvailabilityCollection, CoachAvailabilityResponse, WizardDraft } from './wizard';
 export { DEFAULT_CONSTRAINTS } from './wizard';
-export type { Venue, VenueField, RecurringVenueWindow } from './venue';
+export type { Venue, VenueField, RecurringVenueWindow, LeagueVenue } from './venue';
 export type { ScheduleConfig, ScheduleVenueConfig } from './scheduleConfig';
 export type { SeasonStatus, DistributionType, TiebreakerCriterion, TiebreakerConfig, Season } from './season';
 export type { DivisionScheduleStatus, Division } from './division';
