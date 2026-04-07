@@ -1296,7 +1296,6 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                   const teamCount = leagueTeams.length;
                   if (!isNaN(gpt) && gpt > 0 && teamCount >= 2) {
                     const total = Math.ceil((gpt * teamCount) / 2);
-                    const hasRepeats = gpt > teamCount - 1;
                     return (
                       <div className="flex items-start gap-2 text-xs bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-blue-800">
                         <span>
