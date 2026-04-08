@@ -794,15 +794,15 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
       : teamId?.trim()
         ? [teamId.trim()]
         : [];
-    if (!resolvedTeamIds.length) {
-      throw new HttpsError('invalid-argument', 'teamId or teamIds is required.');
-    }
-    if (resolvedTeamIds.length > 10) {
-      throw new HttpsError('invalid-argument', 'Maximum 10 teams per send.');
-    }
-
     // SEC-38: Verify caller is a coach of every claimed team (admins bypass).
+    // Admin callers may omit teamId/teamIds when messaging platform users directly.
     if (callerRole !== 'admin') {
+      if (!resolvedTeamIds.length) {
+        throw new HttpsError('invalid-argument', 'teamId or teamIds is required.');
+      }
+      if (resolvedTeamIds.length > 10) {
+        throw new HttpsError('invalid-argument', 'Maximum 10 teams per send.');
+      }
       const teamSnaps = await Promise.all(
         resolvedTeamIds.map(tid => admin.firestore().doc(`teams/${tid}`).get())
       );
