@@ -82,9 +82,36 @@ Follow 12-factor app methodology for all development:
 | `functions/src/scheduleAlgorithm.ts` | Schedule generation algorithm |
 | `firestore.rules` | Security rules |
 
+## Deployment Policy
+
+### Hard rule: merge before deploy
+
+**No production deploys without a merged PR.** This applies to all targets: `hosting`, `functions`, `firestore:rules`, `firestore:indexes`.
+
+Enforcement layers:
+1. **GitHub Actions `environment: production` gate** — the deploy workflow requires a reviewer approval before any prod job runs (primary enforcement)
+2. **Branch protection on `main`** — PRs required before merging
+3. **This policy** — all agents must follow it
+
+### Hotfix exception (active outage or data breach only)
+
+If production is down or actively leaking data:
+1. Push the fix branch to remote
+2. Open a PR and get it **approved** (not just opened) before deploying
+3. Deploy from the branch
+4. Merge the PR to `main` within 24 hours post-incident
+5. Note the bypass reason in the PR body
+
+"We want to test in prod" or "review will take too long" are not valid exceptions.
+
+### Firestore rules changes
+
+`firestore.rules` changes have the highest blast radius — a permissive rule takes effect instantly and fails silently (no app-layer error, no trace unless Firestore audit logging is enabled). **All PRs touching `firestore.rules` require the security-engineer agent review before merge.**
+
 ## Backlog
 
 - #202 — Schedule wizard draft resume
 - #203 — Incomplete game generation + no draft view
 - #204 — Simplify empty Seasons tab
 - #205 — TopBar user name/login
+- #206 — Bulk delete draft schedule games (delete selected games or entire draft; SeasonDashboard + league schedule view)
