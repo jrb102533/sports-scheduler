@@ -58,9 +58,8 @@ export function MainLayout() {
   }, [user]);
 
   const location = useLocation();
-  const firstName = profile?.displayName?.split(' ')[0] ?? '';
   const isHome = location.pathname === '/' || location.pathname === '/home';
-  const greeting = isHome ? (firstName ? `Welcome, ${firstName}` : 'Welcome') : '';
+  const greeting = '';
   const pageTitle = isHome
     ? ''
     : PAGE_TITLES[location.pathname]

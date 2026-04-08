@@ -37,6 +37,9 @@ const emailFrom = defineSecret('EMAIL_FROM');
 // HMAC secret for signing/verifying RSVP email links (F-02).
 // Provision with: firebase functions:secrets:set RSVP_HMAC_SECRET
 const rsvpSecret = defineSecret('RSVP_HMAC_SECRET');
+// HMAC secret for signing calendar feed URLs.
+// Provision with: firebase functions:secrets:set ICAL_SECRET
+const icalSecret = defineSecret('ICAL_SECRET');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -112,6 +115,39 @@ function verifyRsvpToken(eventId: string, playerId: string, token: string): bool
   } catch {
     return false;
   }
+}
+
+/** Sign a calendar feed token tied to a specific uid. */
+function signCalendarToken(uid: string): string {
+  return crypto.createHmac('sha256', icalSecret.value()).update(uid).digest('hex');
+}
+
+/** Verify a calendar feed token. Uses timing-safe comparison. */
+function verifyCalendarToken(uid: string, token: string): boolean {
+  try {
+    const expected = Buffer.from(signCalendarToken(uid), 'hex');
+    const provided = Buffer.from(token, 'hex');
+    if (expected.length !== provided.length) return false;
+    return crypto.timingSafeEqual(expected, provided);
+  } catch {
+    return false;
+  }
+}
+
+/** Format a date+time pair as an iCal DTSTART/DTEND value (UTC). */
+function formatICalDate(date: string, time: string, addMinutes = 0): string {
+  const d = new Date(`${date}T${time}:00`);
+  d.setMinutes(d.getMinutes() + addMinutes);
+  return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+}
+
+/** Escape special characters for iCal text values. */
+function icalEscape(str: string): string {
+  return str
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\n/g, '\\n');
 }
 
 /**
@@ -4700,5 +4736,111 @@ export const assignScopedRole = onCall<AssignScopedRoleData, Promise<AssignScope
         (teamId ? ` teamId=${teamId}` : ` leagueId=${leagueId}`)
     );
     return { success: true, targetUid, displayName };
+  }
+);
+
+// ─── Calendar Feed ────────────────────────────────────────────────────────────
+
+/**
+ * Returns a signed webcal:// feed URL for the calling user.
+ * The URL is safe to share — it authenticates via HMAC, not Firebase Auth.
+ */
+export const getCalendarFeedUrl = onCall(
+  { secrets: ['ICAL_SECRET'] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in.');
+    const uid = request.auth.uid;
+    const token = signCalendarToken(uid);
+    const feedUrl = `${FUNCTIONS_BASE}/calendarFeed?uid=${encodeURIComponent(uid)}&token=${token}`;
+    return { url: feedUrl };
+  }
+);
+
+/**
+ * Serves a live iCal feed for a user's accessible events.
+ * Authenticated via HMAC token (no Firebase Auth required — calendar apps poll silently).
+ */
+export const calendarFeed = onRequest(
+  { secrets: ['ICAL_SECRET'], cors: false },
+  async (req, res) => {
+    const uid = req.query['uid'] as string | undefined;
+    const token = req.query['token'] as string | undefined;
+
+    if (!uid || !token || !verifyCalendarToken(uid, token)) {
+      res.status(403).send('Invalid or missing calendar token.');
+      return;
+    }
+
+    const db = admin.firestore();
+
+    const userSnap = await db.doc(`users/${uid}`).get();
+    if (!userSnap.exists) {
+      res.status(404).send('User not found.');
+      return;
+    }
+    const profile = userSnap.data()!;
+
+    // Derive accessible team IDs from memberships (or legacy teamId)
+    const memberships: Array<{ teamId?: string; role?: string; leagueId?: string }> = profile.memberships ?? [];
+    const teamIds = new Set<string>();
+    if (profile.teamId) teamIds.add(profile.teamId);
+    memberships.forEach(m => { if (m.teamId) teamIds.add(m.teamId); });
+
+    const isAdmin = profile.role === 'admin' || memberships.some(m => m.role === 'admin');
+    const leagueId: string | undefined =
+      profile.leagueId ?? memberships.find(m => m.role === 'league_manager')?.leagueId;
+
+    const eventsSnap = await db.collection('events').orderBy('date').get();
+
+    const events = eventsSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter((e: any) => {
+        if (isAdmin) return true;
+        if (leagueId && e.leagueId === leagueId) return true;
+        const eventTeamIds: string[] = e.teamIds ?? (e.teamId ? [e.teamId] : []);
+        return eventTeamIds.some((t: string) => teamIds.has(t));
+      });
+
+    const lines: string[] = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//First Whistle//Sports Scheduler//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'X-WR-CALNAME:First Whistle',
+      'X-WR-TIMEZONE:UTC',
+    ];
+
+    for (const e of events as any[]) {
+      const startTime: string = e.startTime ?? '09:00';
+      const dtstart = formatICalDate(e.date, startTime);
+      const dtend = e.endTime
+        ? formatICalDate(e.date, e.endTime)
+        : formatICalDate(e.date, startTime, e.duration ?? 60);
+
+      const status = e.status === 'cancelled' ? 'CANCELLED' : 'CONFIRMED';
+      const updatedAt = e.updatedAt
+        ? new Date(e.updatedAt).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+        : dtstart;
+
+      lines.push('BEGIN:VEVENT');
+      lines.push(`UID:${e.id}@firstwhistlesports.com`);
+      lines.push(`DTSTAMP:${updatedAt}`);
+      lines.push(`DTSTART:${dtstart}`);
+      lines.push(`DTEND:${dtend}`);
+      lines.push(`SUMMARY:${icalEscape(e.title ?? 'Event')}`);
+      lines.push(`STATUS:${status}`);
+      if (e.location) lines.push(`LOCATION:${icalEscape(e.location)}`);
+      if (e.notes) lines.push(`DESCRIPTION:${icalEscape(e.notes)}`);
+      if (e.venueLat != null && e.venueLng != null) lines.push(`GEO:${e.venueLat};${e.venueLng}`);
+      lines.push('END:VEVENT');
+    }
+
+    lines.push('END:VCALENDAR');
+
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="first-whistle.ics"');
+    res.setHeader('Cache-Control', 'no-cache, no-store');
+    res.send(lines.join('\r\n'));
   }
 );
