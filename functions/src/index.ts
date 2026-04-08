@@ -1920,7 +1920,8 @@ interface SendPostGameBroadcastResult {
 export const sendPostGameBroadcast = onCall<SendPostGameBroadcastData, Promise<SendPostGameBroadcastResult>>(
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
-    await assertAdminOrCoach(request.auth.uid);
+    const callerUid = request.auth.uid;
+    const effectiveRole = await assertAdminOrCoach(callerUid);
 
     const { eventId, teamId, message, manOfTheMatchPlayerId } = request.data;
     if (!eventId?.trim()) throw new HttpsError('invalid-argument', 'eventId is required.');
@@ -1967,9 +1968,15 @@ export const sendPostGameBroadcast = onCall<SendPostGameBroadcastData, Promise<S
     const legacyUsersSnap = await db.collection('users').where('teamId', '==', teamId).get();
     legacyUsersSnap.docs.forEach(d => allUids.add(d.id));
 
-    // 2. Team doc coachIds
+    // 2. Team doc coachIds — also used for SEC-35 ownership check
     const teamSnap = await db.doc(`teams/${teamId}`).get();
     const coachIds: string[] = teamSnap.exists ? (teamSnap.data()?.coachIds ?? []) : [];
+
+    // SEC-35: verify caller is a coach of this specific team (not just any team)
+    if (effectiveRole !== 'admin') {
+      const isCoachOfTeam = coachIds.includes(callerUid) || teamSnap.data()?.coachId === callerUid;
+      if (!isCoachOfTeam) throw new HttpsError('permission-denied', 'You are not a coach of this team.');
+    }
     coachIds.forEach((uid: string) => allUids.add(uid));
 
     // 3. Players collection — linked users and parents
@@ -4787,14 +4794,23 @@ export const calendarFeed = onRequest(
     memberships.forEach(m => { if (m.teamId) teamIds.add(m.teamId); });
 
     const isAdmin = profile.role === 'admin' || memberships.some(m => m.role === 'admin');
+    const isElevated = isAdmin ||
+      profile.role === 'coach' || profile.role === 'league_manager' ||
+      memberships.some(m => m.role === 'coach' || m.role === 'league_manager');
     const leagueId: string | undefined =
       profile.leagueId ?? memberships.find(m => m.role === 'league_manager')?.leagueId;
 
-    const eventsSnap = await db.collection('events').orderBy('date').get();
+    // SEC-36: exclude draft events at query level to avoid full-collection scan
+    const eventsSnap = await db.collection('events')
+      .where('status', 'in', ['scheduled', 'completed', 'cancelled', 'in_progress'])
+      .orderBy('date')
+      .get();
 
     const events = eventsSnap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .filter((e: any) => {
+        // SEC-39: never expose draft events (belt-and-suspenders after query filter)
+        if (e.status === 'draft') return false;
         if (isAdmin) return true;
         if (leagueId && e.leagueId === leagueId) return true;
         const eventTeamIds: string[] = e.teamIds ?? (e.teamId ? [e.teamId] : []);
@@ -4831,7 +4847,8 @@ export const calendarFeed = onRequest(
       lines.push(`SUMMARY:${icalEscape(e.title ?? 'Event')}`);
       lines.push(`STATUS:${status}`);
       if (e.location) lines.push(`LOCATION:${icalEscape(e.location)}`);
-      if (e.notes) lines.push(`DESCRIPTION:${icalEscape(e.notes)}`);
+      // SEC-39: coach notes are only visible to elevated roles (coach/admin/league_manager)
+      if (e.notes && isElevated) lines.push(`DESCRIPTION:${icalEscape(e.notes)}`);
       if (e.venueLat != null && e.venueLng != null) lines.push(`GEO:${e.venueLat};${e.venueLng}`);
       lines.push('END:VEVENT');
     }
