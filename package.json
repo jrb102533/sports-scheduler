@@ -25,6 +25,7 @@
     "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
+    "@testing-library/dom": "^10.4.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "firebase": "^12.11.0",
@@ -57,6 +58,10 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.0",
     "vite": "^8.0.1",
+    "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.1.1"
+  },
+  "overrides": {
+    "serialize-javascript": ">=7.0.0"
   }
 }
