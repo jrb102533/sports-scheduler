@@ -167,14 +167,24 @@ export function TeamDetailPage() {
   }
 
   async function handleSoftDelete() {
-    await softDeleteTeam(teamId);
-    navigate('/teams');
+    try {
+      await softDeleteTeam(teamId);
+      navigate('/teams');
+    } catch (err: any) {
+      console.error('Delete team failed:', err);
+      alert(err?.message ?? 'Failed to delete team. Please try again.');
+    }
   }
 
   async function handleHardDelete() {
-    await deletePlayersForTeam(teamId);
-    await hardDeleteTeam(teamId);
-    navigate('/teams');
+    try {
+      await deletePlayersForTeam(teamId);
+      await hardDeleteTeam(teamId);
+      navigate('/teams');
+    } catch (err: any) {
+      console.error('Hard delete team failed:', err);
+      alert(err?.message ?? 'Failed to delete team. Please try again.');
+    }
   }
 
   async function handleApprove(request: JoinRequest) {
