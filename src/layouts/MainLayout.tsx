@@ -39,10 +39,15 @@ export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user } = useAuthStore();
   const logout = useAuthStore(s => s.logout);
+  // Profile role is needed so the player store's sensitiveData subscription starts
+  // after the profile loads (profile loads from Firestore slightly after user auth).
+  const profileRole = useAuthStore(s => s.profile?.role);
 
   const handleTimeout = useCallback(() => { void logout(); }, [logout]);
   const { showWarning, countdown, resetTimer } = useIdleTimeout({ onTimeout: handleTimeout });
-  // Subscribe all Firestore collections when user is authenticated
+  // Subscribe all Firestore collections when user is authenticated.
+  // Depend on profileRole so subscriptions restart once role is known — this ensures
+  // usePlayerStore's sensitiveData subscription starts for coaches/admins.
   useEffect(() => {
     if (!user) return;
     const unsubs = [
@@ -55,7 +60,7 @@ export function MainLayout() {
       useOpponentStore.getState().subscribe(),
     ];
     return () => unsubs.forEach(u => u());
-  }, [user]);
+  }, [user, profileRole]);
 
   const location = useLocation();
   const isHome = location.pathname === '/' || location.pathname === '/home';
