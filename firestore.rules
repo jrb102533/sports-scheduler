@@ -169,6 +169,14 @@ service cloud.firestore {
       }
     }
 
+    // collectionGroup rule required for collectionGroup('sensitiveData') queries.
+    // Without this wildcard path rule, the client-side onSnapshot collectionGroup
+    // subscription fails with permission-denied (silently swallowed), so coaches
+    // and admins never receive sensitive PII in player cards.
+    match /{path=**}/sensitiveData/{doc} {
+      allow read, write: if isAdmin() || isCoach();
+    }
+
     // Rate limit tracking written exclusively by Cloud Functions (Admin SDK).
     // Clients have no access.
     match /rateLimits/{doc} {

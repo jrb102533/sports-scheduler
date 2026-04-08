@@ -937,6 +937,33 @@ export const sendInvite = onCall<SendInviteData>(
 
 // ─── Verify invited user ──────────────────────────────────────────────────────
 
+// ─── Revoke a pending invite ──────────────────────────────────────────────────
+
+export const revokeInvite = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in.');
+  const { inviteId } = request.data as { inviteId: string };
+  if (!inviteId) throw new HttpsError('invalid-argument', 'inviteId is required.');
+
+  const inviteRef = admin.firestore().doc(`invites/${inviteId}`);
+  const inviteSnap = await inviteRef.get();
+  if (!inviteSnap.exists) throw new HttpsError('not-found', 'Invite not found.');
+
+  const invite = inviteSnap.data()!;
+  const callerUid = request.auth.uid;
+  const effectiveRole = await assertAdminOrCoach(callerUid);
+
+  // Coaches may only revoke invites for their own team.
+  if (effectiveRole !== 'admin' && invite.teamId) {
+    const teamSnap = await admin.firestore().doc(`teams/${invite.teamId}`).get();
+    const coachIds: string[] = teamSnap.data()?.coachIds ?? [];
+    const isCoachOfTeam = coachIds.includes(callerUid) || teamSnap.data()?.coachId === callerUid;
+    if (!isCoachOfTeam) throw new HttpsError('permission-denied', 'You are not a coach of this team.');
+  }
+
+  await inviteRef.delete();
+  return { success: true };
+});
+
 interface VerifyInvitedUserResult {
   found: boolean;
 }
@@ -1050,8 +1077,15 @@ export const verifyInvitedUser = onCall<VerifyInvitedUserData, Promise<VerifyInv
             ...(teamId ? { teamId } : {}),
             ...(playerId ? { playerId } : {}),
           };
+
+          // If the existing profile was created by the onAuthStateChanged fallback
+          // (role='player', no teamId), the invite is authoritative — update top-level
+          // role and teamId so the profile reflects the correct context.
+          const isBareFallbackProfile = profile['role'] === 'player' && !profile['teamId'];
           txn.update(userRef, {
             memberships: admin.firestore.FieldValue.arrayUnion(newMembership),
+            ...(isBareFallbackProfile && inviteRole !== 'player' ? { role: inviteRole } : {}),
+            ...(isBareFallbackProfile && teamId ? { teamId } : {}),
             // Write top-level playerId scalar so ProfilePage "Team Connection" resolves correctly
             ...(playerId ? { playerId } : {}),
           });

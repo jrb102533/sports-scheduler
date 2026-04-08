@@ -44,27 +44,21 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   loading: true,
 
   subscribe: () => {
-    const profile = useAuthStore.getState().profile;
-    const isPrivileged = ['admin', 'coach', 'league_manager'].includes(profile?.role ?? '');
+    const getPriv = () => ['admin', 'coach', 'league_manager']
+      .includes(useAuthStore.getState().profile?.role ?? '');
 
     // ── Main player docs ───────────────────────────────────────────────────────
     const playerUnsub = onSnapshot(
       query(collection(db, 'players'), orderBy('createdAt')),
       (snap) => {
-        const currentProfile = useAuthStore.getState().profile;
-        const priv = ['admin', 'coach', 'league_manager'].includes(currentProfile?.role ?? '');
         _basePlayers = snap.docs.map(d => ({ ...d.data(), id: d.id }) as Player);
-        set({ players: buildMergedPlayers(priv), loading: false });
+        set({ players: buildMergedPlayers(getPriv()), loading: false });
       },
       () => set({ loading: false }),
     );
 
-    if (!isPrivileged) return playerUnsub;
-
-    // ── Sensitive PII subcollection (coach/admin only) ─────────────────────────
-    // Subscribes to all sensitiveData docs across all players. Firestore rules
-    // restrict this to isAdmin() || isCoach() so non-privileged clients
-    // will never receive these documents even if they query the group.
+    // ── Sensitive PII subcollection ────────────────────────────────────────────
+    // Always subscribe — Firestore rules deny non-privileged users server-side.
     const sensitiveUnsub = onSnapshot(
       collectionGroup(db, 'sensitiveData'),
       (snap) => {
@@ -72,15 +66,31 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
           const data = d.data() as SensitivePlayerData;
           if (data.playerId) _sensitiveMap[data.playerId] = data;
         });
-        const currentProfile = useAuthStore.getState().profile;
-        const priv = ['admin', 'coach', 'league_manager'].includes(currentProfile?.role ?? '');
-        set(state => ({ players: buildMergedPlayers(priv), loading: state.loading }));
+        set(state => ({ players: buildMergedPlayers(getPriv()), loading: state.loading }));
+      },
+      (error) => {
+        if (error.code !== 'permission-denied') {
+          console.error('sensitiveData subscription error:', error);
+        }
       },
     );
+
+    // ── Rebuild when profile role arrives ─────────────────────────────────────
+    // Snapshots fire before the profile loads from Firestore. When the role
+    // changes (null → 'admin'), rebuild so sensitive data merges correctly.
+    let lastRole: string | undefined = useAuthStore.getState().profile?.role;
+    const authUnsub = useAuthStore.subscribe((state) => {
+      const role = state.profile?.role;
+      if (role !== lastRole) {
+        lastRole = role;
+        set(s => ({ players: buildMergedPlayers(getPriv()), loading: s.loading }));
+      }
+    });
 
     return () => {
       playerUnsub();
       sensitiveUnsub();
+      authUnsub();
     };
   },
 
