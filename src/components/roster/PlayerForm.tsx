@@ -73,7 +73,6 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
   const [dateOfBirth, setDateOfBirth] = useState(editPlayer?.dateOfBirth ?? '');
   const [status, setStatus] = useState<PlayerStatus>(editPlayer?.status ?? 'active');
   const [email, setEmail] = useState(editPlayer?.email ?? '');
-  const [parentInviteEmail, setParentInviteEmail] = useState('');
   const [consentChecked, setConsentChecked] = useState(false);
 
   const [p1Name, setP1Name] = useState(editPlayer?.parentContact?.parentName ?? '');
@@ -111,10 +110,6 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
     if (!firstName.trim()) e.firstName = 'First name is required';
     if (!lastName.trim()) e.lastName = 'Last name is required';
     if (email.trim() && !isValidEmail(email.trim())) e.playerInviteEmail = 'Must be a valid email address';
-    if (parentInviteEmail.trim() && !isValidEmail(parentInviteEmail.trim())) e.parentInviteEmail = 'Must be a valid email address';
-    if (email.trim() && parentInviteEmail.trim() && email.trim().toLowerCase() === parentInviteEmail.trim().toLowerCase()) {
-      e.parentInviteEmail = 'Parent and player email must be different';
-    }
     if (consentTier && !consentChecked) {
       e.consent = 'You must confirm the parental notice before saving.';
     }
@@ -180,7 +175,7 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
         const playerName = `${firstName.trim()} ${lastName.trim()}`;
         const invites: Array<{ to: string; role: string }> = [];
         if (email.trim()) invites.push({ to: email.trim(), role: 'player' });
-        if (parentInviteEmail.trim()) invites.push({ to: parentInviteEmail.trim(), role: 'parent' });
+        if (p1Email.trim()) invites.push({ to: p1Email.trim(), role: 'parent' });
         for (const { to, role } of invites) {
           try {
             await sendInviteFn({ to, playerName, teamName: team.name, playerId, teamId, role });
@@ -289,25 +284,9 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
 
         {!isAdultTeam && (
           <>
-            <div className="space-y-1">
-              <Input
-                label="Parent Email (optional)"
-                type="email"
-                name="parent-invite-email"
-                autoComplete="off"
-                value={parentInviteEmail}
-                onChange={e => setParentInviteEmail(e.target.value)}
-                placeholder="parent@example.com"
-                error={errors.parentInviteEmail}
-              />
-              {!errors.parentInviteEmail && (
-                <p className="text-xs text-gray-400">An invite will be sent to this address</p>
-              )}
-            </div>
-
             <div className="border-t border-gray-100 pt-3">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Parent / Guardian Contact</p>
-              <p className="text-xs text-gray-400 mb-3">(Optional)</p>
+              <p className="text-xs text-gray-400 mb-3">(Optional — parent email will receive an invite)</p>
             </div>
             <ParentFields
               label="Parent / Guardian 1"
@@ -324,7 +303,7 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
           </>
         )}
 
-        {!editPlayer && (email.trim() || parentInviteEmail.trim()) && (
+        {!editPlayer && (email.trim() || p1Email.trim()) && (
           <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2">
             An invite email will be sent to all provided email addresses so they can join the team.
           </p>

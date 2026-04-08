@@ -94,6 +94,8 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     const docData: SensitivePlayerData = { playerId, teamId, ...data };
     await setDoc(doc(db, 'players', playerId, 'sensitiveData', 'private'), docData);
     _sensitiveMap[playerId] = docData;
+    const priv = ['admin', 'coach', 'league_manager'].includes(useAuthStore.getState().profile?.role ?? '');
+    set(state => ({ players: buildMergedPlayers(priv), loading: state.loading }));
   },
 
   updatePlayer: async (player) => {
@@ -106,6 +108,8 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     const updated: SensitivePlayerData = { ...existing, ...data, playerId, teamId };
     await setDoc(doc(db, 'players', playerId, 'sensitiveData', 'private'), updated);
     _sensitiveMap[playerId] = updated;
+    const priv = ['admin', 'coach', 'league_manager'].includes(useAuthStore.getState().profile?.role ?? '');
+    set(state => ({ players: buildMergedPlayers(priv), loading: state.loading }));
   },
 
   deletePlayer: async (id) => {
