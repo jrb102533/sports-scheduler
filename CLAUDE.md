@@ -82,6 +82,14 @@ Follow 12-factor app methodology for all development:
 | `functions/src/scheduleAlgorithm.ts` | Schedule generation algorithm |
 | `firestore.rules` | Security rules |
 
+## Firebase API Key — No HTTP Referrer Restrictions
+
+The Web API key in Google Cloud Console (APIs & Services → Credentials) has **Application restrictions set to None** for all Firebase projects. Do not add HTTP referrer restrictions.
+
+**Why:** The API key is embedded in the JS bundle and visible to anyone in DevTools — restricting referrers adds no real security. Actual security is enforced by Firestore rules and Firebase Auth. Referrer restrictions only cause `auth/requests-from-referer-...-are-blocked` errors when new domains are added (staging deploys, custom domains, previews) and need to be debugged every time.
+
+Authorized domains are managed in one place only: **Firebase Console → Authentication → Settings → Authorized Domains**.
+
 ## Deployment Policy
 
 ### Hard rule: merge before deploy

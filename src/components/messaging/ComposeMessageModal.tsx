@@ -25,6 +25,7 @@ const sendEmailFn = httpsCallable<{
   recipients?: { name: string; email: string }[];
   senderName?: string;
   teamName?: string;
+  teamId: string;
 }, { sent: number; failed: number; errors: string[] }>(functions, 'sendEmail');
 
 interface ComposeMessageModalProps {
@@ -134,6 +135,7 @@ export function ComposeMessageModal({ open, onClose, defaultTeamId }: ComposeMes
             recipients,
             senderName: profile?.displayName ?? undefined,
             teamName: team?.name ?? undefined,
+            teamId,
           });
       setSendResult(result.data);
       if (result.data.failed === 0) {
