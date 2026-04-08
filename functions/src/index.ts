@@ -595,23 +595,41 @@ export const approveJoinRequest = onCall<ApproveJoinRequestData, Promise<{ succe
     const db = admin.firestore();
     const callerUid = request.auth.uid;
 
-    // Verify caller is coach of this team or admin
+    // Verify caller holds an elevated role (admin/coach/league_manager).
     const callerRole = await assertAdminOrCoach(callerUid);
-    if (callerRole !== 'admin') {
-      const teamSnap = await db.doc(`teams/${teamId}`).get();
-      if (!teamSnap.exists) throw new HttpsError('not-found', 'Team not found.');
-      const teamData = teamSnap.data()!;
-      const coachIds: string[] = teamData.coachIds ?? [];
-      if (!coachIds.includes(callerUid) && teamData.coachId !== callerUid) {
-        throw new HttpsError('permission-denied', 'Only team coaches can approve join requests.');
-      }
-    }
 
     const userRef = db.doc(`users/${requestUid}`);
     const requestRef = db.doc(`teams/${teamId}/joinRequests/${requestUid}`);
+    const teamRef = db.doc(`teams/${teamId}`);
 
+    // SEC-37: All reads and writes inside a single transaction to prevent
+    // TOCTOU races (coach removed between check and write, or request
+    // approved/cancelled concurrently).
     await db.runTransaction(async (tx) => {
-      const userSnap = await tx.get(userRef);
+      // Read all documents inside the transaction for consistency.
+      const [teamSnap, reqSnap, userSnap] = await Promise.all([
+        tx.get(teamRef),
+        tx.get(requestRef),
+        tx.get(userRef),
+      ]);
+
+      // Verify team exists.
+      if (!teamSnap.exists) throw new HttpsError('not-found', 'Team not found.');
+
+      // Verify caller is a coach of this specific team (admins bypass).
+      if (callerRole !== 'admin') {
+        if (!isCoachOfTeamDoc(teamSnap.data()!, callerUid)) {
+          throw new HttpsError('permission-denied', 'Only team coaches can approve join requests.');
+        }
+      }
+
+      // Verify join request exists and is still pending.
+      if (!reqSnap.exists) throw new HttpsError('not-found', 'Join request not found.');
+      const reqData = reqSnap.data()!;
+      if (reqData.status !== 'pending') {
+        throw new HttpsError('failed-precondition', `Join request is already ${reqData.status}.`);
+      }
+
       if (!userSnap.exists) throw new HttpsError('not-found', 'User not found.');
 
       const userData = userSnap.data()!;
@@ -755,6 +773,8 @@ interface SendEmailData {
   recipients?: Recipient[];
   senderName?: string;
   teamName?: string;
+  teamId?: string;   // SEC-38: at least one of teamId or teamIds required for ownership verification
+  teamIds?: string[]; // SEC-38: for multi-team sends (e.g. MessagingPage)
 }
 interface SendEmailResult { sent: number; failed: number; errors: string[]; }
 
@@ -762,10 +782,37 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
   { secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom] },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
-    await assertAdminOrCoach(request.auth.uid);
-    await checkRateLimit(request.auth.uid, 'sendEmail', 10);
+    const callerUid = request.auth.uid;
+    const callerRole = await assertAdminOrCoach(callerUid);
+    await checkRateLimit(callerUid, 'sendEmail', 10);
 
-    const { to, subject, message, recipients, senderName, teamName } = request.data;
+    const { to, subject, message, recipients, senderName, teamName, teamId, teamIds: rawTeamIds } = request.data;
+
+    // SEC-38: Resolve the set of team IDs the caller claims to be sending for.
+    const resolvedTeamIds: string[] = rawTeamIds?.length
+      ? [...new Set(rawTeamIds.filter((id: string) => id?.trim()))]
+      : teamId?.trim()
+        ? [teamId.trim()]
+        : [];
+    if (!resolvedTeamIds.length) {
+      throw new HttpsError('invalid-argument', 'teamId or teamIds is required.');
+    }
+    if (resolvedTeamIds.length > 10) {
+      throw new HttpsError('invalid-argument', 'Maximum 10 teams per send.');
+    }
+
+    // SEC-38: Verify caller is a coach of every claimed team (admins bypass).
+    if (callerRole !== 'admin') {
+      const teamSnaps = await Promise.all(
+        resolvedTeamIds.map(tid => admin.firestore().doc(`teams/${tid}`).get())
+      );
+      for (const snap of teamSnaps) {
+        if (!snap.exists) throw new HttpsError('not-found', `Team ${snap.id} not found.`);
+        if (!isCoachOfTeamDoc(snap.data()!, callerUid)) {
+          throw new HttpsError('permission-denied', `You are not a coach of team ${snap.id}.`);
+        }
+      }
+    }
     if (!to?.length) throw new HttpsError('invalid-argument', 'No recipients provided.');
     if (!subject?.trim()) throw new HttpsError('invalid-argument', 'Subject cannot be empty.');
     if (!message?.trim()) throw new HttpsError('invalid-argument', 'Message cannot be empty.');
@@ -1297,12 +1344,34 @@ export const sendEventInvite = onCall<SendEventInviteData>(
   { secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret] },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
-    await assertAdminOrCoach(request.auth.uid);
-    await checkRateLimit(request.auth.uid, 'sendEventInvite', 5);
+    const callerUid = request.auth.uid;
+    const callerRole = await assertAdminOrCoach(callerUid);
+    await checkRateLimit(callerUid, 'sendEventInvite', 5);
 
     const { eventId, eventTitle, eventDate, eventTime, eventLocation, teamName, senderName, recipients } = request.data;
+    if (!eventId?.trim()) throw new HttpsError('invalid-argument', 'eventId is required.');
     if (!recipients?.length) throw new HttpsError('invalid-argument', 'No recipients provided.');
     if (recipients.length > 100) throw new HttpsError('invalid-argument', 'Maximum 100 recipients.');
+
+    // SEC-38: Verify caller is a coach of one of the event's teams (admins bypass).
+    if (callerRole !== 'admin') {
+      const eventSnap = await admin.firestore().doc(`events/${eventId}`).get();
+      if (!eventSnap.exists) throw new HttpsError('not-found', 'Event not found.');
+      const eventData = eventSnap.data()!;
+      const eventTeamIds: string[] = eventData.teamIds ?? [];
+      if (!eventTeamIds.length) throw new HttpsError('not-found', 'Event has no associated teams.');
+
+      // Check if caller is a coach of at least one team on this event.
+      const teamSnaps = await Promise.all(
+        eventTeamIds.slice(0, 10).map(tid => admin.firestore().doc(`teams/${tid}`).get())
+      );
+      const isCoachOfAnyTeam = teamSnaps.some(
+        snap => snap.exists && isCoachOfTeamDoc(snap.data()!, callerUid)
+      );
+      if (!isCoachOfAnyTeam) {
+        throw new HttpsError('permission-denied', 'You are not a coach of any team in this event.');
+      }
+    }
 
     const transporter = createTransporter();
 
