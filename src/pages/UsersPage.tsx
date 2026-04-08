@@ -631,7 +631,7 @@ export function UsersPage() {
 
   const filtered = users.filter(u => {
     const q = search.toLowerCase();
-    const matchesSearch = !q || u.displayName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+    const matchesSearch = !q || (u.displayName ?? '').toLowerCase().includes(q) || (u.email ?? '').toLowerCase().includes(q);
     const matchesRole = roleFilter === 'all' || u.role === roleFilter ||
       (u.memberships ?? []).some(m => m.role === roleFilter);
     return matchesSearch && matchesRole;
