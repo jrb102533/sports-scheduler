@@ -1034,10 +1034,14 @@ export const verifyInvitedUser = onCall<VerifyInvitedUserData, Promise<VerifyInv
         txn.set(userRef, newProfile);
       } else {
         // ── Existing user path ──────────────────────────────────────────────────
-        // If the user already has a primary membership of the same role with no
-        // teamId (common when a parent signs up before clicking the invite link),
-        // fill in the teamId/playerId on that membership instead of appending a
-        // duplicate role entry.  Otherwise append a new membership.
+        // Three cases to handle:
+        //  A) Fallback profile (onSnapshot race): no memberships array at all.
+        //     The onAuthStateChanged listener may write a bare {role:'player'}
+        //     profile before this CF runs. Treat it like a new user — overwrite
+        //     with the correct role and a primary membership.
+        //  B) Empty primary membership of the same role with no teamId (parent
+        //     signed up independently then clicked invite). Fill it in.
+        //  C) Normal append: user already has other memberships.
         const profile = userSnap.data()!;
         const existingMemberships: Record<string, unknown>[] =
           Array.isArray(profile['memberships']) ? profile['memberships'] : [];
@@ -1047,38 +1051,55 @@ export const verifyInvitedUser = onCall<VerifyInvitedUserData, Promise<VerifyInv
         );
 
         if (!isDuplicate) {
-          // Check for an empty primary membership of the same role that we can fill in
-          const emptyPrimaryIdx = existingMemberships.findIndex(
-            (m) => m['role'] === inviteRole && m['isPrimary'] && !m['teamId']
-          );
-
-          if (emptyPrimaryIdx !== -1) {
-            // Fill in the existing empty primary membership with the invite's team/player
-            const updated = [...existingMemberships];
-            updated[emptyPrimaryIdx] = {
-              ...updated[emptyPrimaryIdx],
+          if (existingMemberships.length === 0) {
+            // Case A: fallback profile with no memberships — reset to correct state
+            const primaryMembership: Record<string, unknown> = {
+              role: inviteRole,
+              isPrimary: true,
               ...(teamId ? { teamId } : {}),
               ...(playerId ? { playerId } : {}),
             };
             txn.update(userRef, {
-              memberships: updated,
-              // Write top-level scalars so Firestore rules and legacy code paths work
+              role: inviteRole,
+              memberships: [primaryMembership],
               ...(teamId ? { teamId } : {}),
               ...(playerId ? { playerId } : {}),
             });
           } else {
-            const newMembership: Record<string, unknown> = {
-              role: inviteRole,
-              isPrimary: false,
-              ...(teamId ? { teamId } : {}),
-              ...(playerId ? { playerId } : {}),
-            };
-            txn.update(userRef, {
-              memberships: admin.firestore.FieldValue.arrayUnion(newMembership),
-              // Write top-level scalars so Firestore rules and legacy code paths work
-              ...(teamId ? { teamId } : {}),
-              ...(playerId ? { playerId } : {}),
-            });
+            // Check for an empty primary membership of the same role that we can fill in
+            const emptyPrimaryIdx = existingMemberships.findIndex(
+              (m) => m['role'] === inviteRole && m['isPrimary'] && !m['teamId']
+            );
+
+            if (emptyPrimaryIdx !== -1) {
+              // Case B: fill in the existing empty primary membership
+              const updated = [...existingMemberships];
+              updated[emptyPrimaryIdx] = {
+                ...updated[emptyPrimaryIdx],
+                ...(teamId ? { teamId } : {}),
+                ...(playerId ? { playerId } : {}),
+              };
+              txn.update(userRef, {
+                memberships: updated,
+                // Write top-level scalars so Firestore rules and legacy code paths work
+                ...(teamId ? { teamId } : {}),
+                ...(playerId ? { playerId } : {}),
+              });
+            } else {
+              // Case C: append a new non-primary membership
+              const newMembership: Record<string, unknown> = {
+                role: inviteRole,
+                isPrimary: false,
+                ...(teamId ? { teamId } : {}),
+                ...(playerId ? { playerId } : {}),
+              };
+              txn.update(userRef, {
+                memberships: admin.firestore.FieldValue.arrayUnion(newMembership),
+                // Write top-level scalars so Firestore rules and legacy code paths work
+                ...(teamId ? { teamId } : {}),
+                ...(playerId ? { playerId } : {}),
+              });
+            }
           }
         }
       }

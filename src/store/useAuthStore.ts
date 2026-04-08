@@ -55,6 +55,10 @@ interface AuthStore {
   clearVerificationEmailSent: () => void;
 }
 
+// Suppresses the onSnapshot fallback profile during invite signup so that
+// verifyInvitedUser can create the authoritative profile in its transaction.
+let _inviteSignupInProgress = false;
+
 export const useAuthStore = create<AuthStore>((set, get) => ({
   user: null,
   profile: null,
@@ -86,7 +90,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
             // Guarding here prevents a transient snapshot (e.g. during a rules
             // deployment) from overwriting an existing user profile with a bare
             // 'player' document.
-            if (get().profile) return;
+            // Also skip during invite signup — verifyInvitedUser will create the
+            // authoritative profile; writing a fallback here races ahead of it
+            // and causes the CF to see an existing 'player' profile.
+            if (get().profile || _inviteSignupInProgress) return;
             await setDoc(doc(db, 'users', user.uid), {
               uid: user.uid,
               email: user.email ?? '',
@@ -152,6 +159,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         }
       }
 
+      // Suppress the onSnapshot fallback profile during invite signup so that
+      // verifyInvitedUser can create the authoritative profile in its transaction.
+      if (inviteSecret) _inviteSignupInProgress = true;
+
       const { user } = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(user, { displayName });
       const resolvedMemberships: RoleMembership[] = memberships ?? [{
@@ -201,6 +212,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     } catch (e: unknown) {
       set({ error: mapAuthError(e) });
       throw e;
+    } finally {
+      _inviteSignupInProgress = false;
     }
   },
 
