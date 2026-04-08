@@ -37,7 +37,7 @@ export function MainLayout() {
   useAttendanceNotification();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, profile } = useAuthStore();
+  const { user } = useAuthStore();
   const logout = useAuthStore(s => s.logout);
 
   const handleTimeout = useCallback(() => { void logout(); }, [logout]);
