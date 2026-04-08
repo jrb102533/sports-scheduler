@@ -89,7 +89,7 @@ export function ProfilePage() {
       <Card className="p-4 sm:p-6 space-y-4">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xl">
-            {profile.displayName.charAt(0).toUpperCase()}
+            {(profile.displayName || '?').charAt(0).toUpperCase()}
           </div>
           <div>
             <h2 className="text-lg font-bold text-gray-900">{profile.displayName}</h2>

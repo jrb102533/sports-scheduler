@@ -98,7 +98,7 @@ function UserCard({ user, teams, leagues, players, isSelf, onClick }: UserCardPr
     >
       {/* Avatar */}
       <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${avatarColor}`}>
-        {user.displayName.charAt(0).toUpperCase()}
+        {(user.displayName || '?').charAt(0).toUpperCase()}
       </div>
 
       {/* Identity */}
@@ -377,7 +377,7 @@ function EditPanel({
         <div className="px-6 py-5 border-b border-gray-100">
           <div className="flex items-center gap-4">
             <div className={`w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-xl flex-shrink-0 ${avatarColor}`}>
-              {user.displayName.charAt(0).toUpperCase()}
+              {(user.displayName || '?').charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0">
               <p className="font-semibold text-gray-900 text-lg leading-tight truncate">
