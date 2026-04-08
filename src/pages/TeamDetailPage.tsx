@@ -580,7 +580,7 @@ export function TeamDetailPage() {
       )}
 
       <TeamForm open={editOpen} onClose={() => setEditOpen(false)} editTeam={team} />
-      <PlayerForm open={addPlayerOpen} onClose={() => setAddPlayerOpen(false)} teamId={teamId} />
+      <PlayerForm key={addPlayerOpen ? 'open' : 'closed'} open={addPlayerOpen} onClose={() => setAddPlayerOpen(false)} teamId={teamId} />
       <EventForm
         open={eventFormOpen}
         onClose={() => setEventFormOpen(false)}
