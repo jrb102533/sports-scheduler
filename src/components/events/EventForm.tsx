@@ -257,10 +257,17 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
         const futureEvents = allEvents.filter(
           e => e.recurringGroupId === editEvent.recurringGroupId && e.date >= editEvent.date
         );
+        // Calculate date offset so all future events shift by the same delta
+        const originalMs = new Date(editEvent.date).getTime();
+        const newMs = new Date(date).getTime();
+        const offsetMs = newMs - originalMs;
         await Promise.all(
-          futureEvents.map(e =>
-            updateEvent({ ...e, title: resolvedTitle, type, startTime, teamIds, updatedAt: now, ...optionals })
-          )
+          futureEvents.map(e => {
+            const shiftedDate = offsetMs !== 0
+              ? new Date(new Date(e.date).getTime() + offsetMs).toISOString().slice(0, 10)
+              : e.date;
+            return updateEvent({ ...e, title: resolvedTitle, type, date: shiftedDate, startTime, teamIds, updatedAt: now, ...optionals });
+          })
         );
       } else {
         updateEvent({ ...editEvent, title: resolvedTitle, type, date, startTime, teamIds, updatedAt: now, ...optionals });
