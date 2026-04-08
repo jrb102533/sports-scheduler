@@ -79,8 +79,8 @@ export function CalendarPage() {
           <Button variant="ghost" size="sm" onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); }}>Today</Button>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={handleOpenSync}>
-            <CalendarDays size={16} /> Subscribe
+          <Button variant="secondary" onClick={handleOpenSync} title="Subscribe to calendar">
+            <CalendarDays size={16} /> <span className="hidden sm:inline">Subscribe</span>
           </Button>
           <Button onClick={() => { setFormDate(undefined); setFormOpen(true); }}>
             <Plus size={16} /> Add Event
