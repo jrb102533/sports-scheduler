@@ -57,7 +57,7 @@ export function TopBar({ greeting, pageTitle, onMenuClick }: TopBarProps) {
             className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
           >
             <div className="w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0" style={{ backgroundColor: '#f97316' }}>
-              {profile.displayName.charAt(0).toUpperCase()}
+              {(profile.displayName || '?').charAt(0).toUpperCase()}
             </div>
             <span className="hidden sm:block text-sm font-medium text-gray-700 truncate max-w-[120px]">{profile.displayName}</span>
           </button>

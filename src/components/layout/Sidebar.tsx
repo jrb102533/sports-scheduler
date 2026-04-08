@@ -142,7 +142,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/10 transition-colors text-left"
             >
               <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0" style={{ backgroundColor: '#f97316' }}>
-                {profile.displayName.charAt(0).toUpperCase()}
+                {(profile.displayName || '?').charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-white text-sm font-medium truncate">{profile.displayName}</p>
