@@ -37,9 +37,13 @@ test('logs in with valid credentials and lands on the app shell', async ({ authP
 test('shows "Incorrect email or password" when login fails with wrong password', async ({
   authPage,
 }) => {
-  const { email } = creds.admin();
+  // Use a throwaway non-existent email so Firebase never rate-limits a real account.
+  // The test only needs to verify the UI renders the correct error message — it does
+  // not need a real account to exist.  Firebase returns auth/invalid-credential for
+  // unknown email+password combinations, which mapAuthError translates to the expected
+  // UI string.  See issue #339.
   await authPage.gotoLogin();
-  await authPage.emailInput.fill(email);
+  await authPage.emailInput.fill('e2e-wrongpassword-probe@example.com');
   await authPage.passwordInput.fill('definitely-wrong-password-12345!');
   await authPage.signInButton.click();
 
