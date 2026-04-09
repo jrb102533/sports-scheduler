@@ -22,7 +22,7 @@ import { test, expect } from './fixtures/auth.fixture';
 // Navigation
 // ---------------------------------------------------------------------------
 
-test('admin can navigate to /calendar', async ({ asAdmin }) => {
+test('@smoke admin can navigate to /calendar', async ({ asAdmin }) => {
   const { page } = asAdmin;
   await page.goto('/calendar');
 
@@ -198,7 +198,12 @@ test('clicking an event chip opens the EventDetailPanel', async ({ asAdmin }) =>
   const panelOpen = await detailPanel.isVisible({ timeout: 5_000 }).catch(() => false);
   const closeVisible = await closeBtn.isVisible({ timeout: 5_000 }).catch(() => false);
 
-  expect(panelOpen || closeVisible).toBe(true);
+  if (!panelOpen && !closeVisible) {
+    throw new Error(
+      'EventDetailPanel did not open after clicking a calendar event chip. ' +
+      'Neither the detail panel nor a close button became visible within 5s.',
+    );
+  }
 
   // Dismiss the panel
   if (closeVisible) {
