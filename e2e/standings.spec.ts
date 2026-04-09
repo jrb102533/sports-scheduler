@@ -9,8 +9,8 @@
  *   STAND-05: Standings tab on LeagueDetailPage always renders data or a defined empty state
  *
  * Navigation context:
- *   - Standalone `/standings` is NOT a registered route — it redirects to `/`.
- *     The two live standings surfaces are:
+ *   - `/standings` is a registered route (StandingsPage — global view across all teams).
+ *     The two deeper standings surfaces tested here are:
  *       1. LeagueDetailPage → "Standings" tab  (/leagues/:id)
  *       2. SeasonDashboard → Standings section  (/leagues/:leagueId/seasons/:seasonId)
  *   - STAND-01/02/03 use the SeasonDashboard path by navigating into the first
