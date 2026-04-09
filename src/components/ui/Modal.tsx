@@ -23,9 +23,14 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className={`relative bg-white w-full ${widths[size]} max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl shadow-xl`}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        className={`relative bg-white w-full ${widths[size]} max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl shadow-xl`}
+      >
         <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-100">
-          <h2 className="text-base sm:text-lg font-semibold text-gray-900">{title}</h2>
+          <h2 id="modal-title" className="text-base sm:text-lg font-semibold text-gray-900">{title}</h2>
           <button onClick={onClose} aria-label="Close" className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500">
             <X size={18} />
           </button>
