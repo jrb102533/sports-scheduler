@@ -5,11 +5,10 @@ import { useAuthStore } from '@/store/useAuthStore';
 
 interface TopBarProps {
   greeting: string;
-  pageTitle: string;
   onMenuClick: () => void;
 }
 
-export function TopBar({ greeting, pageTitle, onMenuClick }: TopBarProps) {
+export function TopBar({ greeting, onMenuClick }: TopBarProps) {
   const { notifications, setPanelOpen } = useNotificationStore();
   const unread = notifications.filter(n => !n.isRead).length;
   const profile = useAuthStore(s => s.profile);
