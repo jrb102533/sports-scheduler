@@ -58,6 +58,12 @@ jobs:
           E2E_MUST_CHANGE_PASSWORD: ${{ secrets.E2E_MUST_CHANGE_PASSWORD }}
           E2E_CONSENT_OUTDATED_EMAIL: ${{ secrets.E2E_CONSENT_OUTDATED_EMAIL }}
           E2E_CONSENT_OUTDATED_PASSWORD: ${{ secrets.E2E_CONSENT_OUTDATED_PASSWORD }}
+          E2E_PLAYER_EMAIL: ${{ secrets.E2E_PLAYER_EMAIL }}
+          E2E_PLAYER_PASSWORD: ${{ secrets.E2E_PLAYER_PASSWORD }}
+          E2E_COACH_EMAIL: ${{ secrets.E2E_COACH_EMAIL }}
+          E2E_COACH_PASSWORD: ${{ secrets.E2E_COACH_PASSWORD }}
+          E2E_LM_EMAIL: ${{ secrets.E2E_LM_EMAIL }}
+          E2E_LM_PASSWORD: ${{ secrets.E2E_LM_PASSWORD }}
         run: npx playwright test --project=chromium --project=staging
 
       - name: Upload Playwright report
