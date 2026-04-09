@@ -127,6 +127,65 @@ If production is down or actively leaking data:
 
 `firestore.rules` changes have the highest blast radius — a permissive rule takes effect instantly and fails silently (no app-layer error, no trace unless Firestore audit logging is enabled). **All PRs touching `firestore.rules` require the security-engineer agent review before merge.**
 
+## TDD & Quality Standards
+
+### Core discipline
+
+- **Write the failing test first.** The test IS the spec — derive it from acceptance criteria, not from implementation
+- **RED → GREEN → REFACTOR.** No code ships without a prior failing test (unit or E2E)
+- **Regression rule:** When a bug is confirmed, a failing test reproducing it must be committed *before* the fix. The fix is not mergeable until that test passes
+- **Vacuous assertions are bugs.** `|| true`, `expect(true).toBe(true)`, empty test bodies — treat these as build failures, not placeholders
+
+### Test pyramid for this stack
+
+| Layer | Tool | What belongs here |
+|-------|------|-------------------|
+| Unit | Vitest + RTL | Pure functions, store logic, Cloud Function helpers, Firestore rule unit tests |
+| Integration | Vitest + emulators | Store ↔ Firestore, Cloud Function ↔ Auth flows |
+| E2E | Playwright (staging) | Full user journeys, role access control, cross-role visibility, real Firestore rules |
+
+**Never mock Firestore or Auth in E2E tests.** Always use the real staging environment so security rules are exercised. We got burned when mocked tests passed but prod rules blocked the real flow.
+
+### Role-based coverage
+
+- Every feature must be tested from the perspective of **each affected role** (admin, coach, parent, player, league_manager)
+- Access control tests are mandatory: verify both that permitted roles **CAN** act and excluded roles **CANNOT**
+- Use dedicated staging test accounts per role — never reuse accounts across roles in the same test
+
+### Test file conventions
+
+- Unit tests: co-located as `ComponentName.test.tsx` or `util.test.ts` next to the file under test
+- E2E specs: `e2e/*.spec.ts` — one file per feature area, not per page
+- Page objects: `e2e/pages/PageName.ts` — one per major route, reused across specs
+- Fixtures: `e2e/fixtures/auth.fixture.ts` — role fixtures only; add new roles here when new accounts are created
+
+### Playwright rules
+
+- **`test.skip(true, reason)`** for data-dependent tests with missing staging data — never fail silently
+- **Never `test.skip()` without a linked issue number** in the reason string
+- All skip blocks must be resolved before a feature is considered fully covered
+- Test accounts live in staging Firebase Auth + Firestore — document new accounts in `e2e/README.md`
+- `page.clock.install()` for session timeout tests must be called **after** login so Firebase Auth uses real time
+
+### Firebase-specific rules
+
+- Firestore rule changes require integration tests (emulator) AND security-engineer review before merge
+- Cloud Functions: unit-test the pure logic separately; E2E tests call the real deployed function
+- Never test `publishSchedule`, `deleteTeam`, or other irreversible CF mutations in E2E — they permanently alter staging data
+
+### Definition of done
+
+- Tests pass for **every affected role**, not just the happy path
+- CI E2E is green on staging before a PR is marked ready for review
+- Any test changed from `expect(...)` to `skip` requires a linked ticket in the reason string
+- When a feature changes, update its E2E tests in the **same PR** — never defer to a follow-up
+
+### When NOT to write tests
+
+- One-off admin scripts (`scripts/*.mjs`)
+- Config files (`.env`, `firebase.json`, `vite.config.ts`)
+- Generated code or migrations that run once
+
 ## Backlog
 
 - #202 — Schedule wizard draft resume
