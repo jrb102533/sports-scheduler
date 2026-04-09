@@ -64,6 +64,8 @@ jobs:
           E2E_COACH_PASSWORD: ${{ secrets.E2E_COACH_PASSWORD }}
           E2E_LM_EMAIL: ${{ secrets.E2E_LM_EMAIL }}
           E2E_LM_PASSWORD: ${{ secrets.E2E_LM_PASSWORD }}
+          E2E_AVAIL_LEAGUE_ID: ${{ secrets.E2E_AVAIL_LEAGUE_ID }}
+          E2E_AVAIL_COLLECTION_ID: ${{ secrets.E2E_AVAIL_COLLECTION_ID }}
         run: npx playwright test --project=chromium --project=staging
 
       - name: Upload Playwright report
