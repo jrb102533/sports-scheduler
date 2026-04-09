@@ -48,6 +48,7 @@ jobs:
 
       - name: Run E2E against staging
         env:
+          E2E_BASE_URL: https://first-whistle-e76f4.web.app
           E2E_STAGING_URL: https://first-whistle-e76f4.web.app
           E2E_ADMIN_EMAIL: ${{ secrets.E2E_STAGING_ADMIN_EMAIL }}
           E2E_ADMIN_PASSWORD: ${{ secrets.E2E_STAGING_ADMIN_PASSWORD }}
@@ -57,7 +58,7 @@ jobs:
           E2E_MUST_CHANGE_PASSWORD: ${{ secrets.E2E_MUST_CHANGE_PASSWORD }}
           E2E_CONSENT_OUTDATED_EMAIL: ${{ secrets.E2E_CONSENT_OUTDATED_EMAIL }}
           E2E_CONSENT_OUTDATED_PASSWORD: ${{ secrets.E2E_CONSENT_OUTDATED_PASSWORD }}
-        run: npm run test:e2e:staging
+        run: npx playwright test --project=chromium --project=staging
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
