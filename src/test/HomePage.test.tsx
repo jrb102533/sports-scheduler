@@ -437,6 +437,35 @@ describe('HomePage — multi-membership deduplication', () => {
   });
 });
 
+// ── issue #338: coachIds array lookup ─────────────────────────────────────────
+
+describe('HomePage — resolveTeamsForMembership coachIds array (issue #338)', () => {
+  it('shows a team where the coach uid appears in coachIds but not the legacy coachId', () => {
+    // The team has no legacy coachId set for uid-1, only the coachIds array.
+    currentProfile = makeProfile('coach');
+    currentTeams = [makeTeam('t1', {
+      coachId: 'someone-else',
+      coachIds: ['uid-1'],   // uid-1 is in the array
+      createdBy: 'someone-else',
+    })];
+    renderHomePage();
+
+    expect(screen.getByText('Team t1')).toBeTruthy();
+  });
+
+  it('does not show a team where uid-1 is absent from both coachId and coachIds', () => {
+    currentProfile = makeProfile('coach');
+    currentTeams = [makeTeam('t1', {
+      coachId: 'someone-else',
+      coachIds: ['another-coach'],
+      createdBy: 'someone-else',
+    })];
+    renderHomePage();
+
+    expect(screen.queryByText('Team t1')).toBeNull();
+  });
+});
+
 describe('HomePage — null/undefined profile edge cases', () => {
   it('renders without crashing when profile is null', () => {
     currentProfile = null;

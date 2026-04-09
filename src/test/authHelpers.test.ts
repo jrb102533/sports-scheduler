@@ -514,3 +514,33 @@ describe('getAccessibleTeamIds (multi-membership)', () => {
     expect(getAccessibleTeamIds(profile, teams)).toBeNull();
   });
 });
+
+// ── issue #338: coachIds array lookup ─────────────────────────────────────────
+// Regression tests: coaches assigned via the coachIds[] array (not the legacy
+// scalar coachId) were invisible to getAccessibleTeamIds. All three callers
+// (getAccessibleTeamIds, resolveTeamsForMembership in HomePage, and
+// coachTeamLeagueIds in Dashboard) must check both fields.
+
+describe('getAccessibleTeamIds — coachIds array (issue #338)', () => {
+  it('includes a team where the coach uid appears in coachIds but not coachId', () => {
+    // Team has coachIds: ['coach-new'] but legacy coachId: undefined
+    const team = makeTeam({ id: 'tA', coachId: undefined, coachIds: ['coach-new'], createdBy: 'someone-else' });
+    const profile = makeProfile({ uid: 'coach-new', role: 'coach' });
+    const result = getAccessibleTeamIds(profile, [team]);
+    expect(result).toContain('tA');
+  });
+
+  it('does not include a team where the coach uid is in neither coachId nor coachIds', () => {
+    const team = makeTeam({ id: 'tB', coachId: 'other', coachIds: ['other'], createdBy: 'someone-else' });
+    const profile = makeProfile({ uid: 'coach-new', role: 'coach' });
+    const result = getAccessibleTeamIds(profile, [team]);
+    expect(result).not.toContain('tB');
+  });
+
+  it('still includes a team matched via legacy scalar coachId', () => {
+    const team = makeTeam({ id: 'tC', coachId: 'coach-old', coachIds: [], createdBy: 'someone-else' });
+    const profile = makeProfile({ uid: 'coach-old', role: 'coach' });
+    const result = getAccessibleTeamIds(profile, [team]);
+    expect(result).toContain('tC');
+  });
+});
