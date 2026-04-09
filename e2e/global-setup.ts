@@ -14,7 +14,11 @@
 
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { chromium } from '@playwright/test';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:5173';
 const authDir = path.join(__dirname, '.auth');
