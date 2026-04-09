@@ -19,15 +19,13 @@
  */
 
 import { test, expect, creds } from './fixtures/auth.fixture';
-import { AuthPage } from './pages/AuthPage';
 
 // ---------------------------------------------------------------------------
 // Users table renders
 // ---------------------------------------------------------------------------
 
-test('admin can view all users in the users table', async ({ page }) => {
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(creds.admin().email, creds.admin().password);
+test('admin can view all users in the users table', async ({ asAdmin }) => {
+  const { page } = asAdmin;
   await page.goto('/users');
   await page.waitForLoadState('domcontentloaded');
 
@@ -44,9 +42,8 @@ test('admin can view all users in the users table', async ({ page }) => {
   void adminEmail;
 });
 
-test('users table shows role badges', async ({ page }) => {
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(creds.admin().email, creds.admin().password);
+test('users table shows role badges', async ({ asAdmin }) => {
+  const { page } = asAdmin;
   await page.goto('/users');
   await page.waitForLoadState('domcontentloaded');
 
@@ -61,9 +58,8 @@ test('users table shows role badges', async ({ page }) => {
 // Create user by admin
 // ---------------------------------------------------------------------------
 
-test('admin can open the Add User modal and see required fields', async ({ page }) => {
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(creds.admin().email, creds.admin().password);
+test('admin can open the Add User modal and see required fields', async ({ asAdmin }) => {
+  const { page } = asAdmin;
   await page.goto('/users');
   await page.waitForLoadState('domcontentloaded');
 
@@ -84,9 +80,8 @@ test('admin can open the Add User modal and see required fields', async ({ page 
   await expect(modal.getByLabel(/role/i).first()).toBeVisible();
 });
 
-test('admin can create a new user via the Add User modal', async ({ page }) => {
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(creds.admin().email, creds.admin().password);
+test('admin can create a new user via the Add User modal', async ({ asAdmin }) => {
+  const { page } = asAdmin;
   await page.goto('/users');
   await page.waitForLoadState('domcontentloaded');
 
@@ -164,9 +159,8 @@ test('admin can create a new user via the Add User modal', async ({ page }) => {
 // Change user role
 // ---------------------------------------------------------------------------
 
-test('admin can change another user role via the role dropdown', async ({ page }) => {
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(creds.admin().email, creds.admin().password);
+test('admin can change another user role via the role dropdown', async ({ asAdmin }) => {
+  const { page } = asAdmin;
   await page.goto('/users');
   await page.waitForLoadState('domcontentloaded');
 
@@ -221,9 +215,8 @@ test('admin can change another user role via the role dropdown', async ({ page }
 // Send password reset email
 // ---------------------------------------------------------------------------
 
-test('admin can trigger password reset for another user and see confirmation', async ({ page }) => {
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(creds.admin().email, creds.admin().password);
+test('admin can trigger password reset for another user and see confirmation', async ({ asAdmin }) => {
+  const { page } = asAdmin;
   await page.goto('/users');
   await page.waitForLoadState('domcontentloaded');
 
@@ -278,9 +271,8 @@ test('admin can trigger password reset for another user and see confirmation', a
 // Admin cannot delete their own account
 // ---------------------------------------------------------------------------
 
-test('delete button is absent or disabled on the admin own row', async ({ page }) => {
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(creds.admin().email, creds.admin().password);
+test('delete button is absent or disabled on the admin own row', async ({ asAdmin }) => {
+  const { page } = asAdmin;
   await page.goto('/users');
   await page.waitForLoadState('domcontentloaded');
 

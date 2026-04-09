@@ -16,7 +16,6 @@
  */
 
 import { test, expect } from './fixtures/auth.fixture';
-import { AuthPage } from './pages/AuthPage';
 
 // ---------------------------------------------------------------------------
 // Navigation
@@ -209,17 +208,8 @@ test('Kids Sports Mode section is hidden or visible depending on feature flag', 
 // Access control — parent can reach /settings
 // ---------------------------------------------------------------------------
 
-test('parent can access /settings without being redirected', async ({ page }) => {
-  const parentEmail = process.env.E2E_PARENT_EMAIL;
-  const parentPassword = process.env.E2E_PARENT_PASSWORD;
-
-  if (!parentEmail || !parentPassword) {
-    test.skip(true, 'E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD not set — skipping parent access test');
-    return;
-  }
-
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(parentEmail, parentPassword);
+test('parent can access /settings without being redirected', async ({ asParent }) => {
+  const { page } = asParent;
 
   await page.goto('/settings');
   await page.waitForLoadState('domcontentloaded');

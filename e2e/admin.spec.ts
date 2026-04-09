@@ -183,19 +183,8 @@ test('admin sees Schedule tab on team detail page', async ({ asAdmin }) => {
 // Non-admin is blocked from /users
 // ---------------------------------------------------------------------------
 
-test('parent is redirected away from /users (admin-only route)', async ({ page }) => {
-  // Log in as parent
-  const parentEmail = process.env.E2E_PARENT_EMAIL;
-  const parentPassword = process.env.E2E_PARENT_PASSWORD;
-
-  if (!parentEmail || !parentPassword) {
-    test.skip(true, 'E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD not set');
-    return;
-  }
-
-  const { AuthPage } = await import('./pages/AuthPage');
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(parentEmail, parentPassword);
+test('parent is redirected away from /users (admin-only route)', async ({ asParent }) => {
+  const { page } = asParent;
 
   await page.goto('/users');
 

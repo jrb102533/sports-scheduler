@@ -12,28 +12,14 @@
  */
 
 import { test, expect } from './fixtures/auth.fixture';
-import { AuthPage } from './pages/AuthPage';
 import { ParentHomePage } from './pages/ParentHomePage';
-
-function requireParentCreds() {
-  const email = process.env.E2E_PARENT_EMAIL;
-  const password = process.env.E2E_PARENT_PASSWORD;
-  return { email, password, set: !!(email && password) };
-}
 
 // ---------------------------------------------------------------------------
 // RSVP toggle: Going → Not Going
 // ---------------------------------------------------------------------------
 
-test('RSVP toggles from Going to Not Going on the same event', async ({ page }) => {
-  const { email, password, set } = requireParentCreds();
-  if (!set) {
-    test.skip(true, 'E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD not set');
-    return;
-  }
-
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(email!, password!);
+test('RSVP toggles from Going to Not Going on the same event', async ({ asParent }) => {
+  const { page } = asParent;
 
   const parentHome = new ParentHomePage(page);
   await parentHome.goto();
@@ -59,15 +45,8 @@ test('RSVP toggles from Going to Not Going on the same event', async ({ page }) 
   await expect(goingBtn).not.toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
 });
 
-test('RSVP Not Going persists after page reload', async ({ page }) => {
-  const { email, password, set } = requireParentCreds();
-  if (!set) {
-    test.skip(true, 'E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD not set');
-    return;
-  }
-
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(email!, password!);
+test('RSVP Not Going persists after page reload', async ({ asParent }) => {
+  const { page } = asParent;
 
   const parentHome = new ParentHomePage(page);
   await parentHome.goto();
@@ -98,15 +77,8 @@ test('RSVP Not Going persists after page reload', async ({ page }) => {
 // Snack slot — claim
 // ---------------------------------------------------------------------------
 
-test('parent can claim the snack slot on an event', async ({ page }) => {
-  const { email, password, set } = requireParentCreds();
-  if (!set) {
-    test.skip(true, 'E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD not set');
-    return;
-  }
-
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(email!, password!);
+test('parent can claim the snack slot on an event', async ({ asParent }) => {
+  const { page } = asParent;
 
   const parentHome = new ParentHomePage(page);
   await parentHome.goto();
@@ -142,15 +114,8 @@ test('parent can claim the snack slot on an event', async ({ page }) => {
 // Snack slot — release
 // ---------------------------------------------------------------------------
 
-test('parent can release a claimed snack slot', async ({ page }) => {
-  const { email, password, set } = requireParentCreds();
-  if (!set) {
-    test.skip(true, 'E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD not set');
-    return;
-  }
-
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(email!, password!);
+test('parent can release a claimed snack slot', async ({ asParent }) => {
+  const { page } = asParent;
 
   const parentHome = new ParentHomePage(page);
   await parentHome.goto();
@@ -208,15 +173,8 @@ test('parent can release a claimed snack slot', async ({ page }) => {
 // Snack slot claim persists after reload
 // ---------------------------------------------------------------------------
 
-test('snack slot claim persists after page reload', async ({ page }) => {
-  const { email, password, set } = requireParentCreds();
-  if (!set) {
-    test.skip(true, 'E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD not set');
-    return;
-  }
-
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(email!, password!);
+test('snack slot claim persists after page reload', async ({ asParent }) => {
+  const { page } = asParent;
 
   const parentHome = new ParentHomePage(page);
   await parentHome.goto();

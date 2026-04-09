@@ -17,7 +17,6 @@
  */
 
 import { test, expect } from './fixtures/auth.fixture';
-import { AuthPage } from './pages/AuthPage';
 
 // ---------------------------------------------------------------------------
 // Navigation
@@ -211,17 +210,8 @@ test('clicking an event chip opens the EventDetailPanel', async ({ asAdmin }) =>
 // Parent access
 // ---------------------------------------------------------------------------
 
-test('parent can navigate to /calendar and the grid renders', async ({ page }) => {
-  const parentEmail = process.env.E2E_PARENT_EMAIL;
-  const parentPassword = process.env.E2E_PARENT_PASSWORD;
-
-  if (!parentEmail || !parentPassword) {
-    test.skip(true, 'E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD not set — skipping parent calendar test');
-    return;
-  }
-
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(parentEmail, parentPassword);
+test('parent can navigate to /calendar and the grid renders', async ({ asParent }) => {
+  const { page } = asParent;
 
   await page.goto('/calendar');
   await page.waitForLoadState('domcontentloaded');
