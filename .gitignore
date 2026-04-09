@@ -30,3 +30,6 @@ emulator-data/
 .env.local
 .env
 .claude/worktrees/
+
+# Playwright auth state — contains Firebase ID tokens; never commit
+e2e/.auth/

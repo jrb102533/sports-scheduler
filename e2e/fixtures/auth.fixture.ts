@@ -1,4 +1,6 @@
 /* eslint-disable react-hooks/rules-of-hooks */
+import path from 'path';
+import fs from 'fs';
 import { test as base } from '@playwright/test';
 import { AuthPage } from '../pages/AuthPage';
 import { AdminPage } from '../pages/AdminPage';
@@ -20,6 +22,23 @@ function requireEnv(name: string): string {
     );
   }
   return v;
+}
+
+/**
+ * Resolve the path to a role's pre-saved storageState file.
+ * These files are written by global-setup.ts once per CI run.
+ */
+function authStatePath(role: string): string {
+  return path.join(__dirname, '..', '.auth', `${role}.json`);
+}
+
+/**
+ * Returns true if the storageState file for the given role exists.
+ * Falls back to live login when global-setup hasn't run (e.g., local dev
+ * without credentials configured for that role).
+ */
+function hasStorageState(role: string): boolean {
+  return fs.existsSync(authStatePath(role));
 }
 
 export type TestFixtures = {
@@ -66,58 +85,145 @@ export const test = base.extend<TestFixtures>({
     await use(new CoachPage(page));
   },
 
-  asAdmin: async ({ page }, use) => {
-    const auth = new AuthPage(page);
-    await auth.loginAndWaitForApp(
-      requireEnv('E2E_ADMIN_EMAIL'),
-      requireEnv('E2E_ADMIN_PASSWORD'),
-    );
-    const admin = new AdminPage(page);
-    await use({ page, admin });
+  /**
+   * asAdmin — restores the admin session from global-setup storageState.
+   * Falls back to live login if the state file does not exist.
+   */
+  asAdmin: async ({ browser, page }, use) => {
+    const role = 'admin';
+
+    if (hasStorageState(role)) {
+      const context = await browser.newContext({
+        storageState: authStatePath(role),
+      });
+      const p = await context.newPage();
+      await p.goto('/');
+      await p.waitForLoadState('domcontentloaded');
+      const admin = new AdminPage(p);
+      await use({ page: p, admin });
+      await context.close();
+    } else {
+      // Fallback: live login (local dev without pre-saved state)
+      const auth = new AuthPage(page);
+      await auth.loginAndWaitForApp(
+        requireEnv('E2E_ADMIN_EMAIL'),
+        requireEnv('E2E_ADMIN_PASSWORD'),
+      );
+      const admin = new AdminPage(page);
+      await use({ page, admin });
+    }
   },
 
-  asParent: async ({ page }, use) => {
-    const auth = new AuthPage(page);
-    await auth.loginAndWaitForApp(
-      requireEnv('E2E_PARENT_EMAIL'),
-      requireEnv('E2E_PARENT_PASSWORD'),
-    );
-    const parent = new ParentHomePage(page);
-    await parent.goto();
-    await use({ page, parent });
+  /**
+   * asParent — restores the parent session from global-setup storageState.
+   * Falls back to live login if the state file does not exist.
+   */
+  asParent: async ({ browser, page }, use) => {
+    const role = 'parent';
+
+    if (hasStorageState(role)) {
+      const context = await browser.newContext({
+        storageState: authStatePath(role),
+      });
+      const p = await context.newPage();
+      const parent = new ParentHomePage(p);
+      await parent.goto();
+      await use({ page: p, parent });
+      await context.close();
+    } else {
+      const auth = new AuthPage(page);
+      await auth.loginAndWaitForApp(
+        requireEnv('E2E_PARENT_EMAIL'),
+        requireEnv('E2E_PARENT_PASSWORD'),
+      );
+      const parent = new ParentHomePage(page);
+      await parent.goto();
+      await use({ page, parent });
+    }
   },
 
-  asPlayer: async ({ page }, use) => {
-    const auth = new AuthPage(page);
-    await auth.loginAndWaitForApp(
-      requireEnv('E2E_PLAYER_EMAIL'),
-      requireEnv('E2E_PLAYER_PASSWORD'),
-    );
-    const player = new PlayerHomePage(page);
-    await player.goto();
-    await use({ page, player });
+  /**
+   * asPlayer — restores the player session from global-setup storageState.
+   * Falls back to live login if the state file does not exist.
+   */
+  asPlayer: async ({ browser, page }, use) => {
+    const role = 'player';
+
+    if (hasStorageState(role)) {
+      const context = await browser.newContext({
+        storageState: authStatePath(role),
+      });
+      const p = await context.newPage();
+      const player = new PlayerHomePage(p);
+      await player.goto();
+      await use({ page: p, player });
+      await context.close();
+    } else {
+      const auth = new AuthPage(page);
+      await auth.loginAndWaitForApp(
+        requireEnv('E2E_PLAYER_EMAIL'),
+        requireEnv('E2E_PLAYER_PASSWORD'),
+      );
+      const player = new PlayerHomePage(page);
+      await player.goto();
+      await use({ page, player });
+    }
   },
 
-  asLeagueManager: async ({ page }, use) => {
-    const auth = new AuthPage(page);
-    await auth.loginAndWaitForApp(
-      requireEnv('E2E_LM_EMAIL'),
-      requireEnv('E2E_LM_PASSWORD'),
-    );
-    const lm = new LeagueManagerPage(page);
-    await lm.goto();
-    await use({ page, lm });
+  /**
+   * asLeagueManager — restores the LM session from global-setup storageState.
+   * Falls back to live login if the state file does not exist.
+   */
+  asLeagueManager: async ({ browser, page }, use) => {
+    const role = 'lm';
+
+    if (hasStorageState(role)) {
+      const context = await browser.newContext({
+        storageState: authStatePath(role),
+      });
+      const p = await context.newPage();
+      const lm = new LeagueManagerPage(p);
+      await lm.goto();
+      await use({ page: p, lm });
+      await context.close();
+    } else {
+      const auth = new AuthPage(page);
+      await auth.loginAndWaitForApp(
+        requireEnv('E2E_LM_EMAIL'),
+        requireEnv('E2E_LM_PASSWORD'),
+      );
+      const lm = new LeagueManagerPage(page);
+      await lm.goto();
+      await use({ page, lm });
+    }
   },
 
-  asCoach: async ({ page }, use) => {
-    const auth = new AuthPage(page);
-    await auth.loginAndWaitForApp(
-      requireEnv('E2E_COACH_EMAIL'),
-      requireEnv('E2E_COACH_PASSWORD'),
-    );
-    const coach = new CoachPage(page);
-    await coach.goto();
-    await use({ page, coach });
+  /**
+   * asCoach — restores the coach session from global-setup storageState.
+   * Falls back to live login if the state file does not exist.
+   */
+  asCoach: async ({ browser, page }, use) => {
+    const role = 'coach';
+
+    if (hasStorageState(role)) {
+      const context = await browser.newContext({
+        storageState: authStatePath(role),
+      });
+      const p = await context.newPage();
+      const coach = new CoachPage(p);
+      await coach.goto();
+      await use({ page: p, coach });
+      await context.close();
+    } else {
+      const auth = new AuthPage(page);
+      await auth.loginAndWaitForApp(
+        requireEnv('E2E_COACH_EMAIL'),
+        requireEnv('E2E_COACH_PASSWORD'),
+      );
+      const coach = new CoachPage(page);
+      await coach.goto();
+      await use({ page, coach });
+    }
   },
 });
 
