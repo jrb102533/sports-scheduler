@@ -33,6 +33,7 @@ export function TopBar({ greeting, onMenuClick }: TopBarProps) {
         <button
           onClick={() => setPanelOpen(true)}
           className="relative p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+          aria-label="Notifications"
         >
           <Bell size={20} />
           {unread > 0 && (
