@@ -111,7 +111,7 @@ test('STAND-01: Standings section renders on SeasonDashboard', async ({ asAdmin 
 // STAND-02: Standings table has expected column headers
 // ---------------------------------------------------------------------------
 
-test('STAND-02: Standings table column headers include W, L, and Pts', async ({ asAdmin }) => {
+test('@smoke STAND-02: Standings table column headers include W, L, and Pts', async ({ asAdmin }) => {
   const { page } = asAdmin;
 
   const leagueHref = await getFirstLeagueHref(page);

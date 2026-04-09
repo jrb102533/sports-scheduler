@@ -22,7 +22,7 @@ import { test, expect } from './fixtures/auth.fixture';
 // Navigation
 // ---------------------------------------------------------------------------
 
-test('admin can navigate to /calendar', async ({ asAdmin }) => {
+test('@smoke admin can navigate to /calendar', async ({ asAdmin }) => {
   const { page } = asAdmin;
   await page.goto('/calendar');
 

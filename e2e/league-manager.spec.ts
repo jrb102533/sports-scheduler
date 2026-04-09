@@ -231,7 +231,7 @@ async function createLeague(
 // League creation
 // ---------------------------------------------------------------------------
 
-test('admin can create a new league and it appears in the leagues list', async ({ asAdmin }) => {
+test('@smoke admin can create a new league and it appears in the leagues list', async ({ asAdmin }) => {
   const { page } = asAdmin;
   const leagueName = `E2E League Create ${Date.now()}`;
 
@@ -366,7 +366,7 @@ test('admin can soft-delete a league and it disappears from the list', async ({ 
 // Add team to league
 // ---------------------------------------------------------------------------
 
-test('admin can add a team to a league from the Teams tab', async ({ asAdmin }) => {
+test('@smoke admin can add a team to a league from the Teams tab', async ({ asAdmin }) => {
   const { page } = asAdmin;
 
   // Create a league
@@ -524,7 +524,7 @@ test('season dashboard is accessible from the league Seasons tab', async ({ asAd
 // Schedule Wizard
 // ---------------------------------------------------------------------------
 
-test('schedule wizard opens from league detail page', async ({ asAdmin }) => {
+test('@smoke schedule wizard opens from league detail page', async ({ asAdmin }) => {
   const { page } = asAdmin;
   const leagueName = `E2E League Wizard ${Date.now()}`;
 
@@ -556,7 +556,7 @@ test('schedule wizard opens from league detail page', async ({ asAdmin }) => {
   await expect(wizardHeading).toBeVisible({ timeout: 3_000 });
 });
 
-test('schedule wizard config step shows required fields', async ({ asAdmin }) => {
+test('@smoke schedule wizard config step shows required fields', async ({ asAdmin }) => {
   const { page } = asAdmin;
 
   // Navigate to a league and open wizard
@@ -653,7 +653,7 @@ test('schedule wizard with no teams configured shows informational state', async
 // LM-WIZ-03: Mode picker shows all three modes
 // ---------------------------------------------------------------------------
 
-test('schedule wizard mode picker shows Season, Practice, and Playoff options', async ({
+test('@smoke schedule wizard mode picker shows Season, Practice, and Playoff options', async ({
   asAdmin,
 }) => {
   const { page } = asAdmin;

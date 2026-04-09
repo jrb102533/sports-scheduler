@@ -31,7 +31,7 @@ import { AuthPage } from './pages/AuthPage';
 // PLAYER-01 — routing: player is redirected from / to /parent
 // ---------------------------------------------------------------------------
 
-test('player navigating to / is redirected to /parent', async ({ asPlayer }) => {
+test('@smoke player navigating to / is redirected to /parent', async ({ asPlayer }) => {
   const { page } = asPlayer;
 
   await page.goto('/');

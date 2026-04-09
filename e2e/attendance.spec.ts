@@ -168,7 +168,7 @@ test('ATT-02: each player row shows Present, Absent, and Excused buttons', async
 // ATT-03: Marking a player Present activates the Present button
 // ---------------------------------------------------------------------------
 
-test('ATT-03: clicking Present on a player activates the Present button with green styling', async ({
+test('@smoke ATT-03: clicking Present on a player activates the Present button with green styling', async ({
   asCoach,
 }) => {
   const { page } = asCoach;

@@ -16,7 +16,7 @@ import { test, expect, creds } from './fixtures/auth.fixture';
 // Login — happy path
 // ---------------------------------------------------------------------------
 
-test('logs in with valid credentials and lands on the app shell', async ({ authPage }) => {
+test('@smoke logs in with valid credentials and lands on the app shell', async ({ authPage }) => {
   const { email, password } = creds.admin();
   await authPage.gotoLogin();
   await authPage.emailInput.fill(email);
@@ -34,7 +34,7 @@ test('logs in with valid credentials and lands on the app shell', async ({ authP
 // Login — wrong password
 // ---------------------------------------------------------------------------
 
-test('shows "Incorrect email or password" when login fails with wrong password', async ({
+test('@smoke shows "Incorrect email or password" when login fails with wrong password', async ({
   authPage,
 }) => {
   // Use a throwaway non-existent email so Firebase never rate-limits a real account.

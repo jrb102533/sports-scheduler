@@ -160,7 +160,7 @@ test('VENUE-CRUD-02: submitting the venue form without an Address shows an inlin
 // VENUE-CRUD-03 — Address and Notes fields save correctly; edit modal pre-populates
 // ---------------------------------------------------------------------------
 
-test('VENUE-CRUD-03: address and notes are saved and pre-populate the edit modal', async ({ asAdmin }) => {
+test('@smoke VENUE-CRUD-03: address and notes are saved and pre-populate the edit modal', async ({ asAdmin }) => {
   const { page } = asAdmin;
 
   const venueName = `E2E AddressNotes ${Date.now()}`;

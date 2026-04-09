@@ -222,7 +222,7 @@ test('RESULT-02: score input fields (home and away) are visible in the result se
 // RESULT-03: Coach can type home and away scores into the inputs
 // ---------------------------------------------------------------------------
 
-test('RESULT-03: coach can enter home score (3) and away score (1) into the inputs', async ({
+test('@smoke RESULT-03: coach can enter home score (3) and away score (1) into the inputs', async ({
   asCoach,
 }) => {
   const { page } = asCoach;

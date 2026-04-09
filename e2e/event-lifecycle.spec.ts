@@ -100,7 +100,7 @@ async function createEventOnTeam(
 // EVT-LC-01: Create event from the Calendar page
 // ---------------------------------------------------------------------------
 
-test('admin can open Add Event from the calendar and fill required fields', async ({
+test('@smoke admin can open Add Event from the calendar and fill required fields', async ({
   asAdmin,
 }) => {
   const { page } = asAdmin;
@@ -155,7 +155,7 @@ test('admin can open Add Event from the calendar and fill required fields', asyn
 // EVT-LC-02: Event appears on the schedule after creation (team detail)
 // ---------------------------------------------------------------------------
 
-test('created event appears in the team schedule list', async ({ asAdmin }) => {
+test('@smoke created event appears in the team schedule list', async ({ asAdmin }) => {
   const { page } = asAdmin;
   await setupTeam(page, 'AppearCheck');
 

@@ -19,7 +19,7 @@ import { ParentHomePage } from './pages/ParentHomePage';
 // Parent routing — player/parent role redirects to /parent from /
 // ---------------------------------------------------------------------------
 
-test('parent user is redirected from / to /parent', async ({ asParent }) => {
+test('@smoke parent user is redirected from / to /parent', async ({ asParent }) => {
   const { page } = asParent;
 
   await page.goto('/');
@@ -32,7 +32,7 @@ test('parent user is redirected from / to /parent', async ({ asParent }) => {
 // Team header
 // ---------------------------------------------------------------------------
 
-test('parent home page shows a team header', async ({ asParent }) => {
+test('@smoke parent home page shows a team header', async ({ asParent }) => {
   const { parent, page } = asParent;
 
   // Either the team header or the "no team linked" message must be visible
@@ -56,7 +56,7 @@ test('parent home page shows the Upcoming Games heading', async ({ asParent }) =
 // RSVP
 // ---------------------------------------------------------------------------
 
-test('parent can RSVP Going on an event', async ({ asParent }) => {
+test('@smoke parent can RSVP Going on an event', async ({ asParent }) => {
   const { page } = asParent;
 
   const parentHome = new ParentHomePage(page);
@@ -81,7 +81,7 @@ test('parent can RSVP Going on an event', async ({ asParent }) => {
   await expect(goingBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });
 });
 
-test('RSVP state persists after page refresh', async ({ asParent }) => {
+test('@smoke RSVP state persists after page refresh', async ({ asParent }) => {
   const { page } = asParent;
 
   const parentHome = new ParentHomePage(page);
