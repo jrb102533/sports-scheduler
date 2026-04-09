@@ -23,6 +23,7 @@ import { TermsOfServicePage } from '@/pages/legal/TermsOfServicePage';
 import { InviteAcceptancePage } from '@/pages/InviteAcceptancePage';
 import { ParentHomePage } from '@/pages/ParentHomePage';
 import { HomePage } from '@/pages/HomePage';
+import { StandingsPage } from '@/pages/StandingsPage';
 
 export const router = createBrowserRouter([
   // Public auth routes
@@ -58,6 +59,7 @@ export const router = createBrowserRouter([
       { path: 'venues', element: <VenuesPage /> },
       { path: 'invite/league', element: <InviteAcceptancePage /> },
       { path: 'home', element: <HomePage /> },
+      { path: 'standings', element: <StandingsPage /> },
       { path: 'parent', element: <RoleGuard roles={['player', 'parent']} redirect><ParentHomePage /></RoleGuard> },
     ],
   },

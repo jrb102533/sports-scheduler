@@ -30,6 +30,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/leagues': 'Leagues',
   '/venues': 'Venues',
   '/parent': 'My Team',
+  '/standings': 'Standings',
 };
 
 export function MainLayout() {
