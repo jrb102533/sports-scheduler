@@ -54,7 +54,7 @@ import { test, expect } from './fixtures/auth.fixture';
 
 async function gotoLeagues(page: import('@playwright/test').Page) {
   await page.goto('/leagues');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 }
 
 /**
@@ -486,7 +486,7 @@ test('season dashboard is accessible from the league Seasons tab', async ({ asAd
 
   // Navigate to leagues
   await page.goto('/leagues');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Find any league with existing seasons
   const leagueLinks = page.locator('a[href*="/leagues/"]');
@@ -561,7 +561,7 @@ test('schedule wizard config step shows required fields', async ({ asAdmin }) =>
 
   // Navigate to a league and open wizard
   await page.goto('/leagues');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const leagueLinks = page.locator('a[href*="/leagues/"]');
   if ((await leagueLinks.count()) === 0) {

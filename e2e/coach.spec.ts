@@ -92,7 +92,7 @@ test('clicking an event opens the EventDetailPanel', async ({ asAdmin }) => {
 
   // Navigate to an existing team that may have events, or create one
   await page.goto('/teams');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Try to find any team with events
   const teamLinks = page.locator('a[href*="/teams/"]');
@@ -350,7 +350,7 @@ test('attendance tracker is visible on event detail for admin', async ({ asAdmin
 
   // Navigate to teams and find any team with events
   await page.goto('/teams');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const teamLinks = page.locator('a[href*="/teams/"]');
   if ((await teamLinks.count()) === 0) {

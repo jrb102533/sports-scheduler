@@ -28,8 +28,8 @@ export class AuthPage {
   constructor(page: Page) {
     this.page = page;
 
-    // Login
-    this.emailInput = page.getByLabel('Email');
+    // Login — exact: true avoids matching the marketing "...by email" checkbox label on signup
+    this.emailInput = page.getByLabel('Email', { exact: true });
     this.passwordInput = page.getByLabel('Password').first(); // first = "Password", second = "Confirm Password" on signup
     this.signInButton = page.getByRole('button', { name: 'Sign In' });
 
@@ -62,8 +62,9 @@ export class AuthPage {
 
   async loginAndWaitForApp(email: string, password: string) {
     await this.login(email, password);
-    // Wait for the authenticated shell — the "First Whistle" brand header appears in MainLayout
-    await expect(this.page.getByText('First Whistle')).toBeVisible({ timeout: 15_000 });
+    // Wait for the authenticated shell — use .first() because "First Whistle" may appear
+    // in both the sidebar nav and page content simultaneously
+    await expect(this.page.getByText('First Whistle').first()).toBeVisible({ timeout: 15_000 });
   }
 
   async signup(opts: {

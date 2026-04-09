@@ -140,7 +140,7 @@ test('LM-07: profile page loads and shows League Manager badge', async ({ asLeag
   const { page } = asLeagueManager;
 
   await page.goto('/profile');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Profile page heading
   const editProfileHeading = page.getByRole('heading', { name: /edit profile/i });
@@ -169,7 +169,7 @@ test('LM-08: league manager can navigate to a team detail page for a team in the
 
   // Switch to the Teams tab
   await page.getByRole('tab', { name: /teams/i }).click();
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // At least one of the known teams must appear on the Teams tab
   let teamLinkFound = false;
@@ -196,7 +196,7 @@ test('LM-08: league manager can navigate to a team detail page for a team in the
   }
 
   await page.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Confirm we are on a team detail page — team name heading must be visible
   const teamHeading = page.getByRole('heading').first();
@@ -227,7 +227,7 @@ test('LM-09: team detail page does not show delete team button for league manage
   await page.waitForURL(/\/leagues\/.+/, { timeout: 10_000 });
 
   await page.getByRole('tab', { name: /teams/i }).click();
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   let navigated = false;
   for (const name of KNOWN_TEAM_NAMES) {
@@ -245,7 +245,7 @@ test('LM-09: team detail page does not show delete team button for league manage
   }
 
   await page.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // The delete button only renders for isOwner (createdBy/coachId) or isAdmin.
   // The LM account owns neither of these teams, so no delete button should appear.

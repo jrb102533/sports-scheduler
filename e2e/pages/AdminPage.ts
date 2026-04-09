@@ -35,12 +35,12 @@ export class AdminPage {
 
   async gotoTeams() {
     await this.page.goto('/teams');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   async gotoTeam(teamId: string) {
     await this.page.goto(`/teams/${teamId}`);
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   /**

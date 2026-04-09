@@ -43,7 +43,7 @@ export class ParentHomePage {
 
   async goto() {
     await this.page.goto('/parent');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   async expectTeamVisible(teamNameSubstring: string) {
@@ -77,7 +77,7 @@ export class ParentHomePage {
    */
   async expectRsvpStateAfterReload(expectedState: 'yes' | 'no') {
     await this.page.reload();
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
 
     if (expectedState === 'yes') {
       await expect(this.goingButton).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });

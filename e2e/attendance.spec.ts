@@ -39,7 +39,7 @@ async function openFirstSharksEvent(
 ): Promise<{ eventTitle: string } | null> {
   // Navigate to /teams and find Sharks
   await page.goto('/teams');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const sharksLink = page.getByRole('link', { name: new RegExp(SHARKS_TEAM_NAME, 'i') }).first();
   const sharksVisible = await sharksLink.isVisible({ timeout: 10_000 }).catch(() => false);
@@ -51,7 +51,7 @@ async function openFirstSharksEvent(
 
   await sharksLink.click();
   await page.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Activate the Schedule tab (it may already be active, but be explicit)
   const scheduleTab = page.getByRole('tab', { name: /schedule/i });
@@ -361,12 +361,12 @@ test('ATT-06: attendance status persists after page reload and re-navigation to 
 
   // Reload the page and wait for data to hydrate
   await page.reload();
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // We are back on the same team detail URL — navigate back to that URL just in case
   if (!page.url().includes('/teams/')) {
     await page.goto(teamUrl);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   }
 
   // Re-open the Schedule tab

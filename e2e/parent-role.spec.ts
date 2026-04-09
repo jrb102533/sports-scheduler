@@ -52,7 +52,7 @@ test('PARENT-ROLE-02: parent profile page loads and shows Parent role badge', as
   const { page } = asParent;
 
   await page.goto('/profile');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Profile page heading
   const editProfileHeading = page.getByRole('heading', { name: /edit profile/i });
@@ -80,7 +80,7 @@ test('PARENT-ROLE-03: parent can see parentContact fields on their child\'s play
   const { page } = asParent;
 
   // The /parent page must have fully loaded (fixture already called goto())
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Look for any visible parentContact label — the component uses text labels
   // such as "Parent Contact", "Parent Name", "Parent Phone", or "Parent Email"

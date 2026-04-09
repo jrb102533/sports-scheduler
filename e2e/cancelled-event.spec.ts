@@ -167,7 +167,7 @@ test('CANCEL-01: cancelled event is hidden from the parent home page', async ({
   // (The parent page filters cancelled events regardless of role —
   //  we test the filter logic, not parent auth, here.)
   await adminPage.goto('/parent');
-  await adminPage.waitForLoadState('networkidle');
+  await adminPage.waitForLoadState('domcontentloaded');
 
   // The event we just cancelled must not appear in the list.
   // The parent page renders event titles as `font-semibold text-gray-900 text-sm`.
