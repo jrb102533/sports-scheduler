@@ -34,6 +34,8 @@ All credentials are read from environment variables. **Never hardcode credential
 | `E2E_ADMIN_PASSWORD` | Yes | Password for the admin test account |
 | `E2E_PARENT_EMAIL` | Yes | Email for a parent test account pre-linked to a team |
 | `E2E_PARENT_PASSWORD` | Yes | Password for the parent test account |
+| `E2E_PLAYER_EMAIL` | Yes | Email for a player test account pre-linked to a team |
+| `E2E_PLAYER_PASSWORD` | Yes | Password for the player test account |
 | `E2E_INVITE_PARENT_EMAIL` | No | An email address to use as an invite target (invite creation tests only) |
 | `E2E_STAGING_URL` | No | Staging base URL. Defaults to `https://staging.firstwhistlesports.com` |
 
@@ -46,6 +48,8 @@ E2E_ADMIN_EMAIL=admin@yourapp.com
 E2E_ADMIN_PASSWORD=your-admin-password
 E2E_PARENT_EMAIL=parent@yourapp.com
 E2E_PARENT_PASSWORD=your-parent-password
+E2E_PLAYER_EMAIL=player@yourapp.com
+E2E_PLAYER_PASSWORD=your-player-password
 E2E_INVITE_PARENT_EMAIL=invite-target@example.com
 ```
 
@@ -77,6 +81,12 @@ You need two Firebase test accounts:
 - Must be linked to at least one team (has a `teamId` in their Firestore profile)
 - Team must have at least one upcoming event for RSVP tests to run (otherwise those tests self-skip)
 
+### Player account
+- Role: `player`
+- Must be linked to at least one team (has a `teamId` in their Firestore profile, or a `memberships` entry with a `teamId`)
+- Both player and parent roles share the `/parent` route — players see the same home page but represent themselves (not a child)
+- Team must have at least one upcoming event for RSVP tests to run (otherwise those tests self-skip)
+
 ### Local (emulator) setup
 When running against the local Firebase Emulator, create these accounts via:
 ```bash
@@ -94,6 +104,7 @@ e2e/
   auth.spec.ts              Login, logout, session timeout, signup validation
   admin.spec.ts             Team CRUD, player management, access control
   parent.spec.ts            Parent home page, RSVP flow, state persistence
+  player.spec.ts            Player home page, RSVP flow, access control, profile
   invite-flow.spec.ts       Full invite lifecycle: add player → invite → revoke
   environment.spec.ts       Dev/staging environment banner, page smoke tests
   environment.prod.spec.ts  Production-only: no banner, no console errors
