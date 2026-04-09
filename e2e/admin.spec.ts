@@ -123,7 +123,7 @@ test('admin Invites tab shows pending invites', async ({ asAdmin }) => {
 
   // Navigate to any team — find first team card
   await page.goto('/teams');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const firstTeamCard = page.locator('[class*="cursor-pointer"]').filter({
     has: page.locator('[class*="font-semibold"]'),

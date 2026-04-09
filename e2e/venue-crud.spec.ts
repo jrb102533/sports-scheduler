@@ -37,7 +37,7 @@ import { test, expect } from './fixtures/auth.fixture';
  */
 async function openNewVenueModal(page: import('@playwright/test').Page) {
   await page.goto('/venues');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await page.getByRole('button', { name: /new venue/i }).click();
   const modal = page.getByRole('dialog');
   await expect(modal).toBeVisible({ timeout: 5_000 });
@@ -257,7 +257,7 @@ test('VENUE-CRUD-05: a saved venue appears in the Venue dropdown when creating a
 
   // Navigate to /calendar and open the New Event form
   await page.goto('/calendar');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const newEventBtn = page.getByRole('button', { name: /new event/i });
   const btnVisible = await newEventBtn.isVisible({ timeout: 10_000 }).catch(() => false);
@@ -289,7 +289,7 @@ test('VENUE-CRUD-05: a saved venue appears in the Venue dropdown when creating a
 
   // Cleanup
   await page.goto('/venues');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await deleteVenueByName(page, venueName);
 });
 
@@ -310,7 +310,7 @@ test('VENUE-CRUD-06: a saved venue appears in the schedule wizard venue combobox
 
   // Navigate to /leagues and find a league with at least one season
   await page.goto('/leagues');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const firstLeague = page.getByRole('link', { name: /.+/ }).filter({ hasText: /.+/ }).first();
   const leagueVisible = await firstLeague.isVisible({ timeout: 5_000 }).catch(() => false);
@@ -319,7 +319,7 @@ test('VENUE-CRUD-06: a saved venue appears in the schedule wizard venue combobox
     test.skip(true, 'No leagues found in staging — skipping wizard venue check');
     // Cleanup venue before skipping
     await page.goto('/venues');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await deleteVenueByName(page, venueName);
     return;
   }
@@ -334,13 +334,13 @@ test('VENUE-CRUD-06: a saved venue appears in the schedule wizard venue combobox
   if (!tabVisible) {
     test.skip(true, 'Seasons tab not visible on league detail — skipping wizard venue check');
     await page.goto('/venues');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await deleteVenueByName(page, venueName);
     return;
   }
 
   await seasonsTab.click();
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Click the first season to reach SeasonDashboard
   const firstSeason = page.getByRole('link', { name: /.+/ }).filter({ hasText: /.+/ }).first();
@@ -349,14 +349,14 @@ test('VENUE-CRUD-06: a saved venue appears in the schedule wizard venue combobox
   if (!seasonVisible) {
     test.skip(true, 'No seasons found in this league — skipping wizard venue check');
     await page.goto('/venues');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await deleteVenueByName(page, venueName);
     return;
   }
 
   await firstSeason.click();
   await page.waitForURL(/\/leagues\/.+\/seasons\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Open the schedule wizard from SeasonDashboard
   const wizardBtn = page
@@ -367,7 +367,7 @@ test('VENUE-CRUD-06: a saved venue appears in the schedule wizard venue combobox
   if (!wizardBtnVisible) {
     test.skip(true, 'Schedule wizard button not found on SeasonDashboard — skipping wizard venue check');
     await page.goto('/venues');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await deleteVenueByName(page, venueName);
     return;
   }
@@ -413,7 +413,7 @@ test('VENUE-CRUD-06: a saved venue appears in the schedule wizard venue combobox
     test.skip(true, 'Could not reach the venues step in the schedule wizard — form may require data the staging account lacks');
     await wizardModal.getByRole('button', { name: /cancel|close/i }).first().click().catch(() => undefined);
     await page.goto('/venues');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await deleteVenueByName(page, venueName);
     return;
   }
@@ -433,6 +433,6 @@ test('VENUE-CRUD-06: a saved venue appears in the schedule wizard venue combobox
 
   // Cleanup
   await page.goto('/venues');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await deleteVenueByName(page, venueName);
 });

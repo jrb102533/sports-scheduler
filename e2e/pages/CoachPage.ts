@@ -77,13 +77,13 @@ export class CoachPage {
   /** Navigate to the home page and wait for it to settle. */
   async goto() {
     await this.page.goto('/');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   /** Navigate to /teams and wait for the page to settle. */
   async gotoTeams() {
     await this.page.goto('/teams');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   /**
@@ -107,6 +107,6 @@ export class CoachPage {
     await expect(link).toBeVisible({ timeout: 10_000 });
     await link.click();
     await this.page.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
   }
 }

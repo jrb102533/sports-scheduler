@@ -40,7 +40,7 @@ import { test, expect } from './fixtures/auth.fixture';
  */
 async function gotoMessaging(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/messaging');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 }
 
 /**
@@ -345,7 +345,7 @@ test('navigating away from /messaging and back does not crash the page', async (
 
   // Navigate to /teams (always available to admin) and then return.
   await page.goto('/teams');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await expect(page).toHaveURL(/\/teams/);
 
   // Return to messaging.

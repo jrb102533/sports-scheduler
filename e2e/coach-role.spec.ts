@@ -96,7 +96,7 @@ test('COACH-ROLE-03: coach can navigate to the Sharks team detail page', async (
   await coach.clickFirstTeamCard();
 
   await expect(page).toHaveURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Team name heading must appear on the detail page
   const teamHeading = page.getByRole('heading', { name: new RegExp(KNOWN_TEAM_NAME, 'i') }).first();
@@ -119,7 +119,7 @@ test('COACH-ROLE-04: coach can see the Roster tab on their team detail page', as
 
   await coach.clickFirstTeamCard();
   await expect(page).toHaveURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Roster tab must be rendered (coach has canSeeRequests + isCoachOfTeam)
   const rosterTab = page.getByRole('tab', { name: /roster/i });
@@ -142,7 +142,7 @@ test('COACH-ROLE-05: coach can see the Schedule tab on their team detail page', 
 
   await coach.clickFirstTeamCard();
   await expect(page).toHaveURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Schedule tab is always the default; it must be visible
   const scheduleTab = page.getByRole('tab', { name: /schedule/i });
@@ -207,7 +207,7 @@ test('COACH-ROLE-09: profile page loads and shows Coach badge', async ({ asCoach
   const { page } = asCoach;
 
   await page.goto('/profile');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Profile page heading
   const editProfileHeading = page.getByRole('heading', { name: /edit profile/i });

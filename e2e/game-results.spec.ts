@@ -52,7 +52,7 @@ async function openFirstSharksEvent(
   page: import('@playwright/test').Page,
 ): Promise<{ eventTitle: string } | null> {
   await page.goto('/teams');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const sharksLink = page.getByRole('link', { name: new RegExp(SHARKS_TEAM_NAME, 'i') }).first();
   const sharksVisible = await sharksLink.isVisible({ timeout: 10_000 }).catch(() => false);
@@ -64,7 +64,7 @@ async function openFirstSharksEvent(
 
   await sharksLink.click();
   await page.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Activate the Schedule tab explicitly (it may already be active)
   const scheduleTab = page.getByRole('tab', { name: /schedule/i });

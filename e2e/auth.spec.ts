@@ -24,7 +24,7 @@ test('logs in with valid credentials and lands on the app shell', async ({ authP
   await authPage.signInButton.click();
 
   // The authenticated app shell renders "First Whistle" in the brand header
-  await expect(authPage.page.getByText('First Whistle')).toBeVisible({ timeout: 15_000 });
+  await expect(authPage.page.getByText('First Whistle').first()).toBeVisible({ timeout: 15_000 });
 
   // URL leaves /login
   await expect(authPage.page).not.toHaveURL(/\/login/);
@@ -189,7 +189,7 @@ test('Stay Signed In dismisses the session timeout modal', async ({ authPage, pa
   });
 
   // User should still be on the authenticated shell
-  await expect(page.getByText('First Whistle')).toBeVisible();
+  await expect(page.getByText('First Whistle').first()).toBeVisible();
 });
 
 test('auto-logs out when countdown expires after session timeout warning', async ({

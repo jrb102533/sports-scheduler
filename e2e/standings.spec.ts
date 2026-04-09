@@ -39,7 +39,7 @@ async function getFirstLeagueHref(
   page: import('@playwright/test').Page,
 ): Promise<string | null> {
   await page.goto('/leagues');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // League cards or list items link to /leagues/:id
   const leagueLink = page.locator('a[href*="/leagues/"]').first();
@@ -61,7 +61,7 @@ async function getFirstSeasonUrl(
   if (!tabVisible) return null;
 
   await seasonsTab.click();
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Season links navigate to /leagues/:leagueId/seasons/:seasonId
   const seasonLink = page.locator('a[href*="/seasons/"]').first();
@@ -86,7 +86,7 @@ test('STAND-01: Standings section renders on SeasonDashboard', async ({ asAdmin 
 
   await page.goto(leagueHref);
   await page.waitForURL(/\/leagues\/.+/);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const seasonUrl = await getFirstSeasonUrl(page);
   if (!seasonUrl) {
@@ -96,7 +96,7 @@ test('STAND-01: Standings section renders on SeasonDashboard', async ({ asAdmin 
 
   await page.goto(seasonUrl);
   await page.waitForURL(/\/leagues\/.+\/seasons\/.+/);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // SeasonDashboard renders the Standings heading above the StandingsTable
   const standingsHeading = page.getByRole('heading', { name: /standings/i });
@@ -122,7 +122,7 @@ test('STAND-02: Standings table column headers include W, L, and Pts', async ({ 
 
   await page.goto(leagueHref);
   await page.waitForURL(/\/leagues\/.+/);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const seasonUrl = await getFirstSeasonUrl(page);
   if (!seasonUrl) {
@@ -132,7 +132,7 @@ test('STAND-02: Standings table column headers include W, L, and Pts', async ({ 
 
   await page.goto(seasonUrl);
   await page.waitForURL(/\/leagues\/.+\/seasons\/.+/);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Wait for either the table or the empty-state paragraph before asserting headers
   const tableOrEmpty = page.locator('table, p').filter({
@@ -172,7 +172,7 @@ test('STAND-03: Standings table shows at least one team row when season has resu
 
   await page.goto(leagueHref);
   await page.waitForURL(/\/leagues\/.+/);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const seasonUrl = await getFirstSeasonUrl(page);
   if (!seasonUrl) {
@@ -182,7 +182,7 @@ test('STAND-03: Standings table shows at least one team row when season has resu
 
   await page.goto(seasonUrl);
   await page.waitForURL(/\/leagues\/.+\/seasons\/.+/);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Wait for Firestore standings to load (loading spinner disappears)
   await page.waitForFunction(
@@ -222,7 +222,7 @@ test('STAND-04: Parent can view the Standings tab on a league without redirect o
 
   // Navigate to /leagues as a parent
   await page.goto('/leagues');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // If the parent is redirected away from /leagues, skip rather than fail
   const currentUrl = page.url();
@@ -240,7 +240,7 @@ test('STAND-04: Parent can view the Standings tab on a league without redirect o
 
   await leagueLink.click();
   await page.waitForURL(/\/leagues\/.+/);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Should not have been redirected to /login
   await expect(page).not.toHaveURL(/\/login/);
@@ -248,7 +248,7 @@ test('STAND-04: Parent can view the Standings tab on a league without redirect o
   const standingsTab = page.getByRole('tab', { name: /standings/i });
   await expect(standingsTab).toBeVisible({ timeout: 5_000 });
   await standingsTab.click();
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Still on the league detail page — no redirect
   await expect(page).not.toHaveURL(/\/login/);
@@ -281,12 +281,12 @@ test('STAND-05: Standings tab renders standings data or a defined empty state �
 
   await page.goto(leagueHref);
   await page.waitForURL(/\/leagues\/.+/);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const standingsTab = page.getByRole('tab', { name: /standings/i });
   await expect(standingsTab).toBeVisible({ timeout: 5_000 });
   await standingsTab.click();
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Three possible render outcomes — all are acceptable, blank screen is not:
   //   1. A standings table with team rows

@@ -32,7 +32,7 @@ async function navigateToFirstSeason(
   page: import('@playwright/test').Page,
 ): Promise<{ leagueId: string; seasonId: string } | null> {
   await page.goto('/leagues');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Pick the first league card / row
   const firstLeague = page.getByRole('link', { name: /.+/ }).filter({ hasText: /.+/ }).first();
@@ -54,7 +54,7 @@ async function navigateToFirstSeason(
   await seasonsTab.click();
 
   // Wait for the seasons list to settle
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Click the first season
   const firstSeason = page.getByRole('link', { name: /.+/ }).filter({ hasText: /.+/ }).first();
@@ -72,7 +72,7 @@ async function navigateToFirstSeason(
   if (!seasonIdMatch) return null;
   const seasonId = seasonIdMatch[1]!;
 
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   return { leagueId, seasonId };
 }
 
@@ -137,7 +137,7 @@ test('PUB-03: "Publish Now" button is present and enabled when a draft schedule 
   const { page } = asAdmin;
 
   await page.goto('/leagues');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Iterate leagues looking for one that has a season with a draft schedule.
   // We rely on the "Draft Schedule Ready" section heading that SeasonDashboard
@@ -155,12 +155,12 @@ test('PUB-03: "Publish Now" button is present and enabled when a draft schedule 
     if (!href?.match(/\/leagues\/[^/]+$/)) continue;
 
     await page.goto(href);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     const seasonsTab = page.getByRole('tab', { name: /seasons/i });
     if (!(await seasonsTab.isVisible({ timeout: 3_000 }).catch(() => false))) continue;
     await seasonsTab.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     const seasonLinks = await page
       .getByRole('link', { name: /.+/ })
@@ -172,7 +172,7 @@ test('PUB-03: "Publish Now" button is present and enabled when a draft schedule 
       if (!seasonHref?.match(/\/seasons\//)) continue;
 
       await page.goto(seasonHref);
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       const publishBtn = page.getByRole('button', { name: /publish now/i });
       if (await publishBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
@@ -199,7 +199,7 @@ test('PUB-04: "Schedule Published" state renders correctly — no Publish Now bu
   const { page } = asAdmin;
 
   await page.goto('/leagues');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const leagueLinks = await page.getByRole('link', { name: /.+/ }).all();
   if (leagueLinks.length === 0) {
@@ -214,12 +214,12 @@ test('PUB-04: "Schedule Published" state renders correctly — no Publish Now bu
     if (!href?.match(/\/leagues\/[^/]+$/)) continue;
 
     await page.goto(href);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     const seasonsTab = page.getByRole('tab', { name: /seasons/i });
     if (!(await seasonsTab.isVisible({ timeout: 3_000 }).catch(() => false))) continue;
     await seasonsTab.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     const seasonLinks = await page
       .getByRole('link', { name: /.+/ })
@@ -231,7 +231,7 @@ test('PUB-04: "Schedule Published" state renders correctly — no Publish Now bu
       if (!seasonHref?.match(/\/seasons\//)) continue;
 
       await page.goto(seasonHref);
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // SeasonDashboard renders "Schedule Published" heading text when hasFullyPublished
       const publishedHeading = page.getByText(/schedule published/i).first();

@@ -121,7 +121,7 @@ test('RSVP state persists after page refresh', async ({ page }) => {
 
   // Reload and verify it persisted
   await page.reload();
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(2_000); // Allow Firestore subscription to populate
 
   const goingBtnAfterReload = page.getByRole('button', { name: 'Going' }).first();
@@ -142,7 +142,7 @@ test('RSVP Not Going button is present and tappable', async ({ page }) => {
   await auth.loginAndWaitForApp(parentEmail, parentPassword);
 
   await page.goto('/parent');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const notGoingBtn = page.getByRole('button', { name: 'Not Going' }).first();
   const hasEvents = await notGoingBtn.isVisible({ timeout: 5_000 }).catch(() => false);

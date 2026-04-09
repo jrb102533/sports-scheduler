@@ -75,13 +75,13 @@ export class LeagueManagerPage {
   /** Navigate to the home page and wait for it to settle. */
   async goto() {
     await this.page.goto('/');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   /** Navigate to /leagues and wait for the page to settle. */
   async gotoLeagues() {
     await this.page.goto('/leagues');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   /**

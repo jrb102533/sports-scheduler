@@ -150,7 +150,7 @@ test('player RSVP state persists after page reload', async ({ page }) => {
 
   // Reload and confirm the RSVP survived the round-trip
   await page.reload();
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(2_000); // Allow Firestore subscription to repopulate
 
   const goingAfterReload = page.getByRole('button', { name: 'Going' }).first();
@@ -181,7 +181,7 @@ test('player visiting /leagues lands on the leagues list without admin controls'
   const { page } = asPlayer;
 
   await page.goto('/leagues');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Player should reach the leagues page (it is accessible), but not see
   // the "Create League" or "Manage Users" admin control.
@@ -228,7 +228,7 @@ test('player profile page loads and shows Team Connection section', async ({ asP
   const { page } = asPlayer;
 
   await page.goto('/profile');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Profile page should show the player's display name (heading)
   const editProfileHeading = page.getByRole('heading', { name: /edit profile/i });
@@ -278,7 +278,7 @@ test('player visiting a team detail page sees no edit or delete buttons', async 
   const { page } = asPlayer;
 
   await page.goto('/teams');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const teamLinks = page.locator('a[href*="/teams/"]');
   const count = await teamLinks.count();
@@ -290,7 +290,7 @@ test('player visiting a team detail page sees no edit or delete buttons', async 
 
   await teamLinks.first().click();
   await page.waitForURL(/\/teams\/.+/);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Coach/admin controls that must NOT appear for a player
   const editTeamBtn = page.getByRole('button', { name: /edit team|edit/i }).first();

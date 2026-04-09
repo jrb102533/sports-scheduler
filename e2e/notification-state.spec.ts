@@ -21,7 +21,8 @@
  * - Staging may or may not have unread notifications. Tests that depend on
  *   unread data skip gracefully when none is present.
  * - The notification store is populated from a Firestore subscription that
- *   fires on MainLayout mount. networkidle is used to let it settle.
+ *   fires on MainLayout mount. domcontentloaded is used to let the DOM settle
+ *   (networkidle never fires on this app due to persistent Firestore connections).
  */
 
 import { test, expect } from './fixtures/auth.fixture';
@@ -60,7 +61,7 @@ function notificationPanel(page: import('@playwright/test').Page) {
 test('NOTIF-STATE-01: bell badge displays the unread notification count', async ({ asAdmin }) => {
   const { page } = asAdmin;
   await page.goto('/');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const badge = bellBadge(page);
   const badgeVisible = await badge.isVisible({ timeout: 5_000 }).catch(() => false);
@@ -82,7 +83,7 @@ test('NOTIF-STATE-01: bell badge displays the unread notification count', async 
 test('NOTIF-STATE-02: clicking the bell button opens the notification panel', async ({ asAdmin }) => {
   const { page } = asAdmin;
   await page.goto('/');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Panel must not already be open
   const panelBefore = await notificationPanel(page).isVisible({ timeout: 2_000 }).catch(() => false);
@@ -101,7 +102,7 @@ test('NOTIF-STATE-02: clicking the bell button opens the notification panel', as
 test('NOTIF-STATE-03: notification panel closes when clicking the backdrop', async ({ asAdmin }) => {
   const { page } = asAdmin;
   await page.goto('/');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Open the panel
   await bellButton(page).click();
@@ -122,7 +123,7 @@ test('NOTIF-STATE-03: notification panel closes when clicking the backdrop', asy
 test('NOTIF-STATE-04: clicking an unread notification item marks it read and decrements the badge', async ({ asAdmin }) => {
   const { page } = asAdmin;
   await page.goto('/');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Skip if there are no unread notifications (no badge)
   const badgeVisible = await bellBadge(page).isVisible({ timeout: 5_000 }).catch(() => false);
@@ -170,7 +171,7 @@ test('NOTIF-STATE-04: clicking an unread notification item marks it read and dec
 test('NOTIF-STATE-05: "Mark all read" in the panel removes the bell badge', async ({ asAdmin }) => {
   const { page } = asAdmin;
   await page.goto('/');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Skip if nothing is unread
   const badgeVisible = await bellBadge(page).isVisible({ timeout: 5_000 }).catch(() => false);
@@ -198,7 +199,7 @@ test('NOTIF-STATE-05: "Mark all read" in the panel removes the bell badge', asyn
 test('NOTIF-STATE-06: notification panel shows empty state when there are no notifications', async ({ asAdmin }) => {
   const { page } = asAdmin;
   await page.goto('/');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Open the panel
   await bellButton(page).click();

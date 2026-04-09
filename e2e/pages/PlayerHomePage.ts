@@ -43,7 +43,7 @@ export class PlayerHomePage {
 
   async goto() {
     await this.page.goto('/parent');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   async expectTeamVisible(teamNameSubstring: string) {

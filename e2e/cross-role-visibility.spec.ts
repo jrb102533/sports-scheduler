@@ -55,13 +55,13 @@ test('CROSS-01: coach can see the Schedule tab on the Sharks team detail page', 
 
   await coach.clickTeamByName(KNOWN_TEAM_NAME);
   await expect(page).toHaveURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Schedule tab must be rendered and accessible
   const scheduleTab = page.getByRole('tab', { name: /schedule/i });
   await expect(scheduleTab).toBeVisible({ timeout: 10_000 });
   await scheduleTab.click();
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // The schedule area must show either event content or a recognisable empty state.
   // We do not assert a specific event title — this is a visibility smoke test.
@@ -186,7 +186,7 @@ test('CROSS-04: admin can navigate to Sharks Schedule tab without a crash', asyn
   const scheduleTab = page.getByRole('tab', { name: /schedule/i });
   await expect(scheduleTab).toBeVisible({ timeout: 10_000 });
   await scheduleTab.click();
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // After clicking the Schedule tab the page must still be free of crashes —
   // the URL should remain on the teams detail route
@@ -263,7 +263,7 @@ test('CROSS-05: coach sees no edit controls on a team they do not coach', async 
 
   // Step 5: navigate directly to the unrelated team detail page
   await page.goto(unrelatedTeamHref);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await expect(page).toHaveURL(/\/teams\/.+/, { timeout: 10_000 });
 
   // Step 6: assert that no privileged edit controls are visible.

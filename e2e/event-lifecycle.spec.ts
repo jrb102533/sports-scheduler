@@ -105,7 +105,7 @@ test('admin can open Add Event from the calendar and fill required fields', asyn
 }) => {
   const { page } = asAdmin;
   await page.goto('/calendar');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   await page.getByRole('button', { name: /add event/i }).click();
 
@@ -184,7 +184,7 @@ test('created event appears in the team schedule list', async ({ asAdmin }) => {
 test('clicking an event on the calendar opens EventDetailPanel', async ({ asAdmin }) => {
   const { page } = asAdmin;
   await page.goto('/calendar');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Look for event chips in the calendar grid
   const eventChips = page.locator('[class*="truncate"][class*="rounded"]').filter({

@@ -58,7 +58,7 @@ test('AVAIL-01: availability page loads without crashing for an authenticated co
   }
 
   await page.goto(url);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // The page must not show a React error overlay or a blank screen.
   // It will show either the full form (open collection, coach matched)
@@ -88,7 +88,7 @@ test('AVAIL-02: weekly availability grid shows all days and time blocks', async 
   }
 
   await page.goto(url);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // If the form is not rendered (coach not matched, collection closed, etc.)
   // the grid will never appear — skip rather than fail.
@@ -135,7 +135,7 @@ test('AVAIL-03: coach can toggle a grid cell from available to unavailable', asy
   }
 
   await page.goto(url);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Gate: only continue if the grid is rendered
   const weeklyHeading = page.getByRole('heading', { name: /weekly availability/i });
@@ -169,7 +169,7 @@ test('AVAIL-04: coach home page shows availability card when a collection is ope
 
   // The coach fixture already navigated to /.
   // Wait for the page to settle after Firestore fetches complete.
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // CoachAvailabilityCard renders "Availability Requested" when an open
   // collection exists for a league the coach belongs to.
@@ -216,7 +216,7 @@ test('AVAIL-05: admin visiting an availability URL sees graceful error, not a cr
   await auth.loginAndWaitForApp(adminEmail, adminPassword);
 
   await page.goto(url);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // The page must not crash
   const errorOverlay = page.getByText(/something went wrong/i);
