@@ -62,7 +62,9 @@ export function MainLayout() {
   const location = useLocation();
   const isHome = location.pathname === '/' || location.pathname === '/home';
   const firstName = profile?.displayName?.split(' ')[0] ?? '';
-  const greeting = firstName ? `Good day, ${firstName}` : 'Good day';
+  const hour = new Date().getHours();
+  const timeOfDay = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const greeting = firstName ? `${timeOfDay}, ${firstName}` : timeOfDay;
   const pageTitle = isHome
     ? ''
     : PAGE_TITLES[location.pathname]
