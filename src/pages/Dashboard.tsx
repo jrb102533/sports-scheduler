@@ -89,6 +89,7 @@ export function Dashboard() {
           .filter(t =>
             t.leagueIds?.length &&
             (t.coachId === profile?.uid ||
+              t.coachIds?.includes(profile?.uid ?? '') ||
               getMemberships(profile).some(m => m.role === 'coach' && m.teamId === t.id))
           )
           .flatMap(t => t.leagueIds!)

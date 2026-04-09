@@ -384,6 +384,7 @@ export function getAccessibleTeamIds(profile: UserProfile | null, allTeams: Team
         .filter(t =>
           t.createdBy === profile.uid ||
           t.coachId === profile.uid ||
+          t.coachIds?.includes(profile.uid) ||
           (m.teamId && t.id === m.teamId)
         )
         .forEach(t => ids.add(t.id));
