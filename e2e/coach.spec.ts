@@ -139,7 +139,12 @@ test('clicking an event opens the EventDetailPanel', async ({ asAdmin }) => {
   const panelVisible = await detailPanel.isVisible({ timeout: 5_000 }).catch(() => false);
   const closeVisible = await closeBtn.isVisible({ timeout: 5_000 }).catch(() => false);
 
-  expect(panelVisible || closeVisible).toBe(true);
+  if (!panelVisible && !closeVisible) {
+    throw new Error(
+      'EventDetailPanel did not open after clicking an event card. ' +
+      'Neither the detail panel nor a close button became visible within 5s.',
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------

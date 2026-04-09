@@ -117,15 +117,20 @@ test('admin can create a new user via the Add User modal', async ({ asAdmin }) =
   const modalGone = await modal.waitFor({ state: 'hidden', timeout: 15_000 }).then(() => true).catch(() => false);
 
   if (!modalGone) {
-    // CF may have errored — check for error message
-    const errorText = await modal.locator('.text-red-600, [class*="error"]').textContent().catch(() => '');
-    if (errorText) {
-      // Known acceptable failure: email already exists or CF rejected. Document it.
-      console.warn('Create user modal error:', errorText);
+    const errorText = await modal
+      .locator('[role="alert"], .text-red-600, [class*="error"]')
+      .textContent()
+      .catch(() => '');
+
+    if (errorText?.trim()) {
+      throw new Error(
+        `User creation failed: "${errorText.trim()}". Modal did not close after timeout.`,
+      );
     }
-    // Even if modal stays open with an error, the test asserts the attempt was made
-    expect(true).toBe(true);
-    return;
+    throw new Error(
+      'User creation modal did not close after timeout and no error message is visible. ' +
+      'The Cloud Function may have failed silently.',
+    );
   }
 
   // If modal closed: the new user should eventually appear in the list
