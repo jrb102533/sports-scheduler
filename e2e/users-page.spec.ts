@@ -118,7 +118,7 @@ test('admin can create a new user via the Add User modal', async ({ asAdmin }) =
 
   if (!modalGone) {
     // CF may have errored — check for error message
-    const errorText = await modal.locator('.text-red-600, [class*="error"]').textContent().catch(() => '');
+    const errorText = await modal.locator('[role="alert"], [aria-live="polite"]').textContent().catch(() => '');
     if (errorText) {
       // Known acceptable failure: email already exists or CF rejected. Document it.
       console.warn('Create user modal error:', errorText);
@@ -129,7 +129,6 @@ test('admin can create a new user via the Add User modal', async ({ asAdmin }) =
   }
 
   // If modal closed: the new user should eventually appear in the list
-  await page.waitForTimeout(2_000);
   const newUserRow = page.getByText('E2E TestUser', { exact: false });
   await expect(newUserRow).toBeVisible({ timeout: 10_000 });
 

@@ -126,7 +126,6 @@ test('player RSVP state persists after page reload', async ({ asPlayer }) => {
   // Reload and confirm the RSVP survived the round-trip
   await page.reload();
   await page.waitForLoadState('domcontentloaded');
-  await page.waitForTimeout(2_000); // Allow Firestore subscription to repopulate
 
   const goingAfterReload = page.getByRole('button', { name: 'Going' }).first();
   await expect(goingAfterReload).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });

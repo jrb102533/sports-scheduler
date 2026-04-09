@@ -105,9 +105,6 @@ async function createEvent(
 async function cancelFirstEvent(
   page: import('@playwright/test').Page,
 ): Promise<'cancelled' | 'no-button' | 'no-event'> {
-  // Brief settle time for the list to re-render after event creation
-  await page.waitForTimeout(800);
-
   const eventItems = page.locator('[class*="rounded"][class*="cursor"]').filter({
     has: page.locator('button'),
   });
@@ -200,12 +197,10 @@ test('CANCEL-02: EventDetailPanel hides the RSVP & Snacks section for a cancelle
   }
 
   // The panel may have closed after cancel.  Re-open the event.
-  await page.waitForTimeout(800);
-
   const eventItems = page.locator('[class*="rounded"][class*="cursor"]').filter({
     has: page.locator('button'),
   });
-  const hasEvent = await eventItems.first().isVisible({ timeout: 4_000 }).catch(() => false);
+  const hasEvent = await eventItems.first().isVisible({ timeout: 8_000 }).catch(() => false);
   if (!hasEvent) {
     test.skip(true, 'Cannot re-open cancelled event card — skipping CANCEL-02');
     return;
@@ -249,12 +244,10 @@ test('CANCEL-03: Cancel Event button is absent when event is already cancelled',
   }
 
   // Re-open the cancelled event
-  await page.waitForTimeout(800);
-
   const eventItems = page.locator('[class*="rounded"][class*="cursor"]').filter({
     has: page.locator('button'),
   });
-  const hasEvent = await eventItems.first().isVisible({ timeout: 4_000 }).catch(() => false);
+  const hasEvent = await eventItems.first().isVisible({ timeout: 8_000 }).catch(() => false);
   if (!hasEvent) {
     test.skip(true, 'Cannot re-open cancelled event card — skipping CANCEL-03');
     return;
@@ -295,12 +288,10 @@ test('CANCEL-04: admin can restore a cancelled event and the Cancelled badge dis
   }
 
   // Re-open the cancelled event
-  await page.waitForTimeout(800);
-
   const eventItems = page.locator('[class*="rounded"][class*="cursor"]').filter({
     has: page.locator('button'),
   });
-  const hasEvent = await eventItems.first().isVisible({ timeout: 4_000 }).catch(() => false);
+  const hasEvent = await eventItems.first().isVisible({ timeout: 8_000 }).catch(() => false);
   if (!hasEvent) {
     test.skip(true, 'Cannot re-open cancelled event card — skipping CANCEL-04');
     return;
@@ -345,12 +336,10 @@ test('CANCEL-04: admin can restore a cancelled event and the Cancelled badge dis
 
   // The schedule list should now show the event without the Cancelled badge.
   // Re-open the event to check its status badge inside the panel.
-  await page.waitForTimeout(800);
-
   const updatedItems = page.locator('[class*="rounded"][class*="cursor"]').filter({
     has: page.locator('button'),
   });
-  const hasUpdated = await updatedItems.first().isVisible({ timeout: 4_000 }).catch(() => false);
+  const hasUpdated = await updatedItems.first().isVisible({ timeout: 8_000 }).catch(() => false);
   if (!hasUpdated) {
     test.skip(true, 'Event card not found after restore — skipping CANCEL-04 final assertion');
     return;
@@ -397,8 +386,6 @@ test('CANCEL-05: EventCard does not render inline RSVP or snack controls for a c
   if (await closeBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
     await closeBtn.click();
   }
-
-  await page.waitForTimeout(800);
 
   // Confirm the schedule tab still shows the cancelled event card
   const cancelledIndicator = page.getByText('Cancelled').first();

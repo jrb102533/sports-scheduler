@@ -86,10 +86,11 @@ test('clicking next month changes the month heading', async ({ asAdmin }) => {
 
   const originalMonth = await monthHeading.textContent();
 
-  // The Next Month button is the second chevron button in the nav row
-  // Both ChevronLeft and ChevronRight are secondary size buttons
-  const navButtons = page.locator('.flex.items-center.gap-3 button[class*="secondary"]');
-  const nextBtn = navButtons.nth(1); // 0 = prev, 1 = next
+  // The Next Month button is the second chevron button in the nav row.
+  // TODO: add data-testid to calendar nav buttons in the component for precision.
+  const navButtons = page.getByRole('button', { name: /next month|chevronright/i })
+    .or(page.locator('[aria-label*="next" i]'));
+  const nextBtn = navButtons.first();
 
   await expect(nextBtn).toBeVisible({ timeout: 5_000 });
   await nextBtn.click();
@@ -108,9 +109,10 @@ test('"Today" button navigates back to current month', async ({ asAdmin }) => {
     hasText: /january|february|march|april|may|june|july|august|september|october|november|december/i,
   });
 
-  // Navigate forward two months
-  const navButtons = page.locator('.flex.items-center.gap-3 button[class*="secondary"]');
-  const nextBtn = navButtons.nth(1);
+  // Navigate forward two months.
+  // TODO: add data-testid to calendar nav buttons in the component for precision.
+  const nextBtn = page.getByRole('button', { name: /next month|chevronright/i })
+    .or(page.locator('[aria-label*="next" i]')).first();
   await nextBtn.click();
   await nextBtn.click();
 

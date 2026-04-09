@@ -166,9 +166,7 @@ export class AdminPage {
   async expectInviteGone(teamId: string, parentEmail: string) {
     await this.gotoTeam(teamId);
     await this.page.getByRole('tab', { name: /invites/i }).click();
-    // Give the list a moment to load
-    await this.page.waitForTimeout(1_000);
     await expect(this.page.locator('[data-testid="invite-row"]', { hasText: parentEmail }))
-      .not.toBeVisible();
+      .not.toBeVisible({ timeout: 10_000 });
   }
 }

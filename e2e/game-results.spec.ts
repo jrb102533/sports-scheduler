@@ -71,9 +71,6 @@ async function openFirstSharksEvent(
   await expect(scheduleTab).toBeVisible({ timeout: 10_000 });
   await scheduleTab.click();
 
-  // Give the schedule list time to render
-  await page.waitForTimeout(1_000);
-
   // Primary selector — cards rendered as rounded-xl border cursor-pointer divs
   const eventCard = page
     .locator('div.rounded-xl.border.border-gray-200.cursor-pointer')
@@ -321,11 +318,10 @@ test('RESULT-04: saving a score via "Record Score" shows a confirmation and the 
     'Expected "Saved!" or "Save Score" button after submitting — neither was visible',
   ).toBe(true);
 
-  // The matchup card at the top of the panel renders the saved score in bold
+  // The matchup card at the top of the panel renders the saved score
   // as "{homeScore} – {awayScore}" when event.result is set.
-  // This is the DOM representation: text-2xl font-bold text-gray-900.
-  // Give the Zustand store time to propagate the update.
-  const scoreDisplay = page.locator('.text-2xl.font-bold').filter({ hasText: /3.+1/ }).first();
+  // TODO: add data-testid="score-display" to the matchup card score element in the component.
+  const scoreDisplay = page.getByText(/3\s*[–-]\s*1/).first();
   const scoreVisible = await scoreDisplay.isVisible({ timeout: 5_000 }).catch(() => false);
 
   if (!scoreVisible) {
