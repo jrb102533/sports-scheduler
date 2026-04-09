@@ -92,12 +92,23 @@ Authorized domains are managed in one place only: **Firebase Console → Authent
 
 ## Deployment Policy
 
+### Hard rule: never deploy to production from the CLI
+
+**Always deploy to production via the `release.yml` GitHub Actions workflow** — never via `firebase deploy` from the terminal. The GitHub `environment: production` gate requires human approval before deploying. Running `firebase deploy --project production` locally bypasses that gate entirely.
+
+To deploy to production:
+1. Merge the PR to `main`
+2. Go to GitHub → Actions → "Release" workflow → Run workflow
+3. Wait for the approval notification and approve it
+
+Staging deploys (`firebase deploy --project staging`) from the CLI are fine.
+
 ### Hard rule: merge before deploy
 
 **No production deploys without a merged PR.** This applies to all targets: `hosting`, `functions`, `firestore:rules`, `firestore:indexes`.
 
 Enforcement layers:
-1. **GitHub Actions `environment: production` gate** — the deploy workflow requires a reviewer approval before any prod job runs (primary enforcement)
+1. **GitHub Actions `environment: production` gate** — the deploy workflow pauses for human approval (primary enforcement)
 2. **Branch protection on `main`** — PRs required before merging
 3. **This policy** — all agents must follow it
 
