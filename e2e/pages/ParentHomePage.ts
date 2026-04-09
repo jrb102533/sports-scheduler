@@ -60,8 +60,10 @@ export class ParentHomePage {
    */
   async rsvpGoingOnFirstEvent(): Promise<string> {
     await expect(this.goingButton).toBeVisible({ timeout: 10_000 });
+    // TODO: add data-testid="event-title" to the event card title element in the component.
     const eventTitle = await this.page
-      .locator('.font-semibold.text-gray-900.text-sm')
+      .getByRole('heading', { level: 3 })
+      .or(this.page.locator('[class*="font-semibold"]').filter({ hasText: /.+/ }))
       .first()
       .textContent() ?? '';
 

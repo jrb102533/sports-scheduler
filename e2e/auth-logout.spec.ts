@@ -39,7 +39,6 @@ test('logout from sidebar clears session and redirects to /login', async ({ page
     // Try opening user menu
     if (await userMenu.isVisible({ timeout: 2_000 }).catch(() => false)) {
       await userMenu.click();
-      await page.waitForTimeout(500);
     }
   }
 

@@ -65,7 +65,6 @@ test('RSVP Not Going persists after page reload', async ({ asParent }) => {
   // Reload and verify state persists
   await page.reload();
   await page.waitForLoadState('domcontentloaded');
-  await page.waitForTimeout(2_000);
 
   const notGoingBtnAfterReload = page.getByRole('button', { name: 'Not Going' }).first();
   await expect(notGoingBtnAfterReload).toHaveAttribute('aria-pressed', 'true', {
@@ -200,7 +199,6 @@ test('snack slot claim persists after page reload', async ({ asParent }) => {
   // Reload and verify
   await page.reload();
   await page.waitForLoadState('domcontentloaded');
-  await page.waitForTimeout(2_000);
 
   const claimedAfterReload = page
     .getByText(/you're bringing|cancel snack|release/i)

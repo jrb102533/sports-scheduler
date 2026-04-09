@@ -3,35 +3,37 @@
  *
  * Covers:
  *   COACH-ROLE-01: Coach lands on / (not /parent) after login
- *   COACH-ROLE-02: HomePage loads — coach sees their team card (Sharks)
+ *   COACH-ROLE-02: HomePage loads — coach sees their team card (E2E Team A)
  *   COACH-ROLE-03: Coach can navigate to their team detail page
  *   COACH-ROLE-04: Coach can see the Roster tab on their team
  *   COACH-ROLE-05: Coach can see the Schedule tab on their team
  *   COACH-ROLE-06: /users is blocked — coach redirected away
  *   COACH-ROLE-07: "Manage Users" nav link is NOT visible for coach
- *   COACH-ROLE-08: Coach can access /teams and sees Sharks listed
+ *   COACH-ROLE-08: Coach can access /teams and sees E2E Team A listed
  *   COACH-ROLE-09: Profile page loads and shows Coach badge
  *   COACH-ROLE-10: Session timeout warning at 30 min (fake clock)
  *
  * Requires:
  *   E2E_COACH_EMAIL / E2E_COACH_PASSWORD — a coach account.
- *   The account must have role 'coach' in its Firestore profile
- *   and must be added to the coachIds array on the Sharks team
- *   (teamId: 44ee1f68-cdce-4a05-b30b-d2a87b191dbe).
+ *   The account must have role 'coach' in its Firestore profile.
+ *   GOOGLE_APPLICATION_CREDENTIALS — used by global-setup to seed E2E Team A
+ *   with this coach's UID in coachIds.
  *
- * Data constants used in assertions:
- *   KNOWN_TEAM_NAME — the team name that must appear on the home page
- *                     and on /teams for this coach account
+ * Data used in assertions:
+ *   testData.teamAName — the seeded team name ('E2E Team A') loaded from
+ *   e2e/.auth/test-data.json.  Falls back to Sharks if seeding was skipped.
  */
 
 import { test, expect } from './fixtures/auth.fixture';
 import { AuthPage } from './pages/AuthPage';
+import { loadTestData } from './helpers/test-data';
 
 // ---------------------------------------------------------------------------
-// Known test-account data
+// Known test-account data — resolved from seeded data or fallback
 // ---------------------------------------------------------------------------
 
-const KNOWN_TEAM_NAME = 'Sharks';
+const testData = loadTestData();
+const KNOWN_TEAM_NAME = testData?.teamAName ?? 'Sharks';
 
 // ---------------------------------------------------------------------------
 // COACH-ROLE-01 — routing: coach lands on / (not /parent) after login
@@ -48,10 +50,10 @@ test('COACH-ROLE-01: coach navigating to / stays on / (not redirected to /parent
 });
 
 // ---------------------------------------------------------------------------
-// COACH-ROLE-02 — home page loads and shows the Sharks team card
+// COACH-ROLE-02 — home page loads and shows the team card
 // ---------------------------------------------------------------------------
 
-test('COACH-ROLE-02: coach home page loads and shows the Sharks team card', async ({ asCoach }) => {
+test('COACH-ROLE-02: coach home page loads and shows the team card', async ({ asCoach }) => {
   const { coach, page } = asCoach;
 
   // "My Teams" heading must be present
@@ -68,9 +70,9 @@ test('COACH-ROLE-02: coach home page loads and shows the Sharks team card', asyn
     return;
   }
 
-  // The Sharks team card must appear
-  const sharksCard = page.getByText(KNOWN_TEAM_NAME, { exact: false }).first();
-  await expect(sharksCard).toBeVisible({ timeout: 10_000 });
+  // The team card must appear
+  const teamCard = page.getByText(KNOWN_TEAM_NAME, { exact: false }).first();
+  await expect(teamCard).toBeVisible({ timeout: 10_000 });
 
   // No unhandled error overlay
   const errorOverlay = page.getByText(/something went wrong/i);
@@ -82,13 +84,12 @@ test('COACH-ROLE-02: coach home page loads and shows the Sharks team card', asyn
 // COACH-ROLE-03 — coach can navigate to their team detail page
 // ---------------------------------------------------------------------------
 
-test('COACH-ROLE-03: coach can navigate to the Sharks team detail page', async ({ asCoach }) => {
+test('COACH-ROLE-03: coach can navigate to their team detail page', async ({ asCoach }) => {
   const { coach, page } = asCoach;
 
-  // Check that the team card is present before attempting to click
-  const sharksVisible = await page.getByText(KNOWN_TEAM_NAME, { exact: false }).first().isVisible({ timeout: 10_000 }).catch(() => false);
+  const teamVisible = await page.getByText(KNOWN_TEAM_NAME, { exact: false }).first().isVisible({ timeout: 10_000 }).catch(() => false);
 
-  if (!sharksVisible) {
+  if (!teamVisible) {
     test.skip(true, `${KNOWN_TEAM_NAME} team card not visible on home page — data contract mismatch`);
     return;
   }
@@ -110,9 +111,9 @@ test('COACH-ROLE-03: coach can navigate to the Sharks team detail page', async (
 test('COACH-ROLE-04: coach can see the Roster tab on their team detail page', async ({ asCoach }) => {
   const { coach, page } = asCoach;
 
-  const sharksVisible = await page.getByText(KNOWN_TEAM_NAME, { exact: false }).first().isVisible({ timeout: 10_000 }).catch(() => false);
+  const teamVisible = await page.getByText(KNOWN_TEAM_NAME, { exact: false }).first().isVisible({ timeout: 10_000 }).catch(() => false);
 
-  if (!sharksVisible) {
+  if (!teamVisible) {
     test.skip(true, `${KNOWN_TEAM_NAME} team card not visible — skipping Roster tab test`);
     return;
   }
@@ -133,9 +134,9 @@ test('COACH-ROLE-04: coach can see the Roster tab on their team detail page', as
 test('COACH-ROLE-05: coach can see the Schedule tab on their team detail page', async ({ asCoach }) => {
   const { coach, page } = asCoach;
 
-  const sharksVisible = await page.getByText(KNOWN_TEAM_NAME, { exact: false }).first().isVisible({ timeout: 10_000 }).catch(() => false);
+  const teamVisible = await page.getByText(KNOWN_TEAM_NAME, { exact: false }).first().isVisible({ timeout: 10_000 }).catch(() => false);
 
-  if (!sharksVisible) {
+  if (!teamVisible) {
     test.skip(true, `${KNOWN_TEAM_NAME} team card not visible — skipping Schedule tab test`);
     return;
   }
@@ -176,27 +177,27 @@ test('COACH-ROLE-07: coach does not see "Manage Users" in the sidebar', async ({
 });
 
 // ---------------------------------------------------------------------------
-// COACH-ROLE-08 — coach can access /teams and sees Sharks listed
+// COACH-ROLE-08 — coach can access /teams and sees their team listed
 // ---------------------------------------------------------------------------
 
-test('COACH-ROLE-08: coach can access /teams page and sees Sharks listed', async ({ asCoach }) => {
+test('COACH-ROLE-08: coach can access /teams page and sees their team listed', async ({ asCoach }) => {
   const { coach, page } = asCoach;
 
   await coach.gotoTeams();
 
   await expect(page).toHaveURL(/\/teams/, { timeout: 10_000 });
 
-  // The Sharks team must appear in the teams list
-  const sharksEntry = page.getByText(KNOWN_TEAM_NAME, { exact: false }).first();
+  // The team must appear in the teams list
+  const teamEntry = page.getByText(KNOWN_TEAM_NAME, { exact: false }).first();
 
-  const sharksVisible = await sharksEntry.isVisible({ timeout: 10_000 }).catch(() => false);
+  const teamVisible = await teamEntry.isVisible({ timeout: 10_000 }).catch(() => false);
 
-  if (!sharksVisible) {
+  if (!teamVisible) {
     test.skip(true, `${KNOWN_TEAM_NAME} not found on /teams — data contract mismatch`);
     return;
   }
 
-  await expect(sharksEntry).toBeVisible({ timeout: 10_000 });
+  await expect(teamEntry).toBeVisible({ timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------

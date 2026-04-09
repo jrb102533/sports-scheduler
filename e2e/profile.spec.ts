@@ -124,8 +124,8 @@ test('@smoke admin can update first and last name and see the saved confirmation
   await lastNameInput.clear();
   await lastNameInput.fill(originalLast || 'User');
   await page.getByRole('button', { name: /save changes/i }).click();
-  // Wait for save to complete before the test ends
-  await page.waitForTimeout(2_000);
+  // Wait for save to complete — look for a success indicator or re-enabled button
+  await expect(page.getByRole('button', { name: /save changes/i })).toBeEnabled({ timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------

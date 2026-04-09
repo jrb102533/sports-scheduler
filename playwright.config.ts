@@ -20,6 +20,7 @@ const stagingURL = process.env.E2E_STAGING_URL ?? 'https://staging.firstwhistles
 export default defineConfig({
   testDir: './e2e',
   globalSetup: './e2e/global-setup.ts',
+  globalTeardown: './e2e/global-teardown.ts',
   fullyParallel: false, // Firebase state is shared; run serially to avoid interference
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

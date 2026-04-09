@@ -501,7 +501,6 @@ test('season dashboard is accessible from the league Seasons tab', async ({ asAd
   await page.waitForURL(/\/leagues\/.+/);
 
   await page.getByRole('tab', { name: /seasons/i }).click();
-  await page.waitForTimeout(1_000);
 
   // If any season exists, click it to navigate to SeasonDashboard
   const seasonLinks = page.locator('a[href*="/seasons/"]');

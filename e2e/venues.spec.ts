@@ -118,8 +118,9 @@ test('@smoke admin can create a venue and it appears in the list', async ({ asAd
     const confirmBtn = page.getByRole('button', { name: /remove|confirm|yes/i }).last();
     if (await confirmBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
       await confirmBtn.click();
+      // Wait for the card to disappear after deletion
+      await expect(venueCard).not.toBeVisible({ timeout: 10_000 }).catch(() => undefined);
     }
-    await page.waitForTimeout(2_000);
   }
 });
 
@@ -187,8 +188,9 @@ test('admin can edit a venue name and the update is reflected', async ({ asAdmin
     const confirmBtn = page.getByRole('button', { name: /remove|confirm|yes/i }).last();
     if (await confirmBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
       await confirmBtn.click();
+      // Wait for the card to disappear after deletion
+      await expect(updatedCard).not.toBeVisible({ timeout: 10_000 }).catch(() => undefined);
     }
-    await page.waitForTimeout(1_500);
   }
 });
 

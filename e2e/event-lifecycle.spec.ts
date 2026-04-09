@@ -166,14 +166,12 @@ test('@smoke created event appears in the team schedule list', async ({ asAdmin 
   }
 
   // After modal closes, the schedule list should show at least one event entry
-  await page.waitForTimeout(1_000);
-
   // Events render as card-like items in the schedule tab
   const scheduleItems = page.locator('[class*="rounded"][class*="border"]').filter({
     has: page.locator('button').or(page.locator('p')),
   });
 
-  const hasItems = await scheduleItems.first().isVisible({ timeout: 5_000 }).catch(() => false);
+  const hasItems = await scheduleItems.first().isVisible({ timeout: 10_000 }).catch(() => false);
   expect(hasItems).toBe(true);
 });
 
@@ -241,14 +239,12 @@ test('admin can open event detail and see the Edit button', async ({ asAdmin }) 
     return;
   }
 
-  await page.waitForTimeout(1_000);
-
   // Click first event card
   const eventItems = page.locator('[class*="rounded"][class*="cursor"]').filter({
     has: page.locator('button'),
   });
 
-  const clickable = await eventItems.first().isVisible({ timeout: 3_000 }).catch(() => false);
+  const clickable = await eventItems.first().isVisible({ timeout: 8_000 }).catch(() => false);
   if (!clickable) {
     test.skip(true, 'No clickable event found after creation — skipping');
     return;
@@ -307,14 +303,12 @@ test('attendance section is visible or absent based on event state', async ({ as
     return;
   }
 
-  await page.waitForTimeout(1_000);
-
   // Click the first event
   const eventItems = page.locator('[class*="rounded"][class*="cursor"]').filter({
     has: page.locator('button'),
   });
 
-  const clickable = await eventItems.first().isVisible({ timeout: 3_000 }).catch(() => false);
+  const clickable = await eventItems.first().isVisible({ timeout: 8_000 }).catch(() => false);
   if (!clickable) {
     test.skip(true, 'No clickable event — skipping attendance test');
     return;
@@ -363,14 +357,12 @@ test('admin can cancel an event and a cancelled indicator appears', async ({ asA
     return;
   }
 
-  await page.waitForTimeout(1_000);
-
   // Click the first event to open EventDetailPanel
   const eventItems = page.locator('[class*="rounded"][class*="cursor"]').filter({
     has: page.locator('button'),
   });
 
-  const clickable = await eventItems.first().isVisible({ timeout: 3_000 }).catch(() => false);
+  const clickable = await eventItems.first().isVisible({ timeout: 8_000 }).catch(() => false);
   if (!clickable) {
     test.skip(true, 'No clickable event after creation — skipping cancel test');
     return;
@@ -412,14 +404,12 @@ test('cancelled event still appears in the schedule with a cancelled status', as
     return;
   }
 
-  await page.waitForTimeout(1_000);
-
   // Cancel the event
   const eventItems = page.locator('[class*="rounded"][class*="cursor"]').filter({
     has: page.locator('button'),
   });
 
-  const clickable = await eventItems.first().isVisible({ timeout: 3_000 }).catch(() => false);
+  const clickable = await eventItems.first().isVisible({ timeout: 8_000 }).catch(() => false);
   if (!clickable) {
     test.skip(true, 'No clickable event — skipping');
     return;

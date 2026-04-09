@@ -55,7 +55,7 @@ test('ForcePasswordChangeModal shows validation error for password under 8 chara
   await page.getByRole('button', { name: /set password/i }).click();
 
   // Validation error: at least 8 characters
-  const errorMsg = page.locator('.text-red-600');
+  const errorMsg = page.locator('[role="alert"]');
   await expect(errorMsg).toBeVisible({ timeout: 5_000 });
   await expect(errorMsg).toContainText(/at least 8 characters/i);
 });
@@ -81,7 +81,7 @@ test('ForcePasswordChangeModal shows validation error when passwords do not matc
   await page.getByLabel('Confirm Password').first().fill('DifferentPassword456');
   await page.getByRole('button', { name: /set password/i }).click();
 
-  const errorMsg = page.locator('.text-red-600');
+  const errorMsg = page.locator('[role="alert"]');
   await expect(errorMsg).toBeVisible({ timeout: 5_000 });
   await expect(errorMsg).toContainText(/do not match/i);
 });

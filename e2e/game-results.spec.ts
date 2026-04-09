@@ -2,7 +2,7 @@
  * Game result recording E2E tests
  *
  * Covers:
- *   RESULT-01: Result recording section is visible on a Sharks event detail (coach)
+ *   RESULT-01: Result recording section is visible on the E2E Team A event detail (coach)
  *   RESULT-02: Coach can open / see the score input fields
  *   RESULT-03: Coach can enter home and away scores into the inputs
  *   RESULT-04: Saving a result updates the event detail display
@@ -24,55 +24,50 @@
  *   so the locators work for either.
  *
  * Requires:
- *   E2E_COACH_EMAIL / E2E_COACH_PASSWORD — coach account assigned to the Sharks team.
- *   If no game/match events exist on the Sharks schedule (issue #317), each test that
- *   requires an event will skip with an explicit reason.
- *
- * Data constants:
- *   SHARKS_TEAM_NAME — team used for all navigation.
+ *   E2E_COACH_EMAIL / E2E_COACH_PASSWORD — coach account assigned to E2E Team A.
+ *   GOOGLE_APPLICATION_CREDENTIALS — used by global-setup to seed E2E Team A and
+ *   a past-dated game event.  If not set, data-dependent tests self-skip.
  */
 
 import { test, expect } from './fixtures/auth.fixture';
+import { loadTestData } from './helpers/test-data';
 
 // ---------------------------------------------------------------------------
-// Known test-account data
-// ---------------------------------------------------------------------------
-
-const SHARKS_TEAM_NAME = 'Sharks';
-
-// ---------------------------------------------------------------------------
-// Helper — navigate to the Sharks team detail page and open the first event
-// that is a game or match type (the result sections only render for those).
-// Falls back to the first event of any type if no explicit game/match is found.
+// Helper — navigate to the E2E team detail page and open the seeded event.
+// Falls back to scanning /teams for any event if seeded data is unavailable.
 // Returns { eventTitle } on success, or calls test.skip() and returns null if
-// the precondition cannot be met (no Sharks team, no events — issue #317).
+// the precondition cannot be met.
 // ---------------------------------------------------------------------------
 
-async function openFirstSharksEvent(
+async function openE2ETeamEvent(
   page: import('@playwright/test').Page,
 ): Promise<{ eventTitle: string } | null> {
-  await page.goto('/teams');
-  await page.waitForLoadState('domcontentloaded');
+  const testData = loadTestData();
 
-  const sharksLink = page.getByRole('link', { name: new RegExp(SHARKS_TEAM_NAME, 'i') }).first();
-  const sharksVisible = await sharksLink.isVisible({ timeout: 10_000 }).catch(() => false);
+  if (testData) {
+    // Navigate directly to the seeded team detail page via the known team ID
+    await page.goto(`/teams/${testData.teamAId}`);
+    await page.waitForLoadState('domcontentloaded');
+  } else {
+    // Fallback: navigate to /teams and find any team the coach has access to
+    await page.goto('/teams');
+    await page.waitForLoadState('domcontentloaded');
 
-  if (!sharksVisible) {
-    test.skip(true, `${SHARKS_TEAM_NAME} not found on /teams — data contract mismatch`);
-    return null;
+    const anyTeamLink = page.locator('a[href*="/teams/"]').first();
+    const anyTeamVisible = await anyTeamLink.isVisible({ timeout: 10_000 }).catch(() => false);
+    if (!anyTeamVisible) {
+      test.skip(true, 'No team found on /teams and E2E seed data unavailable — set GOOGLE_APPLICATION_CREDENTIALS');
+      return null;
+    }
+    await anyTeamLink.click();
+    await page.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
+    await page.waitForLoadState('domcontentloaded');
   }
-
-  await sharksLink.click();
-  await page.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('domcontentloaded');
 
   // Activate the Schedule tab explicitly (it may already be active)
   const scheduleTab = page.getByRole('tab', { name: /schedule/i });
   await expect(scheduleTab).toBeVisible({ timeout: 10_000 });
   await scheduleTab.click();
-
-  // Give the schedule list time to render
-  await page.waitForTimeout(1_000);
 
   // Primary selector — cards rendered as rounded-xl border cursor-pointer divs
   const eventCard = page
@@ -97,7 +92,7 @@ async function openFirstSharksEvent(
     : false;
 
   if (!primaryVisible && !fallbackVisible) {
-    test.skip(true, 'No events found on the Sharks schedule — issue #317 may be active');
+    test.skip(true, 'No events found on the team schedule — issue #317 may be active');
     return null;
   }
 
@@ -142,15 +137,15 @@ function getResultSection(page: import('@playwright/test').Page) {
 }
 
 // ---------------------------------------------------------------------------
-// RESULT-01: Result recording section is visible on a Sharks event detail
+// RESULT-01: Result recording section is visible on an E2E Team A event
 // ---------------------------------------------------------------------------
 
-test('RESULT-01: result recording section is visible on a Sharks event for a coach', async ({
+test('RESULT-01: result recording section is visible on an E2E Team A event for a coach', async ({
   asCoach,
 }) => {
   const { page } = asCoach;
 
-  const result = await openFirstSharksEvent(page);
+  const result = await openE2ETeamEvent(page);
   if (!result) return; // test.skip() already called inside helper
 
   // Either "Record Score" or "Submit Result" must be present.
@@ -166,8 +161,6 @@ test('RESULT-01: result recording section is visible on a Sharks event for a coa
     : false;
 
   if (!recordScoreVisible && !submitResultVisible) {
-    // The event may not be a game/match type, or is cancelled/completed.
-    // Skip rather than fail — the test cannot proceed without the section.
     test.skip(
       true,
       'Neither "Record Score" nor "Submit Result" section is visible — ' +
@@ -192,7 +185,7 @@ test('RESULT-02: score input fields (home and away) are visible in the result se
 }) => {
   const { page } = asCoach;
 
-  const result = await openFirstSharksEvent(page);
+  const result = await openE2ETeamEvent(page);
   if (!result) return;
 
   const section = getResultSection(page);
@@ -208,7 +201,6 @@ test('RESULT-02: score input fields (home and away) are visible in the result se
 
   // EventDetailPanel renders two number inputs inside the result section,
   // one for the home team score and one for the away team score.
-  // The label text is the team name or "Home"/"Away" as fallback.
   const scoreInputs = section.locator('input[type="number"]');
   const inputCount = await scoreInputs.count();
 
@@ -227,7 +219,7 @@ test('@smoke RESULT-03: coach can enter home score (3) and away score (1) into t
 }) => {
   const { page } = asCoach;
 
-  const result = await openFirstSharksEvent(page);
+  const result = await openE2ETeamEvent(page);
   if (!result) return;
 
   const section = getResultSection(page);
@@ -268,7 +260,7 @@ test('RESULT-04: saving a score via "Record Score" shows a confirmation and the 
 }) => {
   const { page } = asCoach;
 
-  const result = await openFirstSharksEvent(page);
+  const result = await openE2ETeamEvent(page);
   if (!result) return;
 
   // We specifically need the "Record Score" section (not "Submit Result").
@@ -321,17 +313,13 @@ test('RESULT-04: saving a score via "Record Score" shows a confirmation and the 
     'Expected "Saved!" or "Save Score" button after submitting — neither was visible',
   ).toBe(true);
 
-  // The matchup card at the top of the panel renders the saved score in bold
+  // The matchup card at the top of the panel renders the saved score
   // as "{homeScore} – {awayScore}" when event.result is set.
-  // This is the DOM representation: text-2xl font-bold text-gray-900.
-  // Give the Zustand store time to propagate the update.
-  const scoreDisplay = page.locator('.text-2xl.font-bold').filter({ hasText: /3.+1/ }).first();
+  // TODO: add data-testid="score-display" to the matchup card score element in the component.
+  const scoreDisplay = page.getByText(/3\s*[–-]\s*1/).first();
   const scoreVisible = await scoreDisplay.isVisible({ timeout: 5_000 }).catch(() => false);
 
   if (!scoreVisible) {
-    // The score display is only rendered when homeTeam or awayTeam or opponentName
-    // is present on the event.  If the matchup card itself is absent, skip this
-    // assertion rather than fail — the save succeeded (confirmed above).
     test.skip(
       true,
       'Score display not rendered in matchup card — the event may lack team/opponent data; ' +
@@ -352,7 +340,7 @@ test('RESULT-05: save/submit button is disabled when both score fields are empty
 }) => {
   const { page } = asCoach;
 
-  const result = await openFirstSharksEvent(page);
+  const result = await openE2ETeamEvent(page);
   if (!result) return;
 
   const section = getResultSection(page);
