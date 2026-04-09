@@ -42,7 +42,7 @@ export function ComposeMessageModal({ open, onClose, defaultTeamId }: ComposeMes
   const isAdmin = profile?.role === 'admin';
   const accessibleTeams = isAdmin
     ? allTeams
-    : allTeams.filter(t => t.createdBy === profile?.uid || t.coachId === profile?.uid || t.id === profile?.teamId);
+    : allTeams.filter(t => t.createdBy === profile?.uid || t.coachId === profile?.uid || t.coachIds?.includes(profile?.uid ?? '') || t.id === profile?.teamId);
 
   const [channel, setChannel] = useState<Channel>(FEATURE_SMS ? 'sms' : 'email');
   const [teamId, setTeamId] = useState(defaultTeamId ?? accessibleTeams[0]?.id ?? '');

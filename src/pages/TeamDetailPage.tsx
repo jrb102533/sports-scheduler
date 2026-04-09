@@ -84,7 +84,8 @@ export function TeamDetailPage() {
   const canSeeRequests = profile && team && (
     isCoachOfTeam(profile, team.id) ||
     team.createdBy === profile.uid ||
-    team.coachId === profile.uid
+    team.coachId === profile.uid ||
+    team.coachIds?.includes(profile.uid)
   );
 
   // Invites state
@@ -146,6 +147,7 @@ export function TeamDetailPage() {
   const isOwner = !isAdminUser && (
     team?.createdBy === profile?.uid ||
     team?.coachId === profile?.uid ||        // legacy fallback: coachId before memberships backfill
+    team?.coachIds?.includes(profile?.uid ?? '') ||
     isCoachOfTeam(profile, team?.id ?? '')
   );
 
