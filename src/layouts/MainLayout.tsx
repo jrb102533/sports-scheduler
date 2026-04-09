@@ -57,9 +57,12 @@ export function MainLayout() {
     return () => unsubs.forEach(u => u());
   }, [user]);
 
+  const profile = useAuthStore(s => s.profile);
+
   const location = useLocation();
   const isHome = location.pathname === '/' || location.pathname === '/home';
-  const greeting = '';
+  const firstName = profile?.displayName?.split(' ')[0] ?? '';
+  const greeting = firstName ? `Good day, ${firstName}` : 'Good day';
   const pageTitle = isHome
     ? ''
     : PAGE_TITLES[location.pathname]
@@ -93,6 +96,11 @@ export function MainLayout() {
           </div>
         </div>
         <TopBar greeting={greeting} pageTitle={pageTitle} onMenuClick={() => setSidebarOpen(true)} />
+        {pageTitle && (
+          <div className="bg-gray-50 border-b border-gray-200 px-4 sm:px-6 py-2">
+            <p className="text-sm font-semibold text-gray-700">{pageTitle}</p>
+          </div>
+        )}
         <main className="flex-1 overflow-y-auto">
           <Outlet />
         </main>
