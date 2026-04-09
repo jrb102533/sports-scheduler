@@ -1,15 +1,27 @@
 /**
- * Role-Based Access Control (RBAC) UAT
+ * Role-Based Access Control (RBAC) — authoritative access-control spec
+ *
+ * This file is the single source of truth for access-DENIED and routing checks.
+ * Do not duplicate these assertions in feature specs (player.spec.ts, parent.spec.ts,
+ * admin.spec.ts). Feature specs may test what a role CAN see/do, but route guards and
+ * hidden controls belong here.
+ *
+ * Role capability matrix:
+ *
+ * Route / Control        | admin | coach | league_manager | parent | player
+ * -----------------------|-------|-------|----------------|--------|-------
+ * /users                 |  yes  |  no   |      no        |   no   |   no
+ * /teams (read)          |  yes  |  yes  |      yes       |   yes  |   yes
+ * Edit/Delete/AddPlayer  |  yes  |  yes  |      no        |   no   |   no
+ * / → /parent redirect   |  no   |  no   |      no        |   yes  |   yes
  *
  * Covers:
- *   RBAC-03: Parent/player role cannot access team edit controls
- *   RBAC-04: Dashboard scope — coach sees only own team data
- *   RBAC-05: Non-admin routes inaccessible from wrong roles
- *   ADMIN-USR-09: Parent blocked from /users (also tested in admin.spec.ts, repeated for completeness)
- *
- * These tests use the asParent fixture for the parent account.
- * For role-scoped dashboard tests we rely on the admin account (which should have full scope)
- * and the parent account (which should have narrowed scope).
+ *   RBAC-01: parent/player redirected from / to /parent
+ *   RBAC-02: admin can reach /users; non-admin roles cannot
+ *   RBAC-03: parent cannot see team edit/delete/add-player controls
+ *   RBAC-04: dashboard scope — admin sees all-scope stat cards
+ *   RBAC-05: league manager blocked from /users
+ *   RBAC-06: coach blocked from /users
  */
 
 import { test, expect } from './fixtures/auth.fixture';
