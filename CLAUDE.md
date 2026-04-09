@@ -159,6 +159,12 @@ If production is down or actively leaking data:
 - Page objects: `e2e/pages/PageName.ts` — one per major route, reused across specs
 - Fixtures: `e2e/fixtures/auth.fixture.ts` — role fixtures only; add new roles here when new accounts are created
 
+### Don't duplicate coverage across layers
+
+- If a validation rule is unit-tested, the E2E test only needs to confirm the form submits or rejects — not re-test every invalid input
+- E2E covers the happy path and role-based access boundaries. Edge cases belong in unit/integration tests
+- Write the Playwright spec **before** the feature branch has any implementation — the spec is the acceptance criteria in code. Expect it to stay red across multiple commits until the full flow is wired
+
 ### Playwright rules
 
 - **`test.skip(true, reason)`** for data-dependent tests with missing staging data — never fail silently
@@ -166,11 +172,12 @@ If production is down or actively leaking data:
 - All skip blocks must be resolved before a feature is considered fully covered
 - Test accounts live in staging Firebase Auth + Firestore — document new accounts in `e2e/README.md`
 - `page.clock.install()` for session timeout tests must be called **after** login so Firebase Auth uses real time
+- **No `sleep` or fixed-time waits.** Use `waitForSelector`, `waitForURL`, or Playwright's built-in auto-waiting. Fixed waits are flaky by design
 
 ### Firebase-specific rules
 
-- Firestore rule changes require integration tests (emulator) AND security-engineer review before merge
-- Cloud Functions: unit-test the pure logic separately; E2E tests call the real deployed function
+- **Firestore rules**: test with `@firebase/rules-unit-testing` emulator. Write rule tests for every role boundary — verify both allowed AND denied access. A missing rule test is a security gap
+- Cloud Functions: extract business logic from the Firebase trigger wrapper and unit-test it. E2E tests call the real deployed function
 - Never test `publishSchedule`, `deleteTeam`, or other irreversible CF mutations in E2E — they permanently alter staging data
 
 ### Definition of done
