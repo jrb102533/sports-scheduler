@@ -25,9 +25,8 @@
  *                       on the home page
  */
 
-import { test, expect, creds } from './fixtures/auth.fixture';
+import { test, expect } from './fixtures/auth.fixture';
 import { AuthPage } from './pages/AuthPage';
-import { LeagueManagerPage } from './pages/LeagueManagerPage';
 
 // ---------------------------------------------------------------------------
 // Known test-account data
@@ -207,19 +206,8 @@ test('LM-08: league manager can navigate to a team detail page for a team in the
 // LM-09 — Team detail page does NOT show delete button for LM
 // ---------------------------------------------------------------------------
 
-test('LM-09: team detail page does not show delete team button for league manager', async ({ page }) => {
-  const lmEmail = process.env.E2E_LM_EMAIL;
-  const lmPassword = process.env.E2E_LM_PASSWORD;
-
-  if (!lmEmail || !lmPassword) {
-    test.skip(true, 'E2E_LM_EMAIL / E2E_LM_PASSWORD not set');
-    return;
-  }
-
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(lmEmail, lmPassword);
-
-  const lm = new LeagueManagerPage(page);
+test('LM-09: team detail page does not show delete team button for league manager', async ({ asLeagueManager }) => {
+  const { lm, page } = asLeagueManager;
   await lm.gotoLeagues();
 
   // Navigate into the league then to a team

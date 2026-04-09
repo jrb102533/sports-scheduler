@@ -13,11 +13,8 @@
  */
 
 import path from 'path';
-import { chromium } from '@playwright/test';
-import { fileURLToPath } from 'url';
 import fs from 'fs';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { chromium } from '@playwright/test';
 
 const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:5173';
 const authDir = path.join(__dirname, '.auth');
@@ -86,7 +83,7 @@ async function globalSetup(): Promise<void> {
     }
 
     const statePath = path.join(authDir, `${role}.json`);
-    console.log(`[global-setup] Logging in as ${role} (${email})…`);
+    console.log(`[global-setup] Logging in as ${role} (${email})...`);
 
     try {
       await loginRole(email, password, statePath);

@@ -56,18 +56,8 @@ test('parent home page shows the Upcoming Games heading', async ({ asParent }) =
 // RSVP
 // ---------------------------------------------------------------------------
 
-test('parent can RSVP Going on an event', async ({ page }) => {
-  const parentEmail = process.env.E2E_PARENT_EMAIL;
-  const parentPassword = process.env.E2E_PARENT_PASSWORD;
-
-  if (!parentEmail || !parentPassword) {
-    test.skip(true, 'E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD not set');
-    return;
-  }
-
-  const { AuthPage } = await import('./pages/AuthPage');
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(parentEmail, parentPassword);
+test('parent can RSVP Going on an event', async ({ asParent }) => {
+  const { page } = asParent;
 
   const parentHome = new ParentHomePage(page);
   await parentHome.goto();
@@ -91,18 +81,8 @@ test('parent can RSVP Going on an event', async ({ page }) => {
   await expect(goingBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });
 });
 
-test('RSVP state persists after page refresh', async ({ page }) => {
-  const parentEmail = process.env.E2E_PARENT_EMAIL;
-  const parentPassword = process.env.E2E_PARENT_PASSWORD;
-
-  if (!parentEmail || !parentPassword) {
-    test.skip(true, 'E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD not set');
-    return;
-  }
-
-  const { AuthPage } = await import('./pages/AuthPage');
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(parentEmail, parentPassword);
+test('RSVP state persists after page refresh', async ({ asParent }) => {
+  const { page } = asParent;
 
   const parentHome = new ParentHomePage(page);
   await parentHome.goto();
@@ -128,18 +108,8 @@ test('RSVP state persists after page refresh', async ({ page }) => {
   await expect(goingBtnAfterReload).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
 });
 
-test('RSVP Not Going button is present and tappable', async ({ page }) => {
-  const parentEmail = process.env.E2E_PARENT_EMAIL;
-  const parentPassword = process.env.E2E_PARENT_PASSWORD;
-
-  if (!parentEmail || !parentPassword) {
-    test.skip(true, 'E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD not set');
-    return;
-  }
-
-  const { AuthPage } = await import('./pages/AuthPage');
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(parentEmail, parentPassword);
+test('RSVP Not Going button is present and tappable', async ({ asParent }) => {
+  const { page } = asParent;
 
   await page.goto('/parent');
   await page.waitForLoadState('domcontentloaded');

@@ -18,7 +18,6 @@
  */
 
 import { test, expect, creds } from './fixtures/auth.fixture';
-import { AuthPage } from './pages/AuthPage';
 
 // ---------------------------------------------------------------------------
 // Helper — create a throwaway user and return their display name
@@ -97,9 +96,8 @@ async function deleteUserByName(
 // USR-FULL-01: Newly created user appears with correct role badge
 // ---------------------------------------------------------------------------
 
-test('newly created user appears in the table with the assigned role badge', async ({ page }) => {
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(creds.admin().email, creds.admin().password);
+test('newly created user appears in the table with the assigned role badge', async ({ asAdmin }) => {
+  const { page } = asAdmin;
 
   const displayName = `E2E Full User ${Date.now()}`;
   const email = `e2e-full-${Date.now()}@example.com`;
@@ -136,10 +134,9 @@ test('newly created user appears in the table with the assigned role badge', asy
 // ---------------------------------------------------------------------------
 
 test('admin can change a non-admin user role and the UI reflects the new value', async ({
-  page,
+  asAdmin,
 }) => {
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(creds.admin().email, creds.admin().password);
+  const { page } = asAdmin;
   await page.goto('/users');
   await page.waitForLoadState('domcontentloaded');
 
@@ -188,10 +185,9 @@ test('admin can change a non-admin user role and the UI reflects the new value',
 // ---------------------------------------------------------------------------
 
 test('admin can trigger a password reset for another user and sees a confirmation', async ({
-  page,
+  asAdmin,
 }) => {
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(creds.admin().email, creds.admin().password);
+  const { page } = asAdmin;
   await page.goto('/users');
   await page.waitForLoadState('domcontentloaded');
 
@@ -241,9 +237,8 @@ test('admin can trigger a password reset for another user and sees a confirmatio
 // USR-FULL-04: Admin cannot delete their own account
 // ---------------------------------------------------------------------------
 
-test('admin delete button is absent or disabled on own row', async ({ page }) => {
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(creds.admin().email, creds.admin().password);
+test('admin delete button is absent or disabled on own row', async ({ asAdmin }) => {
+  const { page } = asAdmin;
   await page.goto('/users');
   await page.waitForLoadState('domcontentloaded');
 
@@ -279,9 +274,8 @@ test('admin delete button is absent or disabled on own row', async ({ page }) =>
 // USR-FULL-05: Admin can delete another user
 // ---------------------------------------------------------------------------
 
-test('admin can delete another user and they disappear from the list', async ({ page }) => {
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(creds.admin().email, creds.admin().password);
+test('admin can delete another user and they disappear from the list', async ({ asAdmin }) => {
+  const { page } = asAdmin;
 
   const displayName = `E2E DeleteTarget ${Date.now()}`;
   const email = `e2e-del-${Date.now()}@example.com`;

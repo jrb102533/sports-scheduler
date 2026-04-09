@@ -12,8 +12,7 @@
  * and the parent account (which should have narrowed scope).
  */
 
-import { test, expect, creds } from './fixtures/auth.fixture';
-import { AuthPage } from './pages/AuthPage';
+import { test, expect } from './fixtures/auth.fixture';
 
 // ---------------------------------------------------------------------------
 // Parent cannot access /users
@@ -83,9 +82,8 @@ test('parent navigating to / is redirected to /parent', async ({ asParent }) => 
 // Dashboard scope — admin sees all teams stat card
 // ---------------------------------------------------------------------------
 
-test('admin dashboard shows all-scope stat cards', async ({ page }) => {
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(creds.admin().email, creds.admin().password);
+test('admin dashboard shows all-scope stat cards', async ({ asAdmin }) => {
+  const { page } = asAdmin;
   await page.goto('/');
   await page.waitForLoadState('domcontentloaded');
 
@@ -94,66 +92,22 @@ test('admin dashboard shows all-scope stat cards', async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Admin-only route accessible by admin, not by parent
+// Admin-only route accessible by admin
 // ---------------------------------------------------------------------------
 
-test('admin can access /users; parent cannot', async ({ page }) => {
-  // Admin access
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(creds.admin().email, creds.admin().password);
+test('admin can access /users', async ({ asAdmin }) => {
+  const { page } = asAdmin;
   await page.goto('/users');
   await expect(page).not.toHaveURL(/\/login/, { timeout: 10_000 });
   await expect(page.locator('main')).toBeVisible({ timeout: 10_000 });
-
-  // Logout
-  await page.goto('/profile');
-  const logoutBtn = page.getByRole('button', { name: /logout|sign out/i }).first();
-  if (await logoutBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await logoutBtn.click();
-    await expect(page).toHaveURL(/\/login/, { timeout: 10_000 });
-  } else {
-    // Try sidebar logout
-    const sidebarLogout = page.getByRole('button', { name: /logout|sign out/i }).first();
-    await sidebarLogout.click();
-    await expect(page).toHaveURL(/\/login/, { timeout: 10_000 });
-  }
-
-  // Parent access — skip if no parent creds
-  const parentEmail = process.env.E2E_PARENT_EMAIL;
-  const parentPassword = process.env.E2E_PARENT_PASSWORD;
-
-  if (!parentEmail || !parentPassword) {
-    test.skip(true, 'E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD not set — skipping parent block test');
-    return;
-  }
-
-  const auth2 = new AuthPage(page);
-  await auth2.loginAndWaitForApp(parentEmail, parentPassword);
-
-  await page.goto('/users');
-
-  // Should be redirected away from /users
-  await expect(page).not.toHaveURL(/\/users/, { timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
 // League manager cannot access /users
 // ---------------------------------------------------------------------------
 
-test('league manager is blocked from /users', async ({ page }) => {
-  const leagueManagerEmail = process.env.E2E_LEAGUE_MANAGER_EMAIL;
-  const leagueManagerPassword = process.env.E2E_LEAGUE_MANAGER_PASSWORD;
-
-  if (!leagueManagerEmail || !leagueManagerPassword) {
-    test.skip(
-      true,
-      'E2E_LEAGUE_MANAGER_EMAIL / E2E_LEAGUE_MANAGER_PASSWORD not set — skipping',
-    );
-    return;
-  }
-
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(leagueManagerEmail, leagueManagerPassword);
+test('league manager is blocked from /users', async ({ asLeagueManager }) => {
+  const { page } = asLeagueManager;
 
   await page.goto('/users');
 
@@ -164,20 +118,8 @@ test('league manager is blocked from /users', async ({ page }) => {
 // Coach can access /teams but not /users
 // ---------------------------------------------------------------------------
 
-test('coach can access /teams but is blocked from /users', async ({ page }) => {
-  const coachEmail = process.env.E2E_COACH_EMAIL;
-  const coachPassword = process.env.E2E_COACH_PASSWORD;
-
-  if (!coachEmail || !coachPassword) {
-    test.skip(
-      true,
-      'E2E_COACH_EMAIL / E2E_COACH_PASSWORD not set — skipping coach RBAC test',
-    );
-    return;
-  }
-
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(coachEmail, coachPassword);
+test('coach can access /teams but is blocked from /users', async ({ asCoach }) => {
+  const { page } = asCoach;
 
   // Coaches can access /teams
   await page.goto('/teams');

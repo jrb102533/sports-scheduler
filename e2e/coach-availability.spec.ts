@@ -30,7 +30,6 @@
  */
 
 import { test, expect } from './fixtures/auth.fixture';
-import { AuthPage } from './pages/AuthPage';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -198,22 +197,14 @@ test('AVAIL-04: coach home page shows availability card when a collection is ope
 // AVAIL-05: non-coach (admin) visiting the URL sees graceful error, not crash
 // ---------------------------------------------------------------------------
 
-test('AVAIL-05: admin visiting an availability URL sees graceful error, not a crash', async ({ page }) => {
-  const adminEmail = process.env.E2E_ADMIN_EMAIL;
-  const adminPassword = process.env.E2E_ADMIN_PASSWORD;
+test('AVAIL-05: admin visiting an availability URL sees graceful error, not a crash', async ({ asAdmin }) => {
+  const { page } = asAdmin;
   const url = availabilityUrl();
 
-  if (!adminEmail || !adminPassword) {
-    test.skip(true, 'E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD not set');
-    return;
-  }
   if (!url) {
     test.skip(true, 'E2E_AVAIL_LEAGUE_ID or E2E_AVAIL_COLLECTION_ID not set');
     return;
   }
-
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(adminEmail, adminPassword);
 
   await page.goto(url);
   await page.waitForLoadState('domcontentloaded');

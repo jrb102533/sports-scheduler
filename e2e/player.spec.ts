@@ -24,9 +24,8 @@
  *   linked to a team that has at least one upcoming event scheduled.
  */
 
-import { test, expect, creds } from './fixtures/auth.fixture';
+import { test, expect } from './fixtures/auth.fixture';
 import { AuthPage } from './pages/AuthPage';
-import { PlayerHomePage } from './pages/PlayerHomePage';
 
 // ---------------------------------------------------------------------------
 // PLAYER-01 — routing: player is redirected from / to /parent
@@ -91,62 +90,38 @@ test('player home page shows a team header or no-team message', async ({ asPlaye
 // PLAYER-05 — RSVP Going
 // ---------------------------------------------------------------------------
 
-test('player can RSVP Going on an event', async ({ page }) => {
-  const playerEmail = process.env.E2E_PLAYER_EMAIL;
-  const playerPassword = process.env.E2E_PLAYER_PASSWORD;
+test('player can RSVP Going on an event', async ({ asPlayer }) => {
+  const { player } = asPlayer;
 
-  if (!playerEmail || !playerPassword) {
-    test.skip(true, 'E2E_PLAYER_EMAIL / E2E_PLAYER_PASSWORD not set');
-    return;
-  }
-
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(playerEmail, playerPassword);
-
-  const playerHome = new PlayerHomePage(page);
-  await playerHome.goto();
-
-  const hasEvents = await playerHome.hasUpcomingEvents(5_000);
-  const isEmpty = await playerHome.noEventsMessage.isVisible({ timeout: 1_000 }).catch(() => false);
+  const hasEvents = await player.hasUpcomingEvents(5_000);
+  const isEmpty = await player.noEventsMessage.isVisible({ timeout: 1_000 }).catch(() => false);
 
   if (isEmpty || !hasEvents) {
     test.skip(true, 'No upcoming events for this player account — skipping RSVP test');
     return;
   }
 
-  await playerHome.rsvpGoingOnFirstEvent();
+  await player.rsvpGoingOnFirstEvent();
 
   // Button should be aria-pressed=true after click
-  await expect(playerHome.goingButton).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });
+  await expect(player.goingButton).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
 // PLAYER-06 — RSVP state persists after page reload
 // ---------------------------------------------------------------------------
 
-test('player RSVP state persists after page reload', async ({ page }) => {
-  const playerEmail = process.env.E2E_PLAYER_EMAIL;
-  const playerPassword = process.env.E2E_PLAYER_PASSWORD;
+test('player RSVP state persists after page reload', async ({ asPlayer }) => {
+  const { player, page } = asPlayer;
 
-  if (!playerEmail || !playerPassword) {
-    test.skip(true, 'E2E_PLAYER_EMAIL / E2E_PLAYER_PASSWORD not set');
-    return;
-  }
-
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(playerEmail, playerPassword);
-
-  const playerHome = new PlayerHomePage(page);
-  await playerHome.goto();
-
-  const hasEvents = await playerHome.hasUpcomingEvents(5_000);
+  const hasEvents = await player.hasUpcomingEvents(5_000);
 
   if (!hasEvents) {
     test.skip(true, 'No upcoming events — skipping RSVP persistence test');
     return;
   }
 
-  await playerHome.rsvpGoingOnFirstEvent();
+  await player.rsvpGoingOnFirstEvent();
 
   // Reload and confirm the RSVP survived the round-trip
   await page.reload();
