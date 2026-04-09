@@ -43,6 +43,7 @@ function resolveTeamsForMembership(membership: RoleMembership, allTeams: Team[],
     return allTeams.filter(t =>
       (membership.teamId && t.id === membership.teamId) ||
       t.coachId === uid ||
+      t.coachIds?.includes(uid) ||
       t.createdBy === uid
     );
   }
