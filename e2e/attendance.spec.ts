@@ -2,7 +2,7 @@
  * Attendance tracking E2E tests
  *
  * Covers:
- *   ATT-01: Attendance section renders on a Sharks event (h3 heading + recorded counter)
+ *   ATT-01: Attendance section renders on an E2E Team A event (h3 heading + recorded counter)
  *   ATT-02: Each player row shows Present / Absent / Excused buttons
  *   ATT-03: Marking a player Present activates the Present button (bg-green-500)
  *   ATT-04: Recorded counter increments after marking a player Present
@@ -11,47 +11,46 @@
  *   ATT-07: "Pre-fill from RSVPs" button appears when RSVPs exist but attendance is empty
  *
  * Requires:
- *   E2E_COACH_EMAIL / E2E_COACH_PASSWORD — coach account assigned to the Sharks team.
- *   The Sharks team must have at least one active player (the E2E player account satisfies
- *   this requirement).  If no events exist on Sharks yet (issue #317), each test that
- *   requires an event will skip with an explicit reason rather than fail.
- *
- * Data constants:
- *   SHARKS_TEAM_NAME — the team that is guaranteed to have an active player roster.
+ *   E2E_COACH_EMAIL / E2E_COACH_PASSWORD — coach account assigned to E2E Team A.
+ *   GOOGLE_APPLICATION_CREDENTIALS — used by global-setup to seed E2E Team A and
+ *   a past-dated game event with the coach account's UID in coachIds.
+ *   The E2E player account must be added to E2E Team A's roster for attendance
+ *   rows to render (ATT-02+).  If no events exist, each test self-skips.
  */
 
 import { test, expect } from './fixtures/auth.fixture';
+import { loadTestData } from './helpers/test-data';
 
 // ---------------------------------------------------------------------------
-// Known test-account data
+// Helper — navigate to the E2E team detail page and open the seeded event.
+// Returns { eventTitle } on success, or calls test.skip() and returns null if
+// the precondition cannot be met.
 // ---------------------------------------------------------------------------
 
-const SHARKS_TEAM_NAME = 'Sharks';
-
-// ---------------------------------------------------------------------------
-// Helper — navigate to the Sharks team detail page and open the first event
-// in the Schedule tab.  Returns { eventTitle } on success, or calls
-// test.skip() and returns null if the precondition cannot be met.
-// ---------------------------------------------------------------------------
-
-async function openFirstSharksEvent(
+async function openE2ETeamEvent(
   page: import('@playwright/test').Page,
 ): Promise<{ eventTitle: string } | null> {
-  // Navigate to /teams and find Sharks
-  await page.goto('/teams');
-  await page.waitForLoadState('domcontentloaded');
+  const testData = loadTestData();
 
-  const sharksLink = page.getByRole('link', { name: new RegExp(SHARKS_TEAM_NAME, 'i') }).first();
-  const sharksVisible = await sharksLink.isVisible({ timeout: 10_000 }).catch(() => false);
+  if (testData) {
+    // Navigate directly to the seeded team detail page
+    await page.goto(`/teams/${testData.teamAId}`);
+    await page.waitForLoadState('domcontentloaded');
+  } else {
+    // Fallback: navigate to /teams and find any team the coach has access to
+    await page.goto('/teams');
+    await page.waitForLoadState('domcontentloaded');
 
-  if (!sharksVisible) {
-    test.skip(true, `${SHARKS_TEAM_NAME} not found on /teams — data contract mismatch`);
-    return null;
+    const anyTeamLink = page.locator('a[href*="/teams/"]').first();
+    const anyTeamVisible = await anyTeamLink.isVisible({ timeout: 10_000 }).catch(() => false);
+    if (!anyTeamVisible) {
+      test.skip(true, 'No team found on /teams and E2E seed data unavailable — set GOOGLE_APPLICATION_CREDENTIALS');
+      return null;
+    }
+    await anyTeamLink.click();
+    await page.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
+    await page.waitForLoadState('domcontentloaded');
   }
-
-  await sharksLink.click();
-  await page.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('domcontentloaded');
 
   // Activate the Schedule tab (it may already be active, but be explicit)
   const scheduleTab = page.getByRole('tab', { name: /schedule/i });
@@ -81,14 +80,13 @@ async function openFirstSharksEvent(
     : false;
 
   if (!primaryVisible && !fallbackVisible) {
-    test.skip(true, 'No events found on the Sharks schedule — issue #317 may be active');
+    test.skip(true, 'No events found on the team schedule — issue #317 may be active');
     return null;
   }
 
   const cardToClick = primaryVisible ? eventCard : anyEventCard;
 
   // Read the event title from the card before clicking so we can re-find it after reload
-  // EventCard renders the title (or type label) in a text node inside the card
   const cardText = await cardToClick.textContent().catch(() => '');
   const eventTitle = cardText?.trim().split('\n')[0]?.trim() ?? '';
 
@@ -110,15 +108,15 @@ async function openFirstSharksEvent(
 }
 
 // ---------------------------------------------------------------------------
-// ATT-01: Attendance section renders on a Sharks event
+// ATT-01: Attendance section renders on an E2E Team A event
 // ---------------------------------------------------------------------------
 
-test('ATT-01: attendance section renders with heading and recorded counter on a Sharks event', async ({
+test('ATT-01: attendance section renders with heading and recorded counter on an E2E Team A event', async ({
   asCoach,
 }) => {
   const { page } = asCoach;
 
-  const result = await openFirstSharksEvent(page);
+  const result = await openE2ETeamEvent(page);
   if (!result) return; // test.skip() already called inside helper
 
   // AttendanceTracker renders an h3 with the text "Attendance"
@@ -139,7 +137,7 @@ test('ATT-02: each player row shows Present, Absent, and Excused buttons', async
 }) => {
   const { page } = asCoach;
 
-  const result = await openFirstSharksEvent(page);
+  const result = await openE2ETeamEvent(page);
   if (!result) return;
 
   const attendanceHeading = page.locator('h3').filter({ hasText: /^Attendance$/ }).first();
@@ -170,7 +168,7 @@ test('@smoke ATT-03: clicking Present on a player activates the Present button w
 }) => {
   const { page } = asCoach;
 
-  const result = await openFirstSharksEvent(page);
+  const result = await openE2ETeamEvent(page);
   if (!result) return;
 
   const attendanceHeading = page.locator('h3').filter({ hasText: /^Attendance$/ }).first();
@@ -191,7 +189,6 @@ test('@smoke ATT-03: clicking Present on a player activates the Present button w
 
   // Active state: AttendanceTracker applies 'bg-green-500 text-white' via clsx
   // Inactive state: 'bg-gray-100 text-gray-500'
-  // Assert the active class is applied (and the inactive class is gone)
   await expect(presentBtn).toHaveClass(/bg-green-500/, { timeout: 5_000 });
   await expect(presentBtn).not.toHaveClass(/bg-gray-100/);
 });
@@ -205,7 +202,7 @@ test('ATT-04: recorded counter increments after marking a player Present', async
 }) => {
   const { page } = asCoach;
 
-  const result = await openFirstSharksEvent(page);
+  const result = await openE2ETeamEvent(page);
   if (!result) return;
 
   const attendanceHeading = page.locator('h3').filter({ hasText: /^Attendance$/ }).first();
@@ -233,7 +230,6 @@ test('ATT-04: recorded counter increments after marking a player Present', async
   }
 
   // Find the first player whose Present button is currently inactive (bg-gray-100)
-  // so clicking it actually adds a new record rather than toggling an existing one
   const allPresentBtns = page.getByRole('button', { name: /^Present$/ });
   const count = await allPresentBtns.count();
   let targetBtn: import('@playwright/test').Locator | null = null;
@@ -268,7 +264,7 @@ test('ATT-05: switching a player from Present to Absent deactivates Present and 
 }) => {
   const { page } = asCoach;
 
-  const result = await openFirstSharksEvent(page);
+  const result = await openE2ETeamEvent(page);
   if (!result) return;
 
   const attendanceHeading = page.locator('h3').filter({ hasText: /^Attendance$/ }).first();
@@ -279,9 +275,6 @@ test('ATT-05: switching a player from Present to Absent deactivates Present and 
     return;
   }
 
-  // Work within the first player row.  AttendanceTracker renders each row as a
-  // flex div containing the player name and the three status buttons.
-  // We identify the row by the first Present button and scope Absent to the same row.
   const firstRow = page
     .locator('div.flex.items-center.justify-between')
     .filter({ has: page.getByRole('button', { name: /^Present$/ }) })
@@ -318,7 +311,7 @@ test('ATT-06: attendance status persists after page reload and re-navigation to 
 }) => {
   const { page } = asCoach;
 
-  const result = await openFirstSharksEvent(page);
+  const result = await openE2ETeamEvent(page);
   if (!result) return;
 
   const { eventTitle } = result;
@@ -411,7 +404,7 @@ test('ATT-07: Pre-fill from RSVPs button is visible when RSVPs exist and no atte
 }) => {
   const { page } = asCoach;
 
-  const result = await openFirstSharksEvent(page);
+  const result = await openE2ETeamEvent(page);
   if (!result) return;
 
   const attendanceHeading = page.locator('h3').filter({ hasText: /^Attendance$/ }).first();
@@ -450,8 +443,6 @@ test('ATT-07: Pre-fill from RSVPs button is visible when RSVPs exist and no atte
   await prefillBtn.click();
 
   // Counter must now show that all RSVP'd players are recorded.
-  // At minimum the counter's left number must be > 0; at most it equals totalPlayers.
-  // We use a regex that matches any non-zero recorded value.
   const updatedText = await counterLocator.textContent({ timeout: 5_000 }) ?? '';
   const updatedMatch = updatedText.match(/(\d+)\/(\d+)/);
   if (!updatedMatch) throw new Error(`Counter text did not update: "${updatedText}"`);

@@ -7,6 +7,8 @@
  *   STAND-03: Standings table shows at least one team row when the league has teams
  *   STAND-04: Parent can view the Standings tab on a league detail page without redirect
  *   STAND-05: Standings tab on LeagueDetailPage always renders data or a defined empty state
+ *   STAND-RT-01: Submitting a game result via "Submit Result" increments the winning team's
+ *                W count in the standings table (round-trip test)
  *
  * Navigation context:
  *   - `/standings` is a registered route (StandingsPage — global view across all teams).
@@ -17,15 +19,18 @@
  *     available season under the first available league.
  *   - STAND-04/05 use the LeagueDetailPage Standings tab, which is accessible to
  *     all authenticated roles and does not require a season to exist.
+ *   - STAND-RT-01 uses the seeded E2E league/season/event IDs from test-data.json
+ *     to navigate directly — no fragile name-based lookup.
  *
  * Skip policy:
  *   - Tests that depend on pre-existing data (leagues, seasons) are skipped with
  *     `test.skip()` when that data is absent.  No `|| true` bail-outs are used.
  *
- * All tests authenticate as admin except STAND-04 which authenticates as parent.
+ * All tests authenticate as admin except STAND-04 (parent) and STAND-RT-01 (coach).
  */
 
 import { test, expect } from './fixtures/auth.fixture';
+import { loadTestData } from './helpers/test-data';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -315,26 +320,24 @@ test('STAND-05: Standings tab renders standings data or a defined empty state �
 //   Firestore standings subcollection updates →
 //   StandingsTable Firestore subscription reflects the new win/loss counts.
 //
-// Preconditions:
-//   - The Sharks team must have at least one game/match event whose date has
-//     already occurred (ev.date <= today) AND whose result has not yet been
-//     confirmed.  If not, the "Submit Result" section is hidden and the test
-//     skips with a linked issue number.
-//   - The event must be associated with a league and season (leagueId +
-//     seasonId on the Firestore document) so the standings are stored in the
-//     Firestore subcollection path that StandingsTable subscribes to.
+// Navigation strategy (seeded data):
+//   When GOOGLE_APPLICATION_CREDENTIALS is set, global-setup seeds:
+//     - E2E Test League  → leagueId
+//     - E2E Season {year} → seasonId
+//     - E2E Team A (home, coachIds includes the coach account)
+//     - A past-dated game event (no result yet)
+//   These IDs are in e2e/.auth/test-data.json and loaded via loadTestData().
 //
-// Assertion strategy (incremental, not absolute):
-//   We read the home team's W count from the standings table before submitting,
-//   then assert it increased by exactly 1 after the result is submitted.
-//   This is robust against prior test runs that have already written standings
-//   data to staging — absolute counts (W=1) would be fragile.
+//   With seeded data: navigate directly to /teams/{teamAId} → open the seeded
+//   event by its known eventId → read the standings URL from leagueId + seasonId.
+//   This eliminates the double-pass scan and the fragile name-based lookup.
 //
-// Navigation sequence:
-//   /teams → Sharks → Schedule → event panel → read team names and leagueId
-//   from panel → navigate to SeasonDashboard standings → record current W for
-//   home team → navigate back → submit result → navigate back to standings →
-//   assert W incremented.
+//   Without seeded data: fall back to the legacy scan-based approach (Sharks team),
+//   which will self-skip if Sharks is absent.
+//
+// Assertion strategy (incremental):
+//   Read the home team's W count before submitting, then assert it increased by 1.
+//   Robust against prior test runs that have already written standings data.
 //
 // ---------------------------------------------------------------------------
 
@@ -342,44 +345,57 @@ test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increment
   asCoach,
 }) => {
   const { page } = asCoach;
+  const testData = loadTestData();
 
-  // ── Step 1: Open the Sharks schedule and find a past game with a visible
-  //    "Submit Result" section.  We must also extract the home/away team names
-  //    and the leagueId + seasonId so we can navigate to the correct standings.
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Determine season URL up front ─────────────────────────────────────────
+  // With seeded data we can build the URL directly; otherwise fall back to the
+  // navigate-to-first-league approach used by STAND-01/02/03.
+  let seasonUrl: string | null = null;
+  let homeTeamName: string | null = null;
 
-  await page.goto('/teams');
-  await page.waitForLoadState('domcontentloaded');
-
-  const sharksLink = page.getByRole('link', { name: /sharks/i }).first();
-  const sharksVisible = await sharksLink.isVisible({ timeout: 10_000 }).catch(() => false);
-  if (!sharksVisible) {
-    test.skip(true, 'Sharks team not found on /teams — data contract mismatch (STAND-RT-01)');
-    return;
+  if (testData) {
+    seasonUrl = `/leagues/${testData.leagueId}/seasons/${testData.seasonId}`;
+    homeTeamName = testData.teamAName;
   }
 
-  await sharksLink.click();
-  await page.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('domcontentloaded');
+  // ── Step 1: Open the team schedule and find the Submit Result event ────────
+
+  if (testData) {
+    // Navigate directly to the seeded team detail page
+    await page.goto(`/teams/${testData.teamAId}`);
+    await page.waitForLoadState('domcontentloaded');
+  } else {
+    // Fallback: scan /teams for Sharks (legacy staging data)
+    await page.goto('/teams');
+    await page.waitForLoadState('domcontentloaded');
+
+    const sharksLink = page.getByRole('link', { name: /sharks/i }).first();
+    const sharksVisible = await sharksLink.isVisible({ timeout: 10_000 }).catch(() => false);
+    if (!sharksVisible) {
+      test.skip(true, 'Neither seeded test data nor Sharks team found — data contract mismatch (STAND-RT-01)');
+      return;
+    }
+    await sharksLink.click();
+    await page.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
+    await page.waitForLoadState('domcontentloaded');
+  }
 
   const scheduleTab = page.getByRole('tab', { name: /schedule/i });
   await expect(scheduleTab).toBeVisible({ timeout: 10_000 });
   await scheduleTab.click();
 
-  // Collect all event cards so we can iterate until we find one with "Submit Result"
+  // ── Step 2: Find the event with "Submit Result" section ───────────────────
+  // With seeded data: the past-dated E2E game is at the top of the schedule.
+  // Without seeded data: scan all cards (legacy behaviour).
+
   const eventCards = page.locator('div.rounded-xl.border.border-gray-200.cursor-pointer');
   const cardCount = await eventCards.count();
 
   if (cardCount === 0) {
-    test.skip(true, 'No events on Sharks schedule — issue #317 may be active (STAND-RT-01)');
+    test.skip(true, 'No events on schedule — issue #317 may be active (STAND-RT-01)');
     return;
   }
 
-  // Try each event card in turn until we find one that shows "Submit Result".
-  // "Submit Result" only renders for a coach on a past-dated game/match whose
-  // result has not yet been confirmed — so we may need to scan multiple cards.
-
-  let homeTeamName: string | null = null;
   let foundEventCard = false;
 
   for (let i = 0; i < cardCount; i++) {
@@ -393,7 +409,6 @@ test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increment
     const panelHeading = page.locator('h2').filter({ hasText: /.+/ }).first();
     const panelOpened = await panelHeading.isVisible({ timeout: 6_000 }).catch(() => false);
     if (!panelOpened) {
-      // Close any partial panel and try the next card
       const closeBtn = page.getByRole('button', { name: /close/i }).first();
       await closeBtn.click().catch(() => null);
       await page.keyboard.press('Escape');
@@ -408,30 +423,21 @@ test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increment
 
     const submitVisible = await submitSection.isVisible({ timeout: 3_000 }).catch(() => false);
     if (!submitVisible) {
-      // Not a past game or result already confirmed — close and try next
-      const closeBtn = page.getByRole('button', { name: /close/i }).first();
-      const closeBtnAlt = page.locator('button[aria-label="Close"]').first();
-      await closeBtn.click().catch(() => closeBtnAlt.click().catch(() => null));
+      const closeBtn = page.locator('button[aria-label="Close"]').first();
+      await closeBtn.click().catch(() => page.keyboard.press('Escape'));
       await page.waitForTimeout(300);
       continue;
     }
 
-    // Read the home and away team label text from the two score inputs inside
-    // the Submit Result section.  EventDetailPanel sets label to homeTeam.name
-    // and awayTeam.name when those teams are resolved.
-    const scoreInputs = submitSection.locator('input[type="number"]');
-    const inputCount = await scoreInputs.count();
-    if (inputCount < 2) {
-      const closeBtn = page.locator('button[aria-label="Close"]').first();
-      await closeBtn.click().catch(() => null);
-      continue;
+    // With seeded data, capture homeTeamName from label if not already known
+    if (!homeTeamName) {
+      const scoreInputs = submitSection.locator('input[type="number"]');
+      const inputCount = await scoreInputs.count();
+      if (inputCount >= 2) {
+        const homeLabel = submitSection.locator('label').nth(0);
+        homeTeamName = await homeLabel.textContent().then(t => t?.trim() ?? null).catch(() => null);
+      }
     }
-
-    // The Input component renders a <label> sibling to each <input>.
-    // We use the input's aria-label or the nearest label text to get team names.
-    // Fallback: read the label text from the grid div wrapping each input.
-    const homeLabel = submitSection.locator('label').nth(0);
-    homeTeamName = await homeLabel.textContent().then(t => t?.trim() ?? null).catch(() => null);
 
     foundEventCard = true;
     break; // Panel is still open — proceed with this event
@@ -440,41 +446,38 @@ test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increment
   if (!foundEventCard) {
     test.skip(
       true,
-      '"Submit Result" section not found on any Sharks event — all games may be future-dated ' +
-        'or already confirmed. Ensure at least one past unconfirmed game exists in staging ' +
+      '"Submit Result" section not found on any event — all games may be future-dated ' +
+        'or already confirmed. Ensure the E2E seed data was applied ' +
+        '(GOOGLE_APPLICATION_CREDENTIALS must be set) or that Sharks has a past unconfirmed game ' +
         '(see issue #317) (STAND-RT-01)',
     );
     return;
   }
 
-  // ── Step 2: From the open event panel, extract leagueId + seasonId so we
-  //    can navigate directly to the SeasonDashboard standings after submitting.
-  //    These IDs are not visible in the panel DOM, so we navigate to the
-  //    standings via the existing route pattern: /leagues → first league →
-  //    first season.  This matches what STAND-01/02/03 do and is reliable for
-  //    the staging data contract (one league, one season).
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Step 3: Close the panel and navigate to the SeasonDashboard standings ─
+  // With seeded data: use the direct URL built from testData.leagueId + seasonId.
+  // Without seeded data: use the getFirstLeagueHref + getFirstSeasonUrl helpers.
 
-  // Close the event panel before navigating away
   const closeButton = page.locator('button[aria-label="Close"]').first();
   await closeButton.click().catch(() => page.keyboard.press('Escape'));
-  await page.waitForTimeout(200); // let the panel animate out
+  await page.waitForTimeout(200);
 
-  // Navigate to /leagues and find the first season URL (same as STAND-01 helper)
-  const leagueHref = await getFirstLeagueHref(page);
-  if (!leagueHref) {
-    test.skip(true, 'No leagues found — cannot navigate to standings (STAND-RT-01)');
-    return;
-  }
-
-  await page.goto(leagueHref);
-  await page.waitForURL(/\/leagues\/.+/);
-  await page.waitForLoadState('domcontentloaded');
-
-  const seasonUrl = await getFirstSeasonUrl(page);
   if (!seasonUrl) {
-    test.skip(true, 'No seasons found in first league — cannot navigate to standings (STAND-RT-01)');
-    return;
+    const leagueHref = await getFirstLeagueHref(page);
+    if (!leagueHref) {
+      test.skip(true, 'No leagues found — cannot navigate to standings (STAND-RT-01)');
+      return;
+    }
+
+    await page.goto(leagueHref);
+    await page.waitForURL(/\/leagues\/.+/);
+    await page.waitForLoadState('domcontentloaded');
+
+    seasonUrl = await getFirstSeasonUrl(page);
+    if (!seasonUrl) {
+      test.skip(true, 'No seasons found in first league — cannot navigate to standings (STAND-RT-01)');
+      return;
+    }
   }
 
   await page.goto(seasonUrl);
@@ -487,21 +490,14 @@ test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increment
     { timeout: 10_000 },
   );
 
-  // ── Step 3: Record the home team's current W count before submitting.
-  //    The StandingsTable renders W values in <td> cells with class
-  //    "text-green-600 font-medium text-sm".  We locate the home team's row
-  //    by team name and read its W cell (4th <td> in the row, 0-indexed).
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Step 4: Record baseline W count for home team ─────────────────────────
 
   const standingsTable = page.locator('table').first();
   const standingsTableVisible = await standingsTable.isVisible({ timeout: 10_000 }).catch(() => false);
 
-  // The table may not yet exist if no results have been submitted at all —
-  // that is fine; we just record 0 as the baseline.
   let baselineWins = 0;
 
   if (standingsTableVisible && homeTeamName) {
-    // Find the table row whose team name cell contains homeTeamName
     const homeRow = standingsTable
       .locator('tbody tr')
       .filter({ has: page.locator('td').filter({ hasText: new RegExp(`^${homeTeamName}$`, 'i') }) })
@@ -516,17 +512,19 @@ test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increment
     }
   }
 
-  // ── Step 4: Navigate back to the Sharks schedule and open the same event.
-  //    We reuse the same card-scanning logic since we cannot retain a reference
-  //    across navigations.  This is intentional — each navigation is independent.
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Step 5: Navigate back to the team and submit the result ───────────────
 
-  await page.goto('/teams');
-  await page.waitForLoadState('domcontentloaded');
+  if (testData) {
+    await page.goto(`/teams/${testData.teamAId}`);
+  } else {
+    await page.goto('/teams');
+    await page.waitForLoadState('domcontentloaded');
 
-  const sharksLinkAgain = page.getByRole('link', { name: /sharks/i }).first();
-  await expect(sharksLinkAgain).toBeVisible({ timeout: 10_000 });
-  await sharksLinkAgain.click();
+    const sharksLinkAgain = page.getByRole('link', { name: /sharks/i }).first();
+    await expect(sharksLinkAgain).toBeVisible({ timeout: 10_000 });
+    await sharksLinkAgain.click();
+  }
+
   await page.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
   await page.waitForLoadState('domcontentloaded');
 
@@ -534,7 +532,6 @@ test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increment
   await expect(scheduleTabAgain).toBeVisible({ timeout: 10_000 });
   await scheduleTabAgain.click();
 
-  // Find the same event card by re-scanning for "Submit Result"
   const eventCardsAgain = page.locator('div.rounded-xl.border.border-gray-200.cursor-pointer');
   const cardCountAgain = await eventCardsAgain.count();
 
@@ -566,9 +563,7 @@ test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increment
       continue;
     }
 
-    // ── Step 5: Enter home=2, away=1 and click "Submit Result"
-    // ────────────────────────────────────────────────────────────────────────
-
+    // Enter home=2, away=1 and click "Submit Result"
     const homeInput = submitSection.locator('input[type="number"]').nth(0);
     const awayInput = submitSection.locator('input[type="number"]').nth(1);
     const submitButton = submitSection.getByRole('button', { name: /submit result/i });
@@ -585,17 +580,14 @@ test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increment
 
     // After clicking, the button transitions to "Submitting…" then the section
     // renders a confirmation message: "Result submitted — waiting for … coach to confirm."
-    // We wait for that confirmation to know the CF call completed.
     const confirmationMsg = submitSection.getByText(/result submitted/i);
     const confirmed = await confirmationMsg.isVisible({ timeout: 15_000 }).catch(() => false);
 
     if (!confirmed) {
-      // The CF may have returned an error — check for the error state
       const errorMsg = submitSection.locator('p').filter({ hasText: /failed to submit/i });
       const hasError = await errorMsg.isVisible({ timeout: 3_000 }).catch(() => false);
       if (hasError) {
         const errorText = await errorMsg.textContent().catch(() => 'unknown error');
-        // CF error — skip rather than fail; this may be an environment issue
         test.skip(
           true,
           `submitGameResult Cloud Function returned an error: "${errorText}". ` +
@@ -603,7 +595,6 @@ test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increment
         );
         return;
       }
-      // Timeout waiting for confirmation — skip
       test.skip(
         true,
         'Did not see "Result submitted" confirmation after clicking Submit Result — ' +
@@ -625,39 +616,34 @@ test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increment
     return;
   }
 
-  // ── Step 6: Navigate to the SeasonDashboard standings and verify the
-  //    winning team's W count increased by exactly 1.
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Step 6: Navigate back to standings and assert W incremented by 1 ──────
 
-  await page.goto(seasonUrl!);
+  await page.goto(seasonUrl);
   await page.waitForURL(/\/leagues\/.+\/seasons\/.+/);
   await page.waitForLoadState('domcontentloaded');
 
   // Wait for the Firestore onSnapshot to deliver the updated standings.
   // The standings subcollection is updated by the submitGameResult CF — it
-  // typically propagates within 2-5 seconds.  We give it 10 seconds before
-  // failing to avoid flakiness on cold CF starts.
+  // typically propagates within 2-5 seconds.  We give it 15 seconds to handle
+  // cold CF starts.
   const updatedTable = page.locator('table').first();
   await expect(updatedTable).toBeVisible({ timeout: 15_000 });
 
   // The home team (score 2) won — find its row and assert W incremented by 1.
-  // We build the team name pattern from what we read earlier; fall back to a
-  // broad search if homeTeamName was not captured.
   const homeTeamPattern = homeTeamName
     ? new RegExp(`^${homeTeamName}$`, 'i')
-    : /sharks/i; // best-effort fallback — Sharks is the coach's team
+    : testData
+      ? new RegExp(testData.teamAName, 'i')
+      : /sharks/i;
 
   const updatedHomeRow = updatedTable
     .locator('tbody tr')
     .filter({ has: page.locator('td').filter({ hasText: homeTeamPattern }) })
     .first();
 
-  // Wait for the home team row to appear — it may not exist until the CF writes
-  // the standings document and the onSnapshot delivers the update.
   await expect(updatedHomeRow).toBeVisible({ timeout: 10_000 });
 
-  // Read the updated W value — the W column is the 4th column (index 3):
-  // rank | team | GP | W | L | T | PF | PA | Diff | Pts
+  // W column is index 3: rank | team | GP | W | L | T | PF | PA | Diff | Pts
   const updatedWCell = updatedHomeRow.locator('td').nth(3);
   await expect(updatedWCell).toBeVisible({ timeout: 10_000 });
 

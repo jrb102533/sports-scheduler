@@ -46,6 +46,20 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      - name: Write service account credentials
+        # Decodes the base64-encoded service account JSON and writes it to a temp file.
+        # GOOGLE_APPLICATION_CREDENTIALS is then set for the test step so that
+        # global-setup.ts can seed E2E data and global-teardown.ts can clean it up.
+        # If E2E_FIREBASE_SERVICE_ACCOUNT_JSON is not set, this step is a no-op and
+        # data-dependent tests will self-skip with a clear message.
+        run: |
+          if [ -n "${{ secrets.E2E_FIREBASE_SERVICE_ACCOUNT_JSON }}" ]; then
+            echo "${{ secrets.E2E_FIREBASE_SERVICE_ACCOUNT_JSON }}" | base64 -d > /tmp/sa.json
+            echo "Service account written to /tmp/sa.json"
+          else
+            echo "E2E_FIREBASE_SERVICE_ACCOUNT_JSON not set — seeding will be skipped"
+          fi
+
       - name: Run E2E against staging
         env:
           E2E_BASE_URL: https://first-whistle-e76f4.web.app
@@ -66,6 +80,7 @@ jobs:
           E2E_LM_PASSWORD: ${{ secrets.E2E_LM_PASSWORD }}
           E2E_AVAIL_LEAGUE_ID: ${{ secrets.E2E_AVAIL_LEAGUE_ID }}
           E2E_AVAIL_COLLECTION_ID: ${{ secrets.E2E_AVAIL_COLLECTION_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
         run: npx playwright test --project=chromium --project=staging
 
       - name: Upload Playwright report

@@ -1,61 +1,72 @@
 /**
  * Cross-role event visibility E2E tests
  *
- * Verifies that events on the Sharks team are visible to the coach, parent,
- * and player accounts that belong to that team, and that visibility boundaries
+ * Verifies that events on E2E Team A are visible to the coach, parent, and
+ * player accounts that belong to that team, and that visibility boundaries
  * are respected for unrelated teams.
  *
  * Covers:
  *   CROSS-01: Event visible to coach on team Schedule tab
  *   CROSS-02: Same event visible to parent on /parent
  *   CROSS-03: Same event visible to player on /parent
- *   CROSS-04: Admin can see Sharks events from Teams page
+ *   CROSS-04: Admin can see E2E Team A events from Teams page
  *   CROSS-05: Events NOT visible across teams — coach sees no edit controls on unrelated team
  *
  * Requires:
- *   E2E_COACH_EMAIL / E2E_COACH_PASSWORD   — coach on Sharks
- *   E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD — parent linked to Sharks
- *   E2E_PLAYER_EMAIL / E2E_PLAYER_PASSWORD — player on Sharks
+ *   E2E_COACH_EMAIL / E2E_COACH_PASSWORD   — coach on E2E Team A
+ *   E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD — parent linked to a team
+ *   E2E_PLAYER_EMAIL / E2E_PLAYER_PASSWORD — player on a team
  *   E2E_ADMIN_EMAIL  / E2E_ADMIN_PASSWORD  — admin account
+ *   GOOGLE_APPLICATION_CREDENTIALS         — used by global-setup to seed E2E Team A
  *
- * Data constants used in assertions:
- *   SHARKS_TEAM_ID   — Firestore ID of the Sharks team (stable test fixture)
- *   KNOWN_TEAM_NAME  — display name of the Sharks team
+ * Data used in assertions loaded from e2e/.auth/test-data.json:
+ *   testData.teamAId   — Firestore ID of E2E Team A
+ *   testData.teamAName — display name ('E2E Team A')
  */
 
 import { test, expect } from './fixtures/auth.fixture';
+import { loadTestData } from './helpers/test-data';
 
 // ---------------------------------------------------------------------------
-// Known test-account data
+// Known test-account data — resolved from seeded data or fallback
 // ---------------------------------------------------------------------------
 
-const KNOWN_TEAM_NAME = 'Sharks';
-const SHARKS_TEAM_ID = '44ee1f68-cdce-4a05-b30b-d2a87b191dbe';
+const testData = loadTestData();
+const KNOWN_TEAM_NAME = testData?.teamAName ?? 'Sharks';
+// Fall back to the legacy hardcoded ID if seeding was skipped
+const KNOWN_TEAM_ID = testData?.teamAId ?? '44ee1f68-cdce-4a05-b30b-d2a87b191dbe';
 
 // ---------------------------------------------------------------------------
 // CROSS-01 — coach sees Schedule tab content on their own team
 // ---------------------------------------------------------------------------
 
-test('CROSS-01: coach can see the Schedule tab on the Sharks team detail page', async ({ asCoach }) => {
+test('CROSS-01: coach can see the Schedule tab on the E2E Team A detail page', async ({ asCoach }) => {
   const { coach, page } = asCoach;
 
-  // Navigate to /teams and open the Sharks team
-  await coach.gotoTeams();
+  if (testData) {
+    // Navigate directly to the known team detail page
+    await page.goto(`/teams/${testData.teamAId}`);
+    await page.waitForURL(/\/teams\/.+/);
+    await page.waitForLoadState('domcontentloaded');
+  } else {
+    // Fallback: navigate to /teams and open the first visible team
+    await coach.gotoTeams();
 
-  const sharksVisible = await page
-    .getByText(KNOWN_TEAM_NAME, { exact: false })
-    .first()
-    .isVisible({ timeout: 10_000 })
-    .catch(() => false);
+    const teamVisible = await page
+      .getByText(KNOWN_TEAM_NAME, { exact: false })
+      .first()
+      .isVisible({ timeout: 10_000 })
+      .catch(() => false);
 
-  if (!sharksVisible) {
-    test.skip(true, `${KNOWN_TEAM_NAME} not found on /teams — data contract mismatch`);
-    return;
+    if (!teamVisible) {
+      test.skip(true, `${KNOWN_TEAM_NAME} not found on /teams — data contract mismatch`);
+      return;
+    }
+
+    await coach.clickTeamByName(KNOWN_TEAM_NAME);
+    await expect(page).toHaveURL(/\/teams\/.+/, { timeout: 10_000 });
+    await page.waitForLoadState('domcontentloaded');
   }
-
-  await coach.clickTeamByName(KNOWN_TEAM_NAME);
-  await expect(page).toHaveURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('domcontentloaded');
 
   // Schedule tab must be rendered and accessible
   const scheduleTab = page.getByRole('tab', { name: /schedule/i });
@@ -64,7 +75,6 @@ test('CROSS-01: coach can see the Schedule tab on the Sharks team detail page', 
   await page.waitForLoadState('domcontentloaded');
 
   // The schedule area must show either event content or a recognisable empty state.
-  // We do not assert a specific event title — this is a visibility smoke test.
   const hasEventCards = await page
     .locator('[data-testid="event-card"], [class*="event-card"]')
     .first()
@@ -84,7 +94,6 @@ test('CROSS-01: coach can see the Schedule tab on the Sharks team detail page', 
     .catch(() => false);
 
   if (!hasEventCards && !hasEventText && !hasEmptyState) {
-    // Schedule area rendered but nothing matched — data contract mismatch, skip (#317)
     test.skip(true, 'No event cards or empty state visible on Schedule tab — skipping (#317)');
     return;
   }
@@ -99,14 +108,13 @@ test('CROSS-01: coach can see the Schedule tab on the Sharks team detail page', 
 // CROSS-02 — parent sees upcoming events section on /parent
 // ---------------------------------------------------------------------------
 
-test('CROSS-02: parent on the Sharks team sees events section on /parent', async ({ asParent }) => {
+test('CROSS-02: parent on the team sees events section on /parent', async ({ asParent }) => {
   const { parent, page } = asParent;
 
   // The fixture already navigated to /parent — confirm we are there
   await expect(page).toHaveURL(/\/parent/, { timeout: 10_000 });
 
   // The parent page should show either the team header or a no-team message.
-  // If there is no team linked, the events section is irrelevant — skip.
   const noTeam = await parent.noTeamMessage.isVisible({ timeout: 5_000 }).catch(() => false);
   if (noTeam) {
     test.skip(true, 'Parent account has no team linked — skipping cross-role visibility check');
@@ -136,7 +144,7 @@ test('CROSS-02: parent on the Sharks team sees events section on /parent', async
 // CROSS-03 — player sees upcoming events section on /parent
 // ---------------------------------------------------------------------------
 
-test('CROSS-03: player on the Sharks team sees events section on /parent', async ({ asPlayer }) => {
+test('CROSS-03: player on the team sees events section on /parent', async ({ asPlayer }) => {
   const { player, page } = asPlayer;
 
   // The fixture already navigated to /parent
@@ -168,14 +176,14 @@ test('CROSS-03: player on the Sharks team sees events section on /parent', async
 });
 
 // ---------------------------------------------------------------------------
-// CROSS-04 — admin can reach the Sharks Schedule tab without a crash
+// CROSS-04 — admin can reach the E2E Team A Schedule tab without a crash
 // ---------------------------------------------------------------------------
 
-test('CROSS-04: admin can navigate to Sharks Schedule tab without a crash', async ({ asAdmin }) => {
+test('CROSS-04: admin can navigate to E2E Team A Schedule tab without a crash', async ({ asAdmin }) => {
   const { admin, page } = asAdmin;
 
-  // Navigate directly to the known Sharks team detail page
-  await admin.gotoTeam(SHARKS_TEAM_ID);
+  // Navigate directly to the known team detail page
+  await admin.gotoTeam(KNOWN_TEAM_ID);
 
   // Page must not show an error overlay
   const errorOverlay = page.getByText(/something went wrong/i);
@@ -188,9 +196,8 @@ test('CROSS-04: admin can navigate to Sharks Schedule tab without a crash', asyn
   await scheduleTab.click();
   await page.waitForLoadState('domcontentloaded');
 
-  // After clicking the Schedule tab the page must still be free of crashes —
-  // the URL should remain on the teams detail route
-  await expect(page).toHaveURL(new RegExp(`/teams/${SHARKS_TEAM_ID}`), { timeout: 5_000 });
+  // After clicking the Schedule tab the page must still be free of crashes
+  await expect(page).toHaveURL(new RegExp(`/teams/${KNOWN_TEAM_ID}`), { timeout: 5_000 });
 
   // Schedule content area must render (events or empty state)
   const hasEvents = await page
@@ -206,13 +213,13 @@ test('CROSS-04: admin can navigate to Sharks Schedule tab without a crash', asyn
     .catch(() => false);
 
   if (!hasEvents && !hasEmptyState) {
-    test.skip(true, 'Sharks schedule tab loaded but no events or empty state matched — data contract mismatch (#317)');
+    test.skip(true, 'Team A schedule tab loaded but no events or empty state matched — data contract mismatch (#317)');
     return;
   }
 
   expect(
     hasEvents || hasEmptyState,
-    'Expected schedule content or empty state after admin navigated to Sharks Schedule tab',
+    'Expected schedule content or empty state after admin navigated to team Schedule tab',
   ).toBe(true);
 });
 
@@ -240,24 +247,23 @@ test('CROSS-05: coach sees no edit controls on a team they do not coach', async 
     return;
   }
 
-  // Step 4: find a team that is NOT the Sharks (coach's own team)
+  // Step 4: find a team that is NOT the coach's own team (E2E Team A / Sharks fallback)
   let unrelatedTeamHref: string | null = null;
   for (let i = 0; i < linkCount; i++) {
     const href = await allTeamLinks.nth(i).getAttribute('href');
     const text = await allTeamLinks.nth(i).textContent();
-    const isSharks =
-      (href && href.includes(SHARKS_TEAM_ID)) ||
+    const isOwnTeam =
+      (href && href.includes(KNOWN_TEAM_ID)) ||
       (text && new RegExp(KNOWN_TEAM_NAME, 'i').test(text));
 
-    if (!isSharks && href) {
+    if (!isOwnTeam && href) {
       unrelatedTeamHref = href;
       break;
     }
   }
 
   if (!unrelatedTeamHref) {
-    // Only one team exists (Sharks) — this scenario cannot be tested with current data
-    test.skip(true, 'No unrelated team found in /teams list — only Sharks is present; skipping isolation check');
+    test.skip(true, 'No unrelated team found in /teams list — only own team is present; skipping isolation check');
     return;
   }
 

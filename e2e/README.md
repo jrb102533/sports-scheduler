@@ -36,8 +36,15 @@ All credentials are read from environment variables. **Never hardcode credential
 | `E2E_PARENT_PASSWORD` | Yes | Password for the parent test account |
 | `E2E_PLAYER_EMAIL` | Yes | Email for a player test account pre-linked to a team |
 | `E2E_PLAYER_PASSWORD` | Yes | Password for the player test account |
+| `E2E_COACH_EMAIL` | Yes | Email for a coach test account (assigned to E2E Team A by seeding) |
+| `E2E_COACH_PASSWORD` | Yes | Password for the coach test account |
+| `E2E_LM_EMAIL` | Yes | Email for a league manager test account |
+| `E2E_LM_PASSWORD` | Yes | Password for the league manager test account |
 | `E2E_INVITE_PARENT_EMAIL` | No | An email address to use as an invite target (invite creation tests only) |
 | `E2E_STAGING_URL` | No | Staging base URL. Defaults to `https://staging.firstwhistlesports.com` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | No* | Path to a Firebase service account JSON file. Required for Firestore data seeding. See below. |
+
+\* Required for data-dependent tests to run fully. Without it, those tests self-skip with a clear message.
 
 ### Setting up a local .env file
 
@@ -50,7 +57,12 @@ E2E_PARENT_EMAIL=parent@yourapp.com
 E2E_PARENT_PASSWORD=your-parent-password
 E2E_PLAYER_EMAIL=player@yourapp.com
 E2E_PLAYER_PASSWORD=your-player-password
+E2E_COACH_EMAIL=coach@yourapp.com
+E2E_COACH_PASSWORD=your-coach-password
+E2E_LM_EMAIL=lm@yourapp.com
+E2E_LM_PASSWORD=your-lm-password
 E2E_INVITE_PARENT_EMAIL=invite-target@example.com
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/staging-sa.json
 ```
 
 Then load it before running:
@@ -67,9 +79,99 @@ npx dotenv -e .env.e2e -- npm run test:e2e
 
 ---
 
+## Synthetic Test Data Seeding
+
+### What `isE2eData` documents are
+
+All Firestore documents created by the E2E suite are tagged with `isE2eData: true`.
+This field is used exclusively to identify and clean up seeded data — it has no
+effect on the application.  Seeded documents live in the normal production collections
+(`teams`, `leagues`, `events`, `venues`, `leagues/{id}/seasons`) alongside real data,
+but their names all start with "E2E " making them easy to identify in the Firebase Console.
+
+### How global-setup seeds them
+
+`e2e/global-setup.ts` runs before all tests via Playwright's `globalSetup` hook.
+After logging in each role account it calls `seedTestData()`, which:
+
+1. Checks each collection for an existing `isE2eData: true` document.
+2. Creates any missing pieces (league → venue → teams → season → event).
+3. Writes the resulting document IDs to `e2e/.auth/test-data.json`.
+
+Seeding is **idempotent** — running global-setup twice produces the same set of documents.
+If a partial run left behind some but not all documents, only the missing ones are created.
+
+The seeded dataset is:
+
+```
+E2E Test League  (leagues/{leagueId})
+  └── E2E Season {year}  (leagues/{leagueId}/seasons/{seasonId})
+       ├── E2E Team A  (teams/{teamAId})   — coach account's UID is in coachIds
+       └── E2E Team B  (teams/{teamBId})
+            └── E2E Test Game  (events/{eventId})
+                 — date = yesterday, status = 'published', no result yet
+                 — linked to the seeded leagueId + seasonId
+
+E2E Test Venue  (venues/{venueId})  — linked to Team A as homeVenueId
+```
+
+### How global-teardown cleans them up
+
+`e2e/global-teardown.ts` runs after all tests via Playwright's `globalTeardown` hook.
+It queries each collection for `isE2eData: true` and batch-deletes all matching documents.
+Season subcollections are deleted before their parent league documents.
+
+Teardown failure is **non-fatal** — a warning is logged and the test run result is not
+affected.  The next global-setup run will reuse or patch whatever documents remain.
+
+### How tests consume seeded data
+
+Tests load seeded IDs via `e2e/helpers/test-data.ts`:
+
+```typescript
+import { loadTestData } from './helpers/test-data';
+
+const testData = loadTestData(); // null if seeding was skipped
+if (!testData) {
+  test.skip(true, 'E2E seed data not available — set GOOGLE_APPLICATION_CREDENTIALS');
+  return;
+}
+// use testData.teamAId, testData.eventId, testData.leagueId, etc.
+```
+
+### Running seeding locally
+
+Set `GOOGLE_APPLICATION_CREDENTIALS` to the path of a Firebase service account JSON file
+with Firestore read/write access on your target project (staging):
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/staging-service-account.json
+npm run test:e2e
+```
+
+The service account needs: `Cloud Datastore User` role (Firestore read/write) and
+`Firebase Authentication Admin` role (to look up the coach UID by email).
+
+### New CI secret required: `E2E_FIREBASE_SERVICE_ACCOUNT_JSON`
+
+To enable seeding in CI, add a GitHub Actions secret named `E2E_FIREBASE_SERVICE_ACCOUNT_JSON`
+containing the **base64-encoded** service account JSON.
+
+Generate it locally:
+```bash
+base64 -i /path/to/staging-service-account.json | pbcopy
+```
+
+Then add the value to: **GitHub → Settings → Secrets and variables → Actions → New repository secret**.
+
+The CI workflow decodes it to `/tmp/sa.json` and sets `GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json`
+before running tests.  See `.github/workflows/e2e-staging.yml`.
+
+---
+
 ## Test Accounts
 
-You need two Firebase test accounts:
+You need Firebase test accounts for each role in the staging project:
 
 ### Admin account
 - Role: `admin`
@@ -86,6 +188,16 @@ You need two Firebase test accounts:
 - Must be linked to at least one team (has a `teamId` in their Firestore profile, or a `memberships` entry with a `teamId`)
 - Both player and parent roles share the `/parent` route — players see the same home page but represent themselves (not a child)
 - Team must have at least one upcoming event for RSVP tests to run (otherwise those tests self-skip)
+
+### Coach account
+- Role: `coach`
+- Firestore profile must have `role: 'coach'`
+- When `GOOGLE_APPLICATION_CREDENTIALS` is set, global-setup resolves this account's UID
+  from `E2E_COACH_EMAIL` and writes it into E2E Team A's `coachIds` array
+
+### League Manager account
+- Role: `league_manager`
+- Must be linked to a league (the staging test league named "test league")
 
 ### Local (emulator) setup
 When running against the local Firebase Emulator, create these accounts via:
@@ -106,6 +218,12 @@ e2e/
   parent.spec.ts            Parent home page, RSVP flow, state persistence
   player.spec.ts            Player home page, RSVP flow, access control, profile
   invite-flow.spec.ts       Full invite lifecycle: add player → invite → revoke
+  coach-role.spec.ts        Coach routing, team access, blocked routes
+  lm-role.spec.ts           League manager routing, league access, blocked routes
+  game-results.spec.ts      Result recording section, score inputs, save/submit
+  attendance.spec.ts        Attendance tracking, counter, status persistence
+  cross-role-visibility.spec.ts  Cross-role event visibility, edit control isolation
+  standings.spec.ts         Standings table, round-trip result submit test
   environment.spec.ts       Dev/staging environment banner, page smoke tests
   environment.prod.spec.ts  Production-only: no banner, no console errors
   environment.staging.spec.ts  Staging-only: banner is present
@@ -114,9 +232,25 @@ e2e/
     AuthPage.ts             Page Object for /login and /signup
     AdminPage.ts            Page Object for /teams and /teams/:id
     ParentHomePage.ts       Page Object for /parent
+    CoachPage.ts            Page Object for coach home
+    LeagueManagerPage.ts    Page Object for LM home
 
   fixtures/
     auth.fixture.ts         Playwright fixture extending test with page objects + login helpers
+
+  helpers/
+    test-data.ts            Loads e2e/.auth/test-data.json (seeded IDs)
+
+  global-setup.ts           Auth login + Firestore data seeding (runs before all tests)
+  global-teardown.ts        Firestore data cleanup (runs after all tests)
+
+  .auth/                    Gitignored — auth state files + test-data.json written here
+    admin.json
+    coach.json
+    lm.json
+    parent.json
+    player.json
+    test-data.json          Seeded document IDs written by global-setup
 ```
 
 ---
@@ -127,11 +261,11 @@ e2e/
 # Auth tests only
 npx playwright test e2e/auth.spec.ts
 
-# Admin tests only
-npx playwright test e2e/admin.spec.ts
+# Coach role tests only
+npx playwright test e2e/coach-role.spec.ts
 
-# Parent RSVP tests only
-npx playwright test e2e/parent.spec.ts
+# Standings round-trip test only
+npx playwright test e2e/standings.spec.ts --grep "STAND-RT-01"
 
 # Production environment check (against firstwhistlesports.com)
 npx playwright test --project=production
@@ -171,7 +305,8 @@ relevant automated items in `docs/GO_LIVE_CHECKLIST.md`.
 
 Tests that create data (teams, players) generate unique names using `Date.now()` to avoid
 collisions. Tests clean up after themselves where possible. If a test run is interrupted,
-leftover "E2E *" named teams/players can be deleted manually via the admin UI.
+leftover "E2E *" named teams/players can be deleted manually via the admin UI, or by
+running the teardown manually (see `docs/RUNBOOK.md` — "Manually wipe E2E seed data").
 
 ---
 
@@ -180,12 +315,20 @@ leftover "E2E *" named teams/players can be deleted manually via the admin UI.
 **Tests fail immediately with "Missing required environment variable"**
 Set the env vars documented above. See "Setting up a local .env file".
 
+**Data-dependent tests are all skipping with "E2E seed data not available"**
+Set `GOOGLE_APPLICATION_CREDENTIALS` to a staging service account JSON path.
+See "Running seeding locally" above.
+
 **Session timeout tests fail with wrong URL**
 These tests use `page.clock.install()` (Playwright fake timers). Confirm you are on
 Playwright >= 1.45. Check `npx playwright --version`.
 
 **RSVP tests are skipped**
 The parent account has no upcoming events. Add a future event via the admin UI and try again.
+
+**STAND-RT-01 skips with "submitGameResult Cloud Function returned an error"**
+The seeded event may lack `leagueId` or `seasonId` fields, or the function is not deployed.
+Re-seed by deleting the `isE2eData` event in Firestore console and re-running global-setup.
 
 **Firebase callable function timeouts**
 The invite creation test calls `sendInvite` Cloud Function. On the local emulator this is

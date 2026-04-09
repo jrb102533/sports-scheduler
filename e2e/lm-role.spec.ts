@@ -15,25 +15,37 @@
  *
  * Requires:
  *   E2E_LM_EMAIL / E2E_LM_PASSWORD — a league manager account.
- *   The account must have role 'league_manager' in its Firestore profile
- *   and must be linked to leagueId 16a29c0a-68c0-4649-b15a-dbe0c6251583
- *   ("test league") which contains the teams: Sharks, wild, flyers, pens.
+ *   The account must have role 'league_manager' in its Firestore profile.
+ *   GOOGLE_APPLICATION_CREDENTIALS — used by global-setup to seed the E2E Test
+ *   League and E2E Team A / E2E Team B.
  *
- * Data constants used in assertions:
- *   KNOWN_LEAGUE_NAME — the league name that must appear on /leagues
- *   KNOWN_TEAM_NAMES  — at least one of these must appear as a team card
- *                       on the home page
+ * Data used in assertions loaded from e2e/.auth/test-data.json:
+ *   testData.teamAName — 'E2E Team A'
+ *   testData.teamBName — 'E2E Team B'
+ *
+ * Note: KNOWN_LEAGUE_NAME still refers to the staging fixture 'test league' for
+ * LM-04 — the LM account's managed league is the pre-existing staging league, not
+ * the seeded E2E league (which the LM account is not a manager of).  This test
+ * remains data-dependent on the staging account's league assignment.
  */
 
 import { test, expect } from './fixtures/auth.fixture';
 import { AuthPage } from './pages/AuthPage';
+import { loadTestData } from './helpers/test-data';
 
 // ---------------------------------------------------------------------------
 // Known test-account data
 // ---------------------------------------------------------------------------
 
+const testData = loadTestData();
+
+// The LM's managed league name comes from the staging fixture account (unchanged)
 const KNOWN_LEAGUE_NAME = 'test league';
-const KNOWN_TEAM_NAMES = ['Sharks', 'wild', 'flyers', 'pens'];
+
+// Team names include both E2E seeded teams (if available) and legacy fallbacks
+const KNOWN_TEAM_NAMES: string[] = testData
+  ? [testData.teamAName, testData.teamBName, 'Sharks', 'wild', 'flyers', 'pens']
+  : ['Sharks', 'wild', 'flyers', 'pens'];
 
 // ---------------------------------------------------------------------------
 // LM-01 — routing: LM lands on / (not /parent) after login
