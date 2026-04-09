@@ -73,6 +73,8 @@ Follow 12-factor app methodology for all development:
 | File | Purpose |
 |------|---------|
 | `docs/PRD.md` | Full product requirements + mobile architecture |
+| `docs/CHANGE_CONTROL.md` | Branch strategy, PR gates, deploy pipeline, rollback, agent roles |
+| `docs/RUNBOOK.md` | Operational scripts and maintenance procedures |
 | `src/store/useAuthStore.ts` | Auth state, profile, role helpers, team access |
 | `src/layouts/MainLayout.tsx` | Root layout, all Firestore subscriptions |
 | `src/router/index.tsx` | All routes/screens |
