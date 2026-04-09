@@ -32,16 +32,14 @@ import { test, expect } from './fixtures/auth.fixture';
 
 /**
  * Locate the bell button in the TopBar header.
- * The bell button has no aria-label; it is identified by being the button
- * inside the <header> that contains the Bell svg icon (data-lucide="bell").
  */
 function bellButton(page: import('@playwright/test').Page) {
-  return page.locator('header button').filter({ has: page.locator('[data-lucide="bell"]') });
+  return page.getByRole('button', { name: 'Notifications' });
 }
 
 /**
  * The unread-count badge rendered inside the bell button.
- * It is the <span> rendered only when unread > 0.
+ * It is the <span> rendered conditionally only when unread > 0.
  */
 function bellBadge(page: import('@playwright/test').Page) {
   return bellButton(page).locator('span');
