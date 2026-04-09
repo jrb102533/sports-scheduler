@@ -4,6 +4,7 @@ import { AuthPage } from '../pages/AuthPage';
 import { AdminPage } from '../pages/AdminPage';
 import { ParentHomePage } from '../pages/ParentHomePage';
 import { PlayerHomePage } from '../pages/PlayerHomePage';
+import { LeagueManagerPage } from '../pages/LeagueManagerPage';
 
 /**
  * Test credentials are read from environment variables.
@@ -25,12 +26,15 @@ export type TestFixtures = {
   adminPage: AdminPage;
   parentPage: ParentHomePage;
   playerPage: PlayerHomePage;
+  leagueManagerPage: LeagueManagerPage;
   /** Authenticated as admin — navigation to / is handled for you. */
   asAdmin: { page: AuthPage['page']; admin: AdminPage };
   /** Authenticated as parent — navigation to /parent is handled for you. */
   asParent: { page: AuthPage['page']; parent: ParentHomePage };
   /** Authenticated as player — navigation to /parent is handled for you. */
   asPlayer: { page: AuthPage['page']; player: PlayerHomePage };
+  /** Authenticated as league manager — navigation to / is handled for you. */
+  asLeagueManager: { page: AuthPage['page']; lm: LeagueManagerPage };
 };
 
 export const test = base.extend<TestFixtures>({
@@ -48,6 +52,10 @@ export const test = base.extend<TestFixtures>({
 
   playerPage: async ({ page }, use) => {
     await use(new PlayerHomePage(page));
+  },
+
+  leagueManagerPage: async ({ page }, use) => {
+    await use(new LeagueManagerPage(page));
   },
 
   asAdmin: async ({ page }, use) => {
@@ -81,6 +89,17 @@ export const test = base.extend<TestFixtures>({
     await player.goto();
     await use({ page, player });
   },
+
+  asLeagueManager: async ({ page }, use) => {
+    const auth = new AuthPage(page);
+    await auth.loginAndWaitForApp(
+      requireEnv('E2E_LM_EMAIL'),
+      requireEnv('E2E_LM_PASSWORD'),
+    );
+    const lm = new LeagueManagerPage(page);
+    await lm.goto();
+    await use({ page, lm });
+  },
 });
 
 export { expect } from '@playwright/test';
@@ -100,5 +119,9 @@ export const creds = {
   player: () => ({
     email: requireEnv('E2E_PLAYER_EMAIL'),
     password: requireEnv('E2E_PLAYER_PASSWORD'),
+  }),
+  lm: () => ({
+    email: requireEnv('E2E_LM_EMAIL'),
+    password: requireEnv('E2E_LM_PASSWORD'),
   }),
 };
