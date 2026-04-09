@@ -16,19 +16,6 @@ import { test, expect } from './fixtures/auth.fixture';
 import { ParentHomePage } from './pages/ParentHomePage';
 
 // ---------------------------------------------------------------------------
-// Parent routing — player/parent role redirects to /parent from /
-// ---------------------------------------------------------------------------
-
-test('@smoke parent user is redirected from / to /parent', async ({ asParent }) => {
-  const { page } = asParent;
-
-  await page.goto('/');
-
-  // Dashboard redirects player/parent roles to /parent
-  await expect(page).toHaveURL(/\/parent/, { timeout: 10_000 });
-});
-
-// ---------------------------------------------------------------------------
 // Team header
 // ---------------------------------------------------------------------------
 

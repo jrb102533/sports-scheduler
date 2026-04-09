@@ -179,15 +179,4 @@ test('admin sees Schedule tab on team detail page', async ({ asAdmin }) => {
   await expect(page.locator('main')).toBeVisible();
 });
 
-// ---------------------------------------------------------------------------
-// Non-admin is blocked from /users
-// ---------------------------------------------------------------------------
-
-test('parent is redirected away from /users (admin-only route)', async ({ asParent }) => {
-  const { page } = asParent;
-
-  await page.goto('/users');
-
-  // RoleGuard with redirect=true should push to /
-  await expect(page).not.toHaveURL(/\/users/, { timeout: 10_000 });
-});
+// Note: parent/player blocked from /users is covered authoritatively in rbac.spec.ts
