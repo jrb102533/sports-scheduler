@@ -42,9 +42,13 @@ All credentials are read from environment variables. **Never hardcode credential
 | `E2E_LM_PASSWORD` | Yes | Password for the league manager test account |
 | `E2E_INVITE_PARENT_EMAIL` | No | An email address to use as an invite target (invite creation tests only) |
 | `E2E_STAGING_URL` | No | Staging base URL. Defaults to `https://staging.firstwhistlesports.com` |
+| `E2E_FUNCTIONS_BASE` | No | Base URL for Cloud Functions. Defaults to the production `us-central1` URL baked into the Cloud Function binary. Required when testing against staging or a non-default region. |
+| `E2E_RSVP_HMAC_SECRET` | No** | The `RSVP_HMAC_SECRET` value provisioned in Firebase Secret Manager. Required for `email-rsvp.spec.ts` happy-path tests. Without it those tests self-skip (#318). |
 | `GOOGLE_APPLICATION_CREDENTIALS` | No* | Path to a Firebase service account JSON file. Required for Firestore data seeding. See below. |
 
 \* Required for data-dependent tests to run fully. Without it, those tests self-skip with a clear message.
+
+\*\* Obtain from Firebase Console → Secret Manager → `RSVP_HMAC_SECRET` (staging project). Store as a GitHub Actions secret named `E2E_RSVP_HMAC_SECRET`. Never commit the value.
 
 ### Setting up a local .env file
 
@@ -63,6 +67,8 @@ E2E_LM_EMAIL=lm@yourapp.com
 E2E_LM_PASSWORD=your-lm-password
 E2E_INVITE_PARENT_EMAIL=invite-target@example.com
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/staging-sa.json
+E2E_FUNCTIONS_BASE=https://us-central1-first-whistle-staging.cloudfunctions.net
+E2E_RSVP_HMAC_SECRET=your-rsvp-hmac-secret-value-here
 ```
 
 Then load it before running:
@@ -215,7 +221,8 @@ Seed the Firestore data (teams, players, events) so parent account tests have so
 e2e/
   auth.spec.ts              Login, logout, session timeout, signup validation
   admin.spec.ts             Team CRUD, player management, access control
-  parent.spec.ts            Parent home page, RSVP flow, state persistence
+  email-rsvp.spec.ts        One-tap unauthenticated RSVP via signed email link; endpoint error paths
+  parent.spec.ts            Parent home page, authenticated RSVP UI, state persistence
   player.spec.ts            Player home page, RSVP flow, access control, profile
   invite-flow.spec.ts       Full invite lifecycle: add player → invite → revoke
   coach-role.spec.ts        Coach routing, team access, blocked routes
@@ -291,6 +298,10 @@ relevant automated items in `docs/GO_LIVE_CHECKLIST.md`.
 | Parent sees team and schedule | `parent.spec.ts` | parent home page shows a team header |
 | RSVP button appears and can be tapped | `parent.spec.ts` | parent can RSVP Going on an event |
 | RSVP state persists after refresh | `parent.spec.ts` | RSVP state persists after page refresh |
+| One-tap email RSVP confirms attendance (yes) | `email-rsvp.spec.ts` | navigating a valid RSVP yes-link shows the Attending confirmation page |
+| One-tap email RSVP confirms not attending (no) | `email-rsvp.spec.ts` | navigating a valid RSVP no-link shows the Not Attending confirmation page |
+| Tampered RSVP token is rejected | `email-rsvp.spec.ts` | rejects a tampered RSVP token with 403 |
+| Malformed RSVP link returns 400 | `email-rsvp.spec.ts` | returns 400 for a malformed RSVP link missing required params |
 | Login with valid credentials | `auth.spec.ts` | logs in with valid credentials |
 | Login with wrong password → correct error | `auth.spec.ts` | shows "Incorrect email or password" |
 | Session idle 30 min → warning modal | `auth.spec.ts` | shows Session Expiring modal after 30 minutes |
@@ -325,6 +336,12 @@ Playwright >= 1.45. Check `npx playwright --version`.
 
 **RSVP tests are skipped**
 The parent account has no upcoming events. Add a future event via the admin UI and try again.
+
+**email-rsvp.spec.ts happy-path tests all skip with "E2E_RSVP_HMAC_SECRET not set"**
+Set `E2E_RSVP_HMAC_SECRET` to the value of the `RSVP_HMAC_SECRET` Firebase Secret (staging project).
+Retrieve it from: Firebase Console → Secret Manager → RSVP_HMAC_SECRET → View secret value.
+For CI, add it as a GitHub Actions secret named `E2E_RSVP_HMAC_SECRET`.
+The error-path tests (400 / 403 responses) still run without this variable.
 
 **STAND-RT-01 skips with "submitGameResult Cloud Function returned an error"**
 The seeded event may lack `leagueId` or `seasonId` fields, or the function is not deployed.
