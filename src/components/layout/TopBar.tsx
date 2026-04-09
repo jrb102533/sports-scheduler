@@ -26,14 +26,7 @@ export function TopBar({ greeting, pageTitle, onMenuClick }: TopBarProps) {
         >
           <Menu size={20} />
         </button>
-        {(greeting || pageTitle) && (
-          <div className="min-w-0">
-            {greeting && <p className="text-base sm:text-lg font-semibold text-gray-900 truncate leading-tight">{greeting}</p>}
-            {pageTitle && (
-              <p className={`truncate leading-tight ${greeting ? 'text-xs text-gray-400' : 'text-base sm:text-lg font-semibold text-gray-900'}`}>{pageTitle}</p>
-            )}
-          </div>
-        )}
+        <p className="text-sm font-medium text-gray-700">{greeting}</p>
       </div>
 
       <div className="flex items-center gap-1 flex-shrink-0">
