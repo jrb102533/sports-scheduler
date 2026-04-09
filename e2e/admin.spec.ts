@@ -48,7 +48,7 @@ test('admin can open the New Team modal and see required fields', async ({ asAdm
   await expect(modal.getByLabel(/sport/i)).toBeVisible();
 });
 
-test('admin can create a new team and it appears in the teams list', async ({ asAdmin }) => {
+test('@smoke admin can create a new team and it appears in the teams list', async ({ asAdmin }) => {
   const { page, admin } = asAdmin;
   const uniqueName = `E2E Test Team ${Date.now()}`;
 
@@ -88,7 +88,7 @@ test('admin can delete a team (soft delete) from team detail page', async ({ asA
 // Player management
 // ---------------------------------------------------------------------------
 
-test('admin can open the Add Player form on the Roster tab', async ({ asAdmin }) => {
+test('@smoke admin can open the Add Player form on the Roster tab', async ({ asAdmin }) => {
   const { page, admin } = asAdmin;
 
   // Create a throwaway team to work with

@@ -95,7 +95,7 @@ test('admin dashboard shows all-scope stat cards', async ({ asAdmin }) => {
 // Admin-only route accessible by admin
 // ---------------------------------------------------------------------------
 
-test('admin can access /users', async ({ asAdmin }) => {
+test('@smoke admin can access /users', async ({ asAdmin }) => {
   const { page } = asAdmin;
   await page.goto('/users');
   await expect(page).not.toHaveURL(/\/login/, { timeout: 10_000 });

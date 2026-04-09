@@ -76,7 +76,7 @@ test('venue form modal shows Surface Type toggle buttons', async ({ asAdmin }) =
 // Create venue
 // ---------------------------------------------------------------------------
 
-test('admin can create a venue and it appears in the list', async ({ asAdmin }) => {
+test('@smoke admin can create a venue and it appears in the list', async ({ asAdmin }) => {
   const { page } = asAdmin;
   await page.goto('/venues');
   await page.waitForLoadState('domcontentloaded');
