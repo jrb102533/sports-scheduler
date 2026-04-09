@@ -324,7 +324,7 @@ export function canEdit(profile: UserProfile | null, team?: Team | null): boolea
   const memberships = getMemberships(profile);
   if (memberships.some(m => m.role === 'admin')) return true;
   if (!team) return false;
-  if (team.createdBy === profile.uid || team.coachId === profile.uid) return true;
+  if (team.createdBy === profile.uid || team.coachId === profile.uid || team.coachIds?.includes(profile.uid)) return true;
   if (memberships.some(m =>
     m.role === 'league_manager' && m.leagueId && team.leagueIds?.includes(m.leagueId)
   )) return true;

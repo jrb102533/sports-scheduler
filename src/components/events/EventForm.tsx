@@ -106,7 +106,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   // Teams the user can schedule for
   const myTeams = useMemo(() => {
     if (profile?.role === 'admin' || profile?.role === 'league_manager') return allTeams;
-    return allTeams.filter(t => t.createdBy === user?.uid || t.coachId === user?.uid);
+    return allTeams.filter(t => t.createdBy === user?.uid || t.coachId === user?.uid || t.coachIds?.includes(user?.uid ?? ''));
   }, [allTeams, profile, user]);
 
   // If a team is pre-set from the page context (e.g. TeamDetailPage), lock it

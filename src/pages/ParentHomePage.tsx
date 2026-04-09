@@ -31,7 +31,7 @@ function resolveParentTeams(
 
   // 3. Fall back: teams where this user is the coach or creator
   return allTeams.filter(
-    t => t.coachId === profile.uid || t.createdBy === profile.uid
+    t => t.coachId === profile.uid || t.coachIds?.includes(profile.uid) || t.createdBy === profile.uid
   );
 }
 

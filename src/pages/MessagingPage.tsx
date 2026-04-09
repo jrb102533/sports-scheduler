@@ -51,6 +51,7 @@ export function MessagingPage() {
     : allTeams.filter(t =>
         t.createdBy === profile?.uid ||
         t.coachId === profile?.uid ||
+        t.coachIds?.includes(profile?.uid ?? '') ||
         t.id === profile?.teamId
       );
 
