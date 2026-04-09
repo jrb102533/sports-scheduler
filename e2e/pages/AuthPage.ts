@@ -42,7 +42,7 @@ export class AuthPage {
     });
     this.createAccountButton = page.getByRole('button', { name: 'Create Account' });
 
-    this.errorMessage = page.locator('.text-red-600');
+    this.errorMessage = page.locator('[role="alert"]').or(page.locator('[aria-live="polite"]'));
   }
 
   async gotoLogin() {

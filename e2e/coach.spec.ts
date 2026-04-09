@@ -107,7 +107,6 @@ test('clicking an event opens the EventDetailPanel', async ({ asAdmin }) => {
   await page.waitForURL(/\/teams\/.+/);
 
   await page.getByRole('tab', { name: /schedule/i }).click();
-  await page.waitForTimeout(1_000);
 
   // Look for any event card
   const eventCard = page.locator('[class*="rounded"][class*="border"]').filter({
@@ -183,12 +182,11 @@ test('admin can cancel an event from EventDetailPanel', async ({ asAdmin }) => {
   await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
   // Now click the event to open the detail panel
-  await page.waitForTimeout(1_000);
   const eventItems = page.locator('[class*="rounded"][class*="cursor"]').filter({
     has: page.locator('button'),
   });
 
-  const clickable = await eventItems.first().isVisible({ timeout: 3_000 }).catch(() => false);
+  const clickable = await eventItems.first().isVisible({ timeout: 8_000 }).catch(() => false);
   if (!clickable) {
     test.skip(true, 'No clickable event found after creation — skipping');
     return;
@@ -366,7 +364,6 @@ test('attendance tracker is visible on event detail for admin', async ({ asAdmin
   await teamLinks.first().click();
   await page.waitForURL(/\/teams\/.+/);
   await page.getByRole('tab', { name: /schedule/i }).click();
-  await page.waitForTimeout(1_000);
 
   // Click first available event
   const eventItems = page.locator('[class*="rounded"][class*="border"]').filter({

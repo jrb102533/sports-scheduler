@@ -118,7 +118,7 @@ test('admin can create a new user via the Add User modal', async ({ asAdmin }) =
 
   if (!modalGone) {
     const errorText = await modal
-      .locator('[role="alert"], .text-red-600, [class*="error"]')
+      .locator('[role="alert"], [aria-live="polite"]')
       .textContent()
       .catch(() => '');
 
@@ -134,7 +134,6 @@ test('admin can create a new user via the Add User modal', async ({ asAdmin }) =
   }
 
   // If modal closed: the new user should eventually appear in the list
-  await page.waitForTimeout(2_000);
   const newUserRow = page.getByText('E2E TestUser', { exact: false });
   await expect(newUserRow).toBeVisible({ timeout: 10_000 });
 

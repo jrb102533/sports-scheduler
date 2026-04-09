@@ -36,7 +36,7 @@ test('app loads on firstwhistlesports.com without console errors', async ({
 
   const { email, password } = creds.admin();
   await authPage.loginAndWaitForApp(email, password);
-  await page.waitForTimeout(2_000);
+  await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
 
   // Filter out known benign Firebase errors (e.g. quota exceeded warnings in prod that are not actionable)
   const criticalErrors = errors.filter(

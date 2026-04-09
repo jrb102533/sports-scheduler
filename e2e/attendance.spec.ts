@@ -58,9 +58,6 @@ async function openFirstSharksEvent(
   await expect(scheduleTab).toBeVisible({ timeout: 10_000 });
   await scheduleTab.click();
 
-  // Wait for the schedule list to settle
-  await page.waitForTimeout(1_000);
-
   // Event cards render as Card components: rounded-xl + border + cursor-pointer
   const eventCard = page
     .locator('div.cursor-pointer')
@@ -373,7 +370,6 @@ test('ATT-06: attendance status persists after page reload and re-navigation to 
   const scheduleTab = page.getByRole('tab', { name: /schedule/i });
   await expect(scheduleTab).toBeVisible({ timeout: 10_000 });
   await scheduleTab.click();
-  await page.waitForTimeout(1_000);
 
   // Re-find the same event by its title (captured from the h2 before reload)
   let eventCard: import('@playwright/test').Locator;

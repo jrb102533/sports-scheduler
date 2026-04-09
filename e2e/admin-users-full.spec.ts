@@ -88,8 +88,9 @@ async function deleteUserByName(
   const confirmBtn = page.getByRole('button', { name: /confirm|yes|delete/i }).last();
   if (await confirmBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
     await confirmBtn.click();
+    // Wait for the row to disappear after the CF completes the deletion
+    await expect(userRow).not.toBeVisible({ timeout: 15_000 }).catch(() => undefined);
   }
-  await page.waitForTimeout(2_000);
 }
 
 // ---------------------------------------------------------------------------
@@ -109,15 +110,12 @@ test('newly created user appears in the table with the assigned role badge', asy
     return;
   }
 
-  // Allow Firestore propagation
-  await page.waitForTimeout(2_000);
-
-  // User row should appear in the table
+  // User row should appear in the table (Firestore propagation handled by timeout on assertion)
   const userRow = page.locator('tr, [class*="user-row"]').filter({
     has: page.getByText(displayName, { exact: false }),
   }).first();
 
-  await expect(userRow).toBeVisible({ timeout: 10_000 });
+  await expect(userRow).toBeVisible({ timeout: 15_000 });
 
   // Role badge "Coach" should be visible somewhere in or near that row
   const roleBadge = page
@@ -287,10 +285,8 @@ test('admin can delete another user and they disappear from the list', async ({ 
     return;
   }
 
-  await page.waitForTimeout(2_000);
-
-  // Verify user appears
-  await expect(page.getByText(displayName, { exact: false })).toBeVisible({ timeout: 10_000 });
+  // Verify user appears (Firestore propagation handled by timeout on assertion)
+  await expect(page.getByText(displayName, { exact: false })).toBeVisible({ timeout: 15_000 });
 
   // Delete the user
   const userRow = page.locator('tr, [class*="user-row"]').filter({

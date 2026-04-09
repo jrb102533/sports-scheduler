@@ -109,7 +109,6 @@ test('@smoke RSVP state persists after page refresh', async ({ asParent }) => {
   // Reload and verify it persisted
   await page.reload();
   await page.waitForLoadState('domcontentloaded');
-  await page.waitForTimeout(2_000); // Allow Firestore subscription to populate
 
   const goingBtnAfterReload = page.getByRole('button', { name: 'Going' }).first();
   await expect(goingBtnAfterReload).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });

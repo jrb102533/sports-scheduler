@@ -100,8 +100,8 @@ test('admin can toggle weekly digest off then back on', async ({ asAdmin }) => {
 
   // Toggle the switch
   await toggle.click();
-  // Allow Firestore write to propagate
-  await page.waitForTimeout(2_000);
+  // Wait for Firestore write to propagate — aria-checked must change
+  await expect(toggle).not.toHaveAttribute('aria-checked', initialChecked ?? '', { timeout: 10_000 });
 
   const newChecked = await toggle.getAttribute('aria-checked');
   // State should have changed
@@ -109,7 +109,7 @@ test('admin can toggle weekly digest off then back on', async ({ asAdmin }) => {
 
   // Toggle back to original state
   await toggle.click();
-  await page.waitForTimeout(2_000);
+  await expect(toggle).toHaveAttribute('aria-checked', initialChecked ?? '', { timeout: 10_000 });
 
   const restoredChecked = await toggle.getAttribute('aria-checked');
   expect(restoredChecked).toBe(initialChecked);

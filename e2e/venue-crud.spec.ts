@@ -98,7 +98,8 @@ async function deleteVenueByName(page: import('@playwright/test').Page, name: st
   if (!confirmVisible) return;
 
   await confirmBtn.click();
-  await page.waitForTimeout(1_500);
+  // Wait for the card to disappear after deletion
+  await expect(venueCard).not.toBeVisible({ timeout: 10_000 }).catch(() => undefined);
 }
 
 // ---------------------------------------------------------------------------
@@ -406,7 +407,6 @@ test('VENUE-CRUD-06: a saved venue appears in the schedule wizard venue combobox
     const nextVisible = await nextBtn.isEnabled({ timeout: 2_000 }).catch(() => false);
     if (!nextVisible) break;
     await nextBtn.click();
-    await page.waitForTimeout(500);
   }
 
   if (!venuesStepFound) {
