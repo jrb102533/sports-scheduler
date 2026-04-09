@@ -4030,6 +4030,7 @@ export const sendLeagueInvite = onCall<SendLeagueInviteData, Promise<SendLeagueI
           color: '#9ca3af',
           createdBy: uid,
           ownerName: '',
+          coachIds: [],
           createdAt: now,
           updatedAt: now,
         });
@@ -4281,6 +4282,7 @@ export const acceptLeagueInvite = onCall<AcceptLeagueInviteData, Promise<{ succe
         // Promote the placeholder team.
         tx.update(db.doc(`teams/${placeholderTeamId}`), {
           coachId: uid,
+          coachIds: [uid],
           isPending: admin.firestore.FieldValue.delete(),
           pendingEmail: admin.firestore.FieldValue.delete(),
           updatedAt: now,
