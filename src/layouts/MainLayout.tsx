@@ -95,7 +95,7 @@ export function MainLayout() {
             </div>
           </div>
         </div>
-        <TopBar greeting={greeting} pageTitle={pageTitle} onMenuClick={() => setSidebarOpen(true)} />
+        <TopBar greeting={greeting} onMenuClick={() => setSidebarOpen(true)} />
         {pageTitle && (
           <div className="bg-gray-50 border-b border-gray-200 px-4 sm:px-6 py-2">
             <p className="text-sm font-semibold text-gray-700">{pageTitle}</p>
