@@ -89,11 +89,12 @@ export const test = base.extend<TestFixtures>({
    * asAdmin — restores the admin session from global-setup storageState.
    * Falls back to live login if the state file does not exist.
    */
-  asAdmin: async ({ browser, page }, use) => {
+  asAdmin: async ({ browser, page }, use, testInfo) => {
     const role = 'admin';
 
     if (hasStorageState(role)) {
       const context = await browser.newContext({
+        ...testInfo.project.use,
         storageState: authStatePath(role),
       });
       const p = await context.newPage();
@@ -118,11 +119,12 @@ export const test = base.extend<TestFixtures>({
    * asParent — restores the parent session from global-setup storageState.
    * Falls back to live login if the state file does not exist.
    */
-  asParent: async ({ browser, page }, use) => {
+  asParent: async ({ browser, page }, use, testInfo) => {
     const role = 'parent';
 
     if (hasStorageState(role)) {
       const context = await browser.newContext({
+        ...testInfo.project.use,
         storageState: authStatePath(role),
       });
       const p = await context.newPage();
@@ -146,11 +148,12 @@ export const test = base.extend<TestFixtures>({
    * asPlayer — restores the player session from global-setup storageState.
    * Falls back to live login if the state file does not exist.
    */
-  asPlayer: async ({ browser, page }, use) => {
+  asPlayer: async ({ browser, page }, use, testInfo) => {
     const role = 'player';
 
     if (hasStorageState(role)) {
       const context = await browser.newContext({
+        ...testInfo.project.use,
         storageState: authStatePath(role),
       });
       const p = await context.newPage();
@@ -174,11 +177,12 @@ export const test = base.extend<TestFixtures>({
    * asLeagueManager — restores the LM session from global-setup storageState.
    * Falls back to live login if the state file does not exist.
    */
-  asLeagueManager: async ({ browser, page }, use) => {
+  asLeagueManager: async ({ browser, page }, use, testInfo) => {
     const role = 'lm';
 
     if (hasStorageState(role)) {
       const context = await browser.newContext({
+        ...testInfo.project.use,
         storageState: authStatePath(role),
       });
       const p = await context.newPage();
@@ -202,11 +206,12 @@ export const test = base.extend<TestFixtures>({
    * asCoach — restores the coach session from global-setup storageState.
    * Falls back to live login if the state file does not exist.
    */
-  asCoach: async ({ browser, page }, use) => {
+  asCoach: async ({ browser, page }, use, testInfo) => {
     const role = 'coach';
 
     if (hasStorageState(role)) {
       const context = await browser.newContext({
+        ...testInfo.project.use,
         storageState: authStatePath(role),
       });
       const p = await context.newPage();
