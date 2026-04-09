@@ -3,6 +3,7 @@ import { test as base } from '@playwright/test';
 import { AuthPage } from '../pages/AuthPage';
 import { AdminPage } from '../pages/AdminPage';
 import { ParentHomePage } from '../pages/ParentHomePage';
+import { PlayerHomePage } from '../pages/PlayerHomePage';
 
 /**
  * Test credentials are read from environment variables.
@@ -23,10 +24,13 @@ export type TestFixtures = {
   authPage: AuthPage;
   adminPage: AdminPage;
   parentPage: ParentHomePage;
+  playerPage: PlayerHomePage;
   /** Authenticated as admin — navigation to / is handled for you. */
   asAdmin: { page: AuthPage['page']; admin: AdminPage };
   /** Authenticated as parent — navigation to /parent is handled for you. */
   asParent: { page: AuthPage['page']; parent: ParentHomePage };
+  /** Authenticated as player — navigation to /parent is handled for you. */
+  asPlayer: { page: AuthPage['page']; player: PlayerHomePage };
 };
 
 export const test = base.extend<TestFixtures>({
@@ -40,6 +44,10 @@ export const test = base.extend<TestFixtures>({
 
   parentPage: async ({ page }, use) => {
     await use(new ParentHomePage(page));
+  },
+
+  playerPage: async ({ page }, use) => {
+    await use(new PlayerHomePage(page));
   },
 
   asAdmin: async ({ page }, use) => {
@@ -62,6 +70,17 @@ export const test = base.extend<TestFixtures>({
     await parent.goto();
     await use({ page, parent });
   },
+
+  asPlayer: async ({ page }, use) => {
+    const auth = new AuthPage(page);
+    await auth.loginAndWaitForApp(
+      requireEnv('E2E_PLAYER_EMAIL'),
+      requireEnv('E2E_PLAYER_PASSWORD'),
+    );
+    const player = new PlayerHomePage(page);
+    await player.goto();
+    await use({ page, player });
+  },
 });
 
 export { expect } from '@playwright/test';
@@ -77,5 +96,9 @@ export const creds = {
   parent: () => ({
     email: requireEnv('E2E_PARENT_EMAIL'),
     password: requireEnv('E2E_PARENT_PASSWORD'),
+  }),
+  player: () => ({
+    email: requireEnv('E2E_PLAYER_EMAIL'),
+    password: requireEnv('E2E_PLAYER_PASSWORD'),
   }),
 };
