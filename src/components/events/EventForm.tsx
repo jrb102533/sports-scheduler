@@ -124,6 +124,8 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const [notes, setNotes] = useState(editEvent?.notes ?? initial?.notes ?? '');
   const [isOutdoor, setIsOutdoor] = useState<boolean>(editEvent?.isOutdoor ?? initial?.isOutdoor ?? true);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Team + home/away
   const [selectedTeamId, setSelectedTeamId] = useState(
@@ -209,6 +211,9 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   }
 
   async function doSave(scope: 'this' | 'future' = 'this') {
+    setSaveError(null);
+    setIsSaving(true);
+    try {
     const now = new Date().toISOString();
     const teamIds = [selectedTeamId].filter(Boolean);
     const resolvedTitle = title.trim() || EVENT_TYPE_LABELS[type];
@@ -253,6 +258,16 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     };
 
     if (editEvent) {
+      // Strip stale home/away/opponent fields before spreading so that switching
+      // home↔away or clearing the opponent on edit doesn't leave the old value
+      // behind (e.g. "Skywalkers vs Skywalkers" when awayTeamId was never cleared).
+      // optionals re-adds these only when they have a value.
+      const {
+        homeTeamId: _ht, awayTeamId: _at,
+        opponentId: _oi, opponentName: _on,
+        ...editBase
+      } = editEvent;
+
       if (scope === 'future' && editEvent.recurringGroupId) {
         const futureEvents = allEvents.filter(
           e => e.recurringGroupId === editEvent.recurringGroupId && e.date >= editEvent.date
@@ -263,14 +278,15 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
         const offsetMs = newMs - originalMs;
         await Promise.all(
           futureEvents.map(e => {
+            const { homeTeamId: _fht, awayTeamId: _fat, opponentId: _foi, opponentName: _fon, ...eBase } = e;
             const shiftedDate = offsetMs !== 0
               ? new Date(new Date(e.date).getTime() + offsetMs).toISOString().slice(0, 10)
               : e.date;
-            return updateEvent({ ...e, title: resolvedTitle, type, date: shiftedDate, startTime, teamIds, updatedAt: now, ...optionals });
+            return updateEvent({ ...eBase, title: resolvedTitle, type, date: shiftedDate, startTime, teamIds, updatedAt: now, ...optionals });
           })
         );
       } else {
-        updateEvent({ ...editEvent, title: resolvedTitle, type, date, startTime, teamIds, updatedAt: now, ...optionals });
+        await updateEvent({ ...editBase, title: resolvedTitle, type, date, startTime, teamIds, updatedAt: now, ...optionals });
       }
     } else if (isRecurring && recurrenceEnd) {
       const groupId = crypto.randomUUID();
@@ -291,11 +307,17 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
         updatedAt: now,
         ...optionals,
       }));
-      bulkAddEvents(newEvents);
+      await bulkAddEvents(newEvents);
     } else {
-      addEvent({ id: crypto.randomUUID(), title: resolvedTitle, type, status: 'scheduled' as EventStatus, date, startTime, teamIds, isRecurring: false, createdAt: now, updatedAt: now, ...optionals });
+      await addEvent({ id: crypto.randomUUID(), title: resolvedTitle, type, status: 'scheduled' as EventStatus, date, startTime, teamIds, isRecurring: false, createdAt: now, updatedAt: now, ...optionals });
     }
     onClose();
+    } catch (err) {
+      console.error('[EventForm] save failed:', err);
+      setSaveError('Failed to save — please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   async function handleSubmit() {
@@ -551,9 +573,12 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           </div>
         )}
 
+        {saveError && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>
+        )}
         <div className="flex justify-end gap-3 pt-2">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => void handleSubmit()}>{editEvent ? 'Save Changes' : 'Create Event'}</Button>
+          <Button variant="secondary" onClick={onClose} disabled={isSaving}>Cancel</Button>
+          <Button onClick={() => void handleSubmit()} disabled={isSaving}>{isSaving ? 'Saving…' : editEvent ? 'Save Changes' : 'Create Event'}</Button>
         </div>
       </div>
 

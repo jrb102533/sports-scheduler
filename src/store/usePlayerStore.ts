@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import {
   collection, collectionGroup, onSnapshot, doc, setDoc, deleteDoc,
-  query, orderBy, writeBatch,
+  query, orderBy, where, writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { useAuthStore } from './useAuthStore';
+import { useAuthStore, getActiveMembership } from './useAuthStore';
 import type { Player, SensitivePlayerData } from '@/types';
 
 // Module-level caches — shared across the singleton store instance.
@@ -48,14 +48,51 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       .includes(useAuthStore.getState().profile?.role ?? '');
 
     // ── Main player docs ───────────────────────────────────────────────────────
-    const playerUnsub = onSnapshot(
-      query(collection(db, 'players'), orderBy('createdAt')),
-      (snap) => {
-        _basePlayers = snap.docs.map(d => ({ ...d.data(), id: d.id }) as Player);
-        set({ players: buildMergedPlayers(getPriv()), loading: false });
-      },
-      () => set({ loading: false }),
-    );
+    // Admins get an unfiltered query (isAdmin() is query-safe in rules).
+    // All other roles must filter by teamId — the rule uses resource.data.teamId
+    // which makes unfiltered list queries fail with permission-denied.
+    let activePlayerUnsub: (() => void) | null = null;
+
+    function buildPlayerQuery() {
+      const profile = useAuthStore.getState().profile;
+      if (!profile) return null;
+      if (profile.role === 'admin') {
+        return query(collection(db, 'players'), orderBy('createdAt'));
+      }
+      // Coaches/parents/players store their teamId in the active membership,
+      // not necessarily in the legacy top-level profile.teamId field.
+      const teamId = getActiveMembership(profile)?.teamId ?? profile.teamId;
+      if (teamId) {
+        return query(
+          collection(db, 'players'),
+          where('teamId', '==', teamId),
+          orderBy('createdAt'),
+        );
+      }
+      return null; // no teamId yet — wait for profile to load
+    }
+
+    function subscribeToPlayers() {
+      activePlayerUnsub?.();
+      const q = buildPlayerQuery();
+      if (!q) {
+        set({ players: [], loading: false });
+        return;
+      }
+      activePlayerUnsub = onSnapshot(
+        q,
+        (snap) => {
+          _basePlayers = snap.docs.map(d => ({ ...d.data(), id: d.id }) as Player);
+          set({ players: buildMergedPlayers(getPriv()), loading: false });
+        },
+        (err) => {
+          console.error('[usePlayerStore] player subscription error:', err);
+          set({ loading: false });
+        },
+      );
+    }
+
+    subscribeToPlayers();
 
     // ── Sensitive PII subcollection ────────────────────────────────────────────
     // Always subscribe — Firestore rules deny non-privileged users server-side.
@@ -75,20 +112,26 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       },
     );
 
-    // ── Rebuild when profile role arrives ─────────────────────────────────────
-    // Snapshots fire before the profile loads from Firestore. When the role
-    // changes (null → 'admin'), rebuild so sensitive data merges correctly.
+    // ── Rebuild when profile role or teamId changes ───────────────────────────
+    // Snapshots fire before the profile loads from Firestore. When role or teamId
+    // arrives (null → 'coach', teamId undefined → actual id), re-subscribe with
+    // the correct filtered query and rebuild merged players.
     let lastRole: string | undefined = useAuthStore.getState().profile?.role;
+    let lastTeamId: string | undefined = getActiveMembership(useAuthStore.getState().profile)?.teamId
+      ?? useAuthStore.getState().profile?.teamId;
     const authUnsub = useAuthStore.subscribe((state) => {
       const role = state.profile?.role;
-      if (role !== lastRole) {
+      const teamId = getActiveMembership(state.profile)?.teamId ?? state.profile?.teamId;
+      if (role !== lastRole || teamId !== lastTeamId) {
         lastRole = role;
+        lastTeamId = teamId;
+        subscribeToPlayers(); // re-subscribe with the new query
         set(s => ({ players: buildMergedPlayers(getPriv()), loading: s.loading }));
       }
     });
 
     return () => {
-      playerUnsub();
+      activePlayerUnsub?.();
       sensitiveUnsub();
       authUnsub();
     };
