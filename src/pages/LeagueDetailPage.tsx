@@ -140,11 +140,23 @@ export function LeagueDetailPage() {
     setEditOpen(false);
   }
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  // For single-season leagues: clicking the Seasons tab navigates directly to that season.
+  // For empty leagues: only managers see the Seasons tab.
+  function handleSeasonsTab() {
+    if (seasons.length === 1) {
+      navigate(`/leagues/${id}/seasons/${seasons[0].id}`);
+    } else {
+      setTab('seasons');
+    }
+  }
+
+  const tabs: { key: Tab; label: string; icon: React.ReactNode; onClick?: () => void }[] = [
     { key: 'schedule', label: 'Schedule', icon: <CalendarDays size={14} /> },
     { key: 'standings', label: 'Standings', icon: <Trophy size={14} /> },
     { key: 'teams', label: `Teams (${leagueTeams.length})`, icon: <Users size={14} /> },
-    { key: 'seasons', label: `Seasons (${seasons.length})`, icon: <Layers size={14} /> },
+    ...(seasons.length > 0 || canManage
+      ? [{ key: 'seasons' as Tab, label: seasons.length === 1 ? seasons[0].name : `Seasons (${seasons.length})`, icon: <Layers size={14} />, onClick: handleSeasonsTab }]
+      : []),
     { key: 'venues', label: `Venues (${leagueVenueCount})`, icon: <MapPin size={14} /> },
   ];
 
@@ -196,7 +208,7 @@ export function LeagueDetailPage() {
         {tabs.map(t => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => t.onClick ? t.onClick() : setTab(t.key)}
             className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
               tab === t.key ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-800'
             }`}
@@ -340,8 +352,17 @@ export function LeagueDetailPage() {
             )}
           </div>
           {seasons.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-400">
-              No seasons yet. Create a season to start scheduling.
+            <div className="bg-white rounded-xl border border-dashed border-gray-300 p-10 text-center">
+              <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center mx-auto mb-3">
+                <Layers size={22} className="text-indigo-500" />
+              </div>
+              <p className="text-sm font-medium text-gray-700 mb-1">No seasons yet</p>
+              <p className="text-xs text-gray-400 mb-4">Create a season to start scheduling games for this league.</p>
+              {canManage && (
+                <Button size="sm" onClick={() => setSeasonCreateOpen(true)}>
+                  <Plus size={14} /> Create First Season
+                </Button>
+              )}
             </div>
           ) : (
             <div className="space-y-2">
