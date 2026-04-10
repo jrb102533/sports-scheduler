@@ -189,6 +189,30 @@ After re-seeding, `e2e/.auth/test-data.json` contains the new IDs and tests will
 
 ---
 
+## Staging Hosting Deploy
+
+**Always use `build:staging`, never plain `build`.**
+
+`npm run build` (Vite production mode) reads `.env.production` → bakes **production** Firebase config into the bundle. Deploying that bundle to staging means the staging site hits the production Firebase project — wrong auth, wrong data, wrong rules.
+
+```bash
+# Correct — deploys hosting + functions with staging config
+npm run deploy:staging
+
+# Correct — hosting only with staging config
+npm run build:staging && firebase deploy --only hosting --project staging
+
+# WRONG — bakes production Firebase config into the bundle
+npm run build && firebase deploy --only hosting --project staging
+```
+
+**Rules-only deploy** (no build needed — rules aren't bundled):
+```bash
+firebase deploy --only firestore:rules --project staging
+```
+
+---
+
 ## Related Documentation
 
 - `e2e/README.md` — E2E suite setup, env vars, test account requirements
