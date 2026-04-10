@@ -4,7 +4,7 @@ import {
   query, orderBy, where, writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { useAuthStore } from './useAuthStore';
+import { useAuthStore, getActiveMembership } from './useAuthStore';
 import type { Player, SensitivePlayerData } from '@/types';
 
 // Module-level caches — shared across the singleton store instance.
@@ -55,13 +55,17 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
 
     function buildPlayerQuery() {
       const profile = useAuthStore.getState().profile;
-      if (profile?.role === 'admin') {
+      if (!profile) return null;
+      if (profile.role === 'admin') {
         return query(collection(db, 'players'), orderBy('createdAt'));
       }
-      if (profile?.teamId) {
+      // Coaches/parents/players store their teamId in the active membership,
+      // not necessarily in the legacy top-level profile.teamId field.
+      const teamId = getActiveMembership(profile)?.teamId ?? profile.teamId;
+      if (teamId) {
         return query(
           collection(db, 'players'),
-          where('teamId', '==', profile.teamId),
+          where('teamId', '==', teamId),
           orderBy('createdAt'),
         );
       }
@@ -110,10 +114,11 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     // arrives (null → 'coach', teamId undefined → actual id), re-subscribe with
     // the correct filtered query and rebuild merged players.
     let lastRole: string | undefined = useAuthStore.getState().profile?.role;
-    let lastTeamId: string | undefined = useAuthStore.getState().profile?.teamId;
+    let lastTeamId: string | undefined = getActiveMembership(useAuthStore.getState().profile)?.teamId
+      ?? useAuthStore.getState().profile?.teamId;
     const authUnsub = useAuthStore.subscribe((state) => {
       const role = state.profile?.role;
-      const teamId = state.profile?.teamId;
+      const teamId = getActiveMembership(state.profile)?.teamId ?? state.profile?.teamId;
       if (role !== lastRole || teamId !== lastTeamId) {
         lastRole = role;
         lastTeamId = teamId;
