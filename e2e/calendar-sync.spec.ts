@@ -135,9 +135,7 @@ test('CALSYNC-04: coach can open the Subscribe modal from the Team Schedule tab'
 // (requires getCalendarFeedUrl callable — skip until PR #361 deployed — #362)
 // ---------------------------------------------------------------------------
 
-test.skip('CALSYNC-05: modal shows a URL containing "webcal://" after the feed loads', async ({ asAdmin }) => {
-  // Remove test.skip once feat/calendar-sync-backend (#361) is deployed to staging.
-  // Tracked in: https://github.com/jrb102533/sports-scheduler/issues/362
+test('CALSYNC-05: modal shows a URL containing "webcal://" after the feed loads', async ({ asAdmin }) => {
   const { page } = asAdmin;
   const dialog = await openSubscribeModalFromCalendarPage(page);
 
@@ -157,9 +155,7 @@ test.skip('CALSYNC-05: modal shows a URL containing "webcal://" after the feed l
 // (requires getCalendarFeedUrl callable — skip until PR #361 deployed — #362)
 // ---------------------------------------------------------------------------
 
-test.skip('CALSYNC-06: Copy button is present and toggles to "Copied!" after click', async ({ asAdmin }) => {
-  // Remove test.skip once feat/calendar-sync-backend (#361) is deployed to staging.
-  // Tracked in: https://github.com/jrb102533/sports-scheduler/issues/362
+test('CALSYNC-06: Copy button is present and toggles to "Copied!" after click', async ({ asAdmin }) => {
   const { page } = asAdmin;
   const dialog = await openSubscribeModalFromCalendarPage(page);
 
