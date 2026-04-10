@@ -120,17 +120,32 @@ export function LeaguesPage() {
               await updateLeague({ ...editTarget, ...leagueData, id: leagueId, updatedAt: now });
             } else {
               const managedBy = isLeagueManager ? profile?.uid : undefined;
-              await addLeague({
+              const leagueDoc = {
                 ...leagueData,
                 id: leagueId,
                 createdAt: now,
                 updatedAt: now,
                 ...(managedBy ? { managedBy } : {}),
                 managerIds: profile?.uid ? [profile.uid] : [],
-              });
-              // Link the league manager's profile to this league if not yet set
+              };
+              console.log('[LeaguesPage] addLeague doc:', JSON.stringify(leagueDoc));
+              console.log('[LeaguesPage] auth uid:', profile?.uid, 'managerIds:', leagueDoc.managerIds);
+              try {
+                await addLeague(leagueDoc);
+                console.log('[LeaguesPage] addLeague succeeded');
+              } catch (err) {
+                console.error('[LeaguesPage] addLeague FAILED:', err);
+                throw err;
+              }
               if (isLeagueManager && !profile?.leagueId) {
-                await updateProfile({ leagueId });
+                console.log('[LeaguesPage] calling updateProfile({ leagueId })');
+                try {
+                  await updateProfile({ leagueId });
+                  console.log('[LeaguesPage] updateProfile succeeded');
+                } catch (err) {
+                  console.error('[LeaguesPage] updateProfile FAILED:', err);
+                  throw err;
+                }
               }
             }
 
