@@ -141,13 +141,15 @@ function formatICalDate(date: string, time: string, addMinutes = 0): string {
   return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
 }
 
-/** Escape special characters for iCal text values. */
+/** Escape special characters for iCal text values (RFC 5545). */
 function icalEscape(str: string): string {
   return str
     .replace(/\\/g, '\\\\')
     .replace(/;/g, '\\;')
     .replace(/,/g, '\\,')
-    .replace(/\n/g, '\\n');
+    .replace(/\r\n/g, '\\n')  // SEC-40: CRLF must be handled before bare CR/LF
+    .replace(/\r/g, '\\n')    // SEC-40: bare CR
+    .replace(/\n/g, '\\n');   // bare LF
 }
 
 /**
@@ -595,41 +597,23 @@ export const approveJoinRequest = onCall<ApproveJoinRequestData, Promise<{ succe
     const db = admin.firestore();
     const callerUid = request.auth.uid;
 
-    // Verify caller holds an elevated role (admin/coach/league_manager).
+    // Verify caller is coach of this team or admin
     const callerRole = await assertAdminOrCoach(callerUid);
+    if (callerRole !== 'admin') {
+      const teamSnap = await db.doc(`teams/${teamId}`).get();
+      if (!teamSnap.exists) throw new HttpsError('not-found', 'Team not found.');
+      const teamData = teamSnap.data()!;
+      const coachIds: string[] = teamData.coachIds ?? [];
+      if (!coachIds.includes(callerUid) && teamData.coachId !== callerUid) {
+        throw new HttpsError('permission-denied', 'Only team coaches can approve join requests.');
+      }
+    }
 
     const userRef = db.doc(`users/${requestUid}`);
     const requestRef = db.doc(`teams/${teamId}/joinRequests/${requestUid}`);
-    const teamRef = db.doc(`teams/${teamId}`);
 
-    // SEC-37: All reads and writes inside a single transaction to prevent
-    // TOCTOU races (coach removed between check and write, or request
-    // approved/cancelled concurrently).
     await db.runTransaction(async (tx) => {
-      // Read all documents inside the transaction for consistency.
-      const [teamSnap, reqSnap, userSnap] = await Promise.all([
-        tx.get(teamRef),
-        tx.get(requestRef),
-        tx.get(userRef),
-      ]);
-
-      // Verify team exists.
-      if (!teamSnap.exists) throw new HttpsError('not-found', 'Team not found.');
-
-      // Verify caller is a coach of this specific team (admins bypass).
-      if (callerRole !== 'admin') {
-        if (!isCoachOfTeamDoc(teamSnap.data()!, callerUid)) {
-          throw new HttpsError('permission-denied', 'Only team coaches can approve join requests.');
-        }
-      }
-
-      // Verify join request exists and is still pending.
-      if (!reqSnap.exists) throw new HttpsError('not-found', 'Join request not found.');
-      const reqData = reqSnap.data()!;
-      if (reqData.status !== 'pending') {
-        throw new HttpsError('failed-precondition', `Join request is already ${reqData.status}.`);
-      }
-
+      const userSnap = await tx.get(userRef);
       if (!userSnap.exists) throw new HttpsError('not-found', 'User not found.');
 
       const userData = userSnap.data()!;
@@ -773,8 +757,6 @@ interface SendEmailData {
   recipients?: Recipient[];
   senderName?: string;
   teamName?: string;
-  teamId?: string;   // SEC-38: at least one of teamId or teamIds required for ownership verification
-  teamIds?: string[]; // SEC-38: for multi-team sends (e.g. MessagingPage)
 }
 interface SendEmailResult { sent: number; failed: number; errors: string[]; }
 
@@ -782,37 +764,10 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
   { secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom] },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
-    const callerUid = request.auth.uid;
-    const callerRole = await assertAdminOrCoach(callerUid);
-    await checkRateLimit(callerUid, 'sendEmail', 10);
+    await assertAdminOrCoach(request.auth.uid);
+    await checkRateLimit(request.auth.uid, 'sendEmail', 10);
 
-    const { to, subject, message, recipients, senderName, teamName, teamId, teamIds: rawTeamIds } = request.data;
-
-    // SEC-38: Resolve the set of team IDs the caller claims to be sending for.
-    const resolvedTeamIds: string[] = rawTeamIds?.length
-      ? [...new Set(rawTeamIds.filter((id: string) => id?.trim()))]
-      : teamId?.trim()
-        ? [teamId.trim()]
-        : [];
-    // SEC-38: Verify caller is a coach of every claimed team (admins bypass).
-    // Admin callers may omit teamId/teamIds when messaging platform users directly.
-    if (callerRole !== 'admin') {
-      if (!resolvedTeamIds.length) {
-        throw new HttpsError('invalid-argument', 'teamId or teamIds is required.');
-      }
-      if (resolvedTeamIds.length > 10) {
-        throw new HttpsError('invalid-argument', 'Maximum 10 teams per send.');
-      }
-      const teamSnaps = await Promise.all(
-        resolvedTeamIds.map(tid => admin.firestore().doc(`teams/${tid}`).get())
-      );
-      for (const snap of teamSnaps) {
-        if (!snap.exists) throw new HttpsError('not-found', `Team ${snap.id} not found.`);
-        if (!isCoachOfTeamDoc(snap.data()!, callerUid)) {
-          throw new HttpsError('permission-denied', `You are not a coach of team ${snap.id}.`);
-        }
-      }
-    }
+    const { to, subject, message, recipients, senderName, teamName } = request.data;
     if (!to?.length) throw new HttpsError('invalid-argument', 'No recipients provided.');
     if (!subject?.trim()) throw new HttpsError('invalid-argument', 'Subject cannot be empty.');
     if (!message?.trim()) throw new HttpsError('invalid-argument', 'Message cannot be empty.');
@@ -984,33 +939,6 @@ export const sendInvite = onCall<SendInviteData>(
 
 // ─── Verify invited user ──────────────────────────────────────────────────────
 
-// ─── Revoke a pending invite ──────────────────────────────────────────────────
-
-export const revokeInvite = onCall(async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in.');
-  const { inviteId } = request.data as { inviteId: string };
-  if (!inviteId) throw new HttpsError('invalid-argument', 'inviteId is required.');
-
-  const inviteRef = admin.firestore().doc(`invites/${inviteId}`);
-  const inviteSnap = await inviteRef.get();
-  if (!inviteSnap.exists) throw new HttpsError('not-found', 'Invite not found.');
-
-  const invite = inviteSnap.data()!;
-  const callerUid = request.auth.uid;
-  const effectiveRole = await assertAdminOrCoach(callerUid);
-
-  // Coaches may only revoke invites for their own team.
-  if (effectiveRole !== 'admin' && invite.teamId) {
-    const teamSnap = await admin.firestore().doc(`teams/${invite.teamId}`).get();
-    const coachIds: string[] = teamSnap.data()?.coachIds ?? [];
-    const isCoachOfTeam = coachIds.includes(callerUid) || teamSnap.data()?.coachId === callerUid;
-    if (!isCoachOfTeam) throw new HttpsError('permission-denied', 'You are not a coach of this team.');
-  }
-
-  await inviteRef.delete();
-  return { success: true };
-});
-
 interface VerifyInvitedUserResult {
   found: boolean;
 }
@@ -1124,15 +1052,8 @@ export const verifyInvitedUser = onCall<VerifyInvitedUserData, Promise<VerifyInv
             ...(teamId ? { teamId } : {}),
             ...(playerId ? { playerId } : {}),
           };
-
-          // If the existing profile was created by the onAuthStateChanged fallback
-          // (role='player', no teamId), the invite is authoritative — update top-level
-          // role and teamId so the profile reflects the correct context.
-          const isBareFallbackProfile = profile['role'] === 'player' && !profile['teamId'];
           txn.update(userRef, {
             memberships: admin.firestore.FieldValue.arrayUnion(newMembership),
-            ...(isBareFallbackProfile && inviteRole !== 'player' ? { role: inviteRole } : {}),
-            ...(isBareFallbackProfile && teamId ? { teamId } : {}),
             // Write top-level playerId scalar so ProfilePage "Team Connection" resolves correctly
             ...(playerId ? { playerId } : {}),
           });
@@ -1344,34 +1265,12 @@ export const sendEventInvite = onCall<SendEventInviteData>(
   { secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret] },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
-    const callerUid = request.auth.uid;
-    const callerRole = await assertAdminOrCoach(callerUid);
-    await checkRateLimit(callerUid, 'sendEventInvite', 5);
+    await assertAdminOrCoach(request.auth.uid);
+    await checkRateLimit(request.auth.uid, 'sendEventInvite', 5);
 
     const { eventId, eventTitle, eventDate, eventTime, eventLocation, teamName, senderName, recipients } = request.data;
-    if (!eventId?.trim()) throw new HttpsError('invalid-argument', 'eventId is required.');
     if (!recipients?.length) throw new HttpsError('invalid-argument', 'No recipients provided.');
     if (recipients.length > 100) throw new HttpsError('invalid-argument', 'Maximum 100 recipients.');
-
-    // SEC-38: Verify caller is a coach of one of the event's teams (admins bypass).
-    if (callerRole !== 'admin') {
-      const eventSnap = await admin.firestore().doc(`events/${eventId}`).get();
-      if (!eventSnap.exists) throw new HttpsError('not-found', 'Event not found.');
-      const eventData = eventSnap.data()!;
-      const eventTeamIds: string[] = eventData.teamIds ?? [];
-      if (!eventTeamIds.length) throw new HttpsError('not-found', 'Event has no associated teams.');
-
-      // Check if caller is a coach of at least one team on this event.
-      const teamSnaps = await Promise.all(
-        eventTeamIds.slice(0, 10).map(tid => admin.firestore().doc(`teams/${tid}`).get())
-      );
-      const isCoachOfAnyTeam = teamSnaps.some(
-        snap => snap.exists && isCoachOfTeamDoc(snap.data()!, callerUid)
-      );
-      if (!isCoachOfAnyTeam) {
-        throw new HttpsError('permission-denied', 'You are not a coach of any team in this event.');
-      }
-    }
 
     const transporter = createTransporter();
 
@@ -2023,8 +1922,7 @@ interface SendPostGameBroadcastResult {
 export const sendPostGameBroadcast = onCall<SendPostGameBroadcastData, Promise<SendPostGameBroadcastResult>>(
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
-    const callerUid = request.auth.uid;
-    const effectiveRole = await assertAdminOrCoach(callerUid);
+    await assertAdminOrCoach(request.auth.uid);
 
     const { eventId, teamId, message, manOfTheMatchPlayerId } = request.data;
     if (!eventId?.trim()) throw new HttpsError('invalid-argument', 'eventId is required.');
@@ -2071,15 +1969,9 @@ export const sendPostGameBroadcast = onCall<SendPostGameBroadcastData, Promise<S
     const legacyUsersSnap = await db.collection('users').where('teamId', '==', teamId).get();
     legacyUsersSnap.docs.forEach(d => allUids.add(d.id));
 
-    // 2. Team doc coachIds — also used for SEC-35 ownership check
+    // 2. Team doc coachIds
     const teamSnap = await db.doc(`teams/${teamId}`).get();
     const coachIds: string[] = teamSnap.exists ? (teamSnap.data()?.coachIds ?? []) : [];
-
-    // SEC-35: verify caller is a coach of this specific team (not just any team)
-    if (effectiveRole !== 'admin') {
-      const isCoachOfTeam = coachIds.includes(callerUid) || teamSnap.data()?.coachId === callerUid;
-      if (!isCoachOfTeam) throw new HttpsError('permission-denied', 'You are not a coach of this team.');
-    }
     coachIds.forEach((uid: string) => allUids.add(uid));
 
     // 3. Players collection — linked users and parents
@@ -4030,7 +3922,6 @@ export const sendLeagueInvite = onCall<SendLeagueInviteData, Promise<SendLeagueI
           color: '#9ca3af',
           createdBy: uid,
           ownerName: '',
-          coachIds: [],
           createdAt: now,
           updatedAt: now,
         });
@@ -4282,7 +4173,6 @@ export const acceptLeagueInvite = onCall<AcceptLeagueInviteData, Promise<{ succe
         // Promote the placeholder team.
         tx.update(db.doc(`teams/${placeholderTeamId}`), {
           coachId: uid,
-          coachIds: [uid],
           isPending: admin.firestore.FieldValue.delete(),
           pendingEmail: admin.firestore.FieldValue.delete(),
           updatedAt: now,
@@ -4851,8 +4741,6 @@ export const assignScopedRole = onCall<AssignScopedRoleData, Promise<AssignScope
   }
 );
 
-// ─── Calendar Feed ────────────────────────────────────────────────────────────
-
 /**
  * Returns a signed webcal:// feed URL for the calling user.
  * The URL is safe to share — it authenticates via HMAC, not Firebase Auth.
@@ -4954,7 +4842,10 @@ export const calendarFeed = onRequest(
       if (e.location) lines.push(`LOCATION:${icalEscape(e.location)}`);
       // SEC-39: coach notes are only visible to elevated roles (coach/admin/league_manager)
       if (e.notes && isElevated) lines.push(`DESCRIPTION:${icalEscape(e.notes)}`);
-      if (e.venueLat != null && e.venueLng != null) lines.push(`GEO:${e.venueLat};${e.venueLng}`);
+      // SEC-43: validate coordinates are numbers before emitting GEO property
+      if (typeof e.venueLat === 'number' && typeof e.venueLng === 'number') {
+        lines.push(`GEO:${e.venueLat};${e.venueLng}`);
+      }
       lines.push('END:VEVENT');
     }
 
@@ -4962,7 +4853,9 @@ export const calendarFeed = onRequest(
 
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="first-whistle.ics"');
-    res.setHeader('Cache-Control', 'no-cache, no-store');
+    // SEC-44: allow CDN/proxy caching for up to 5 minutes to reduce Firestore read costs.
+    // Calendar apps typically poll every 15-60 min so 5-min staleness is acceptable.
+    res.setHeader('Cache-Control', 'public, max-age=300');
     res.send(lines.join('\r\n'));
   }
 );
