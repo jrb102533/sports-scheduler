@@ -1,0 +1,124 @@
+name: E2E Smoke — Staging
+
+# Runs after every successful deploy to main.
+# Fast, cheap smoke check — catches critical regressions only.
+# Tests tagged @smoke are selected.
+
+on:
+  workflow_run:
+    workflows: ["Deploy to Firebase"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  e2e-smoke:
+    name: Playwright Smoke — Staging
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Write service account credentials
+        run: |
+          if [ -n "${{ secrets.E2E_FIREBASE_SERVICE_ACCOUNT_JSON }}" ]; then
+            echo "${{ secrets.E2E_FIREBASE_SERVICE_ACCOUNT_JSON }}" | base64 -d > /tmp/sa.json
+            echo "Service account written to /tmp/sa.json"
+          else
+            echo "E2E_FIREBASE_SERVICE_ACCOUNT_JSON not set — seeding will be skipped"
+          fi
+
+      - name: Run smoke suite
+        env:
+          E2E_BASE_URL: https://first-whistle-e76f4.web.app
+          E2E_STAGING_URL: https://first-whistle-e76f4.web.app
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+          E2E_PARENT_EMAIL: ${{ secrets.E2E_PARENT_EMAIL }}
+          E2E_PARENT_PASSWORD: ${{ secrets.E2E_PARENT_PASSWORD }}
+          E2E_MUST_CHANGE_EMAIL: ${{ secrets.E2E_MUST_CHANGE_EMAIL }}
+          E2E_MUST_CHANGE_PASSWORD: ${{ secrets.E2E_MUST_CHANGE_PASSWORD }}
+          E2E_CONSENT_OUTDATED_EMAIL: ${{ secrets.E2E_CONSENT_OUTDATED_EMAIL }}
+          E2E_CONSENT_OUTDATED_PASSWORD: ${{ secrets.E2E_CONSENT_OUTDATED_PASSWORD }}
+          E2E_PLAYER_EMAIL: ${{ secrets.E2E_PLAYER_EMAIL }}
+          E2E_PLAYER_PASSWORD: ${{ secrets.E2E_PLAYER_PASSWORD }}
+          E2E_COACH_EMAIL: ${{ secrets.E2E_COACH_EMAIL }}
+          E2E_COACH_PASSWORD: ${{ secrets.E2E_COACH_PASSWORD }}
+          E2E_LM_EMAIL: ${{ secrets.E2E_LM_EMAIL }}
+          E2E_LM_PASSWORD: ${{ secrets.E2E_LM_PASSWORD }}
+          E2E_AVAIL_LEAGUE_ID: ${{ secrets.E2E_AVAIL_LEAGUE_ID }}
+          E2E_AVAIL_COLLECTION_ID: ${{ secrets.E2E_AVAIL_COLLECTION_ID }}
+          E2E_FUNCTIONS_BASE: ${{ secrets.E2E_FUNCTIONS_BASE }}
+          E2E_RSVP_HMAC_SECRET: ${{ secrets.E2E_RSVP_HMAC_SECRET }}
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+        run: npx playwright test --project=chromium --project=staging --grep @smoke
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-smoke
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Post result to PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const conclusion = '${{ job.status }}';
+            const sha = '${{ github.event.workflow_run.head_sha }}'.slice(0, 7);
+            const runUrl = `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+            const icon = conclusion === 'success' ? '✅' : '❌';
+            const label = conclusion === 'success' ? 'passed' : 'FAILED';
+
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed',
+              sort: 'updated',
+              direction: 'desc',
+              per_page: 10,
+            });
+
+            const pr = prs.find(p =>
+              p.merge_commit_sha?.startsWith('${{ github.event.workflow_run.head_sha }}') ||
+              p.head.sha === '${{ github.event.workflow_run.head_sha }}'
+            );
+            if (!pr) return;
+
+            const body = [
+              `## ${icon} Staging Smoke ${label}`,
+              '',
+              `Smoke suite ran against staging after deploy of \`${sha}\`.`,
+              '',
+              `[View full report](${runUrl})`,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body,
+            });
