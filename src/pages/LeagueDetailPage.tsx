@@ -234,7 +234,7 @@ export function LeagueDetailPage() {
               )}
             </div>
             <div className="flex gap-2">
-              {canManage && (
+              {canManage && seasons.length === 0 && (
                 <Button
                   size="sm"
                   variant="secondary"

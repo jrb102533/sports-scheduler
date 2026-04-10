@@ -9,6 +9,9 @@
  *   LM-LGE-06: League detail tabs (Schedule, Standings, Teams, Seasons)
  *   LM-SEA-01: Create season via SeasonCreateModal
  *   LM-SEA-02: Season dashboard loads
+ *   LM-SEA-03: Single-season Seasons tab navigates directly to season dashboard (#204)
+ *   LM-SEA-04: Empty Seasons tab shows "Create First Season" CTA for manager (#204)
+ *   LM-WIZ-28: Schedule Wizard button hidden when league has at least one season (#207)
  *   LM-WIZ-01: Open schedule wizard modal
  *   LM-WIZ-02: Wizard config step renders required fields
  *   LM-WIZ-07: Wizard with insufficient teams shows warning
@@ -1348,4 +1351,123 @@ test('closing the schedule wizard partway through config step does not crash the
   await expect(page).not.toHaveURL(/\/login/);
   await expect(page.locator('main')).toBeVisible({ timeout: 5_000 });
   await expect(modal).not.toBeVisible({ timeout: 5_000 });
+});
+
+// ===========================================================================
+// Season tab UX — #204 & #207
+// ===========================================================================
+
+/**
+ * Creates a fresh league, navigates to it, then creates one season via the
+ * Seasons tab CTA.  Returns the league URL so callers can re-navigate if needed.
+ */
+async function createLeagueWithOneSeason(
+  page: import('@playwright/test').Page,
+  suffix: string,
+): Promise<{ leagueUrl: string; seasonName: string }> {
+  const leagueName = `E2E SeasonUX ${suffix}`;
+  const seasonName = `Spring ${suffix}`;
+
+  await createLeague(page, leagueName);
+  await page.getByText(leagueName, { exact: false }).click();
+  await page.waitForURL(/\/leagues\/.+/);
+  const leagueUrl = page.url();
+
+  // Seasons tab (visible for admin even with 0 seasons)
+  await page.getByRole('tab', { name: /seasons/i }).click();
+
+  // Click the "Create First Season" CTA or a "New Season" button
+  const ctaBtn = page.getByRole('button', { name: /create first season|new season/i }).first();
+  await expect(ctaBtn).toBeVisible({ timeout: 5_000 });
+  await ctaBtn.click();
+
+  const modal = page.getByRole('dialog');
+  await expect(modal).toBeVisible({ timeout: 5_000 });
+
+  const nameInput = modal.getByLabel(/season name|name/i).first();
+  if (await nameInput.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await nameInput.fill(seasonName);
+  }
+
+  const dateInputs = modal.locator('input[type="date"]');
+  const today = new Date().toISOString().split('T')[0]!;
+  const inTwoMonths = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]!;
+  if (await dateInputs.first().isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await dateInputs.first().fill(today);
+  }
+  if (await dateInputs.last().isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await dateInputs.last().fill(inTwoMonths);
+  }
+
+  await modal.getByRole('button', { name: /save|create/i }).click();
+  await expect(modal).not.toBeVisible({ timeout: 10_000 });
+
+  return { leagueUrl, seasonName };
+}
+
+// ---------------------------------------------------------------------------
+// LM-SEA-03: Single-season tab navigates directly (#204)
+// ---------------------------------------------------------------------------
+
+test('LM-SEA-03: clicking Seasons tab with exactly one season navigates directly to SeasonDashboard', async ({ asAdmin }) => {
+  const { page } = asAdmin;
+  const ts = String(Date.now());
+
+  const { leagueUrl } = await createLeagueWithOneSeason(page, ts);
+
+  // Re-navigate to the league detail page
+  await page.goto(leagueUrl);
+  await page.waitForLoadState('domcontentloaded');
+
+  // The Seasons tab now shows the season name (not "Seasons (1)") and navigates directly
+  const seasonsTab = page.getByRole('tab', { name: new RegExp(`Spring ${ts}|seasons`, 'i') });
+  await expect(seasonsTab).toBeVisible({ timeout: 10_000 });
+  await seasonsTab.click();
+
+  // Should navigate directly to the season dashboard URL — not stay on the league page
+  await page.waitForURL(/\/leagues\/.+\/seasons\/.+/, { timeout: 10_000 });
+  await expect(page.locator('main')).toBeVisible({ timeout: 5_000 });
+  await expect(page).not.toHaveURL(/\/login/);
+});
+
+// ---------------------------------------------------------------------------
+// LM-SEA-04: Empty Seasons tab shows CTA for manager (#204)
+// ---------------------------------------------------------------------------
+
+test('LM-SEA-04: empty Seasons tab shows "Create First Season" CTA for admin', async ({ asAdmin }) => {
+  const { page } = asAdmin;
+  const leagueName = `E2E EmptySeasTab ${Date.now()}`;
+
+  await createLeague(page, leagueName);
+  await page.getByText(leagueName, { exact: false }).click();
+  await page.waitForURL(/\/leagues\/.+/);
+
+  // Click the Seasons tab — visible for admin even with 0 seasons
+  const seasonsTab = page.getByRole('tab', { name: /seasons/i });
+  await expect(seasonsTab).toBeVisible({ timeout: 10_000 });
+  await seasonsTab.click();
+
+  // CTA card with "Create First Season" button should be visible
+  await expect(
+    page.getByRole('button', { name: /create first season/i }),
+  ).toBeVisible({ timeout: 5_000 });
+});
+
+// ---------------------------------------------------------------------------
+// LM-WIZ-28: Schedule Wizard button hidden when seasons exist (#207)
+// ---------------------------------------------------------------------------
+
+test('LM-WIZ-28: Schedule Wizard button is hidden on the League page when the league has at least one season', async ({ asAdmin }) => {
+  const { page } = asAdmin;
+  const ts = String(Date.now());
+
+  const { leagueUrl } = await createLeagueWithOneSeason(page, ts);
+
+  // Re-navigate to the league detail page — Schedule tab is default
+  await page.goto(leagueUrl);
+  await page.waitForLoadState('domcontentloaded');
+
+  // The wizard button must NOT be present once a season exists
+  const wizardBtn = page.getByRole('button', { name: /schedule wizard/i });
+  await expect(wizardBtn).not.toBeVisible({ timeout: 5_000 });
 });
