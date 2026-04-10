@@ -136,6 +136,8 @@ export interface TestData {
   venueId: string;
   teamAName: string;
   teamBName: string;
+  /** IDs of seeded players on Team A */
+  playerIds: string[];
 }
 
 const TEAM_A_NAME = 'E2E Team A';
@@ -232,26 +234,28 @@ async function seedTestData(db: ReturnType<typeof getFirestore>): Promise<void> 
     console.log(`[global-setup] Created E2E venue: ${venueId}`);
   }
 
-  // ── 3. Resolve coach UID from E2E_COACH_EMAIL ────────────────────────────
-  let coachUid = 'e2e-coach-placeholder';
-  const coachEmail = process.env.E2E_COACH_EMAIL;
+  // ── 3. Resolve role UIDs from E2E_*_EMAIL env vars ──────────────────────
+  const authAdmin = getAuth();
 
-  if (coachEmail) {
-    try {
-      const authAdmin = getAuth();
-      const userRecord = await authAdmin.getUserByEmail(coachEmail);
-      coachUid = userRecord.uid;
-      console.log(`[global-setup] Resolved coach UID: ${coachUid} (${coachEmail})`);
-    } catch (err) {
-      console.warn(
-        `[global-setup] Could not resolve UID for ${coachEmail} — using placeholder. ` +
-          'The coach account may not exist in this Firebase project.',
-        err,
-      );
+  async function resolveUid(emailVar: string, fallback: string): Promise<string> {
+    const email = process.env[emailVar];
+    if (!email) {
+      console.warn(`[global-setup] ${emailVar} not set — using placeholder UID`);
+      return fallback;
     }
-  } else {
-    console.warn('[global-setup] E2E_COACH_EMAIL not set — using placeholder coachUid');
+    try {
+      const userRecord = await authAdmin.getUserByEmail(email);
+      console.log(`[global-setup] Resolved ${emailVar} UID: ${userRecord.uid}`);
+      return userRecord.uid;
+    } catch {
+      console.warn(`[global-setup] Could not resolve UID for ${email} — using placeholder`);
+      return fallback;
+    }
   }
+
+  const coachUid  = await resolveUid('E2E_COACH_EMAIL',  'e2e-coach-placeholder');
+  const playerUid = await resolveUid('E2E_PLAYER_EMAIL', 'e2e-player-placeholder');
+  const parentUid = await resolveUid('E2E_PARENT_EMAIL', 'e2e-parent-placeholder');
 
   // ── 4. Team A (home team — coach's team) ─────────────────────────────────
   const teamsSnap = await db
@@ -378,7 +382,105 @@ async function seedTestData(db: ReturnType<typeof getFirestore>): Promise<void> 
     console.log(`[global-setup] Created E2E event: ${eventId}`);
   }
 
-  // ── 7. Write test-data.json ───────────────────────────────────────────────
+  // ── 7. Players on Team A ─────────────────────────────────────────────────
+  // Seeds three players: one linked to the E2E player account, one whose parent
+  // is the E2E parent account, and one unlinked roster player.
+  const existingPlayersSnap = await db
+    .collection('players')
+    .where('isE2eData', '==', true)
+    .where('teamId', '==', teamAId)
+    .get();
+
+  const now = new Date().toISOString();
+  let playerIds: string[];
+
+  if (existingPlayersSnap.size >= 3) {
+    playerIds = existingPlayersSnap.docs.map(d => d.id);
+    console.log(`[global-setup] Reusing ${playerIds.length} existing E2E players on Team A`);
+  } else {
+    // Delete any partial set so we start clean
+    if (!existingPlayersSnap.empty) {
+      for (const doc of existingPlayersSnap.docs) {
+        const sdSnap = await doc.ref.collection('sensitiveData').get();
+        for (const sd of sdSnap.docs) await sd.ref.delete();
+        await doc.ref.delete();
+      }
+    }
+
+    const players = [
+      {
+        firstName: 'Alex',
+        lastName: 'E2E-Player',
+        jerseyNumber: 10,
+        position: 'Forward',
+        linkedUid: playerUid,
+        parentUid: null,
+        email: process.env.E2E_PLAYER_EMAIL ?? null,
+      },
+      {
+        firstName: 'Jamie',
+        lastName: 'E2E-Child',
+        jerseyNumber: 7,
+        position: 'Midfielder',
+        linkedUid: null,
+        parentUid: parentUid,
+        email: null,
+      },
+      {
+        firstName: 'Morgan',
+        lastName: 'E2E-Roster',
+        jerseyNumber: 99,
+        position: 'Goalkeeper',
+        linkedUid: null,
+        parentUid: null,
+        email: null,
+      },
+    ];
+
+    playerIds = [];
+    for (const p of players) {
+      const playerRef = db.collection('players').doc();
+      const playerData: Record<string, unknown> = {
+        teamId: teamAId,
+        firstName: p.firstName,
+        lastName: p.lastName,
+        jerseyNumber: p.jerseyNumber,
+        position: p.position,
+        status: 'active',
+        isE2eData: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+      if (p.linkedUid) playerData.linkedUid = p.linkedUid;
+      if (p.parentUid) playerData.parentUid = p.parentUid;
+      if (p.email) playerData.email = p.email;
+
+      await playerRef.set(playerData);
+
+      // Seed sensitiveData subcollection (DOB + placeholder contacts)
+      await playerRef.collection('sensitiveData').doc('private').set({
+        playerId: playerRef.id,
+        teamId: teamAId,
+        dateOfBirth: '2012-06-15',
+        parentContact: {
+          parentName: 'E2E Parent',
+          parentPhone: '555-0100',
+          parentEmail: process.env.E2E_PARENT_EMAIL ?? 'e2e-parent@example.com',
+        },
+        emergencyContact: {
+          name: 'E2E Emergency',
+          phone: '555-0911',
+          relationship: 'Grandparent',
+        },
+        isE2eData: true,
+      });
+
+      playerIds.push(playerRef.id);
+      console.log(`[global-setup] Created E2E player ${p.firstName} ${p.lastName}: ${playerRef.id}`);
+    }
+  }
+
+  // ── 8. Write test-data.json ───────────────────────────────────────────────
   const testData: TestData = {
     leagueId,
     seasonId,
@@ -388,6 +490,7 @@ async function seedTestData(db: ReturnType<typeof getFirestore>): Promise<void> 
     venueId,
     teamAName: TEAM_A_NAME,
     teamBName: TEAM_B_NAME,
+    playerIds,
   };
 
   const testDataPath = path.join(authDir, 'test-data.json');

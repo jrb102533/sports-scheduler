@@ -122,6 +122,27 @@ async function deleteE2eSeasons(
   return total;
 }
 
+/**
+ * Deletes sensitiveData subcollections for all E2E players, then deletes the
+ * player documents themselves.  Firestore does not cascade-delete subcollections.
+ */
+async function deleteE2ePlayers(
+  db: ReturnType<typeof getFirestore>,
+): Promise<number> {
+  const playersSnap = await db.collection('players').where('isE2eData', '==', true).get();
+  if (playersSnap.empty) return 0;
+
+  for (const playerDoc of playersSnap.docs) {
+    const sdSnap = await playerDoc.ref.collection('sensitiveData').get();
+    if (!sdSnap.empty) {
+      await batchDeleteDocs(db, sdSnap.docs);
+    }
+  }
+
+  await batchDeleteDocs(db, playersSnap.docs);
+  return playersSnap.docs.length;
+}
+
 // ---------------------------------------------------------------------------
 // Teardown entry point
 // ---------------------------------------------------------------------------
@@ -137,6 +158,9 @@ async function globalTeardown(): Promise<void> {
     // cascade-delete subcollections when a parent document is deleted).
     const seasonCount = await deleteE2eSeasons(db);
     if (seasonCount > 0) console.log(`[global-teardown] Deleted ${seasonCount} E2E season(s)`);
+
+    const playerCount = await deleteE2ePlayers(db);
+    if (playerCount > 0) console.log(`[global-teardown] Deleted ${playerCount} E2E player(s) + sensitiveData`);
 
     const collections = ['teams', 'leagues', 'events', 'venues'] as const;
     for (const col of collections) {
