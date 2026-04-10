@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { httpsCallable, getFunctions } from 'firebase/functions';
+import { updateDoc, doc } from 'firebase/firestore';
 import {
   ArrowLeft, MapPin, Users, Wand2, Plus, CheckCircle2,
   AlertTriangle, AlertCircle, Clock, ChevronRight, Settings,
-  Send, Loader2, ChevronDown, ChevronUp,
+  Send, Loader2, ChevronDown, ChevronUp, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
 import { StandingsTable } from '@/components/standings/StandingsTable';
+import { db } from '@/lib/firebase';
 import { useSeasonStore } from '@/store/useSeasonStore';
 import { useDivisionStore } from '@/store/useDivisionStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
@@ -296,6 +299,10 @@ export function SeasonDashboard() {
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState('');
   const [draftListOpen, setDraftListOpen] = useState(false);
+  const [selectedDraftIds, setSelectedDraftIds] = useState<Set<string>>(new Set());
+  const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const allEvents = useEventStore(s => s.events);
 
@@ -389,6 +396,41 @@ export function SeasonDashboard() {
       setPublishError(msg);
     } finally {
       setPublishing(false);
+    }
+  }
+
+  async function handleDeleteSelected() {
+    setDeleting(true);
+    try {
+      await Promise.all(
+        [...selectedDraftIds].map(id => useEventStore.getState().deleteEvent(id))
+      );
+      setSelectedDraftIds(new Set());
+      setConfirmDeleteSelected(false);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleClearAllDraft() {
+    if (!leagueId) return;
+    setDeleting(true);
+    try {
+      await Promise.all(sortedDraftEvents.map(e => useEventStore.getState().deleteEvent(e.id)));
+      // Reset every draft division back to 'none'
+      await Promise.all(
+        draftDivisions.map(d =>
+          updateDoc(doc(db, 'leagues', leagueId, 'divisions', d.id), {
+            scheduleStatus: 'none',
+            unscheduledCount: 0,
+            updatedAt: new Date().toISOString(),
+          })
+        )
+      );
+      setSelectedDraftIds(new Set());
+      setDraftListOpen(false);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -532,6 +574,9 @@ export function SeasonDashboard() {
                   <Button variant="secondary" size="sm" onClick={() => { setWizardResumeAtPreview(true); setWizardOpen(true); }}>
                     <Wand2 size={14} /> Edit Draft
                   </Button>
+                  <Button variant="danger" size="sm" onClick={() => setConfirmClearAll(true)} disabled={deleting}>
+                    <Trash2 size={14} /> Clear Draft
+                  </Button>
                   <Button
                     size="sm"
                     onClick={() => void handlePublishDraft()}
@@ -548,32 +593,98 @@ export function SeasonDashboard() {
             {sortedDraftEvents.length > 0 && (
               <div className="mt-3 border-t border-amber-200 pt-3">
                 <button
-                  onClick={() => setDraftListOpen(v => !v)}
+                  onClick={() => { setDraftListOpen(v => !v); setSelectedDraftIds(new Set()); setConfirmDeleteSelected(false); }}
                   className="flex items-center gap-1.5 text-xs font-medium text-amber-800 hover:text-amber-900"
                 >
                   {draftListOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   {draftListOpen ? 'Hide' : 'View'} {sortedDraftEvents.length} draft game{sortedDraftEvents.length !== 1 ? 's' : ''}
                 </button>
 
-                {draftListOpen && (
+                {draftListOpen && canManage && (
                   <div className="mt-2 space-y-1">
+                    {/* Select-all row */}
+                    <div className="flex items-center gap-2 px-3 py-1.5">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all draft games"
+                        checked={selectedDraftIds.size === sortedDraftEvents.length}
+                        onChange={e =>
+                          setSelectedDraftIds(
+                            e.target.checked ? new Set(sortedDraftEvents.map(ev => ev.id)) : new Set()
+                          )
+                        }
+                        className="h-3.5 w-3.5 rounded border-gray-300 accent-amber-600"
+                      />
+                      <span className="text-xs text-gray-500">
+                        {selectedDraftIds.size > 0
+                          ? `${selectedDraftIds.size} of ${sortedDraftEvents.length} selected`
+                          : `Select all ${sortedDraftEvents.length} games`}
+                      </span>
+                    </div>
+
+                    {/* Game rows */}
                     {sortedDraftEvents.map(e => {
                       const homeTeam = leagueTeams.find(t => e.teamIds[0] === t.id);
                       const awayTeam = leagueTeams.find(t => e.teamIds[1] === t.id);
                       const dateLabel = new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', {
                         weekday: 'short', month: 'short', day: 'numeric',
                       });
+                      const checked = selectedDraftIds.has(e.id);
                       return (
-                        <div key={e.id} className="flex items-center justify-between text-xs bg-white rounded-lg px-3 py-2 border border-amber-100">
-                          <span className="font-medium text-gray-800">
+                        <label
+                          key={e.id}
+                          className={`flex items-center gap-2.5 text-xs rounded-lg px-3 py-2 border cursor-pointer transition-colors ${
+                            checked ? 'bg-amber-50 border-amber-300' : 'bg-white border-amber-100 hover:bg-amber-50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={ev => {
+                              const next = new Set(selectedDraftIds);
+                              ev.target.checked ? next.add(e.id) : next.delete(e.id);
+                              setSelectedDraftIds(next);
+                              setConfirmDeleteSelected(false);
+                            }}
+                            className="h-3.5 w-3.5 flex-shrink-0 rounded border-gray-300 accent-amber-600"
+                          />
+                          <span className="font-medium text-gray-800 flex-1">
                             {homeTeam?.name ?? 'TBD'} vs {awayTeam?.name ?? 'TBD'}
                           </span>
                           <span className="text-gray-500 tabular-nums">
                             {dateLabel} · {e.startTime}
                           </span>
-                        </div>
+                        </label>
                       );
                     })}
+
+                    {/* Action bar */}
+                    {selectedDraftIds.size > 0 && (
+                      <div className="mt-2 rounded-lg border border-amber-300 bg-amber-100 px-3 py-2 flex items-center justify-between gap-3">
+                        <span className="text-xs font-medium text-amber-900">
+                          {selectedDraftIds.size} game{selectedDraftIds.size !== 1 ? 's' : ''} selected
+                        </span>
+                        {confirmDeleteSelected ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-amber-900">Delete {selectedDraftIds.size} game{selectedDraftIds.size !== 1 ? 's' : ''}?</span>
+                            <Button variant="danger" size="sm" onClick={() => void handleDeleteSelected()} disabled={deleting}>
+                              {deleting ? <Loader2 size={12} className="animate-spin" /> : null}
+                              Yes, delete
+                            </Button>
+                            <Button variant="secondary" size="sm" onClick={() => setConfirmDeleteSelected(false)}>Cancel</Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Button variant="danger" size="sm" onClick={() => setConfirmDeleteSelected(true)}>
+                              <Trash2 size={12} /> Delete selected
+                            </Button>
+                            <Button variant="secondary" size="sm" onClick={() => { setSelectedDraftIds(new Set()); }}>
+                              Deselect all
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -706,6 +817,16 @@ export function SeasonDashboard() {
         leagueId={leagueId}
         seasonId={seasonId}
         leagueTeams={leagueTeams}
+      />
+
+      <ConfirmDialog
+        open={confirmClearAll}
+        onClose={() => setConfirmClearAll(false)}
+        onConfirm={() => void handleClearAllDraft()}
+        title="Clear draft schedule"
+        message={`This will permanently delete all ${sortedDraftEvents.length} draft game${sortedDraftEvents.length !== 1 ? 's' : ''} and reset the schedule to the generation step. This cannot be undone.`}
+        confirmLabel="Clear draft"
+        typeToConfirm="CLEAR"
       />
     </div>
   );
