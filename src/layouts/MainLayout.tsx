@@ -85,9 +85,12 @@ export function MainLayout() {
             }`}>
               {buildInfo.env}
             </span>
-            <span className="text-amber-600 font-mono">
-              {buildInfo.pr ? `PR #${buildInfo.pr} · ${buildInfo.shortSha}` : `${buildInfo.branch} · ${buildInfo.shortSha}`}
-            </span>
+            {/* Only show branch/sha when they carry real CI values, not the 'local' fallback */}
+            {(buildInfo.pr || buildInfo.branch !== 'local') && (
+              <span className="text-amber-600 font-mono">
+                {buildInfo.pr ? `PR #${buildInfo.pr} · ${buildInfo.shortSha}` : `${buildInfo.branch} · ${buildInfo.shortSha}`}
+              </span>
+            )}
           </div>
         )}
         <div style={{ background: 'linear-gradient(135deg, #1B3A6B 0%, #0f2a52 100%)' }}>
