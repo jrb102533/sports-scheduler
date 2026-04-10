@@ -116,7 +116,7 @@ export function LeaguesPage() {
           open={formOpen}
           onClose={() => setFormOpen(false)}
           editLeague={editTarget}
-          allTeams={teams}
+          allTeams={teams.filter(t => !t.isPrivate || isAdmin)}
           onSave={async (leagueData, selectedTeamIds, prevTeamIds) => {
             const added = selectedTeamIds.filter(id => !prevTeamIds.includes(id));
             const removed = prevTeamIds.filter(id => !selectedTeamIds.includes(id));
