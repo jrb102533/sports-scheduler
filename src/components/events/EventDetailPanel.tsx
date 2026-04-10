@@ -10,7 +10,6 @@ import { EventStatusBadge } from './EventStatusBadge';
 import { EventForm } from './EventForm';
 import { SnackVolunteerForm } from './SnackVolunteerForm';
 import { RsvpButton } from './RsvpButton';
-import { SnackSlotButton } from './SnackSlotButton';
 import { RsvpInviteModal } from './RsvpInviteModal';
 import { PostGameBroadcastModal } from './PostGameBroadcastModal';
 import { AttendanceTracker } from '@/components/attendance/AttendanceTracker';
@@ -298,16 +297,11 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
               <SnackVolunteerForm event={currentEvent} />
             )}
 
-            {/* Subcollection-backed RSVP + snack slot */}
+            {/* Subcollection-backed RSVP */}
             {event.status !== 'cancelled' && event.status !== 'completed' && authUser && (
               <div className="border border-gray-200 rounded-xl p-4 space-y-4">
-                <h3 className="text-sm font-semibold text-gray-800">RSVP &amp; Snacks</h3>
+                <h3 className="text-sm font-semibold text-gray-800">RSVP</h3>
                 <RsvpButton
-                  eventId={event.id}
-                  currentUserUid={authUser.uid}
-                  currentUserName={profile?.displayName ?? authUser.email ?? ''}
-                />
-                <SnackSlotButton
                   eventId={event.id}
                   currentUserUid={authUser.uid}
                   currentUserName={profile?.displayName ?? authUser.email ?? ''}

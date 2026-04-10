@@ -1,0 +1,145 @@
+name: Deploy to Production
+
+# Triggered manually from the GitHub Actions tab.
+# Requires a "production" GitHub Environment with required reviewers configured.
+#
+# Required GitHub secrets (set at repo level):
+#   FIREBASE_TOKEN                    — firebase login:ci token (shared with staging)
+#   PROD_VITE_FIREBASE_API_KEY
+#   PROD_VITE_FIREBASE_AUTH_DOMAIN
+#   PROD_VITE_FIREBASE_PROJECT_ID
+#   PROD_VITE_FIREBASE_STORAGE_BUCKET
+#   PROD_VITE_FIREBASE_MESSAGING_SENDER_ID
+#   PROD_VITE_FIREBASE_APP_ID
+#   PROD_VITE_SIGNUP_ALLOWED_PREFIXES
+#
+# One-time setup in GitHub:
+#   Settings → Environments → New environment → name it "production"
+#   Add required reviewers (your GitHub username)
+#   Save — every run of this workflow will pause for your approval before deploying.
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for this production deploy'
+        required: true
+        type: string
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ── Build frontend ────────────────────────────────────────────────────────
+  build-frontend:
+    name: Build Frontend (Production)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        env:
+          VITE_APP_VERSION: ${{ github.ref_name }}
+          VITE_BUILD_SHA: ${{ github.sha }}
+          VITE_BUILD_BRANCH: ${{ github.ref_name }}
+          VITE_APP_ENV: production
+          VITE_SIGNUP_ALLOWED_PREFIXES: ${{ secrets.PROD_VITE_SIGNUP_ALLOWED_PREFIXES }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.PROD_VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.PROD_VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.PROD_VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.PROD_VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.PROD_VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.PROD_VITE_FIREBASE_APP_ID }}
+        run: npm run build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist-prod
+          path: dist/
+          retention-days: 1
+
+  # ── Build + test Cloud Functions ─────────────────────────────────────────
+  build-functions:
+    name: Build & Test Functions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Build
+        working-directory: functions
+        run: npm run build
+
+      - name: Test
+        working-directory: functions
+        run: npm test
+
+      - name: Upload functions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: functions-lib-prod
+          path: functions/lib/
+          retention-days: 1
+
+  # ── Await human approval, then deploy ────────────────────────────────────
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-frontend, build-functions]
+    environment: production        # ← GitHub Environment gate — pauses here for reviewer approval
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Download frontend dist
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist-prod
+          path: dist/
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Download functions lib
+        uses: actions/download-artifact@v4
+        with:
+          name: functions-lib-prod
+          path: functions/lib/
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Deploy to Firebase Production
+        run: firebase deploy --token "${{ secrets.FIREBASE_TOKEN }}" --project first-whistle-prod --non-interactive --force
