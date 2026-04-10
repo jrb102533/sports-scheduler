@@ -5,6 +5,8 @@ export interface Division {
   name: string;
   teamIds: string[];
   scheduleStatus: DivisionScheduleStatus;
+  /** Number of game pairings the algorithm couldn't place when the draft was saved. */
+  unscheduledCount?: number;
   seasonId: string;
   createdAt: string;
   updatedAt: string;

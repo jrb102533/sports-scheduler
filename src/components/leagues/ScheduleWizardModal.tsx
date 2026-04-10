@@ -1131,7 +1131,11 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         // Mark division as having a draft schedule so the dashboard CTA updates.
         await updateDoc(
           doc(db, 'leagues', league.id, 'divisions', divisionId),
-          { scheduleStatus: 'draft', updatedAt: now }
+          {
+            scheduleStatus: 'draft',
+            unscheduledCount: result?.stats.unassignedFixtures ?? 0,
+            updatedAt: now,
+          }
         );
       }
 
