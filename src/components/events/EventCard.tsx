@@ -216,13 +216,20 @@ export function EventCard({ event, teams, onClick }: EventCardProps) {
 
               {(homeTeam || awayTeam || event.opponentName) && (
                 <div className="flex items-center gap-1.5 mt-1">
-                  {homeTeam && (
+                  {/* Left side: home team, or opponent name when we are the away team */}
+                  {homeTeam ? (
                     <span className="flex items-center gap-1 text-sm text-gray-700">
                       <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: homeTeam.color }} />
                       {homeTeam.name}
                     </span>
+                  ) : (awayTeam && event.opponentName) ? (
+                    <span className="text-sm text-gray-700">{event.opponentName}</span>
+                  ) : null}
+                  {/* vs separator */}
+                  {(homeTeam || (awayTeam && event.opponentName)) && (awayTeam || event.opponentName) && (
+                    <span className="text-xs text-gray-400">vs</span>
                   )}
-                  {homeTeam && (awayTeam || event.opponentName) && <span className="text-xs text-gray-400">vs</span>}
+                  {/* Right side: away team, or opponent name when we are the home team */}
                   {awayTeam ? (
                     <span className="flex items-center gap-1 text-sm text-gray-700">
                       <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: awayTeam.color }} />
