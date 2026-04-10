@@ -4810,13 +4810,24 @@ export const calendarFeed = onRequest(
         return eventTeamIds.some((t: string) => teamIds.has(t));
       });
 
+    // Derive a meaningful calendar name: team name for single-team users, display name otherwise
+    let calName = `First Whistle — ${profile.displayName ?? 'Schedule'}`;
+    if (!isAdmin && !leagueId && teamIds.size === 1) {
+      const [singleTeamId] = teamIds;
+      const teamSnap = await db.doc(`teams/${singleTeamId}`).get();
+      if (teamSnap.exists) {
+        const teamName: string = teamSnap.data()!.name ?? 'My Team';
+        calName = `First Whistle — ${teamName}`;
+      }
+    }
+
     const lines: string[] = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
       'PRODID:-//First Whistle//Sports Scheduler//EN',
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
-      'X-WR-CALNAME:First Whistle',
+      `X-WR-CALNAME:${icalEscape(calName)}`,
       'X-WR-TIMEZONE:UTC',
     ];
 
