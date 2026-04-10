@@ -245,10 +245,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   updateProfile: async (patch) => {
-    const { user, profile } = get();
-    if (!user || !profile) return;
-    const updated = { ...profile, ...patch };
-    await setDoc(doc(db, 'users', user.uid), updated);
+    const { user } = get();
+    if (!user) return;
+    // Use updateDoc (merge) instead of setDoc (full overwrite) so we never
+    // accidentally clobber fields like memberships that may have been written
+    // by an admin after this session loaded — a full overwrite would fail the
+    // Firestore rule that blocks client-side memberships changes.
+    await updateDoc(doc(db, 'users', user.uid), patch as Record<string, unknown>);
     if (patch.displayName) {
       await updateProfile(user, { displayName: patch.displayName });
     }
