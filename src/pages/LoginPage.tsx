@@ -36,7 +36,9 @@ export function LoginPage() {
     setSendingReset(true);
     setResetError('');
     try {
-      await sendPasswordResetEmail(auth, email.trim());
+      await sendPasswordResetEmail(auth, email.trim(), {
+        url: `${import.meta.env.VITE_APP_URL}/auth/action`,
+      });
       setResetSent(true);
     } catch {
       setResetError('Could not send reset email. Check the address and try again.');

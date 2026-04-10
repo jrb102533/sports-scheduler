@@ -41,9 +41,16 @@ export function LeaguesPage() {
     ...(profile?.leagueId ? [profile.leagueId] : []),
   ]);
 
+  // Check if the user manages a league — via profile memberships (persisted) OR
+  // via managerIds on the league doc (covers leagues created via direct client
+  // write where profile.memberships is not updated until next CF call).
+  function userManagesLeague(league: League) {
+    return myLeagueIds.has(league.id) || (!!profile?.uid && (league.managerIds ?? []).includes(profile.uid));
+  }
+
   const visibleLeagues = isAdmin
     ? leagues
-    : leagues.filter(l => myLeagueIds.has(l.id));
+    : leagues.filter(userManagesLeague);
 
   function openEdit(league: League, e: React.MouseEvent) {
     e.stopPropagation();
@@ -92,9 +99,9 @@ export function LeaguesPage() {
                 key={league.id}
                 league={league}
                 leagueTeams={leagueTeams}
-                canEdit={isAdmin || myLeagueIds.has(league.id)}
+                canEdit={isAdmin || userManagesLeague(league)}
                 canDelete={isAdmin}
-                isManager={myLeagueIds.has(league.id)}
+                isManager={userManagesLeague(league)}
                 onClick={() => navigate(`/leagues/${league.id}`)}
                 onEdit={e => openEdit(league, e)}
                 onDelete={e => { e.stopPropagation(); setDeleteTarget(league); }}

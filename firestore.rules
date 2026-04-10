@@ -106,6 +106,10 @@ service cloud.firestore {
       // added/removed) so that rules can do a single get() to verify the LM
       // holds that league's managerIds membership.  Only leagueIds and
       // _managedLeagueId may change in that operation.
+      // SEC-35: isLeagueManager() checks the legacy `role` field only — users
+      // who became LMs via createLeagueAndBecomeManager or assignScopedRole
+      // keep role='coach' at the top level. Use isManagerOfLeague() alone
+      // (same fix as SEC-34 for league venues).
       allow update: if isAdmin()
         || (
           isCoachOfTeam(resource.data)
@@ -113,8 +117,7 @@ service cloud.firestore {
               .hasAny(['coachIds', 'coachId', 'createdBy'])
         )
         || (
-          isLeagueManager()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leagueIds', '_managedLeagueId'])
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leagueIds', '_managedLeagueId'])
           && '_managedLeagueId' in request.resource.data
           && (request.resource.data.leagueIds.hasAny([request.resource.data._managedLeagueId])
               || resource.data.get('leagueIds', []).hasAny([request.resource.data._managedLeagueId]))

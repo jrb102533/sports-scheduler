@@ -12,6 +12,7 @@ import { SettingsPage } from '@/pages/SettingsPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { LoginPage } from '@/pages/LoginPage';
 import { SignupPage } from '@/pages/SignupPage';
+import { AuthActionPage } from '@/pages/AuthActionPage';
 import { UsersPage } from '@/pages/UsersPage';
 import { LeaguesPage } from '@/pages/LeaguesPage';
 import { LeagueDetailPage } from '@/pages/LeagueDetailPage';
@@ -29,6 +30,7 @@ export const router = createBrowserRouter([
   // Public auth routes
   { path: '/login', element: <LoginPage /> },
   { path: '/signup', element: <SignupPage /> },
+  { path: '/auth/action', element: <AuthActionPage /> },
 
   // Public legal routes
   { path: '/legal/privacy-policy', element: <PrivacyPolicyPage /> },
