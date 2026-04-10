@@ -85,7 +85,10 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
           _basePlayers = snap.docs.map(d => ({ ...d.data(), id: d.id }) as Player);
           set({ players: buildMergedPlayers(getPriv()), loading: false });
         },
-        () => set({ loading: false }),
+        (err) => {
+          console.error('[usePlayerStore] player subscription error:', err);
+          set({ loading: false });
+        },
       );
     }
 
