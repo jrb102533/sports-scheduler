@@ -80,11 +80,9 @@ async function loginRole(
     await page.getByLabel('Password').first().fill(password);
     await page.getByRole('button', { name: 'Sign In' }).click();
 
-    // Wait for the authenticated shell to confirm login succeeded
-    await page.getByText('First Whistle').first().waitFor({
-      state: 'visible',
-      timeout: 30_000,
-    });
+    // Wait for navigation away from /login — succeeds for any post-login screen
+    // (main app, forced password change, consent modal, etc.)
+    await page.waitForURL(url => !url.includes('/login'), { timeout: 30_000 });
 
     // Persist the session
     await context.storageState({ path: statePath });
