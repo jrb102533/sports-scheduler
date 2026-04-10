@@ -437,3 +437,47 @@ describe('LeagueDetailPage — empty Seasons tab CTA', () => {
     expect(screen.queryByRole('button', { name: /create first season/i })).toBeNull();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Schedule Wizard button visibility (ticket #207)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('LeagueDetailPage — Schedule Wizard button visibility', () => {
+  it('shows the Schedule Wizard button for admin when league has no seasons', () => {
+    currentLeagues = [{ id: 'league-1', name: 'Spring League' }];
+    currentSeasons = [];
+    currentProfile = makeProfile('admin');
+    renderLeagueDetail('league-1');
+
+    expect(screen.getByRole('button', { name: /schedule wizard/i })).toBeInTheDocument();
+  });
+
+  it('hides the Schedule Wizard button for admin when league has at least one season', () => {
+    currentLeagues = [{ id: 'league-1', name: 'Spring League' }];
+    currentSeasons = [makeSeason('s1')];
+    currentProfile = makeProfile('admin');
+    renderLeagueDetail('league-1');
+
+    expect(screen.queryByRole('button', { name: /schedule wizard/i })).toBeNull();
+  });
+
+  it('hides the Schedule Wizard button when league has multiple seasons', () => {
+    currentLeagues = [{ id: 'league-1', name: 'Spring League' }];
+    currentSeasons = [makeSeason('s1'), makeSeason('s2')];
+    currentProfile = makeProfile('admin');
+    renderLeagueDetail('league-1');
+
+    expect(screen.queryByRole('button', { name: /schedule wizard/i })).toBeNull();
+  });
+
+  it('does not show the Schedule Wizard button to non-manager users regardless of seasons', () => {
+    currentLeagues = [{ id: 'league-1', name: 'Spring League' }];
+    currentSeasons = [];
+    currentProfile = makeProfile('player', {
+      memberships: [{ role: 'player', teamId: 'team-1' }],
+    });
+    renderLeagueDetail('league-1');
+
+    expect(screen.queryByRole('button', { name: /schedule wizard/i })).toBeNull();
+  });
+});
