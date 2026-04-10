@@ -676,7 +676,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   }
 
   function handleModalClose() {
-    if (step === 'mode' || published) {
+    if (step === 'mode' || published || showResumePrompt) {
       onClose();
       return;
     }
@@ -786,7 +786,9 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
     // skip — advance normally
     if (idx < steps.length - 1) {
-      setStep(steps[idx + 1]);
+      const nextStep = steps[idx + 1];
+      triggerAutoSave(nextStep);
+      setStep(nextStep);
     }
   }
 
