@@ -27,6 +27,7 @@ export interface Team {
   pendingEmail?: string;
   attendanceWarningThreshold?: number;  // undefined = use sport default
   attendanceWarningsEnabled?: boolean;  // undefined = true (warnings on by default)
+  isPrivate?: boolean;
   isDeleted?: boolean;
   deletedAt?: string;
   createdAt: string;

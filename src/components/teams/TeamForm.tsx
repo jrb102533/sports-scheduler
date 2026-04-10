@@ -53,6 +53,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const [homeVenue, setHomeVenue] = useState(editTeam?.homeVenue ?? '');
   const [homeVenueId, setHomeVenueId] = useState(editTeam?.homeVenueId ?? '');
   const [coachId, setCoachId] = useState(editTeam?.coachId ?? '');
+  const [isPrivate, setIsPrivate] = useState<boolean>(editTeam?.isPrivate ?? false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [attendanceWarningsEnabled, setAttendanceWarningsEnabled] = useState<boolean>(editTeam?.attendanceWarningsEnabled !== false);
   const [attendanceWarningThreshold, setAttendanceWarningThreshold] = useState<string>(
@@ -95,15 +96,16 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
 
   useEffect(() => {
     if (!open || !editTeam) return;
-    // Sync logo and attendance state when editing
+    // Sync logo, attendance, and privacy state when editing
     setLogoPreview(editTeam.logoUrl ?? null);
     setRemoveLogo(false);
     setLogoFile(null);
+    setIsPrivate(editTeam.isPrivate ?? false);
     setAttendanceWarningsEnabled(editTeam.attendanceWarningsEnabled !== false);
     setAttendanceWarningThreshold(
       editTeam.attendanceWarningThreshold !== undefined ? String(editTeam.attendanceWarningThreshold) : ''
     );
-  }, [open, editTeam?.logoUrl, editTeam?.attendanceWarningsEnabled, editTeam?.attendanceWarningThreshold]);
+  }, [open, editTeam?.logoUrl, editTeam?.isPrivate, editTeam?.attendanceWarningsEnabled, editTeam?.attendanceWarningThreshold]);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -173,6 +175,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
           ...(coachId ? { coachId } : {}),
           attendanceWarningsEnabled,
           ...(parsedThreshold !== undefined && !isNaN(parsedThreshold) ? { attendanceWarningThreshold: parsedThreshold } : {}),
+          isPrivate,
         };
         if (editTeam) {
           await updateTeam({ ...editTeam, ...base });
@@ -200,6 +203,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         ...(coachId ? { coachId } : {}),
         attendanceWarningsEnabled,
         ...(parsedThreshold2 !== undefined && !isNaN(parsedThreshold2) ? { attendanceWarningThreshold: parsedThreshold2 } : {}),
+        isPrivate,
       };
       if (logoUrl) base.logoUrl = logoUrl;
       else delete base.logoUrl;
@@ -341,6 +345,23 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
             </div>
           )}
         </div>
+
+        {/* Team Visibility — edit only, coaches and admins */}
+        {editTeam && (profile?.role === 'admin' || profile?.role === 'coach' || editTeam.coachId === profile?.uid || editTeam.createdBy === profile?.uid || editTeam.coachIds?.includes(profile?.uid ?? '')) && (
+          <div className="border-t border-gray-100 pt-4 space-y-2">
+            <h3 className="text-sm font-semibold text-gray-700">Visibility</h3>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isPrivate}
+                onChange={e => setIsPrivate(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-sm text-gray-700">Private team</span>
+            </label>
+            <p className="text-xs text-gray-400">Private teams won't appear in league assignment lists.</p>
+          </div>
+        )}
 
         {saveError && (
           <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>

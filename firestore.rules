@@ -96,7 +96,14 @@ service cloud.firestore {
     //   - Admin updates coachIds → allowed
     match /teams/{teamId} {
       allow read: if request.auth != null;
-      allow create: if isAdmin() || isCoach() || isLeagueManager();
+      // SEC-52: coaches/LMs may not create a team with leagueIds pre-set —
+      // league assignment is an LM-gated update. Prevents bypassing SEC-36.
+      allow create: if isAdmin()
+        || (
+          (isCoach() || isLeagueManager())
+          && !('leagueIds' in request.resource.data)
+          && !('_managedLeagueId' in request.resource.data)
+        );
       allow delete: if isAdmin();
       // Phase 2: use coachIds access list instead of profile.leagueId cross-doc read.
       // SEC-29: non-admin writes may not touch access-control fields (coachIds,
@@ -110,11 +117,13 @@ service cloud.firestore {
       // who became LMs via createLeagueAndBecomeManager or assignScopedRole
       // keep role='coach' at the top level. Use isManagerOfLeague() alone
       // (same fix as SEC-34 for league venues).
+      // SEC-36: coaches may not self-assign their team to a league — leagueIds
+      // and _managedLeagueId are reserved for the LM path below.
       allow update: if isAdmin()
         || (
           isCoachOfTeam(resource.data)
           && !request.resource.data.diff(resource.data).affectedKeys()
-              .hasAny(['coachIds', 'coachId', 'createdBy'])
+              .hasAny(['coachIds', 'coachId', 'createdBy', 'leagueIds', '_managedLeagueId'])
         )
         || (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leagueIds', '_managedLeagueId'])
@@ -148,36 +157,63 @@ service cloud.firestore {
     }
 
     match /players/{playerId} {
-      // Coaches/admins have unrestricted read and write access.
-      // Players/parents may read their own team's records only.
-      // statusNote is a coach-only private field — it must also be stripped
-      // client-side since Firestore cannot project individual fields.
+      // SEC-48/SEC-50: replaced broad isCoach()/isLeagueManager() with team-scoped
+      // isCoachOfTeam() check. Previously any coach or LM could read every player
+      // on the platform regardless of team membership.
+      // Coaches of the player's team can read; parents/players on the same team can
+      // read; a user can always read their own linked player record.
       allow read: if request.auth != null && (
-        isAdmin() || isCoach() || isLeagueManager() ||
+        isAdmin() ||
         resource.data.linkedUid == request.auth.uid ||
+        isCoachOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data) ||
         getProfile().teamId == resource.data.teamId
       );
-      allow create, delete: if isAdmin() || isCoach();
-      allow update: if isAdmin() || isCoach()
+      // SEC-48: scope create/delete to coaches of the target team, not all coaches.
+      allow create: if isAdmin()
+        || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(request.resource.data.teamId)).data);
+      allow delete: if isAdmin()
+        || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data);
+      // SEC-57: coach update branch enforces teamId immutability — a coach cannot
+      // move a player to a different team by changing request.resource.data.teamId.
+      allow update: if isAdmin()
+        || (
+          isCoachOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data)
+          && request.resource.data.teamId == resource.data.teamId
+        )
         // A player may update their own record (e.g. RSVP) but must never touch status fields
         || (request.auth != null
             && request.auth.uid == resource.data.linkedUid
             && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['statusNote', 'statusReturnDate', 'statusUpdatedAt', 'status']));
 
-      // Sensitive PII subcollection — restricted to coaches and admins only.
+      // Sensitive PII subcollection — restricted to coaches of the player's team and admins.
       // Stores: dateOfBirth, parentContact, parentContact2, emergencyContact.
-      // Players and parents never have access to this path.
+      // SEC-49: replaced isCoach() with team-scoped isCoachOfTeam() check. Previously
+      // any coach could read child DOB and parent/emergency contacts cross-team.
+      // SEC-58: write rule uses the player doc (via playerId) to resolve teamId —
+      // NOT request.resource.data.teamId. Using request.resource.data would allow
+      // a rogue coach to poison the teamId field, giving themselves read access.
       match /sensitiveData/{doc} {
-        allow read, write: if isAdmin() || isCoach();
+        allow read: if isAdmin()
+          || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data);
+        allow write: if isAdmin()
+          || isCoachOfTeam(
+               get(/databases/$(database)/documents/teams/
+                 $(get(/databases/$(database)/documents/players/$(playerId)).data.teamId)
+               ).data
+             );
       }
     }
 
     // collectionGroup rule required for collectionGroup('sensitiveData') queries.
-    // Without this wildcard path rule, the client-side onSnapshot collectionGroup
-    // subscription fails with permission-denied (silently swallowed), so coaches
-    // and admins never receive sensitive PII in player cards.
+    // SEC-49: scoped to coaches of the specific team, not all coaches platform-wide.
+    // SEC-58: collectionGroup write is locked to admin-only — all client writes go through
+    // /players/{playerId}/sensitiveData/{doc} which enforces the player-doc teamId lookup.
+    // The collectionGroup path cannot reference playerId, so write cannot be safely
+    // team-scoped here without the double get() anchor.
     match /{path=**}/sensitiveData/{doc} {
-      allow read, write: if isAdmin() || isCoach();
+      allow read: if isAdmin()
+        || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data);
+      allow write: if isAdmin();
     }
 
     // Rate limit tracking written exclusively by Cloud Functions (Admin SDK).

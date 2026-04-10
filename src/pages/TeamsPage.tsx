@@ -48,7 +48,7 @@ export function TeamsPage() {
 
   const otherTeams: Team[] = isAdmin
     ? []
-    : teams.filter(t => !myTeams.find(m => m.id === t.id));
+    : teams.filter(t => !myTeams.find(m => m.id === t.id) && !t.isPrivate);
 
   // Load existing join request statuses for other teams when user is logged in (non-admin)
   useEffect(() => {
