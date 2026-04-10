@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, CalendarDays, X, Copy, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, CalendarDays, Copy, Check } from 'lucide-react';
 import { CalendarGrid, formatMonthYear, dateToISO } from '@/components/calendar/CalendarGrid';
 import { EventForm } from '@/components/events/EventForm';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
 import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -79,7 +80,7 @@ export function CalendarPage() {
           <Button variant="ghost" size="sm" onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); }}>Today</Button>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={handleOpenSync} title="Subscribe to calendar">
+          <Button variant="secondary" onClick={handleOpenSync} aria-label="Subscribe to calendar">
             <CalendarDays size={16} /> <span className="hidden sm:inline">Subscribe</span>
           </Button>
           <Button onClick={() => { setFormDate(undefined); setFormOpen(true); }}>
@@ -107,70 +108,63 @@ export function CalendarPage() {
       <EventDetailPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} />
 
       {/* Calendar Sync Modal */}
-      {syncModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                <CalendarDays size={18} className="text-blue-600" />
-                Subscribe to Calendar
-              </h3>
-              <button
-                onClick={() => setSyncModalOpen(false)}
-                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
+      <Modal
+        open={syncModalOpen}
+        onClose={() => setSyncModalOpen(false)}
+        title="Subscribe to Calendar"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Your personal feed stays in sync as events are added or changed in First Whistle.
+          </p>
 
-            <p className="text-sm text-gray-500">
-              Your personal feed stays in sync as events are added or changed in First Whistle.
-            </p>
+          {loadingFeed && (
+            <p className="text-sm text-gray-400 py-2">Loading your feed URL…</p>
+          )}
 
-            {loadingFeed && (
-              <p className="text-sm text-gray-400 py-2">Loading your feed URL…</p>
-            )}
+          {feedError && (
+            <p className="text-sm text-red-500">{feedError}</p>
+          )}
 
-            {feedError && (
-              <p className="text-sm text-red-500">{feedError}</p>
-            )}
-
-            {feedUrl && (
-              <>
+          {feedUrl && (
+            <>
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1.5">Your personal calendar feed:</p>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 truncate text-gray-700 select-all">
                     {webcalUrl(feedUrl)}
                   </code>
                   <button
                     onClick={handleCopy}
+                    aria-label={copied ? 'Copied' : 'Copy feed URL'}
                     className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
                   >
                     {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
-                    {copied ? 'Copied' : 'Copy'}
+                    {copied ? 'Copied!' : 'Copy'}
                   </button>
                 </div>
+              </div>
 
-                <a
-                  href={webcalUrl(feedUrl)}
-                  className="block w-full text-center px-4 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
-                >
-                  Open in Apple Calendar
-                </a>
+              <a
+                href={webcalUrl(feedUrl)}
+                className="block w-full text-center px-4 py-2.5 rounded-lg bg-[#1B3A6B] text-white text-sm font-medium hover:bg-[#f97316] transition-colors"
+              >
+                Open in Apple Calendar
+              </a>
 
-                <div className="text-sm text-gray-500 space-y-1.5 bg-gray-50 rounded-lg p-3">
-                  <p className="font-medium text-gray-700">Google Calendar</p>
-                  <p>Settings → Other calendars → <strong>From URL</strong> → paste the link above.</p>
-                </div>
+              <div className="text-sm text-gray-500 space-y-1.5 bg-gray-50 rounded-lg p-3">
+                <p className="font-medium text-gray-700">Google Calendar</p>
+                <p>Settings → Add calendar → <strong>From URL</strong> → paste the link above.</p>
+              </div>
 
-                <div className="text-sm text-gray-500 space-y-1.5 bg-gray-50 rounded-lg p-3">
-                  <p className="font-medium text-gray-700">Outlook</p>
-                  <p>Add calendar → Subscribe from web → paste the link above.</p>
-                </div>
-              </>
-            )}
-          </div>
+              <p className="text-xs text-gray-400">
+                Events sync automatically as changes are made in First Whistle.
+              </p>
+            </>
+          )}
         </div>
-      )}
+      </Modal>
     </div>
   );
 }
