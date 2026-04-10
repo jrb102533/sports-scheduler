@@ -4,7 +4,7 @@ import { httpsCallable, getFunctions } from 'firebase/functions';
 import {
   ArrowLeft, MapPin, Users, Wand2, Plus, CheckCircle2,
   AlertTriangle, AlertCircle, Clock, ChevronRight, Settings,
-  Send, Loader2,
+  Send, Loader2, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -295,6 +295,7 @@ export function SeasonDashboard() {
   const [addDivisionOpen, setAddDivisionOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState('');
+  const [draftListOpen, setDraftListOpen] = useState(false);
 
   const allEvents = useEventStore(s => s.events);
 
@@ -366,6 +367,12 @@ export function SeasonDashboard() {
     : seasonScheduledEvents.length > 0;
 
   const draftDivisions = divisions.filter(d => d.scheduleStatus === 'draft');
+  const totalUnscheduled = draftDivisions.reduce((sum, d) => sum + (d.unscheduledCount ?? 0), 0);
+
+  // Draft events sorted by date for the collapsible list
+  const sortedDraftEvents = [...seasonDraftEvents].sort(
+    (a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)
+  );
 
   async function handlePublishDraft(divId?: string) {
     if (!leagueId || !seasonId) return;
@@ -510,6 +517,12 @@ export function SeasonDashboard() {
                     ? `${draftDivisions.length} division${draftDivisions.length !== 1 ? 's' : ''} have a draft schedule waiting to be published.`
                     : `${seasonDraftEvents.length} draft game${seasonDraftEvents.length !== 1 ? 's' : ''} waiting to be published.`}
                 </p>
+                {totalUnscheduled > 0 && (
+                  <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
+                    <AlertTriangle size={12} className="flex-shrink-0" />
+                    {totalUnscheduled} game{totalUnscheduled !== 1 ? 's' : ''} couldn't be auto-scheduled — add manually or edit the wizard to fix.
+                  </p>
+                )}
                 {publishError && (
                   <p className="text-xs text-red-600 mt-1">{publishError}</p>
                 )}
@@ -530,6 +543,41 @@ export function SeasonDashboard() {
                 </div>
               )}
             </div>
+
+            {/* Collapsible draft game list */}
+            {sortedDraftEvents.length > 0 && (
+              <div className="mt-3 border-t border-amber-200 pt-3">
+                <button
+                  onClick={() => setDraftListOpen(v => !v)}
+                  className="flex items-center gap-1.5 text-xs font-medium text-amber-800 hover:text-amber-900"
+                >
+                  {draftListOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  {draftListOpen ? 'Hide' : 'View'} {sortedDraftEvents.length} draft game{sortedDraftEvents.length !== 1 ? 's' : ''}
+                </button>
+
+                {draftListOpen && (
+                  <div className="mt-2 space-y-1">
+                    {sortedDraftEvents.map(e => {
+                      const homeTeam = leagueTeams.find(t => e.teamIds[0] === t.id);
+                      const awayTeam = leagueTeams.find(t => e.teamIds[1] === t.id);
+                      const dateLabel = new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', {
+                        weekday: 'short', month: 'short', day: 'numeric',
+                      });
+                      return (
+                        <div key={e.id} className="flex items-center justify-between text-xs bg-white rounded-lg px-3 py-2 border border-amber-100">
+                          <span className="font-medium text-gray-800">
+                            {homeTeam?.name ?? 'TBD'} vs {awayTeam?.name ?? 'TBD'}
+                          </span>
+                          <span className="text-gray-500 tabular-nums">
+                            {dateLabel} · {e.startTime}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4">
