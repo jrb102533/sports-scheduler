@@ -1,20 +1,42 @@
 name: E2E — Staging
 
-# Runs the full Playwright UAT suite against staging after every deploy to main.
-# Triggered by the completion of the "Deploy to Firebase" workflow.
+# Three-tier cost-optimised E2E strategy:
+#
+#   1. Smoke suite  — runs after every deploy to main (fast, cheap, catches critical regressions)
+#   2. Full suite   — runs nightly at 02:00 UTC (comprehensive, once-a-day cap)
+#   3. Manual full  — workflow_dispatch with optional grep filter for ad-hoc / pre-release runs
 #
 # Required GitHub secrets (Settings → Secrets and variables → Actions):
-#   E2E_STAGING_ADMIN_EMAIL      — admin test account email on staging
-#   E2E_STAGING_ADMIN_PASSWORD   — admin test account password on staging
-#   E2E_STAGING_PARENT_EMAIL     — parent test account email on staging
-#   E2E_STAGING_PARENT_PASSWORD  — parent test account password on staging
+#   E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD
+#   E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD
+#   E2E_PLAYER_EMAIL / E2E_PLAYER_PASSWORD
+#   E2E_COACH_EMAIL / E2E_COACH_PASSWORD
+#   E2E_LM_EMAIL / E2E_LM_PASSWORD
+#   E2E_MUST_CHANGE_EMAIL / E2E_MUST_CHANGE_PASSWORD
+#   E2E_CONSENT_OUTDATED_EMAIL / E2E_CONSENT_OUTDATED_PASSWORD
+#   E2E_AVAIL_LEAGUE_ID / E2E_AVAIL_COLLECTION_ID
+#   E2E_FIREBASE_SERVICE_ACCOUNT_JSON  — base64-encoded staging service account JSON
+#   E2E_FUNCTIONS_BASE                 — Cloud Functions base URL for staging
+#   E2E_RSVP_HMAC_SECRET               — HMAC secret for one-tap RSVP links
 
 on:
-  workflow_dispatch: {}
+  # 1. Smoke suite after every successful deploy to main
   workflow_run:
     workflows: ["Deploy to Firebase"]
     types: [completed]
     branches: [main]
+
+  # 2. Full suite nightly at 02:00 UTC
+  schedule:
+    - cron: '0 2 * * *'
+
+  # 3. Manual — full suite by default; pass grep to narrow
+  workflow_dispatch:
+    inputs:
+      grep:
+        description: 'Playwright --grep filter (leave blank for full suite)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -27,13 +49,13 @@ jobs:
   e2e-staging:
     name: Playwright E2E — Staging
     runs-on: ubuntu-latest
-    # Only run if triggered manually or if the deploy succeeded
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # Skip workflow_run triggers where the deploy failed
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -47,11 +69,6 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Write service account credentials
-        # Decodes the base64-encoded service account JSON and writes it to a temp file.
-        # GOOGLE_APPLICATION_CREDENTIALS is then set for the test step so that
-        # global-setup.ts can seed E2E data and global-teardown.ts can clean it up.
-        # If E2E_FIREBASE_SERVICE_ACCOUNT_JSON is not set, this step is a no-op and
-        # data-dependent tests will self-skip with a clear message.
         run: |
           if [ -n "${{ secrets.E2E_FIREBASE_SERVICE_ACCOUNT_JSON }}" ]; then
             echo "${{ secrets.E2E_FIREBASE_SERVICE_ACCOUNT_JSON }}" | base64 -d > /tmp/sa.json
@@ -60,14 +77,15 @@ jobs:
             echo "E2E_FIREBASE_SERVICE_ACCOUNT_JSON not set — seeding will be skipped"
           fi
 
-      - name: Run E2E against staging
+      - name: Run E2E — smoke suite (post-deploy)
+        if: ${{ github.event_name == 'workflow_run' }}
         env:
           E2E_BASE_URL: https://first-whistle-e76f4.web.app
           E2E_STAGING_URL: https://first-whistle-e76f4.web.app
-          E2E_ADMIN_EMAIL: ${{ secrets.E2E_STAGING_ADMIN_EMAIL }}
-          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_STAGING_ADMIN_PASSWORD }}
-          E2E_PARENT_EMAIL: ${{ secrets.E2E_STAGING_PARENT_EMAIL }}
-          E2E_PARENT_PASSWORD: ${{ secrets.E2E_STAGING_PARENT_PASSWORD }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+          E2E_PARENT_EMAIL: ${{ secrets.E2E_PARENT_EMAIL }}
+          E2E_PARENT_PASSWORD: ${{ secrets.E2E_PARENT_PASSWORD }}
           E2E_MUST_CHANGE_EMAIL: ${{ secrets.E2E_MUST_CHANGE_EMAIL }}
           E2E_MUST_CHANGE_PASSWORD: ${{ secrets.E2E_MUST_CHANGE_PASSWORD }}
           E2E_CONSENT_OUTDATED_EMAIL: ${{ secrets.E2E_CONSENT_OUTDATED_EMAIL }}
@@ -80,8 +98,42 @@ jobs:
           E2E_LM_PASSWORD: ${{ secrets.E2E_LM_PASSWORD }}
           E2E_AVAIL_LEAGUE_ID: ${{ secrets.E2E_AVAIL_LEAGUE_ID }}
           E2E_AVAIL_COLLECTION_ID: ${{ secrets.E2E_AVAIL_COLLECTION_ID }}
+          E2E_FUNCTIONS_BASE: ${{ secrets.E2E_FUNCTIONS_BASE }}
+          E2E_RSVP_HMAC_SECRET: ${{ secrets.E2E_RSVP_HMAC_SECRET }}
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
-        run: npx playwright test --project=chromium --project=staging
+        run: npx playwright test --project=chromium --project=staging --grep @smoke
+
+      - name: Run E2E — full suite (nightly or manual)
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        env:
+          E2E_BASE_URL: https://first-whistle-e76f4.web.app
+          E2E_STAGING_URL: https://first-whistle-e76f4.web.app
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+          E2E_PARENT_EMAIL: ${{ secrets.E2E_PARENT_EMAIL }}
+          E2E_PARENT_PASSWORD: ${{ secrets.E2E_PARENT_PASSWORD }}
+          E2E_MUST_CHANGE_EMAIL: ${{ secrets.E2E_MUST_CHANGE_EMAIL }}
+          E2E_MUST_CHANGE_PASSWORD: ${{ secrets.E2E_MUST_CHANGE_PASSWORD }}
+          E2E_CONSENT_OUTDATED_EMAIL: ${{ secrets.E2E_CONSENT_OUTDATED_EMAIL }}
+          E2E_CONSENT_OUTDATED_PASSWORD: ${{ secrets.E2E_CONSENT_OUTDATED_PASSWORD }}
+          E2E_PLAYER_EMAIL: ${{ secrets.E2E_PLAYER_EMAIL }}
+          E2E_PLAYER_PASSWORD: ${{ secrets.E2E_PLAYER_PASSWORD }}
+          E2E_COACH_EMAIL: ${{ secrets.E2E_COACH_EMAIL }}
+          E2E_COACH_PASSWORD: ${{ secrets.E2E_COACH_PASSWORD }}
+          E2E_LM_EMAIL: ${{ secrets.E2E_LM_EMAIL }}
+          E2E_LM_PASSWORD: ${{ secrets.E2E_LM_PASSWORD }}
+          E2E_AVAIL_LEAGUE_ID: ${{ secrets.E2E_AVAIL_LEAGUE_ID }}
+          E2E_AVAIL_COLLECTION_ID: ${{ secrets.E2E_AVAIL_COLLECTION_ID }}
+          E2E_FUNCTIONS_BASE: ${{ secrets.E2E_FUNCTIONS_BASE }}
+          E2E_RSVP_HMAC_SECRET: ${{ secrets.E2E_RSVP_HMAC_SECRET }}
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+        run: |
+          GREP="${{ github.event.inputs.grep }}"
+          if [ -n "$GREP" ]; then
+            npx playwright test --project=chromium --project=staging --grep "$GREP"
+          else
+            npx playwright test --project=chromium --project=staging
+          fi
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
@@ -98,12 +150,15 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const conclusion = '${{ job.status }}';
-            const sha = '${{ github.event.workflow_run.head_sha }}'.slice(0, 7);
+            const sha = '${{ github.event.workflow_run.head_sha || github.sha }}'.slice(0, 7);
             const runUrl = `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
             const icon = conclusion === 'success' ? '✅' : '❌';
             const label = conclusion === 'success' ? 'passed' : 'FAILED';
+            const suite = '${{ github.event_name }}' === 'workflow_run' ? 'smoke' : 'full';
 
-            // Find the PR associated with this commit
+            // Only comment on PRs for post-deploy runs
+            if ('${{ github.event_name }}' !== 'workflow_run') return;
+
             const { data: prs } = await github.rest.pulls.list({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -118,9 +173,9 @@ jobs:
             if (!pr) return;
 
             const body = [
-              `## ${icon} Staging E2E ${label}`,
+              `## ${icon} Staging E2E (${suite}) ${label}`,
               '',
-              `Playwright UAT ran against staging after deploy of \`${sha}\`.`,
+              `Playwright ran against staging after deploy of \`${sha}\`.`,
               '',
               `[View full report](${runUrl})`,
             ].join('\n');

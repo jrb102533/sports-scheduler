@@ -195,6 +195,21 @@ If production is down or actively leaking data:
 - Config files (`.env`, `firebase.json`, `vite.config.ts`)
 - Generated code or migrations that run once
 
+## Collaboration Rules
+
+### Always give a recommendation
+
+When the PM asks for options or "what do you recommend", **always lead with a clear expert recommendation** — not a neutral list. Present the options briefly for context, then state which one to pick and why. The PM delegates technical decisions; hedging wastes their time.
+
+Format:
+1. State the recommendation upfront
+2. One sentence of rationale
+3. Brief option summary if helpful
+
+Never end with "what's your preference?" without first giving your own answer.
+
+---
+
 ## Backlog
 
 - #202 — Schedule wizard draft resume
