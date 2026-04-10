@@ -233,12 +233,12 @@ service cloud.firestore {
 
     match /leagues/{leagueId} {
       allow read: if request.auth != null;
-      // League managers can create any new league (no prior leagueId to match against).
-      // SEC-28: coaches who became LMs via createLeagueAndBecomeManager CF retain scalar
-      // role='coach' (pending PM decision to auto-promote). Allow coach to create if their
-      // UID is in the managerIds they're writing — the CF always sets this.
+      // Any authenticated user who self-assigns as manager can create a league.
+      // Aligns with createLeagueAndBecomeManager CF which has no role gate.
+      // SEC-28: coaches/LMs with role='coach' at the top-level field are covered by
+      // the isManagerOfLeague() check on request.resource.data.managerIds.
       allow create: if isAdmin() || isLeagueManager()
-        || (isCoach() && isManagerOfLeague(request.resource.data));
+        || (request.auth != null && isManagerOfLeague(request.resource.data));
       // Phase 2: use managerIds access list instead of profile.leagueId cross-doc read.
       // SEC-29: non-admin writes may not touch access-control fields (managerIds, managedBy).
       // Admins retain unrestricted write access.
