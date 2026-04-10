@@ -91,6 +91,7 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const playerAge = calculateAge(dateOfBirth);
   /** 'coppa' = under 13, 'minor' = 13–17, null = no notice needed */
@@ -138,6 +139,7 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
   async function handleSubmit() {
     if (!validate()) return;
     setSaving(true);
+    setSaveError(null);
     const now = new Date().toISOString();
     const num = jerseyNumber ? parseInt(jerseyNumber) : undefined;
 
@@ -159,35 +161,42 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
       ...(email.trim() ? { email: email.trim() } : {}),
     };
 
-    if (editPlayer) {
-      await updatePlayer({ ...editPlayer, firstName: firstName.trim(), lastName: lastName.trim(), status, updatedAt: now, ...mainOptionals });
-      if (Object.keys(sensitiveFields).length > 0) {
-        await updateSensitiveData(editPlayer.id, teamId, sensitiveFields);
-      }
-    } else {
-      const playerId = crypto.randomUUID();
-      await addPlayer({ id: playerId, teamId, firstName: firstName.trim(), lastName: lastName.trim(), status, createdAt: now, updatedAt: now, ...mainOptionals });
-      if (Object.keys(sensitiveFields).length > 0) {
-        await addSensitiveData(playerId, teamId, sensitiveFields);
-      }
+    try {
+      if (editPlayer) {
+        await updatePlayer({ ...editPlayer, firstName: firstName.trim(), lastName: lastName.trim(), status, updatedAt: now, ...mainOptionals });
+        if (Object.keys(sensitiveFields).length > 0) {
+          await updateSensitiveData(editPlayer.id, teamId, sensitiveFields);
+        }
+      } else {
+        const playerId = crypto.randomUUID();
+        await addPlayer({ id: playerId, teamId, firstName: firstName.trim(), lastName: lastName.trim(), status, createdAt: now, updatedAt: now, ...mainOptionals });
+        if (Object.keys(sensitiveFields).length > 0) {
+          await addSensitiveData(playerId, teamId, sensitiveFields);
+        }
 
-      if (team) {
-        const playerName = `${firstName.trim()} ${lastName.trim()}`;
-        const invites: Array<{ to: string; role: string }> = [];
-        if (email.trim()) invites.push({ to: email.trim(), role: 'player' });
-        if (p1Email.trim()) invites.push({ to: p1Email.trim(), role: 'parent' });
-        for (const { to, role } of invites) {
-          try {
-            await sendInviteFn({ to, playerName, teamName: team.name, playerId, teamId, role });
-          } catch (err) {
-            console.error('Invite send failed:', err);
+        if (team) {
+          const playerName = `${firstName.trim()} ${lastName.trim()}`;
+          const invites: Array<{ to: string; role: string }> = [];
+          if (email.trim()) invites.push({ to: email.trim(), role: 'player' });
+          if (p1Email.trim()) invites.push({ to: p1Email.trim(), role: 'parent' });
+          for (const { to, role } of invites) {
+            try {
+              await sendInviteFn({ to, playerName, teamName: team.name, playerId, teamId, role });
+            } catch (err) {
+              console.error('Invite send failed:', err);
+            }
           }
         }
       }
-    }
 
-    setSaving(false);
-    onClose();
+      setSaving(false);
+      onClose();
+    } catch (err: unknown) {
+      console.error('[PlayerForm] save failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setSaveError(msg.includes('permission') ? 'Permission denied — your account may not be linked to this team. Contact your admin.' : `Failed to save: ${msg}`);
+      setSaving(false);
+    }
   }
 
   return (
@@ -319,6 +328,10 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
             <Input label="Relationship" name="ec-relationship" autoComplete="off" value={ecRelationship} onChange={e => setEcRelationship(e.target.value)} placeholder="e.g. Grandmother, Uncle — optional" />
           </div>
         </div>
+
+        {saveError && (
+          <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{saveError}</p>
+        )}
 
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>

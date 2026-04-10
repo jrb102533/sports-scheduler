@@ -174,7 +174,11 @@ service cloud.firestore {
         getProfile().teamId == resource.data.teamId
       );
       // SEC-48: scope create/delete to coaches of the target team, not all coaches.
+      // isCoach() is retained as a fallback while the coachIds backfill (SEC-55)
+      // is pending — teams without coachId/coachIds would otherwise lock out their
+      // own coaches. Remove once backfill is confirmed complete on all environments.
       allow create: if isAdmin()
+        || isCoach()
         || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(request.resource.data.teamId)).data);
       allow delete: if isAdmin()
         || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data);
