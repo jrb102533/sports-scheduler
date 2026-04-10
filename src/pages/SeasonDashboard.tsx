@@ -291,6 +291,7 @@ export function SeasonDashboard() {
   const profile = useAuthStore(s => s.profile);
 
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardResumeAtPreview, setWizardResumeAtPreview] = useState(false);
   const [addDivisionOpen, setAddDivisionOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState('');
@@ -490,7 +491,7 @@ export function SeasonDashboard() {
                 </p>
               </div>
               {canManage && (
-                <Button variant="secondary" size="sm" onClick={() => setWizardOpen(true)}>
+                <Button variant="secondary" size="sm" onClick={() => { setWizardResumeAtPreview(false); setWizardOpen(true); }}>
                   <Wand2 size={14} /> Re-generate
                 </Button>
               )}
@@ -515,7 +516,7 @@ export function SeasonDashboard() {
               </div>
               {canManage && (
                 <div className="flex gap-2 flex-wrap">
-                  <Button variant="secondary" size="sm" onClick={() => setWizardOpen(true)}>
+                  <Button variant="secondary" size="sm" onClick={() => { setWizardResumeAtPreview(true); setWizardOpen(true); }}>
                     <Wand2 size={14} /> Edit Draft
                   </Button>
                   <Button
@@ -547,7 +548,7 @@ export function SeasonDashboard() {
                 </p>
               </div>
               <Button
-                onClick={() => setWizardOpen(true)}
+                onClick={() => { setWizardResumeAtPreview(false); setWizardOpen(true); }}
                 disabled={!canGenerate || leagueTeams.length < 2}
               >
                 <Wand2 size={14} /> Open Wizard
@@ -647,6 +648,7 @@ export function SeasonDashboard() {
           season={season}
           currentUserUid={profile?.uid ?? ''}
           divisionId={divisions.length === 1 ? divisions[0].id : undefined}
+          resumeAtPreview={wizardResumeAtPreview}
         />
       )}
 

@@ -55,6 +55,9 @@ export interface ScheduleConfig {
   availabilityOption: 'skip' | 'collect';
   collectionId?: string;
 
+  // Resume support — the wizard step active when this config was saved
+  currentStep?: string;
+
   // Timestamps
   createdAt: string;
   createdBy: string;
