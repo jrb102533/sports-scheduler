@@ -389,11 +389,12 @@ interface Props {
   season?: Season;
   currentUserUid: string;
   divisionId?: string;
+  resumeAtPreview?: boolean;
 }
 
-export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season, currentUserUid, divisionId }: Props) {
+export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season, currentUserUid, divisionId, resumeAtPreview }: Props) {
   const { addEvent } = useEventStore();
-  const { createCollection, saveWizardDraft, wizardDraft, activeCollection, responses, loadCollection } = useCollectionStore();
+  const { createCollection, saveWizardDraft, clearWizardDraft, wizardDraft, activeCollection, responses, loadCollection } = useCollectionStore();
 
   // Venue stores
   const savedVenues = useVenueStore(s => s.venues);
@@ -482,6 +483,20 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   const [generatePhase, setGeneratePhase] = useState<'configure' | 'running'>('configure');
   const [recommendationDismissed, setRecommendationDismissed] = useState(false);
 
+  // ── Draft resume ───────────────────────────────────────────────────────────
+  const [showResumePrompt, setShowResumePrompt] = useState(false);
+  const [resumeStep, setResumeStep] = useState<WizardStep | null>(null);
+  const [showResumeStartOverConfirm, setShowResumeStartOverConfirm] = useState(false);
+
+  // ── Close guard ────────────────────────────────────────────────────────────
+  const [showCloseGuard, setShowCloseGuard] = useState(false);
+
+  // ── Mode-change guard ──────────────────────────────────────────────────────
+  const [showModeChangeGuard, setShowModeChangeGuard] = useState(false);
+
+  // ── Auto-save micro-indicator ──────────────────────────────────────────────
+  const [justSaved, setJustSaved] = useState(false);
+
   useEffect(() => {
     if (step === 'generate' && generatePhase === 'configure' && mode === 'season') {
       const unsub = loadCollection(league.id);
@@ -549,7 +564,36 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         setVenueBlackoutInputs(cfg.venueConfigs.map(() => ''));
       }
 
-      // Skip mode picker — go straight to config step
+      // resumeAtPreview prop: "Edit Draft" CTA — jump straight to generate step
+      if (resumeAtPreview && cfg.mode) {
+        setGeneratePhase('configure');
+        setRecommendationDismissed(false);
+        setStep('generate');
+        return;
+      }
+
+      // Resume detection: if saved config has a currentStep beyond the first step
+      if (cfg.mode && cfg.currentStep) {
+        const modeSteps = getSteps(cfg.mode);
+        const isResumable =
+          cfg.currentStep !== 'mode' &&
+          cfg.currentStep !== modeSteps[0] &&
+          cfg.currentStep !== 'preview';
+
+        if (isResumable) {
+          setResumeStep(cfg.currentStep as WizardStep);
+          setShowResumePrompt(true);
+          return;
+        }
+
+        if (cfg.currentStep === 'preview') {
+          setResumeStep('preview');
+          setShowResumePrompt(true);
+          return;
+        }
+      }
+
+      // Normal: advance to first config step
       if (cfg.mode) {
         setStep(getSteps(cfg.mode)[0]);
       }
@@ -561,7 +605,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
   // ─── Save wizard config to Firestore ────────────────────────────────────────
 
-  function saveScheduleConfig() {
+  function saveScheduleConfig(stepOverride?: string) {
     if (!season?.id || !league.id || !mode) return;
 
     const configId = crypto.randomUUID();
@@ -597,6 +641,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       teamIds: leagueTeams.map(t => t.id),
       availabilityOption,
       ...(collectionId ? { collectionId } : {}),
+      currentStep: stepOverride ?? step,
       createdAt: new Date().toISOString(),
       createdBy: currentUserUid,
     };
@@ -624,6 +669,18 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     setBlackoutInput('');
     setGeneratePhase('configure');
     setRecommendationDismissed(false);
+    setShowResumePrompt(false);
+    setResumeStep(null);
+    setShowResumeStartOverConfirm(false);
+    setShowModeChangeGuard(false);
+  }
+
+  function handleModalClose() {
+    if (step === 'mode' || published) {
+      onClose();
+      return;
+    }
+    setShowCloseGuard(true);
   }
 
   function validateConfig(): boolean {
@@ -663,6 +720,12 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     return errs.every(e => !e);
   }
 
+  function triggerAutoSave(nextStep: WizardStep) {
+    saveScheduleConfig(nextStep);
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 2000);
+  }
+
   function goNext() {
     if (!mode) return;
     const steps = getSteps(mode);
@@ -683,6 +746,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         setGeneratePhase('configure');
         setRecommendationDismissed(false);
         setStep('generate');
+        triggerAutoSave('generate');
       } else {
         void handleGenerate();
       }
@@ -690,7 +754,9 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     }
 
     if (idx < steps.length - 1) {
-      setStep(steps[idx + 1]);
+      const nextStep = steps[idx + 1];
+      setStep(nextStep);
+      triggerAutoSave(nextStep);
     }
   }
 
@@ -750,7 +816,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     }
 
     if (idx === 0) {
-      resetWizard();
+      setShowModeChangeGuard(true);
     } else {
       setStep(steps[idx - 1]);
     }
@@ -1215,7 +1281,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
   return (
     <>
-      <Modal open={open} onClose={onClose} title="Schedule Wizard" size="lg">
+      <Modal open={open} onClose={handleModalClose} title="Schedule Wizard" size="lg">
 
         {/* Progress indicator */}
         {mode && step !== 'mode' && (
@@ -1241,8 +1307,109 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
           </div>
         )}
 
+        {/* ── Resume interstitial ─────────────────────────────────────────────── */}
+        {showResumePrompt && (
+          <div className="flex flex-col items-center justify-center py-8 gap-6">
+            <div className="w-full max-w-sm bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
+              <div>
+                <p className="text-base font-semibold text-gray-900">Continue where you left off?</p>
+                {resumeStep === 'preview' ? (
+                  <p className="text-sm text-gray-600 mt-1">
+                    Your configuration is saved. The generated schedule will need to be re-run (~30 seconds).
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-600 mt-1">
+                    You have an in-progress <strong>{mode}</strong> schedule configured up
+                    to <strong>{resumeStep ? STEP_LABELS[resumeStep] : ''}</strong>.
+                  </p>
+                )}
+              </div>
+              {showResumeStartOverConfirm ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    This will clear your saved configuration. Are you sure?
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        void clearWizardDraft(league.id);
+                        resetWizard();
+                      }}
+                    >
+                      Yes, start over
+                    </Button>
+                    <Button variant="secondary" onClick={() => setShowResumeStartOverConfirm(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      setShowResumePrompt(false);
+                      if (resumeStep === 'preview') {
+                        setGeneratePhase('configure');
+                        setRecommendationDismissed(false);
+                        setStep('generate');
+                      } else if (resumeStep) {
+                        setStep(resumeStep);
+                      }
+                    }}
+                  >
+                    {resumeStep === 'preview' ? 'Re-generate and Continue' : 'Continue'}
+                  </Button>
+                  <Button variant="secondary" onClick={() => setShowResumeStartOverConfirm(true)}>
+                    Start Over
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Close guard ─────────────────────────────────────────────────────── */}
+        {showCloseGuard && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4 space-y-4">
+              <p className="text-base font-semibold text-gray-900">Leave wizard?</p>
+              <p className="text-sm text-gray-600">
+                Your progress is saved. Return to this schedule via "Continue Schedule" on the league page.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Button variant="secondary" onClick={() => setShowCloseGuard(false)}>Keep Editing</Button>
+                <Button onClick={() => { setShowCloseGuard(false); onClose(); }}>Close Wizard</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Mode-change guard ────────────────────────────────────────────────── */}
+        {showModeChangeGuard && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4 space-y-4">
+              <p className="text-base font-semibold text-gray-900">Change schedule mode?</p>
+              <p className="text-sm text-gray-600">
+                Changing mode will clear your current configuration. Continue?
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Button variant="secondary" onClick={() => setShowModeChangeGuard(false)}>Keep Current Mode</Button>
+                <Button
+                  onClick={() => {
+                    setShowModeChangeGuard(false);
+                    resetWizard();
+                  }}
+                >
+                  Change Mode
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Mode picker ─────────────────────────────────────────────────────── */}
-        {step === 'mode' && (
+        {!showResumePrompt && step === 'mode' && (
           <div className="space-y-3">
             <p className="text-sm text-gray-600">What would you like to schedule?</p>
             {(
@@ -2144,11 +2311,16 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         )}
 
         {/* ── Navigation ───────────────────────────────────────────────────────── */}
-        {!published && step !== 'mode' && !(step === 'generate' && generatePhase === 'running') && (
-          <div className="flex justify-between pt-4 mt-4 border-t border-gray-100">
-            <Button variant="secondary" onClick={goBack} disabled={publishing}>
-              <ChevronLeft size={16} /> {currentStepIdx === 0 ? 'Change Mode' : 'Back'}
-            </Button>
+        {!showResumePrompt && !published && step !== 'mode' && !(step === 'generate' && generatePhase === 'running') && (
+          <div className="flex justify-between items-center pt-4 mt-4 border-t border-gray-100">
+            <div className="flex items-center gap-3">
+              <Button variant="secondary" onClick={goBack} disabled={publishing}>
+                <ChevronLeft size={16} /> {currentStepIdx === 0 ? 'Change Mode' : 'Back'}
+              </Button>
+              {justSaved && (
+                <span className="text-xs text-green-600 transition-opacity">&#10003; Saved</span>
+              )}
+            </div>
 
             {step === 'generate' && generatePhase === 'configure' ? (
               <Button
@@ -2210,9 +2382,9 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
           </div>
         )}
 
-        {step === 'mode' && (
+        {!showResumePrompt && step === 'mode' && (
           <div className="flex justify-end pt-4 mt-4 border-t border-gray-100">
-            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button variant="secondary" onClick={handleModalClose}>Cancel</Button>
           </div>
         )}
       </Modal>
