@@ -76,6 +76,9 @@ vi.mock('@/store/useAuthStore', () => ({
       return () => { authSubscribers.splice(authSubscribers.indexOf(cb), 1); };
     },
   },
+  // getActiveMembership mirrors the real implementation for the mock profile shape
+  getActiveMembership: (profile: MockProfile | null) =>
+    profile ? { role: profile.role, teamId: profile.teamId } : null,
 }));
 
 function setProfile(profile: MockProfile | null) {

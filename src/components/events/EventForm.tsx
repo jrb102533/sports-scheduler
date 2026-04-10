@@ -253,6 +253,16 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
     };
 
     if (editEvent) {
+      // Strip stale home/away/opponent fields before spreading so that switching
+      // home↔away or clearing the opponent on edit doesn't leave the old value
+      // behind (e.g. "Skywalkers vs Skywalkers" when awayTeamId was never cleared).
+      // optionals re-adds these only when they have a value.
+      const {
+        homeTeamId: _ht, awayTeamId: _at,
+        opponentId: _oi, opponentName: _on,
+        ...editBase
+      } = editEvent;
+
       if (scope === 'future' && editEvent.recurringGroupId) {
         const futureEvents = allEvents.filter(
           e => e.recurringGroupId === editEvent.recurringGroupId && e.date >= editEvent.date
@@ -263,14 +273,15 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
         const offsetMs = newMs - originalMs;
         await Promise.all(
           futureEvents.map(e => {
+            const { homeTeamId: _fht, awayTeamId: _fat, opponentId: _foi, opponentName: _fon, ...eBase } = e;
             const shiftedDate = offsetMs !== 0
               ? new Date(new Date(e.date).getTime() + offsetMs).toISOString().slice(0, 10)
               : e.date;
-            return updateEvent({ ...e, title: resolvedTitle, type, date: shiftedDate, startTime, teamIds, updatedAt: now, ...optionals });
+            return updateEvent({ ...eBase, title: resolvedTitle, type, date: shiftedDate, startTime, teamIds, updatedAt: now, ...optionals });
           })
         );
       } else {
-        updateEvent({ ...editEvent, title: resolvedTitle, type, date, startTime, teamIds, updatedAt: now, ...optionals });
+        updateEvent({ ...editBase, title: resolvedTitle, type, date, startTime, teamIds, updatedAt: now, ...optionals });
       }
     } else if (isRecurring && recurrenceEnd) {
       const groupId = crypto.randomUUID();

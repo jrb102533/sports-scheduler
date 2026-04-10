@@ -27,7 +27,7 @@ const mockDoc = vi.fn((_db: unknown, ...segments: string[]) => ({ path: segments
 const mockCollection = vi.fn();
 const mockCollectionGroup = vi.fn();
 const mockOrderBy = vi.fn();
-const mockQuery = vi.fn();
+const mockQuery = vi.fn((..._args: unknown[]) => ({ _type: 'query' }));
 const mockOnSnapshot = vi.fn(() => () => {});
 const mockDeleteDoc = vi.fn().mockResolvedValue(undefined);
 const mockWriteBatch = vi.fn(() => ({
@@ -35,11 +35,14 @@ const mockWriteBatch = vi.fn(() => ({
   commit: vi.fn().mockResolvedValue(undefined),
 }));
 
+const mockWhere = vi.fn((...args: unknown[]) => ({ _type: 'where', args }));
+
 vi.mock('firebase/firestore', () => ({
   setDoc: (...args: unknown[]) => mockSetDoc(...args),
   doc: (...args: unknown[]) => mockDoc(...(args as Parameters<typeof mockDoc>)),
   collection: (...args: unknown[]) => mockCollection(...args),
   collectionGroup: (...args: unknown[]) => mockCollectionGroup(...args),
+  where: (...args: unknown[]) => mockWhere(...args),
   orderBy: (...args: unknown[]) => mockOrderBy(...args),
   query: (...args: unknown[]) => mockQuery(...args),
   onSnapshot: (...args: unknown[]) => mockOnSnapshot(...(args as Parameters<typeof mockOnSnapshot>)),
@@ -54,7 +57,12 @@ const mockAuthGetState = vi.fn(() => ({
 }));
 
 vi.mock('./useAuthStore', () => ({
-  useAuthStore: { getState: () => mockAuthGetState() },
+  useAuthStore: {
+    getState: () => mockAuthGetState(),
+    subscribe: vi.fn(() => vi.fn()), // no-op subscribe; store uses this to watch auth changes
+  },
+  getActiveMembership: (profile: { teamId?: string } | null) =>
+    profile ? { teamId: profile.teamId } : null,
 }));
 
 // ── Import store AFTER mocks are registered ───────────────────────────────────
@@ -111,7 +119,7 @@ function seedBasePlayerViaSnapshot(player: Player): void {
 describe('usePlayerStore — sensitiveData store update after write (the bug)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAuthGetState.mockReturnValue({ profile: { role: 'coach' } });
+    mockAuthGetState.mockReturnValue({ profile: { role: 'coach', teamId: 'team-1' } });
     usePlayerStore.setState({ players: [], loading: true });
   });
 
@@ -377,7 +385,7 @@ describe('usePlayerStore — sensitiveData store update after write (the bug)', 
 describe('usePlayerStore — PlayerForm edit save path', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAuthGetState.mockReturnValue({ profile: { role: 'coach' } });
+    mockAuthGetState.mockReturnValue({ profile: { role: 'coach', teamId: 'team-1' } });
     usePlayerStore.setState({ players: [], loading: true });
   });
 
