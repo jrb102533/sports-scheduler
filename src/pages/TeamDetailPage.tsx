@@ -10,6 +10,7 @@ import { EventCard } from '@/components/events/EventCard';
 import { EventForm } from '@/components/events/EventForm';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
 import { StandingsTable } from '@/components/standings/StandingsTable';
+import { SubscribeToCalendarButton } from '@/components/calendar/SubscribeToCalendarButton';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DeleteTeamModal } from '@/components/teams/DeleteTeamModal';
 import { AssignCoCoachModal } from '@/components/teams/AssignCoCoachModal';
@@ -354,9 +355,12 @@ export function TeamDetailPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm text-gray-500">{teamEvents.length} {teamEvents.length === 1 ? 'event' : 'events'}</p>
-            <RoleGuard roles={['admin', 'league_manager', 'coach']}>
-              <Button size="sm" onClick={() => setEventFormOpen(true)}><Plus size={14} /> Add Event</Button>
-            </RoleGuard>
+            <div className="flex items-center gap-2">
+              <SubscribeToCalendarButton />
+              <RoleGuard roles={['admin', 'league_manager', 'coach']}>
+                <Button size="sm" onClick={() => setEventFormOpen(true)}><Plus size={14} /> Add Event</Button>
+              </RoleGuard>
+            </div>
           </div>
           {teamEvents.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-400">
