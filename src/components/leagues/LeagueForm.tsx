@@ -67,9 +67,8 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
       );
     } catch (e: unknown) {
       const msg = (e as { message?: string }).message ?? 'Save failed. Please try again.';
-      setSaveError(msg.includes('Missing or insufficient permissions')
-        ? 'Permission denied. Your role may not allow this action — try refreshing and signing in again.'
-        : msg);
+      console.error('[LeagueForm] save error:', e);
+      setSaveError(msg);
     } finally {
       setSaving(false);
     }
