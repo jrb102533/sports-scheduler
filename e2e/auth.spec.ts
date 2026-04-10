@@ -16,7 +16,7 @@ import { test, expect, creds } from './fixtures/auth.fixture';
 // Login — happy path
 // ---------------------------------------------------------------------------
 
-test('logs in with valid credentials and lands on the app shell', async ({ authPage }) => {
+test('@smoke logs in with valid credentials and lands on the app shell', async ({ authPage }) => {
   const { email, password } = creds.admin();
   await authPage.gotoLogin();
   await authPage.emailInput.fill(email);
@@ -24,7 +24,7 @@ test('logs in with valid credentials and lands on the app shell', async ({ authP
   await authPage.signInButton.click();
 
   // The authenticated app shell renders "First Whistle" in the brand header
-  await expect(authPage.page.getByText('First Whistle')).toBeVisible({ timeout: 15_000 });
+  await expect(authPage.page.getByText('First Whistle').first()).toBeVisible({ timeout: 15_000 });
 
   // URL leaves /login
   await expect(authPage.page).not.toHaveURL(/\/login/);
@@ -34,12 +34,16 @@ test('logs in with valid credentials and lands on the app shell', async ({ authP
 // Login — wrong password
 // ---------------------------------------------------------------------------
 
-test('shows "Incorrect email or password" when login fails with wrong password', async ({
+test('@smoke shows "Incorrect email or password" when login fails with wrong password', async ({
   authPage,
 }) => {
-  const { email } = creds.admin();
+  // Use a throwaway non-existent email so Firebase never rate-limits a real account.
+  // The test only needs to verify the UI renders the correct error message — it does
+  // not need a real account to exist.  Firebase returns auth/invalid-credential for
+  // unknown email+password combinations, which mapAuthError translates to the expected
+  // UI string.  See issue #339.
   await authPage.gotoLogin();
-  await authPage.emailInput.fill(email);
+  await authPage.emailInput.fill('e2e-wrongpassword-probe@example.com');
   await authPage.passwordInput.fill('definitely-wrong-password-12345!');
   await authPage.signInButton.click();
 
@@ -189,7 +193,7 @@ test('Stay Signed In dismisses the session timeout modal', async ({ authPage, pa
   });
 
   // User should still be on the authenticated shell
-  await expect(page.getByText('First Whistle')).toBeVisible();
+  await expect(page.getByText('First Whistle').first()).toBeVisible();
 });
 
 test('auto-logs out when countdown expires after session timeout warning', async ({

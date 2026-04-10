@@ -5,11 +5,10 @@ import { useAuthStore } from '@/store/useAuthStore';
 
 interface TopBarProps {
   greeting: string;
-  pageTitle: string;
   onMenuClick: () => void;
 }
 
-export function TopBar({ greeting, pageTitle, onMenuClick }: TopBarProps) {
+export function TopBar({ greeting, onMenuClick }: TopBarProps) {
   const { notifications, setPanelOpen } = useNotificationStore();
   const unread = notifications.filter(n => !n.isRead).length;
   const profile = useAuthStore(s => s.profile);
@@ -26,14 +25,7 @@ export function TopBar({ greeting, pageTitle, onMenuClick }: TopBarProps) {
         >
           <Menu size={20} />
         </button>
-        {(greeting || pageTitle) && (
-          <div className="min-w-0">
-            {greeting && <p className="text-base sm:text-lg font-semibold text-gray-900 truncate leading-tight">{greeting}</p>}
-            {pageTitle && (
-              <p className={`truncate leading-tight ${greeting ? 'text-xs text-gray-400' : 'text-base sm:text-lg font-semibold text-gray-900'}`}>{pageTitle}</p>
-            )}
-          </div>
-        )}
+        <p className="text-sm font-medium text-gray-700">{greeting}</p>
       </div>
 
       <div className="flex items-center gap-1 flex-shrink-0">
@@ -41,6 +33,7 @@ export function TopBar({ greeting, pageTitle, onMenuClick }: TopBarProps) {
         <button
           onClick={() => setPanelOpen(true)}
           className="relative p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+          aria-label="Notifications"
         >
           <Bell size={20} />
           {unread > 0 && (

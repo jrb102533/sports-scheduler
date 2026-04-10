@@ -272,7 +272,7 @@ export function RosterTable({ players, teamId, teamName }: RosterTableProps) {
           </tbody>
         </table>
       </div>
-      {editPlayer && <PlayerForm open teamId={teamId} onClose={() => setEditPlayer(null)} editPlayer={editPlayer} />}
+      {editPlayer && <PlayerForm key={editPlayer.id} open teamId={teamId} onClose={() => setEditPlayer(null)} editPlayer={editPlayer} />}
       {statusPlayer && (
         <PlayerStatusModal
           open

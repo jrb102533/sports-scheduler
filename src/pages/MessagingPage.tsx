@@ -21,7 +21,7 @@ const sendSms = httpsCallable<{ to: string[]; message: string }, { sent: number;
   functions, 'sendSms'
 );
 
-const sendEmailFn = httpsCallable<{ to: string[]; subject: string; message: string }, { sent: number; failed: number; errors: string[] }>(functions, 'sendEmail');
+const sendEmailFn = httpsCallable<{ to: string[]; subject: string; message: string; teamIds?: string[] }, { sent: number; failed: number; errors: string[] }>(functions, 'sendEmail');
 
 const roleColors: Record<string, string> = {
   admin: 'text-purple-600 bg-purple-50',
@@ -51,6 +51,7 @@ export function MessagingPage() {
     : allTeams.filter(t =>
         t.createdBy === profile?.uid ||
         t.coachId === profile?.uid ||
+        t.coachIds?.includes(profile?.uid ?? '') ||
         t.id === profile?.teamId
       );
 
@@ -156,7 +157,9 @@ export function MessagingPage() {
     setSendState('sending');
     setSendResult(null);
     try {
-      const result = await sendEmailFn({ to: emailAddresses, subject: subject.trim(), message: message.trim() });
+      // SEC-38: Pass team IDs derived from selected players for server-side ownership verification.
+      const selectedTeamIds = [...new Set(selectedPlayers.map(p => p.teamId).filter(Boolean))];
+      const result = await sendEmailFn({ to: emailAddresses, subject: subject.trim(), message: message.trim(), teamIds: selectedTeamIds });
       setSendResult(result.data);
       setSendState(result.data.failed === 0 ? 'success' : 'error');
       if (result.data.failed === 0) {

@@ -50,7 +50,7 @@ export function CoachAvailabilityPage() {
   const coachTeam = teams.find(t => {
     if (!profile) return false;
     if (!t.leagueIds?.includes(leagueId ?? '')) return false;
-    if (t.coachId === profile.uid) return true;
+    if (t.coachId === profile.uid || t.coachIds?.includes(profile.uid)) return true;
     return getMemberships(profile).some(m => m.role === 'coach' && m.teamId === t.id);
   });
 

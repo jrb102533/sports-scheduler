@@ -30,6 +30,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/leagues': 'Leagues',
   '/venues': 'Venues',
   '/parent': 'My Team',
+  '/standings': 'Standings',
 };
 
 export function MainLayout() {
@@ -37,12 +38,12 @@ export function MainLayout() {
   useAttendanceNotification();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, profile } = useAuthStore();
+  const { user } = useAuthStore();
   const logout = useAuthStore(s => s.logout);
 
   const handleTimeout = useCallback(() => { void logout(); }, [logout]);
   const { showWarning, countdown, resetTimer } = useIdleTimeout({ onTimeout: handleTimeout });
-  // Subscribe all Firestore collections when user is authenticated
+  // Subscribe all Firestore collections when user is authenticated.
   useEffect(() => {
     if (!user) return;
     const unsubs = [
@@ -57,10 +58,14 @@ export function MainLayout() {
     return () => unsubs.forEach(u => u());
   }, [user]);
 
+  const profile = useAuthStore(s => s.profile);
+
   const location = useLocation();
-  const firstName = profile?.displayName?.split(' ')[0] ?? '';
   const isHome = location.pathname === '/' || location.pathname === '/home';
-  const greeting = isHome ? (firstName ? `Welcome, ${firstName}` : 'Welcome') : '';
+  const firstName = profile?.displayName?.split(' ')[0] ?? '';
+  const hour = new Date().getHours();
+  const timeOfDay = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const greeting = firstName ? `${timeOfDay}, ${firstName}` : timeOfDay;
   const pageTitle = isHome
     ? ''
     : PAGE_TITLES[location.pathname]
@@ -93,7 +98,12 @@ export function MainLayout() {
             </div>
           </div>
         </div>
-        <TopBar greeting={greeting} pageTitle={pageTitle} onMenuClick={() => setSidebarOpen(true)} />
+        <TopBar greeting={greeting} onMenuClick={() => setSidebarOpen(true)} />
+        {pageTitle && (
+          <div className="bg-gray-50 border-b border-gray-200 px-4 sm:px-6 py-2">
+            <p className="text-sm font-semibold text-gray-700">{pageTitle}</p>
+          </div>
+        )}
         <main className="flex-1 overflow-y-auto">
           <Outlet />
         </main>

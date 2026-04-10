@@ -21,13 +21,14 @@ import { useAvailabilityStore } from '@/store/useAvailabilityStore';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { useAuthStore, canEdit, hasRole, isCoachOfTeam, getMemberships } from '@/store/useAuthStore';
 import { SPORT_TYPE_LABELS, AGE_GROUP_LABELS } from '@/constants';
-import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, updateDoc, query, where } from 'firebase/firestore';
 import { db, functions } from '@/lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import type { JoinRequest, ScheduledEvent } from '@/types';
 
 interface InviteDoc {
-  email: string;
+  id: string;      // Firestore document ID (composite key: email_teamId_role)
+  email: string;   // Actual recipient email address (from document data)
   playerId: string;
   playerName: string;
   teamId: string;
@@ -40,6 +41,8 @@ interface InviteDoc {
 const sendInviteFn = httpsCallable<{
   to: string; playerName: string; teamName: string; playerId: string; teamId: string; role?: string;
 }>(functions, 'sendInvite');
+
+const revokeInviteFn = httpsCallable<{ inviteId: string }>(functions, 'revokeInvite');
 
 type Tab = 'schedule' | 'roster' | 'attendance' | 'standings' | 'info' | 'requests' | 'invites';
 
@@ -81,7 +84,8 @@ export function TeamDetailPage() {
   const canSeeRequests = profile && team && (
     isCoachOfTeam(profile, team.id) ||
     team.createdBy === profile.uid ||
-    team.coachId === profile.uid
+    team.coachId === profile.uid ||
+    team.coachIds?.includes(profile.uid)
   );
 
   // Invites state
@@ -111,7 +115,7 @@ export function TeamDetailPage() {
     setInvitesLoading(true);
     getDocs(query(collection(db, 'invites'), where('teamId', '==', team.id)))
       .then(snap => {
-        const docs = snap.docs.map(d => ({ ...(d.data() as Omit<InviteDoc, 'email'>), email: d.id }));
+        const docs = snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<InviteDoc, 'id'>) }));
         setInvites(docs);
       })
       .catch(err => console.error('Failed to load invites:', err))
@@ -143,6 +147,7 @@ export function TeamDetailPage() {
   const isOwner = !isAdminUser && (
     team?.createdBy === profile?.uid ||
     team?.coachId === profile?.uid ||        // legacy fallback: coachId before memberships backfill
+    team?.coachIds?.includes(profile?.uid ?? '') ||
     isCoachOfTeam(profile, team?.id ?? '')
   );
 
@@ -164,14 +169,24 @@ export function TeamDetailPage() {
   }
 
   async function handleSoftDelete() {
-    await softDeleteTeam(teamId);
-    navigate('/teams');
+    try {
+      await softDeleteTeam(teamId);
+      navigate('/teams');
+    } catch (err: any) {
+      console.error('Delete team failed:', err);
+      alert(err?.message ?? 'Failed to delete team. Please try again.');
+    }
   }
 
   async function handleHardDelete() {
-    await deletePlayersForTeam(teamId);
-    await hardDeleteTeam(teamId);
-    navigate('/teams');
+    try {
+      await deletePlayersForTeam(teamId);
+      await hardDeleteTeam(teamId);
+      navigate('/teams');
+    } catch (err: any) {
+      console.error('Hard delete team failed:', err);
+      alert(err?.message ?? 'Failed to delete team. Please try again.');
+    }
   }
 
   async function handleApprove(request: JoinRequest) {
@@ -223,13 +238,15 @@ export function TeamDetailPage() {
     }
   }
 
-  async function handleRevokeInvite(email: string) {
-    setRevokingEmails(prev => new Set(prev).add(email));
+  async function handleRevokeInvite(invite: InviteDoc) {
+    setRevokingEmails(prev => new Set(prev).add(invite.id));
     try {
-      await deleteDoc(doc(db, 'invites', email));
-      setInvites(prev => prev.filter(i => i.email !== email));
+      await revokeInviteFn({ inviteId: invite.id });
+      setInvites(prev => prev.filter(i => i.id !== invite.id));
+    } catch (err: any) {
+      alert(err?.message ?? 'Failed to revoke invite. Please try again.');
     } finally {
-      setRevokingEmails(prev => { const s = new Set(prev); s.delete(email); return s; });
+      setRevokingEmails(prev => { const s = new Set(prev); s.delete(invite.id); return s; });
     }
   }
 
@@ -541,10 +558,10 @@ export function TeamDetailPage() {
             <div className="divide-y divide-gray-100">
               {invites.map(invite => {
                 const isResending = resendingEmails.has(invite.email);
-                const isRevoking = revokingEmails.has(invite.email);
+                const isRevoking = revokingEmails.has(invite.id);
                 const isAccepted = !!invite.acceptedAt;
                 return (
-                  <div key={invite.email} className="flex items-center justify-between px-4 py-3">
+                  <div key={invite.id} className="flex items-center justify-between px-4 py-3">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{invite.email}</p>
                       <div className="flex items-center gap-2 mt-0.5">
@@ -566,7 +583,7 @@ export function TeamDetailPage() {
                         <Button size="sm" variant="secondary" disabled={isResending || isRevoking} onClick={() => void handleResendInvite(invite)}>
                           {isResending ? 'Sending…' : 'Resend'}
                         </Button>
-                        <Button size="sm" variant="danger" disabled={isResending || isRevoking} onClick={() => void handleRevokeInvite(invite.email)}>
+                        <Button size="sm" variant="danger" disabled={isResending || isRevoking} onClick={() => void handleRevokeInvite(invite)}>
                           {isRevoking ? 'Revoking…' : 'Revoke'}
                         </Button>
                       </div>
@@ -580,7 +597,7 @@ export function TeamDetailPage() {
       )}
 
       <TeamForm open={editOpen} onClose={() => setEditOpen(false)} editTeam={team} />
-      <PlayerForm open={addPlayerOpen} onClose={() => setAddPlayerOpen(false)} teamId={teamId} />
+      <PlayerForm key={addPlayerOpen ? 'open' : 'closed'} open={addPlayerOpen} onClose={() => setAddPlayerOpen(false)} teamId={teamId} />
       <EventForm
         open={eventFormOpen}
         onClose={() => setEventFormOpen(false)}

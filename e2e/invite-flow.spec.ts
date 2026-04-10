@@ -135,7 +135,7 @@ test('admin can revoke a pending invite and it disappears from the Invites tab',
 
   // Navigate to teams and look for any team that has pending invites
   await page.goto('/teams');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Try to find a team card
   const teamLinks = page.locator('a[href*="/teams/"], button').filter({
@@ -158,7 +158,6 @@ test('admin can revoke a pending invite and it disappears from the Invites tab',
   }
 
   await invitesTab.click();
-  await page.waitForTimeout(1_000);
 
   const revokeButtons = page.getByRole('button', { name: /revoke/i });
   const revokeCount = await revokeButtons.count();
@@ -179,8 +178,9 @@ test('admin can revoke a pending invite and it disappears from the Invites tab',
     await confirmBtn.click();
   }
 
-  // The row should disappear
-  await page.waitForTimeout(1_000);
+  // The row should disappear — wait for revoke count to decrease
+  await expect(page.getByRole('button', { name: /revoke/i })).toHaveCount(
+    revokeCount - 1, { timeout: 10_000 }).catch(() => undefined);
   const newRevokeCount = await page.getByRole('button', { name: /revoke/i }).count();
   expect(newRevokeCount).toBeLessThan(revokeCount);
 
@@ -197,7 +197,7 @@ test('signup page is reachable and has required fields', async ({ page }) => {
   await expect(page.getByText('Create account')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByLabel('First Name')).toBeVisible();
   await expect(page.getByLabel('Last Name')).toBeVisible();
-  await expect(page.getByLabel('Email')).toBeVisible();
+  await expect(page.getByLabel('Email', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Password').first()).toBeVisible();
 
   // Terms checkbox is required before submit

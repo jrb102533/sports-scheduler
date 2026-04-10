@@ -48,7 +48,7 @@ test('admin can open the New Team modal and see required fields', async ({ asAdm
   await expect(modal.getByLabel(/sport/i)).toBeVisible();
 });
 
-test('admin can create a new team and it appears in the teams list', async ({ asAdmin }) => {
+test('@smoke admin can create a new team and it appears in the teams list', async ({ asAdmin }) => {
   const { page, admin } = asAdmin;
   const uniqueName = `E2E Test Team ${Date.now()}`;
 
@@ -88,7 +88,7 @@ test('admin can delete a team (soft delete) from team detail page', async ({ asA
 // Player management
 // ---------------------------------------------------------------------------
 
-test('admin can open the Add Player form on the Roster tab', async ({ asAdmin }) => {
+test('@smoke admin can open the Add Player form on the Roster tab', async ({ asAdmin }) => {
   const { page, admin } = asAdmin;
 
   // Create a throwaway team to work with
@@ -123,7 +123,7 @@ test('admin Invites tab shows pending invites', async ({ asAdmin }) => {
 
   // Navigate to any team — find first team card
   await page.goto('/teams');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   const firstTeamCard = page.locator('[class*="cursor-pointer"]').filter({
     has: page.locator('[class*="font-semibold"]'),
@@ -179,26 +179,4 @@ test('admin sees Schedule tab on team detail page', async ({ asAdmin }) => {
   await expect(page.locator('main')).toBeVisible();
 });
 
-// ---------------------------------------------------------------------------
-// Non-admin is blocked from /users
-// ---------------------------------------------------------------------------
-
-test('parent is redirected away from /users (admin-only route)', async ({ page }) => {
-  // Log in as parent
-  const parentEmail = process.env.E2E_PARENT_EMAIL;
-  const parentPassword = process.env.E2E_PARENT_PASSWORD;
-
-  if (!parentEmail || !parentPassword) {
-    test.skip(true, 'E2E_PARENT_EMAIL / E2E_PARENT_PASSWORD not set');
-    return;
-  }
-
-  const { AuthPage } = await import('./pages/AuthPage');
-  const auth = new AuthPage(page);
-  await auth.loginAndWaitForApp(parentEmail, parentPassword);
-
-  await page.goto('/users');
-
-  // RoleGuard with redirect=true should push to /
-  await expect(page).not.toHaveURL(/\/users/, { timeout: 10_000 });
-});
+// Note: parent/player blocked from /users is covered authoritatively in rbac.spec.ts

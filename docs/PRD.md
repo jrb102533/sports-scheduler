@@ -234,6 +234,35 @@ Two separate features extending First Whistle's event model to interoperate with
 
 ---
 
+### 7.3 Game & Practice Reminder Emails
+
+**Summary:** Automated pre-event reminder emails sent 24h and 1h before every game or practice. One-tap RSVP link included (HMAC-signed, no login required) using the existing email RSVP pattern. Directly addresses the #1 parent pain point: schedule uncertainty and missed schedule changes.
+
+**User story:** As a parent, I want to receive an email reminder before my child's game or practice with a one-tap RSVP link, so I never miss a schedule change and can confirm attendance without opening the app.
+
+**Mechanism: Scheduled Cloud Function**
+
+| Requirement | Detail |
+|---|---|
+| CF name | `sendEventReminders` — scheduled, runs every 15 minutes |
+| Windows | Queries events starting in the next 24–25h and 1–1.25h |
+| Recipients | Coach + all active players/parents on the team |
+| Content | Event type, title, date/time, location, opponent (games only), one-tap RSVP buttons |
+| Dedup guard | `events/{id}/remindersSent/{uid}_{window}` written before send; prevents duplicate sends on CF retries |
+| Suppression | Cancelled events, past events, opted-out users, teams with reminders disabled, already-sent records |
+| Email template | Uses existing `buildEmail()` + `rsvpButtonsHtml()` — no new email infrastructure |
+| RSVP link | HMAC-signed one-tap link (same pattern as existing RSVP emails) — no login required |
+| Opt-out | Per-user in notification preferences; per-team disable toggle in team settings (coach only) |
+
+**Out of scope (v1):**
+- SMS reminders (blocked on TD-002 Twilio credentials)
+- Push notifications
+- Per-event customisation
+
+**Priority:** P1 — highest parent pain point; reuses all existing email infrastructure
+
+---
+
 See [BACKLOG.md](BACKLOG.md) for the full prioritised backlog.
 
 **Priority 1 (ship before marketing push):**
@@ -242,6 +271,7 @@ See [BACKLOG.md](BACKLOG.md) for the full prioritised backlog.
 - "This Week in Sport" weekly digest
 - Weather Alerts for Outdoor Events
 - **Calendar Sync / iCal feed** (see §7.1)
+- **Game & Practice Reminder Emails** (see §7.3)
 
 **Priority 2 (next sprint):**
 - **Calendar Import from .ics** (see §7.2)

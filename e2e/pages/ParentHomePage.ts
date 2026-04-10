@@ -43,7 +43,7 @@ export class ParentHomePage {
 
   async goto() {
     await this.page.goto('/parent');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   async expectTeamVisible(teamNameSubstring: string) {
@@ -60,8 +60,10 @@ export class ParentHomePage {
    */
   async rsvpGoingOnFirstEvent(): Promise<string> {
     await expect(this.goingButton).toBeVisible({ timeout: 10_000 });
+    // TODO: add data-testid="event-title" to the event card title element in the component.
     const eventTitle = await this.page
-      .locator('.font-semibold.text-gray-900.text-sm')
+      .getByRole('heading', { level: 3 })
+      .or(this.page.locator('[class*="font-semibold"]').filter({ hasText: /.+/ }))
       .first()
       .textContent() ?? '';
 
@@ -77,7 +79,7 @@ export class ParentHomePage {
    */
   async expectRsvpStateAfterReload(expectedState: 'yes' | 'no') {
     await this.page.reload();
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
 
     if (expectedState === 'yes') {
       await expect(this.goingButton).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });

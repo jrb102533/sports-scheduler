@@ -31,13 +31,6 @@ const ROLE_BADGE_CLASSES: Record<string, string> = {
   league_manager: 'bg-indigo-100 text-indigo-700',
 };
 
-function timeGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
-}
-
 function resolveTeamsForMembership(membership: RoleMembership, allTeams: Team[], uid: string): Team[] {
   if (membership.role === 'admin') return allTeams;
   if (membership.role === 'league_manager') {
@@ -50,6 +43,7 @@ function resolveTeamsForMembership(membership: RoleMembership, allTeams: Team[],
     return allTeams.filter(t =>
       (membership.teamId && t.id === membership.teamId) ||
       t.coachId === uid ||
+      t.coachIds?.includes(uid) ||
       t.createdBy === uid
     );
   }
@@ -120,9 +114,6 @@ export function HomePage() {
   const [becomeCoachOpen, setBecomeCoachOpen] = useState(false);
   const [becomeLMOpen, setBecomeLMOpen] = useState(false);
 
-  const firstName = profile?.displayName?.split(' ')[0] ?? '';
-  const greeting = `${timeGreeting()}${firstName ? `, ${firstName}` : ''}`;
-
   const memberships = getMemberships(profile);
   const uid = profile?.uid ?? '';
 
@@ -183,12 +174,6 @@ export function HomePage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
-      {/* Greeting */}
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">{greeting}</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Here's what's happening across your teams</p>
-      </div>
-
       {/* My Teams section — hidden for admins, who manage all teams via the Teams page */}
       {isAdminUser ? (
         <Card className="p-4 flex items-center gap-3 bg-purple-50 border-purple-100">
