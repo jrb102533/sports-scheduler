@@ -141,13 +141,15 @@ function formatICalDate(date: string, time: string, addMinutes = 0): string {
   return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
 }
 
-/** Escape special characters for iCal text values. */
+/** Escape special characters for iCal text values (RFC 5545). */
 function icalEscape(str: string): string {
   return str
     .replace(/\\/g, '\\\\')
     .replace(/;/g, '\\;')
     .replace(/,/g, '\\,')
-    .replace(/\n/g, '\\n');
+    .replace(/\r\n/g, '\\n')  // SEC-40: CRLF must be handled before bare CR/LF
+    .replace(/\r/g, '\\n')    // SEC-40: bare CR
+    .replace(/\n/g, '\\n');   // bare LF
 }
 
 /**
@@ -4840,7 +4842,10 @@ export const calendarFeed = onRequest(
       if (e.location) lines.push(`LOCATION:${icalEscape(e.location)}`);
       // SEC-39: coach notes are only visible to elevated roles (coach/admin/league_manager)
       if (e.notes && isElevated) lines.push(`DESCRIPTION:${icalEscape(e.notes)}`);
-      if (e.venueLat != null && e.venueLng != null) lines.push(`GEO:${e.venueLat};${e.venueLng}`);
+      // SEC-43: validate coordinates are numbers before emitting GEO property
+      if (typeof e.venueLat === 'number' && typeof e.venueLng === 'number') {
+        lines.push(`GEO:${e.venueLat};${e.venueLng}`);
+      }
       lines.push('END:VEVENT');
     }
 
@@ -4848,7 +4853,9 @@ export const calendarFeed = onRequest(
 
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="first-whistle.ics"');
-    res.setHeader('Cache-Control', 'no-cache, no-store');
+    // SEC-44: allow CDN/proxy caching for up to 5 minutes to reduce Firestore read costs.
+    // Calendar apps typically poll every 15-60 min so 5-min staleness is acceptable.
+    res.setHeader('Cache-Control', 'public, max-age=300');
     res.send(lines.join('\r\n'));
   }
 );
