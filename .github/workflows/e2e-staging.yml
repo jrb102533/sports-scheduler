@@ -46,11 +46,37 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  check-activity:
+    name: Check for recent commits
+    runs-on: ubuntu-latest
+    # Only needed for scheduled runs — other triggers always proceed
+    if: ${{ github.event_name == 'schedule' }}
+    outputs:
+      has_commits: ${{ steps.check.outputs.has_commits }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check commits to main in last 24h
+        id: check
+        run: |
+          COUNT=$(git log --oneline --since="24 hours ago" origin/main | wc -l | tr -d ' ')
+          echo "Commits in last 24h: $COUNT"
+          echo "has_commits=$( [ "$COUNT" -gt 0 ] && echo true || echo false )" >> $GITHUB_OUTPUT
+
   e2e-staging:
     name: Playwright E2E — Staging
     runs-on: ubuntu-latest
-    # Skip workflow_run triggers where the deploy failed
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    needs: [check-activity]
+    # - workflow_run: only if deploy succeeded
+    # - schedule: only if check-activity found commits (skip on idle days)
+    # - workflow_dispatch: always run
+    if: |
+      always() && (
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+        (github.event_name == 'schedule' && needs.check-activity.outputs.has_commits == 'true') ||
+        github.event_name == 'workflow_dispatch'
+      )
 
     steps:
       - uses: actions/checkout@v4
