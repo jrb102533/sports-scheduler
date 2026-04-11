@@ -45,6 +45,45 @@ Rules:
 3. **Auth store**: Never select `s => s.user` (Firebase User object changes reference). Use `s => s.user?.uid` or `s => Boolean(s.user)`
 4. **eslint-disable**: Add `// eslint-disable-next-line react-hooks/exhaustive-deps` when intentionally omitting getState() actions from deps
 
+### Firestore Write Error Handling (PREVENTS silent data loss)
+
+Every user-initiated Firestore write **must** be awaited and wrapped in try/catch. Fire-and-forget writes silently discard errors — the UI closes/proceeds normally while the data was never saved.
+
+**NEVER** do this:
+```tsx
+// BAD: error is silently swallowed; form closes; user thinks save succeeded
+updateEvent({ ...event });
+onClose();
+```
+
+**ALWAYS** do this for user-initiated writes:
+```tsx
+// GOOD: error is caught, user sees feedback, form stays open on failure
+const [isSaving, setIsSaving] = useState(false);
+const [saveError, setSaveError] = useState<string | null>(null);
+
+async function doSave() {
+  setSaveError(null);
+  setIsSaving(true);
+  try {
+    await updateEvent({ ...event });
+    onClose();
+  } catch (err) {
+    console.error('[ComponentName] save failed:', err);
+    setSaveError('Failed to save — please try again.');
+  } finally {
+    setIsSaving(false);
+  }
+}
+```
+
+UI requirements when `isSaving`/`saveError` state is added:
+- Save button shows `"Saving…"` and is `disabled` while in flight
+- Cancel button is also `disabled` while saving (prevents closing mid-write)
+- Error banner appears above the action buttons on failure
+
+**Background/subscription writes** (e.g. `onSnapshot` error handlers) must `console.error` the error — never swallow silently with `() => {}`.
+
 ### Email Templates
 
 All emails use `buildEmail()` from `functions/src/emailTemplate.ts` with the branded HTML template at `functions/email-templates/base-template.html`. RSVP emails use `rsvpButtonsHtml()` for one-tap buttons.
