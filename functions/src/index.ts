@@ -1167,6 +1167,108 @@ export const onNotificationCreated = onDocumentCreated(
   }
 );
 
+// ─── Team chat email notifications ───────────────────────────────────────────
+
+export const onTeamMessageCreated = onDocumentCreated(
+  {
+    document: 'teams/{teamId}/messages/{messageId}',
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+  },
+  async (event) => {
+    const msg = event.data?.data();
+    if (!msg) return;
+
+    const { teamId } = event.params;
+    const senderName = (msg.senderName as string) || 'A team member';
+    const text = (msg.text as string) || '';
+
+    // Load the team for its name
+    const teamDoc = await admin.firestore().doc(`teams/${teamId}`).get();
+    if (!teamDoc.exists) return;
+    const teamName = (teamDoc.data()?.name as string) || 'Your team';
+
+    // Load all platform users whose teamId matches (MVP: legacy single-teamId field)
+    const usersSnap = await admin.firestore()
+      .collection('users')
+      .where('teamId', '==', teamId)
+      .get();
+
+    const recipients = usersSnap.docs
+      .map(d => d.data())
+      .filter(u => u.uid !== msg.senderId && u.email);
+
+    if (recipients.length === 0) return;
+
+    const transporter = createTransporter();
+    const subject = `[${teamName}] New message from ${senderName}`;
+
+    await Promise.allSettled(
+      recipients.map(u =>
+        transporter.sendMail({
+          from: emailFrom.value(),
+          to: `${u.displayName as string} <${u.email as string}>`,
+          subject,
+          text: `Hi ${u.displayName as string},\n\n${senderName} posted in ${teamName}:\n\n"${text}"\n\nOpen the app to reply.`,
+          html: buildEmail({
+            recipientName: u.displayName as string,
+            preheader: subject,
+            title: `New message in ${teamName}`,
+            message: `<p style="margin:0 0 8px"><strong>${esc(senderName)}</strong> says:</p><p style="margin:0;padding:12px;background:#f3f4f6;border-radius:8px">${esc(text)}</p>`,
+          }),
+        })
+      )
+    );
+  }
+);
+
+// ─── DM email notifications ────────────────────────────────────────────────
+
+export const onDmMessageCreated = onDocumentCreated(
+  {
+    document: 'dmThreads/{threadId}/messages/{messageId}',
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+  },
+  async (event) => {
+    const msg = event.data?.data();
+    if (!msg) return;
+
+    const { threadId } = event.params;
+    const senderId = msg.senderId as string;
+    const senderName = (msg.senderName as string) || 'Someone';
+    const text = (msg.text as string) || '';
+
+    // Load thread to find recipient
+    const threadDoc = await admin.firestore().doc(`dmThreads/${threadId}`).get();
+    if (!threadDoc.exists) return;
+    const threadData = threadDoc.data()!;
+    const participants = threadData.participants as string[];
+    const recipientUid = participants.find(uid => uid !== senderId);
+    if (!recipientUid) return;
+
+    const userDoc = await admin.firestore().doc(`users/${recipientUid}`).get();
+    if (!userDoc.exists) return;
+    const u = userDoc.data()!;
+    if (!u.email) return;
+
+    const transporter = createTransporter();
+    const subject = `New message from ${senderName}`;
+    const recipientName = (u.displayName as string) || (u.email as string);
+
+    await transporter.sendMail({
+      from: emailFrom.value(),
+      to: `${recipientName} <${u.email as string}>`,
+      subject,
+      text: `Hi ${recipientName},\n\n${senderName} sent you a message:\n\n"${text}"\n\nOpen the app to reply.`,
+      html: buildEmail({
+        recipientName,
+        preheader: subject,
+        title: `Message from ${senderName}`,
+        message: `<p style="margin:0 0 8px"><strong>${esc(senderName)}</strong> says:</p><p style="margin:0;padding:12px;background:#f3f4f6;border-radius:8px">${esc(text)}</p>`,
+      }),
+    });
+  }
+);
+
 // ─── RSVP handler (HTTP GET) ──────────────────────────────────────────────────
 // Called by email links: ?e={eventId}&p={playerId}&r={yes|no|maybe}&n={name}
 
