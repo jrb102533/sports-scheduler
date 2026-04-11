@@ -34,4 +34,6 @@ export interface UserProfile {
   mustChangePassword?: boolean;
   /** When false, the user will not receive the Monday morning weekly digest notification. Defaults to true. */
   weeklyDigestEnabled?: boolean;
+  /** When false, the user will not receive email notifications for team chat and direct messages. Defaults to true. */
+  messagingNotificationsEnabled?: boolean;
 }

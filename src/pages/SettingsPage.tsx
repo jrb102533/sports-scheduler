@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Baby, Bell, Info, ShieldCheck } from 'lucide-react';
+import { Baby, Info, Mail, ShieldCheck } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
@@ -17,12 +17,18 @@ export function SettingsPage() {
   const profile = useAuthStore(s => s.profile);
   const [consents, setConsents] = useState<Record<string, ConsentRecord | null> | null>(null);
 
-  // weeklyDigestEnabled defaults to true when the field is absent
+  // Both notification prefs default to true when the field is absent
   const weeklyDigestEnabled = profile?.weeklyDigestEnabled !== false;
+  const messagingNotificationsEnabled = profile?.messagingNotificationsEnabled !== false;
 
   async function handleWeeklyDigestToggle(value: boolean) {
     if (!user) return;
     await updateDoc(doc(db, 'users', user.uid), { weeklyDigestEnabled: value });
+  }
+
+  async function handleMessagingNotifToggle(value: boolean) {
+    if (!user) return;
+    await updateDoc(doc(db, 'users', user.uid), { messagingNotificationsEnabled: value });
   }
 
   useEffect(() => {
@@ -59,18 +65,24 @@ export function SettingsPage() {
           </Card>
         )}
 
-        {/* Notifications */}
+        {/* Email Notifications */}
         <Card className="overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-            <Bell size={18} className="text-orange-500" />
-            <h2 className="font-semibold text-gray-900">Notifications</h2>
+            <Mail size={18} className="text-blue-500" />
+            <h2 className="font-semibold text-gray-900">Email Notifications</h2>
           </div>
           <div className="px-5 divide-y divide-gray-100">
             <SettingsToggle
+              checked={messagingNotificationsEnabled}
+              onChange={handleMessagingNotifToggle}
+              label="Chat & message emails"
+              description="Get an email when someone sends you a team chat or direct message."
+            />
+            <SettingsToggle
               checked={weeklyDigestEnabled}
               onChange={handleWeeklyDigestToggle}
-              label="Weekly digest"
-              description="Receive a Monday morning summary of your week's events"
+              label="Weekly team digest"
+              description="Get a Monday morning summary of upcoming events for your team."
             />
           </div>
         </Card>

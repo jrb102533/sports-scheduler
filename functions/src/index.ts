@@ -117,6 +117,23 @@ function verifyRsvpToken(eventId: string, playerId: string, token: string): bool
   }
 }
 
+/** Sign a one-tap unsubscribe token for a given uid. Reuses the RSVP secret. */
+function signUnsubscribeToken(uid: string): string {
+  return crypto.createHmac('sha256', rsvpSecret.value()).update(`unsub:${uid}`).digest('hex');
+}
+
+/** Verify an unsubscribe token. Returns false when secret is not provisioned. */
+function verifyUnsubscribeToken(uid: string, token: string): boolean {
+  const secret = rsvpSecret.value();
+  if (typeof secret !== 'string' || secret.length < 16) return false;
+  const expected = crypto.createHmac('sha256', secret).update(`unsub:${uid}`).digest('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(token, 'hex'), Buffer.from(expected, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
 /** Sign a calendar feed token tied to a specific uid. */
 function signCalendarToken(uid: string): string {
   return crypto.createHmac('sha256', icalSecret.value()).update(uid).digest('hex');
@@ -1172,7 +1189,7 @@ export const onNotificationCreated = onDocumentCreated(
 export const onTeamMessageCreated = onDocumentCreated(
   {
     document: 'teams/{teamId}/messages/{messageId}',
-    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret],
   },
   async (event) => {
     const msg = event.data?.data();
@@ -1195,7 +1212,8 @@ export const onTeamMessageCreated = onDocumentCreated(
 
     const recipients = usersSnap.docs
       .map(d => d.data())
-      .filter(u => u.uid !== msg.senderId && u.email);
+      // Exclude the sender and anyone who has opted out of messaging notifications
+      .filter(u => u.uid !== msg.senderId && u.email && u.messagingNotificationsEnabled !== false);
 
     if (recipients.length === 0) return;
 
@@ -1203,20 +1221,22 @@ export const onTeamMessageCreated = onDocumentCreated(
     const subject = `[${teamName}] New message from ${senderName}`;
 
     await Promise.allSettled(
-      recipients.map(u =>
-        transporter.sendMail({
+      recipients.map(u => {
+        const unsubscribeUrl = `${FUNCTIONS_BASE}/unsubscribeEmail?uid=${u.uid as string}&token=${signUnsubscribeToken(u.uid as string)}`;
+        return transporter.sendMail({
           from: emailFrom.value(),
           to: `${u.displayName as string} <${u.email as string}>`,
           subject,
-          text: `Hi ${u.displayName as string},\n\n${senderName} posted in ${teamName}:\n\n"${text}"\n\nOpen the app to reply.`,
+          text: `Hi ${u.displayName as string},\n\n${senderName} posted in ${teamName}:\n\n"${text}"\n\nOpen the app to reply.\n\nManage notification preferences: ${unsubscribeUrl}`,
           html: buildEmail({
             recipientName: u.displayName as string,
             preheader: subject,
             title: `New message in ${teamName}`,
             message: `<p style="margin:0 0 8px"><strong>${esc(senderName)}</strong> says:</p><p style="margin:0;padding:12px;background:#f3f4f6;border-radius:8px">${esc(text)}</p>`,
+            unsubscribeUrl,
           }),
-        })
-      )
+        });
+      })
     );
   }
 );
@@ -1226,7 +1246,7 @@ export const onTeamMessageCreated = onDocumentCreated(
 export const onDmMessageCreated = onDocumentCreated(
   {
     document: 'dmThreads/{threadId}/messages/{messageId}',
-    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret],
   },
   async (event) => {
     const msg = event.data?.data();
@@ -1248,24 +1268,81 @@ export const onDmMessageCreated = onDocumentCreated(
     const userDoc = await admin.firestore().doc(`users/${recipientUid}`).get();
     if (!userDoc.exists) return;
     const u = userDoc.data()!;
-    if (!u.email) return;
+    // Respect opt-out preference (default true when field is absent)
+    if (!u.email || u.messagingNotificationsEnabled === false) return;
 
     const transporter = createTransporter();
     const subject = `New message from ${senderName}`;
     const recipientName = (u.displayName as string) || (u.email as string);
+    const unsubscribeUrl = `${FUNCTIONS_BASE}/unsubscribeEmail?uid=${recipientUid}&token=${signUnsubscribeToken(recipientUid)}`;
 
     await transporter.sendMail({
       from: emailFrom.value(),
       to: `${recipientName} <${u.email as string}>`,
       subject,
-      text: `Hi ${recipientName},\n\n${senderName} sent you a message:\n\n"${text}"\n\nOpen the app to reply.`,
+      text: `Hi ${recipientName},\n\n${senderName} sent you a message:\n\n"${text}"\n\nOpen the app to reply.\n\nManage notification preferences: ${unsubscribeUrl}`,
       html: buildEmail({
         recipientName,
         preheader: subject,
         title: `Message from ${senderName}`,
         message: `<p style="margin:0 0 8px"><strong>${esc(senderName)}</strong> says:</p><p style="margin:0;padding:12px;background:#f3f4f6;border-radius:8px">${esc(text)}</p>`,
+        unsubscribeUrl,
       }),
     });
+  }
+);
+
+// ─── One-tap email notification unsubscribe ───────────────────────────────────
+// Called from email footer links: ?uid=X&token=Y
+// Sets messagingNotificationsEnabled=false on the user profile. No login required.
+
+export const unsubscribeEmail = onRequest(
+  { secrets: [rsvpSecret] },
+  async (req, res) => {
+    const uid = req.query['uid'] as string | undefined;
+    const token = req.query['token'] as string | undefined;
+
+    const settingsUrl = `${APP_URL}/settings`;
+
+    if (!uid || !token || !verifyUnsubscribeToken(uid, token)) {
+      res.status(400).send(`
+        <!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>Invalid link — First Whistle</title>
+        <style>body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 24px;text-align:center;color:#1f2937}
+        h1{font-size:1.25rem;font-weight:700;color:#1B3A6B}p{color:#6b7280;line-height:1.6}
+        a{color:#2563eb;font-weight:600}</style></head>
+        <body><h1>First <span style="color:#f97316">Whistle</span></h1>
+        <p>This unsubscribe link is invalid or has already been used.</p>
+        <p><a href="${settingsUrl}">Manage your notification preferences</a></p>
+        </body></html>
+      `);
+      return;
+    }
+
+    try {
+      await admin.firestore().doc(`users/${uid}`).update({ messagingNotificationsEnabled: false });
+    } catch (err) {
+      console.error('[unsubscribeEmail] Firestore update failed:', err);
+      res.status(500).send('Something went wrong. Please try again or manage preferences in the app.');
+      return;
+    }
+
+    res.status(200).send(`
+      <!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>Unsubscribed — First Whistle</title>
+      <style>body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 24px;text-align:center;color:#1f2937}
+      h1{font-size:1.25rem;font-weight:700;color:#1B3A6B}
+      .check{font-size:3rem;margin-bottom:16px}
+      p{color:#6b7280;line-height:1.6}a{color:#2563eb;font-weight:600}</style></head>
+      <body><h1>First <span style="color:#f97316">Whistle</span></h1>
+      <div class="check">✓</div>
+      <p>You've been unsubscribed from chat and message email notifications.</p>
+      <p>You'll still receive important emails like event reminders.</p>
+      <p><a href="${settingsUrl}">Manage all notification preferences</a></p>
+      </body></html>
+    `);
   }
 );
 
