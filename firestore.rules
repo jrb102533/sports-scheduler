@@ -253,9 +253,14 @@ service cloud.firestore {
         && (request.resource.data.status != 'scheduled'
             || resource.data.status == 'scheduled'
             || !('seasonId' in resource.data))
-        // Any authenticated user may sign up for snacks (only snackSignups + updatedAt may change).
+        // Any authenticated user may sign up for snacks:
+        //   - only snackSignups + updatedAt may change (key-level guard)
+        //   - snackSignups must grow by exactly 1 (append-only; prevents array-wipe SEC-59)
+        //   - draft events excluded to preserve SEC-15 status guard (SEC-60)
         || (request.auth != null
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['snackSignups', 'updatedAt']));
+            && resource.data.status != 'draft'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['snackSignups', 'updatedAt'])
+            && request.resource.data.snackSignups.size() == resource.data.get('snackSignups', []).size() + 1);
 
       // RSVP subcollection — any authenticated user may read all RSVPs;
       // each user may only write their own RSVP document (keyed by uid).
