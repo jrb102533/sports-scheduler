@@ -15,3 +15,4 @@ export type { ScheduleConfig, ScheduleVenueConfig } from './scheduleConfig';
 export type { SeasonStatus, DistributionType, TiebreakerCriterion, TiebreakerConfig, Season } from './season';
 export type { DivisionScheduleStatus, Division } from './division';
 export type { AbsenceType, AbsenceStatus, Absence } from './absence';
+export type { TeamMessage, DmThread, DmMessage } from './message';

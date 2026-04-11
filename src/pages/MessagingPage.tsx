@@ -1,21 +1,26 @@
 import { useState, useEffect } from 'react';
-import { MessageSquare, Phone, Users, AlertCircle, Mail, CheckCircle, XCircle, Shield } from 'lucide-react';
+import { MessageSquare, Phone, Users, AlertCircle, Mail, CheckCircle, XCircle, Shield, MessageCircle, ChevronLeft } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
+import { ThreadView } from '@/components/messaging/ThreadView';
+import { DmList } from '@/components/messaging/DmList';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
-import { useAuthStore } from '@/store/useAuthStore';
+import { useAuthStore, getActiveMembership, isMemberOfTeam } from '@/store/useAuthStore';
+import { useTeamChatStore } from '@/store/useTeamChatStore';
+import { useDmStore, dmThreadId } from '@/store/useDmStore';
 import { functions, db } from '@/lib/firebase';
 import { FEATURE_SMS } from '@/lib/features';
-import type { Player, Team, UserProfile } from '@/types';
+import type { Player, Team, UserProfile, DmThread } from '@/types';
 
 
 type Channel = 'sms' | 'email';
 type SendState = 'idle' | 'sending' | 'success' | 'error';
+type MainTab = 'chat' | 'dms' | 'broadcast';
 
 const sendSms = httpsCallable<{ to: string[]; message: string }, { sent: number; failed: number; errors: string[] }>(
   functions, 'sendSms'
@@ -31,7 +36,206 @@ const roleColors: Record<string, string> = {
   parent: 'text-orange-600 bg-orange-50',
 };
 
-export function MessagingPage() {
+// ── Team Chat ────────────────────────────────────────────────────────────────
+
+function TeamChatPanel({ teamId }: { teamId: string }) {
+  const uid = useAuthStore(s => s.user?.uid ?? '');
+  const profile = useAuthStore(s => s.profile);
+  const senderName = profile?.displayName || profile?.email || 'You';
+  const messages = useTeamChatStore(s => s.messages);
+  const loading = useTeamChatStore(s => s.loading);
+  const subscribe = useTeamChatStore(s => s.subscribe);
+  const sendMessage = useTeamChatStore(s => s.sendMessage);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return useTeamChatStore.getState().subscribe(teamId);
+  }, [teamId]);
+
+  // suppress unused warning — subscribe used via getState() above
+  void subscribe;
+
+  return (
+    <div className="flex flex-col h-full">
+      <ThreadView
+        messages={messages}
+        loading={loading}
+        currentUid={uid}
+        placeholder="Message the team…"
+        onSend={text => sendMessage(teamId, uid, senderName, text)}
+      />
+    </div>
+  );
+}
+
+// ── Direct Messages ──────────────────────────────────────────────────────────
+
+function DmPanel({ myUid, myName }: { myUid: string; myName: string }) {
+  const allTeams = useTeamStore(s => s.teams);
+  const profile = useAuthStore(s => s.profile);
+  const threads = useDmStore(s => s.threads);
+  const messages = useDmStore(s => s.messages);
+  const activeThreadId = useDmStore(s => s.activeThreadId);
+  const loadingThreads = useDmStore(s => s.loadingThreads);
+  const loadingMessages = useDmStore(s => s.loadingMessages);
+  const sendDm = useDmStore(s => s.sendDm);
+
+  const [activeThread, setActiveThread] = useState<DmThread | null>(null);
+  const [teamMembers, setTeamMembers] = useState<UserProfile[]>([]);
+  const [showNewDm, setShowNewDm] = useState(false);
+
+  // Subscribe to thread list
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return useDmStore.getState().subscribeThreads(myUid);
+  }, [myUid]);
+
+  // Load team members for new DM picker
+  useEffect(() => {
+    if (!profile) return;
+    // Find all teamIds this user belongs to
+    const myTeamIds = allTeams
+      .filter(t => isMemberOfTeam(profile, t.id) || profile.role === 'admin')
+      .map(t => t.id);
+    if (myTeamIds.length === 0) return;
+
+    // Load all users who share a team with me
+    getDocs(query(collection(db, 'users'), where('teamId', 'in', myTeamIds.slice(0, 10))))
+      .then(snap => {
+        const members = snap.docs
+          .map(d => d.data() as UserProfile)
+          .filter(u => u.uid !== myUid);
+        setTeamMembers(members);
+      })
+      .catch(err => console.error('[DmPanel] load members:', err));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myUid, allTeams.length]);
+
+  function openThread(thread: DmThread) {
+    setActiveThread(thread);
+    setShowNewDm(false);
+    useDmStore.getState().subscribeMessages(thread.id);
+  }
+
+  function openNewDmWith(member: UserProfile) {
+    const threadId = dmThreadId(myUid, member.uid);
+    // Check if thread already exists
+    const existing = threads.find(t => t.id === threadId);
+    if (existing) {
+      openThread(existing);
+    } else {
+      // Synthetic thread for UI (no Firestore doc yet; created on first send)
+      const synthetic: DmThread = {
+        id: threadId,
+        participants: [myUid, member.uid].sort() as [string, string],
+        participantNames: { [myUid]: myName, [member.uid]: member.displayName },
+        lastMessage: '',
+        lastMessageAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setActiveThread(synthetic);
+      setShowNewDm(false);
+      useDmStore.getState().subscribeMessages(threadId);
+    }
+  }
+
+  const otherName = activeThread
+    ? (activeThread.participantNames[activeThread.participants.find(uid => uid !== myUid) ?? ''] ?? 'Unknown')
+    : '';
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Thread selected — show back button + messages */}
+      {activeThread ? (
+        <>
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-white">
+            <button onClick={() => setActiveThread(null)} className="text-gray-500 hover:text-gray-800">
+              <ChevronLeft size={20} />
+            </button>
+            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-700">
+              {otherName.charAt(0).toUpperCase()}
+            </div>
+            <span className="font-medium text-gray-900">{otherName}</span>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <ThreadView
+              messages={messages}
+              loading={loadingMessages}
+              currentUid={myUid}
+              placeholder={`Message ${otherName}…`}
+              onSend={async text => {
+                const otherUid = activeThread.participants.find(uid => uid !== myUid) ?? '';
+                const otherDisplayName = activeThread.participantNames[otherUid] ?? 'Unknown';
+                await sendDm(myUid, myName, otherUid, otherDisplayName, text);
+              }}
+            />
+          </div>
+        </>
+      ) : showNewDm ? (
+        /* New DM — pick a member */
+        <div className="flex flex-col h-full">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-white">
+            <button onClick={() => setShowNewDm(false)} className="text-gray-500 hover:text-gray-800">
+              <ChevronLeft size={20} />
+            </button>
+            <span className="font-medium text-gray-900">New Message</span>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {teamMembers.length === 0 ? (
+              <p className="text-sm text-gray-400 p-6 text-center">No team members found</p>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {teamMembers.map(member => (
+                  <button
+                    key={member.uid}
+                    onClick={() => openNewDmWith(member)}
+                    className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-700">
+                      {member.displayName.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{member.displayName}</p>
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${roleColors[member.role] ?? 'text-gray-600 bg-gray-100'}`}>
+                        {member.role.replace('_', ' ')}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Thread list */
+        <div className="flex flex-col h-full">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white">
+            <span className="font-medium text-gray-900">Direct Messages</span>
+            <button
+              onClick={() => setShowNewDm(true)}
+              className="text-xs text-blue-600 font-medium hover:underline"
+            >
+              + New
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <DmList
+              threads={threads}
+              loading={loadingThreads}
+              currentUid={myUid}
+              activeThreadId={activeThreadId}
+              onSelectThread={openThread}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Broadcast (existing) ─────────────────────────────────────────────────────
+
+function BroadcastPanel() {
   const allTeams = useTeamStore(s => s.teams);
   const players = usePlayerStore(s => s.players);
   const profile = useAuthStore(s => s.profile);
@@ -55,7 +259,6 @@ export function MessagingPage() {
         t.id === profile?.teamId
       );
 
-  // Load all platform users for admin recipient selection
   useEffect(() => {
     if (!isAdmin) return;
     getDocs(collection(db, 'users')).then(snap => {
@@ -143,9 +346,7 @@ export function MessagingPage() {
   ];
 
   const userEmailAddresses = selectedPlatformUsers.map(u => u.email).filter(Boolean) as string[];
-
   const emailAddresses = [...new Set([...playerEmailAddresses, ...userEmailAddresses])];
-
   const totalSelectedCount = selectedPlayers.length + selectedPlatformUsers.length;
 
   const canSend = channel === 'sms'
@@ -157,7 +358,6 @@ export function MessagingPage() {
     setSendState('sending');
     setSendResult(null);
     try {
-      // SEC-38: Pass team IDs derived from selected players for server-side ownership verification.
       const selectedTeamIds = [...new Set(selectedPlayers.map(p => p.teamId).filter(Boolean))];
       const result = await sendEmailFn({ to: emailAddresses, subject: subject.trim(), message: message.trim(), teamIds: selectedTeamIds });
       setSendResult(result.data);
@@ -197,7 +397,6 @@ export function MessagingPage() {
 
   return (
     <div className="p-4 sm:p-6">
-      {/* Channel tabs — SMS only shown when FEATURE_SMS is enabled */}
       {FEATURE_SMS && (
         <div className="flex gap-1 mb-6 border-b border-gray-200">
           <button
@@ -216,7 +415,6 @@ export function MessagingPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recipient Selection */}
         <div>
           <h2 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
             <Users size={16} className="text-blue-500" /> Recipients
@@ -234,7 +432,6 @@ export function MessagingPage() {
             </Card>
           ) : (
             <div className="space-y-3">
-              {/* Team-based player recipients */}
               {teams.map(team => {
                 const teamPlayers = eligiblePlayers.filter(p => p.teamId === team.id);
                 if (teamPlayers.length === 0) return null;
@@ -282,7 +479,6 @@ export function MessagingPage() {
                 );
               })}
 
-              {/* Platform users — admin only, email channel only */}
               {isAdmin && channel === 'email' && eligiblePlatformUsers.length > 0 && (
                 <Card className="overflow-hidden">
                   <div
@@ -325,7 +521,6 @@ export function MessagingPage() {
           )}
         </div>
 
-        {/* Message Composer */}
         <div>
           <h2 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
             {channel === 'sms'
@@ -380,7 +575,6 @@ export function MessagingPage() {
               )}
             </div>
 
-            {/* Send result feedback */}
             {sendResult && (
               <div className={`flex items-start gap-2 text-sm rounded-lg px-3 py-2 ${sendState === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                 {sendState === 'success'
@@ -424,6 +618,84 @@ export function MessagingPage() {
             </div>
           </Card>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ────────────────────────────────────────────────────────────────
+
+export function MessagingPage() {
+  const user = useAuthStore(s => s.user);
+  const profile = useAuthStore(s => s.profile);
+  const allTeams = useTeamStore(s => s.teams);
+
+  const uid = user?.uid ?? '';
+  const displayName = profile?.displayName || profile?.email || '';
+  const isCoachOrAdmin = profile?.role === 'admin' || profile?.role === 'coach' || profile?.role === 'league_manager';
+
+  // Active team for group chat — use primary membership's teamId
+  const activeMembership = profile ? getActiveMembership(profile) : null;
+  const activeTeamId =
+    activeMembership?.teamId ??
+    profile?.teamId ??
+    allTeams[0]?.id ??
+    null;
+
+  const [tab, setTab] = useState<MainTab>('chat');
+
+  // Default non-coaches/admins away from broadcast tab
+  useEffect(() => {
+    if (!isCoachOrAdmin && tab === 'broadcast') {
+      setTab('chat');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCoachOrAdmin]);
+
+  const tabs: { id: MainTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'chat', label: 'Team Chat', icon: <Users size={14} /> },
+    { id: 'dms', label: 'Direct Messages', icon: <MessageCircle size={14} /> },
+    ...(isCoachOrAdmin
+      ? [{ id: 'broadcast' as MainTab, label: 'Broadcast', icon: <Mail size={14} /> }]
+      : []),
+  ];
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Tab bar */}
+      <div className="flex gap-0 border-b border-gray-200 bg-white px-2 sm:px-4 flex-shrink-0">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-3 text-sm font-medium transition-colors flex items-center gap-1.5 border-b-2 ${
+              tab === t.id
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div className="flex-1 overflow-hidden">
+        {tab === 'chat' && (
+          activeTeamId
+            ? <TeamChatPanel teamId={activeTeamId} />
+            : (
+              <div className="flex items-center justify-center h-full text-sm text-gray-400">
+                No team found. Join a team to access team chat.
+              </div>
+            )
+        )}
+        {tab === 'dms' && uid && (
+          <DmPanel myUid={uid} myName={displayName} />
+        )}
+        {tab === 'broadcast' && isCoachOrAdmin && (
+          <BroadcastPanel />
+        )}
       </div>
     </div>
   );

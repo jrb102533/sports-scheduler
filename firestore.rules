@@ -159,6 +159,32 @@ service cloud.firestore {
         allow update: if isAdmin()
           || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(teamId)).data);
       }
+
+      // Team group chat messages.
+      // Read/write: team coach, admin, or any authenticated user whose profile
+      // lists this teamId (legacy field). Multi-membership users covered by
+      // their profile.teamId or via the coach access list.
+      // SEC-64 TODO: migrate to denormalized memberUids array on team doc for full
+      // multi-team membership support (legacy teamId field can be stale after transfers).
+      match /messages/{messageId} {
+        allow read: if request.auth != null
+          && (isAdmin()
+              || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(teamId)).data)
+              || getProfile().get('teamId', '') == teamId);
+        // Create only — no updates, no deletes by senders (coaches/admins moderate).
+        // SEC-65: text capped at 2000 chars to prevent Firestore DoS via large payloads.
+        allow create: if request.auth != null
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.teamId == teamId
+          && request.resource.data.keys().hasAll(['teamId', 'senderId', 'senderName', 'text', 'createdAt'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 2000
+          && (isAdmin()
+              || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(teamId)).data)
+              || getProfile().get('teamId', '') == teamId);
+        allow delete: if isAdmin()
+          || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(teamId)).data);
+      }
     }
 
     match /players/{playerId} {
@@ -432,6 +458,46 @@ service cloud.firestore {
     match /system/{doc} {
       allow read: if true;
       allow write: if false;
+    }
+
+    // Direct message threads — participants only.
+    // threadId = sorted UIDs joined by underscore (e.g. "uid1_uid2").
+    match /dmThreads/{threadId} {
+      // Only existing participants may read thread metadata.
+      allow read: if request.auth != null
+        && resource.data.participants.hasAny([request.auth.uid]);
+
+      // Create: caller must be one of exactly two participants in the incoming data.
+      allow create: if request.auth != null
+        && request.resource.data.participants.hasAny([request.auth.uid])
+        && request.resource.data.participants.size() == 2;
+
+      // SEC-63: Update locks participants to the existing list to prevent injection.
+      // Only lastMessage/lastMessageAt/updatedAt/participantNames may change.
+      allow update: if request.auth != null
+        && resource.data.participants.hasAny([request.auth.uid])
+        && request.resource.data.participants == resource.data.participants
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['lastMessage', 'lastMessageAt', 'updatedAt', 'participantNames']);
+
+      match /messages/{messageId} {
+        allow read: if request.auth != null
+          && get(/databases/$(database)/documents/dmThreads/$(threadId)).data.participants.hasAny([request.auth.uid]);
+
+        // SEC-65: text capped at 2000 chars; threadId pinned to path param to prevent cross-thread injection.
+        allow create: if request.auth != null
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.threadId == threadId
+          && request.resource.data.keys().hasAll(['threadId', 'senderId', 'senderName', 'text', 'createdAt'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 2000
+          && get(/databases/$(database)/documents/dmThreads/$(threadId)).data.participants.hasAny([request.auth.uid]);
+
+        // Message delete: admins only. Senders cannot hard-delete on a youth platform
+        // (preserves audit trail; reviewable by admins for safety).
+        // SEC-68: intentional — coaches/admins can see and remove inappropriate content.
+        allow delete: if isAdmin();
+      }
     }
   }
 }

@@ -74,7 +74,7 @@ export function MainLayout() {
         : 'First Whistle');
 
   return (
-    <div className="flex w-full min-h-screen">
+    <div className="flex w-full h-screen overflow-hidden">
       <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0">
         {/* Staging/preview environment banner — hidden in production */}
