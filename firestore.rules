@@ -252,7 +252,10 @@ service cloud.firestore {
       allow update: if (isAdmin() || isCoach() || isLeagueManager())
         && (request.resource.data.status != 'scheduled'
             || resource.data.status == 'scheduled'
-            || !('seasonId' in resource.data));
+            || !('seasonId' in resource.data))
+        // Any authenticated user may sign up for snacks (only snackSignups + updatedAt may change).
+        || (request.auth != null
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['snackSignups', 'updatedAt']));
 
       // RSVP subcollection — any authenticated user may read all RSVPs;
       // each user may only write their own RSVP document (keyed by uid).
