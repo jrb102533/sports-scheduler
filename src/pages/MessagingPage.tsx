@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { MessageSquare, Phone, Users, AlertCircle, Mail, CheckCircle, XCircle, Shield, MessageCircle, ChevronLeft } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -72,6 +72,7 @@ function TeamChatPanel({ teamId }: { teamId: string }) {
 
 function DmPanel({ myUid, myName }: { myUid: string; myName: string }) {
   const allTeams = useTeamStore(s => s.teams);
+  const players = usePlayerStore(s => s.players);
   const profile = useAuthStore(s => s.profile);
   const threads = useDmStore(s => s.threads);
   const messages = useDmStore(s => s.messages);
@@ -90,26 +91,51 @@ function DmPanel({ myUid, myName }: { myUid: string; myName: string }) {
     return useDmStore.getState().subscribeThreads(myUid);
   }, [myUid]);
 
-  // Load team members for new DM picker
+  // Load team members for the DM picker.
+  // Uses player.linkedUid (always set) + team coachIds to find all user accounts
+  // on the same team — avoids relying on the legacy profile.teamId scalar which
+  // is absent for multi-membership users added via the invite flow.
   useEffect(() => {
-    if (!profile) return;
-    // Find all teamIds this user belongs to
-    const myTeamIds = allTeams
-      .filter(t => isMemberOfTeam(profile, t.id) || profile.role === 'admin')
-      .map(t => t.id);
-    if (myTeamIds.length === 0) return;
+    if (!profile || allTeams.length === 0) return;
 
-    // Load all users who share a team with me
-    getDocs(query(collection(db, 'users'), where('teamId', 'in', myTeamIds.slice(0, 10))))
-      .then(snap => {
-        const members = snap.docs
+    const myTeamIds = new Set(
+      allTeams
+        .filter(t => isMemberOfTeam(profile, t.id) || profile.role === 'admin')
+        .map(t => t.id)
+    );
+    if (myTeamIds.size === 0) return;
+
+    // Collect all UIDs reachable from these teams:
+    // 1. Players with a linked user account
+    const linkedUids = new Set<string>(
+      players
+        .filter(p => myTeamIds.has(p.teamId) && p.linkedUid)
+        .map(p => p.linkedUid!)
+    );
+    // 2. Coaches from the team documents
+    allTeams
+      .filter(t => myTeamIds.has(t.id))
+      .forEach(t => {
+        if (t.coachId) linkedUids.add(t.coachId);
+        t.coachIds?.forEach(id => linkedUids.add(id));
+      });
+    // Exclude self
+    linkedUids.delete(myUid);
+
+    if (linkedUids.size === 0) return;
+
+    // Batch-load user profiles directly by document ID (uid === docId in /users)
+    Promise.all([...linkedUids].map(uid => getDoc(doc(db, 'users', uid))))
+      .then(snaps => {
+        const members: UserProfile[] = snaps
+          .filter(d => d.exists())
           .map(d => d.data() as UserProfile)
-          .filter(u => u.uid !== myUid);
+          .filter(u => u.uid && u.displayName);
         setTeamMembers(members);
       })
       .catch(err => console.error('[DmPanel] load members:', err));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myUid, allTeams.length]);
+  }, [myUid, allTeams.length, players.length]);
 
   function openThread(thread: DmThread) {
     setActiveThread(thread);
