@@ -32,6 +32,14 @@
         { "fieldPath": "seasonId", "order": "ASCENDING" },
         { "fieldPath": "scheduleStatus", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "dmThreads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "participants", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
