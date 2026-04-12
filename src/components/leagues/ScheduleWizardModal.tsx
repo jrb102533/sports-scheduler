@@ -523,7 +523,38 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   // ─── Load most recent config on wizard open ──────────────────────────────────
 
   useEffect(() => {
-    if (!open || !season?.id || !league.id) return;
+    if (!open || !league.id) return;
+
+    // No-season path (wizard opened from LeagueDetailPage): restore from league-level wizardDraft
+    if (!season?.id) {
+      const draft = useCollectionStore.getState().wizardDraft;
+      if (draft?.mode && draft?.currentStep) {
+        setMode(draft.mode);
+        if (resumeAtPreview) {
+          setGeneratePhase('configure');
+          setRecommendationDismissed(false);
+          setStep('generate');
+          return;
+        }
+        const modeSteps = getSteps(draft.mode);
+        const isResumable =
+          draft.currentStep !== 'mode' &&
+          draft.currentStep !== modeSteps[0] &&
+          draft.currentStep !== 'preview';
+        if (isResumable) {
+          setResumeStep(draft.currentStep as WizardStep);
+          setShowResumePrompt(true);
+          return;
+        }
+        if (draft.currentStep === 'preview') {
+          setResumeStep('preview');
+          setShowResumePrompt(true);
+          return;
+        }
+        setStep(getSteps(draft.mode)[0]);
+      }
+      return;
+    }
 
     const configCol = collection(db, 'leagues', league.id, 'seasons', season.id, 'scheduleConfig');
     const q = query(configCol, orderBy('createdAt', 'desc'), limit(1));
@@ -601,7 +632,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       // Non-fatal: if the query fails, default wizard state is used
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, season?.id, league.id]);
+  }, [open, season?.id, league.id, resumeAtPreview]);
 
   // ─── Save wizard config to Firestore ────────────────────────────────────────
 
@@ -722,6 +753,16 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
   function triggerAutoSave(nextStep: WizardStep) {
     saveScheduleConfig(nextStep);
+    // Also persist to league-level wizardDraft so resume works when no season exists
+    if (mode) {
+      void saveWizardDraft(league.id, {
+        mode,
+        currentStep: nextStep,
+        ...(collectionId ? { collectionId } : {}),
+        stepData: {},
+        createdBy: currentUserUid,
+      });
+    }
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 2000);
   }
@@ -1142,6 +1183,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       setPublished(true);
       setPublishedAsDraft(!publishNow);
       saveScheduleConfig();
+      // Clear league-level wizardDraft — draft games are now persisted in Firestore
+      void clearWizardDraft(league.id);
     } catch (err) {
       console.error('saveFixtures failed:', err);
       setGenError('Failed to save some events. Please check the schedule and try again.');

@@ -42,6 +42,7 @@ export function LeagueDetailPage() {
   const addTeamToLeague = useTeamStore(s => s.addTeamToLeague);
   const removeTeamFromLeague = useTeamStore(s => s.removeTeamFromLeague);
   const allEvents = useEventStore(s => s.events);
+  const deleteEvent = useEventStore(s => s.deleteEvent);
   const profile = useAuthStore(s => s.profile);
 
   const league = leagues.find(l => l.id === id);
@@ -51,6 +52,8 @@ export function LeagueDetailPage() {
     .filter(e => e.teamIds.some(tid => leagueTeamIds.includes(tid)))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
+  const draftEvents = leagueEvents.filter(e => e.status === 'draft');
+
   const seasons = useSeasonStore(s => s.seasons);
   const activeCollection = useCollectionStore(s => s.activeCollection);
   const responses = useCollectionStore(s => s.responses);
@@ -58,6 +61,7 @@ export function LeagueDetailPage() {
   const [collectionPanelOpen, setCollectionPanelOpen] = useState(false);
 
   const [tab, setTab] = useState<Tab>('schedule');
+  const [isClearingDraft, setIsClearingDraft] = useState(false);
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -223,7 +227,7 @@ export function LeagueDetailPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <div className="flex flex-col gap-1">
-              <p className="text-sm text-gray-500">{leagueEvents.length} {leagueEvents.length === 1 ? 'event' : 'events'}</p>
+              <p className="text-sm text-gray-500">{leagueEvents.filter(e => e.status !== 'draft').length} {leagueEvents.filter(e => e.status !== 'draft').length === 1 ? 'event' : 'events'}</p>
               {hasActiveCollection && canManage && (
                 <button
                   onClick={() => setCollectionPanelOpen(true)}
@@ -234,7 +238,7 @@ export function LeagueDetailPage() {
               )}
             </div>
             <div className="flex gap-2">
-              {canManage && seasons.length === 0 && (
+              {canManage && seasons.length === 0 && draftEvents.length === 0 && (
                 <Button
                   size="sm"
                   variant="secondary"
@@ -256,13 +260,62 @@ export function LeagueDetailPage() {
               </RoleGuard>
             </div>
           </div>
-          {leagueEvents.length === 0 ? (
+          {/* Draft schedule summary banner */}
+          {canManage && draftEvents.length > 0 && (
+            <div className="mb-3 bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-yellow-800">
+                  {draftEvents.length} draft game{draftEvents.length !== 1 ? 's' : ''} pending review
+                </p>
+                {(() => {
+                  const dates = draftEvents.map(e => e.date).sort();
+                  const first = dates[0];
+                  const last = dates[dates.length - 1];
+                  const fmt = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  return (
+                    <p className="text-xs text-yellow-700 mt-0.5">
+                      {first === last ? fmt(first) : `${fmt(first)} – ${fmt(last)}`}
+                      {' · '}Create a season to publish
+                    </p>
+                  );
+                })()}
+              </div>
+              <div className="flex gap-2 flex-shrink-0">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setWizardOpen(true)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={isClearingDraft}
+                  onClick={async () => {
+                    if (!window.confirm(`Delete all ${draftEvents.length} draft games? This cannot be undone.`)) return;
+                    setIsClearingDraft(true);
+                    try {
+                      await Promise.all(draftEvents.map(e => deleteEvent(e.id)));
+                      void useCollectionStore.getState().clearWizardDraft(id!);
+                    } finally {
+                      setIsClearingDraft(false);
+                    }
+                  }}
+                >
+                  {isClearingDraft ? 'Discarding…' : 'Discard'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {leagueEvents.filter(e => e.status !== 'draft').length === 0 && draftEvents.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-400">
               No events scheduled yet.
             </div>
-          ) : (
+          ) : leagueEvents.filter(e => e.status !== 'draft').length === 0 ? null : (
             <div className="space-y-2">
-              {leagueEvents.map(e => (
+              {leagueEvents.filter(e => e.status !== 'draft').map(e => (
                 <EventCard key={e.id} event={e} teams={leagueTeams} onClick={() => setSelectedEvent(e)} />
               ))}
             </div>
