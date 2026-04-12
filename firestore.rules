@@ -17,13 +17,10 @@ service cloud.firestore {
     // No cross-doc profile read required — eliminates SEC-16 TOCTOU race.
 
     // Returns true if the caller is a coach of this team.
-    // Checks the coachIds array (Phase 2) and falls back to the legacy coachId
-    // scalar so teams not yet covered by the coachIds backfill (SEC-55) are not
-    // locked out. Remove the coachId fallback once the backfill is confirmed
-    // complete on all environments.
+    // SEC-55 backfill confirmed complete on all environments (2026-04-12) —
+    // legacy coachId scalar fallback removed.
     function isCoachOfTeam(teamData) {
-      return teamData.get('coachId', '') == request.auth.uid
-        || (teamData.coachIds is list && teamData.coachIds.hasAny([request.auth.uid]));
+      return teamData.coachIds is list && teamData.coachIds.hasAny([request.auth.uid]);
     }
 
     // Returns true if the caller's UID is in the league document's managerIds array.
@@ -199,12 +196,9 @@ service cloud.firestore {
         isCoachOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data) ||
         getProfile().teamId == resource.data.teamId
       );
-      // SEC-48: scope create/delete to coaches of the target team, not all coaches.
-      // isCoach() is retained as a fallback while the coachIds backfill (SEC-55)
-      // is pending — teams without coachId/coachIds would otherwise lock out their
-      // own coaches. Remove once backfill is confirmed complete on all environments.
+      // SEC-48: scope create to coaches of the target team only.
+      // SEC-55 backfill confirmed complete — broad isCoach() fallback removed.
       allow create: if isAdmin()
-        || isCoach()
         || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(request.resource.data.teamId)).data);
       allow delete: if isAdmin()
         || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data);
