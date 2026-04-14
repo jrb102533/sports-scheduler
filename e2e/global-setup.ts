@@ -82,7 +82,7 @@ async function loginRole(
 
     // Wait for navigation away from /login — succeeds for any post-login screen
     // (main app, forced password change, consent modal, etc.)
-    await page.waitForURL(url => !url.includes('/login'), { timeout: 30_000 });
+    await page.waitForURL(url => !url.toString().includes('/login'), { timeout: 30_000 });
 
     // Persist the session
     await context.storageState({ path: statePath });

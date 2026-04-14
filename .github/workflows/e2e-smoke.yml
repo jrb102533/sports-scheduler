@@ -52,10 +52,10 @@ jobs:
         env:
           E2E_BASE_URL: https://first-whistle-e76f4.web.app
           E2E_STAGING_URL: https://first-whistle-e76f4.web.app
-          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
-          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
-          E2E_PARENT_EMAIL: ${{ secrets.E2E_PARENT_EMAIL }}
-          E2E_PARENT_PASSWORD: ${{ secrets.E2E_PARENT_PASSWORD }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_STAGING_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_STAGING_ADMIN_PASSWORD }}
+          E2E_PARENT_EMAIL: ${{ secrets.E2E_STAGING_PARENT_EMAIL }}
+          E2E_PARENT_PASSWORD: ${{ secrets.E2E_STAGING_PARENT_PASSWORD }}
           E2E_MUST_CHANGE_EMAIL: ${{ secrets.E2E_MUST_CHANGE_EMAIL }}
           E2E_MUST_CHANGE_PASSWORD: ${{ secrets.E2E_MUST_CHANGE_PASSWORD }}
           E2E_CONSENT_OUTDATED_EMAIL: ${{ secrets.E2E_CONSENT_OUTDATED_EMAIL }}
