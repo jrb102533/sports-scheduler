@@ -45,6 +45,22 @@ function hasStorageState(role: string): boolean {
   return fs.existsSync(authStatePath(role));
 }
 
+/**
+ * After restoring a storageState context, the Firebase token may have expired
+ * if the suite has been running for >1 hour. If the page lands on /login,
+ * re-authenticate with the env-var credentials so the test can proceed.
+ */
+async function ensureAuthenticated(
+  page: import('@playwright/test').Page,
+  emailEnvVar: string,
+  passwordEnvVar: string,
+): Promise<void> {
+  if (page.url().includes('/login')) {
+    const auth = new AuthPage(page);
+    await auth.loginAndWaitForApp(requireEnv(emailEnvVar), requireEnv(passwordEnvVar));
+  }
+}
+
 export type TestFixtures = {
   authPage: AuthPage;
   adminPage: AdminPage;
@@ -104,6 +120,7 @@ export const test = base.extend<TestFixtures>({
       const p = await context.newPage();
       await p.goto('/');
       await p.waitForLoadState('domcontentloaded');
+      await ensureAuthenticated(p, 'E2E_ADMIN_EMAIL', 'E2E_ADMIN_PASSWORD');
       const admin = new AdminPage(p);
       await use({ page: p, admin });
       await context.close();
@@ -132,6 +149,9 @@ export const test = base.extend<TestFixtures>({
         storageState: authStatePath(role),
       });
       const p = await context.newPage();
+      await p.goto('/');
+      await p.waitForLoadState('domcontentloaded');
+      await ensureAuthenticated(p, 'E2E_PARENT_EMAIL', 'E2E_PARENT_PASSWORD');
       const parent = new ParentHomePage(p);
       await parent.goto();
       await use({ page: p, parent });
@@ -161,6 +181,9 @@ export const test = base.extend<TestFixtures>({
         storageState: authStatePath(role),
       });
       const p = await context.newPage();
+      await p.goto('/');
+      await p.waitForLoadState('domcontentloaded');
+      await ensureAuthenticated(p, 'E2E_PLAYER_EMAIL', 'E2E_PLAYER_PASSWORD');
       const player = new PlayerHomePage(p);
       await player.goto();
       await use({ page: p, player });
@@ -190,6 +213,9 @@ export const test = base.extend<TestFixtures>({
         storageState: authStatePath(role),
       });
       const p = await context.newPage();
+      await p.goto('/');
+      await p.waitForLoadState('domcontentloaded');
+      await ensureAuthenticated(p, 'E2E_LM_EMAIL', 'E2E_LM_PASSWORD');
       const lm = new LeagueManagerPage(p);
       await lm.goto();
       await use({ page: p, lm });
@@ -219,6 +245,9 @@ export const test = base.extend<TestFixtures>({
         storageState: authStatePath(role),
       });
       const p = await context.newPage();
+      await p.goto('/');
+      await p.waitForLoadState('domcontentloaded');
+      await ensureAuthenticated(p, 'E2E_COACH_EMAIL', 'E2E_COACH_PASSWORD');
       const coach = new CoachPage(p);
       await coach.goto();
       await use({ page: p, coach });
