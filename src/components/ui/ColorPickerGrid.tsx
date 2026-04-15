@@ -19,8 +19,6 @@ interface ColorPickerGridProps {
 export function ColorPickerGrid({ value, onChange, disabled = false }: ColorPickerGridProps) {
   const [open, setOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // Close on outside click
   useEffect(() => {
     if (!open) return;
@@ -33,13 +31,9 @@ export function ColorPickerGrid({ value, onChange, disabled = false }: ColorPick
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Clean up any pending close timer on unmount
-  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
-
   function selectColor(hex: string) {
     onChange(hex);
-    // 180ms delay — lets the selection ring animate before the sheet collapses
-    closeTimer.current = setTimeout(() => setOpen(false), 180);
+    setOpen(false);
   }
 
   const selectedEntry = TEAM_COLOR_PALETTE.flat().find(c => c.hex === value);
