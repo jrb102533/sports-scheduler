@@ -568,6 +568,9 @@ export function TeamDetailPage() {
                   <div key={invite.id} className="flex items-center justify-between px-4 py-3">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{invite.email}</p>
+                      {invite.playerName && (
+                        <p className="text-xs text-gray-500">For: {invite.playerName}</p>
+                      )}
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isAccepted ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                           {isAccepted ? 'Accepted' : 'Pending'}
