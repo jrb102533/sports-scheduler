@@ -7,11 +7,18 @@ import { Button } from '@/components/ui/Button';
 import { SubscribeToCalendarButton } from '@/components/calendar/SubscribeToCalendarButton';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
+import { useAuthStore, isMemberOfTeam, hasRole } from '@/store/useAuthStore';
 import type { ScheduledEvent } from '@/types';
 
 export function CalendarPage() {
-  const events = useEventStore(s => s.events);
+  const allEvents = useEventStore(s => s.events);
   const teams = useTeamStore(s => s.teams);
+  const profile = useAuthStore(s => s.profile);
+
+  // Admins see all events; other roles see only events for their teams.
+  const events = hasRole(profile, 'admin')
+    ? allEvents
+    : allEvents.filter(e => e.teamIds.some(tid => isMemberOfTeam(profile, tid)));
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());

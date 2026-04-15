@@ -20,7 +20,7 @@ import { useEventStore } from '@/store/useEventStore';
 import { useVenueStore } from '@/store/useVenueStore';
 import { useLeagueVenueStore } from '@/store/useLeagueVenueStore';
 import { useTeamStore } from '@/store/useTeamStore';
-import { useAuthStore } from '@/store/useAuthStore';
+import { useAuthStore, getMemberships } from '@/store/useAuthStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { formatDate, formatTime } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS, EVENT_TYPE_BADGE_CLASSES, getAttendanceThreshold, isAttendanceWarningEnabled } from '@/constants';
@@ -333,9 +333,9 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
             {(() => {
               const ev = currentEvent;
               const isCoachOfEventTeam =
-                profile?.role === 'coach' &&
-                profile?.teamId &&
-                ev.teamIds.includes(profile.teamId);
+                getMemberships(profile ?? null).some(
+                  m => m.role === 'coach' && m.teamId && ev.teamIds.includes(m.teamId),
+                );
 
               const today = new Date().toISOString().split('T')[0];
               const gameHasOccurred = ev.date <= today;
@@ -375,7 +375,7 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
                 }
               }
 
-              const isHomeCoach = homeTeam?.id === profile?.teamId;
+              const isHomeCoach = !!homeTeam?.id && getMemberships(profile ?? null).some(m => m.teamId === homeTeam.id);
               const otherTeam = isHomeCoach ? awayTeam : homeTeam;
 
               return (

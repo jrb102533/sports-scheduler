@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
-import { useAuthStore } from '@/store/useAuthStore';
+import { useAuthStore, hasRole, isMemberOfTeam } from '@/store/useAuthStore';
 import { useNavigate } from 'react-router-dom';
 import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -30,20 +30,20 @@ export function TeamsPage() {
   const [requestingIds, setRequestingIds] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
 
-  const isAdmin = profile?.role === 'admin';
-  const isCoachOrAdmin = isAdmin || profile?.role === 'coach' || profile?.role === 'league_manager';
+  const isAdmin = hasRole(profile, 'admin');
+  const isCoachOrAdmin = hasRole(profile, 'admin', 'coach', 'league_manager');
 
   // Pending join request counts per team — only loaded for coaches/admins
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
 
-  // Determine the user's own teams
+  // Determine the user's own teams — check all memberships, not just profile.teamId
   const myTeams: Team[] = isAdmin
     ? teams
     : teams.filter(t =>
         t.createdBy === profile?.uid ||
         t.coachId === profile?.uid ||
         t.coachIds?.includes(profile?.uid ?? '') ||
-        t.id === profile?.teamId
+        isMemberOfTeam(profile, t.id)
       );
 
   const otherTeams: Team[] = isAdmin
@@ -269,8 +269,8 @@ function FindTeamSection({
           {teams.map(team => {
             const status = requestStatuses[team.id];
             const isRequesting = requestingIds.has(team.id);
-            const isOnTeam = profile?.teamId === team.id;
-            const showRequestBtn = user && !isOnTeam && profile?.role !== 'admin';
+            const isOnTeam = isMemberOfTeam(profile, team.id);
+            const showRequestBtn = user && !isOnTeam && !isAdmin;
 
             return (
               <div key={team.id} className="flex flex-col">

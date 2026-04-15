@@ -282,7 +282,7 @@ function BroadcastPanel() {
         t.createdBy === profile?.uid ||
         t.coachId === profile?.uid ||
         t.coachIds?.includes(profile?.uid ?? '') ||
-        t.id === profile?.teamId
+        isMemberOfTeam(profile, t.id)
       );
 
   useEffect(() => {
@@ -660,13 +660,11 @@ export function MessagingPage() {
   const displayName = profile?.displayName || profile?.email || '';
   const isCoachOrAdmin = profile?.role === 'admin' || profile?.role === 'coach' || profile?.role === 'league_manager';
 
-  // Active team for group chat — use primary membership's teamId
+  // Active team for group chat — use active membership's teamId only.
+  // Never fall back to allTeams[0]: that would silently open a random team's
+  // chat if the active membership has no teamId (e.g. broken profile data).
   const activeMembership = profile ? getActiveMembership(profile) : null;
-  const activeTeamId =
-    activeMembership?.teamId ??
-    profile?.teamId ??
-    allTeams[0]?.id ??
-    null;
+  const activeTeamId = activeMembership?.teamId ?? null;
 
   const [tab, setTab] = useState<MainTab>('chat');
 
