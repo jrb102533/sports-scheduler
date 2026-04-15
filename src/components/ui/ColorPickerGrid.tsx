@@ -1,6 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { TEAM_COLOR_PALETTE } from '@/constants';
 
+const ROW_LABELS = [
+  'Reds & Pinks',
+  'Oranges & Yellows',
+  'Greens',
+  'Blues',
+  'Purples & Maroons',
+  'Neutrals',
+];
+
 interface ColorPickerGridProps {
   value: string;
   onChange: (color: string) => void;
@@ -10,6 +19,7 @@ interface ColorPickerGridProps {
 export function ColorPickerGrid({ value, onChange, disabled = false }: ColorPickerGridProps) {
   const [open, setOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Close on outside click
   useEffect(() => {
@@ -22,6 +32,15 @@ export function ColorPickerGrid({ value, onChange, disabled = false }: ColorPick
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
+
+  // Clean up any pending close timer on unmount
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+
+  function selectColor(hex: string) {
+    onChange(hex);
+    // 180ms delay — lets the selection ring animate before the sheet collapses
+    closeTimer.current = setTimeout(() => setOpen(false), 180);
+  }
 
   const selectedEntry = TEAM_COLOR_PALETTE.flat().find(c => c.hex === value);
   const label = selectedEntry?.name ?? 'Custom';
@@ -62,9 +81,9 @@ export function ColorPickerGrid({ value, onChange, disabled = false }: ColorPick
 
             <p className="text-sm font-semibold text-gray-900 mb-3">Team Color</p>
 
-            {/* Current color preview */}
+            {/* Current color preview pill */}
             <div
-              className="w-full h-10 rounded-xl mb-4 flex items-center justify-center"
+              className="w-full h-10 rounded-xl mb-4 flex items-center justify-center transition-colors duration-150"
               style={{ backgroundColor: value }}
             >
               <span
@@ -75,28 +94,36 @@ export function ColorPickerGrid({ value, onChange, disabled = false }: ColorPick
               </span>
             </div>
 
-            {/* Swatch grid */}
-            <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(6, 44px)' }}>
-              {TEAM_COLOR_PALETTE.flat().map(({ hex, name }) => {
-                const isSelected = hex === value;
-                return (
-                  <button
-                    key={hex}
-                    type="button"
-                    aria-label={name}
-                    aria-pressed={isSelected}
-                    onClick={() => { onChange(hex); setOpen(false); }}
-                    className="w-11 h-11 rounded-full transition-transform focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 hover:scale-110"
-                    style={{
-                      backgroundColor: hex,
-                      boxShadow: isSelected
-                        ? `0 0 0 3px #ffffff, 0 0 0 5px ${hex}`
-                        : undefined,
-                      transform: isSelected ? 'scale(1.1)' : undefined,
-                    }}
-                  />
-                );
-              })}
+            {/* Swatch grid — grouped by row with labels */}
+            <div className="flex flex-col gap-2">
+              {TEAM_COLOR_PALETTE.map((row, rowIdx) => (
+                <div key={rowIdx}>
+                  <p className="text-xs text-gray-400 mb-1.5">{ROW_LABELS[rowIdx]}</p>
+                  <div className="flex gap-2">
+                    {row.map(({ hex, name }) => {
+                      const isSelected = hex === value;
+                      const ringColor = selectionRingColor(hex);
+                      return (
+                        <button
+                          key={hex}
+                          type="button"
+                          aria-label={name}
+                          aria-pressed={isSelected}
+                          onClick={() => selectColor(hex)}
+                          className="w-11 h-11 rounded-full transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 hover:scale-110 flex-shrink-0"
+                          style={{
+                            backgroundColor: hex,
+                            boxShadow: isSelected
+                              ? `0 0 0 3px #ffffff, 0 0 0 5px ${ringColor}`
+                              : undefined,
+                            transform: isSelected ? 'scale(1.1)' : undefined,
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -105,12 +132,27 @@ export function ColorPickerGrid({ value, onChange, disabled = false }: ColorPick
   );
 }
 
-/** Returns white or black depending on which has better contrast against the given hex. */
+/** Returns white or black text color based on luminance — WCAG contrast ratio. */
 function getContrastColor(hex: string): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
-  // Relative luminance (WCAG formula)
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return luminance > 0.5 ? '#111111' : '#ffffff';
+}
+
+/**
+ * Returns a ring color for the selected swatch that achieves ≥3:1 contrast
+ * against both the white inset ring and the swatch color itself.
+ * Light/low-saturation colors (Silver, Yellow, etc.) get a dark neutral ring
+ * instead of their own hue, which would be too faint against white.
+ */
+function selectionRingColor(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  // If the color is light enough that its own hue ring won't be visible
+  // against the white inset, fall back to charcoal.
+  return luminance > 0.45 ? '#374151' : hex;
 }
