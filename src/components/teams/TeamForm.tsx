@@ -13,6 +13,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useVenueStore } from '@/store/useVenueStore';
 import { FLAGS } from '@/lib/flags';
 import { SPORT_TYPES, SPORT_TYPE_LABELS, TEAM_COLORS, AGE_GROUPS, AGE_GROUP_LABELS, SPORT_FORFEIT_THRESHOLDS } from '@/constants';
+import { ColorPickerGrid } from '@/components/ui/ColorPickerGrid';
 import { Upload, X, Image } from 'lucide-react';
 import type { Team, SportType, AgeGroup } from '@/types';
 
@@ -247,13 +248,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-gray-700">Team Color</label>
-          <div className="flex gap-2 flex-wrap">
-            {TEAM_COLORS.map(c => (
-              <button key={c} onClick={() => setColor(c)}
-                className={`w-7 h-7 rounded-full border-2 transition-transform ${color === c ? 'border-gray-900 scale-110' : 'border-transparent hover:scale-105'}`}
-                style={{ backgroundColor: c }} />
-            ))}
-          </div>
+          <ColorPickerGrid value={color} onChange={setColor} />
         </div>
 
         {/* Logo upload */}

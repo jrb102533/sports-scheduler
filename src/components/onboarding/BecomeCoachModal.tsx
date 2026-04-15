@@ -14,6 +14,7 @@ import {
   AGE_GROUPS,
   AGE_GROUP_LABELS,
 } from '@/constants';
+import { ColorPickerGrid } from '@/components/ui/ColorPickerGrid';
 import type { SportType, AgeGroup } from '@/types';
 
 interface BecomeCoachModalProps {
@@ -125,20 +126,7 @@ export function BecomeCoachModal({ open, onClose }: BecomeCoachModalProps) {
 
           <div className="flex flex-col gap-1">
             <span className="text-sm font-medium text-gray-700">Team Color</span>
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Team Color">
-              {TEAM_COLORS.map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  aria-label={`Color ${c}`}
-                  aria-pressed={color === c}
-                  disabled={saving}
-                  onClick={() => setColor(c)}
-                  className="w-6 h-6 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 disabled:opacity-50"
-                  style={{ backgroundColor: c, outline: color === c ? `2px solid #f97316` : undefined, outlineOffset: color === c ? '2px' : undefined }}
-                />
-              ))}
-            </div>
+            <ColorPickerGrid value={color} onChange={setColor} disabled={saving} />
           </div>
 
           <Select
