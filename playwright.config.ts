@@ -30,8 +30,12 @@ export default defineConfig({
     ['list'],
   ],
 
+  // 60s per test: fixture setup (Firebase Auth refresh + Firestore hydration)
+  // consumes 15-35s in CI, leaving headroom for the actual test assertions.
+  // The 30s default caused fixture setup to race against the test timeout.
+  timeout: 60_000,
+
   expect: {
-    // waitForAppHydrated() handles Firestore startup; 15s covers remaining latency.
     timeout: 15_000,
   },
 
