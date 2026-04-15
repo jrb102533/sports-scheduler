@@ -41,13 +41,15 @@
         { "fieldPath": "updatedAt", "order": "DESCENDING" }
       ]
     },
+  ],
+  "fieldOverrides": [
     {
       "collectionGroup": "sensitiveData",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "teamId", "order": "ASCENDING" }
+      "fieldPath": "teamId",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
       ]
     }
-  ],
-  "fieldOverrides": []
+  ]
 }
