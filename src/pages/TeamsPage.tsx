@@ -270,7 +270,7 @@ function FindTeamSection({
             const status = requestStatuses[team.id];
             const isRequesting = requestingIds.has(team.id);
             const isOnTeam = isMemberOfTeam(profile, team.id);
-            const showRequestBtn = user && !isOnTeam && !isAdmin;
+            const showRequestBtn = user && !isOnTeam && !hasRole(profile, 'admin');
 
             return (
               <div key={team.id} className="flex flex-col">

@@ -654,7 +654,6 @@ function BroadcastPanel() {
 export function MessagingPage() {
   const user = useAuthStore(s => s.user);
   const profile = useAuthStore(s => s.profile);
-  const allTeams = useTeamStore(s => s.teams);
 
   const uid = user?.uid ?? '';
   const displayName = profile?.displayName || profile?.email || '';
