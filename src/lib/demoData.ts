@@ -10,8 +10,8 @@ export async function seedDemoData() {
   const t1: Team = { id: crypto.randomUUID(), name: 'City Hawks', sportType: 'soccer', color: '#3b82f6', coachName: 'Alex Morgan', coachEmail: 'alex@cityhawks.com', createdBy: 'demo', ownerName: 'Demo Admin', createdAt: now, updatedAt: now };
   const t2: Team = { id: crypto.randomUUID(), name: 'River Lions', sportType: 'soccer', color: '#ef4444', coachName: 'Sam Chen', createdBy: 'demo', ownerName: 'Demo Admin', createdAt: now, updatedAt: now };
 
-  await useTeamStore.getState().addTeam(t1);
-  await useTeamStore.getState().addTeam(t2);
+  await useTeamStore.getState().updateTeam(t1);
+  await useTeamStore.getState().updateTeam(t2);
 
   const makePlayers = (teamId: string, names: [string, string][], startJersey: number): Player[] =>
     names.map(([first, last], i) => ({

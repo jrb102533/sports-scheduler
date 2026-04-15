@@ -11,7 +11,6 @@ interface TeamStore {
   deletedTeams: Team[];  // soft-deleted teams (admin view)
   loading: boolean;
   subscribe: () => () => void;
-  addTeam: (team: Team) => Promise<void>;
   updateTeam: (team: Team) => Promise<void>;
   addTeamToLeague: (teamId: string, leagueId: string) => Promise<void>;
   removeTeamFromLeague: (teamId: string, leagueId: string) => Promise<void>;
@@ -38,10 +37,6 @@ export const useTeamStore = create<TeamStore>((set) => ({
       });
     }, () => set({ loading: false }));
     return unsub;
-  },
-
-  addTeam: async (team) => {
-    await setDoc(doc(db, 'teams', team.id), team);
   },
 
   updateTeam: async (team) => {
