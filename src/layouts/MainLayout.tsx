@@ -60,6 +60,18 @@ export function MainLayout() {
 
   const profile = useAuthStore(s => s.profile);
 
+  // Write data-hydrated="true" to <body> once the initial Firestore snapshots
+  // for the two highest-traffic stores have arrived. E2E tests wait on this
+  // attribute instead of using fixed timeouts.
+  const teamsLoading = useTeamStore(s => s.loading);
+  const eventsLoading = useEventStore(s => s.loading);
+  useEffect(() => {
+    if (!user) return;
+    if (!teamsLoading && !eventsLoading) {
+      document.body.setAttribute('data-hydrated', 'true');
+    }
+  }, [user, teamsLoading, eventsLoading]);
+
   const location = useLocation();
   const isHome = location.pathname === '/' || location.pathname === '/home';
   const firstName = profile?.displayName?.split(' ')[0] ?? '';

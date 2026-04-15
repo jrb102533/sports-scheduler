@@ -61,6 +61,17 @@ async function ensureAuthenticated(
   }
 }
 
+/**
+ * Wait for MainLayout to signal that the initial Firestore snapshots have
+ * been delivered (teams + events stores both have loading=false).
+ * MainLayout writes data-hydrated="true" to <body> when this condition is met.
+ * Tests should call this after navigating to any authenticated route to avoid
+ * asserting on UI before store data has arrived.
+ */
+export async function waitForAppHydrated(page: import('@playwright/test').Page): Promise<void> {
+  await page.waitForSelector('body[data-hydrated="true"]', { timeout: 30_000 });
+}
+
 export type TestFixtures = {
   authPage: AuthPage;
   adminPage: AdminPage;
@@ -121,6 +132,7 @@ export const test = base.extend<TestFixtures>({
       await p.goto('/');
       await p.waitForLoadState('domcontentloaded');
       await ensureAuthenticated(p, 'E2E_ADMIN_EMAIL', 'E2E_ADMIN_PASSWORD');
+      await waitForAppHydrated(p);
       const admin = new AdminPage(p);
       await use({ page: p, admin });
       await context.close();
@@ -152,6 +164,7 @@ export const test = base.extend<TestFixtures>({
       await p.goto('/');
       await p.waitForLoadState('domcontentloaded');
       await ensureAuthenticated(p, 'E2E_PARENT_EMAIL', 'E2E_PARENT_PASSWORD');
+      await waitForAppHydrated(p);
       const parent = new ParentHomePage(p);
       await parent.goto();
       await use({ page: p, parent });
@@ -184,6 +197,7 @@ export const test = base.extend<TestFixtures>({
       await p.goto('/');
       await p.waitForLoadState('domcontentloaded');
       await ensureAuthenticated(p, 'E2E_PLAYER_EMAIL', 'E2E_PLAYER_PASSWORD');
+      await waitForAppHydrated(p);
       const player = new PlayerHomePage(p);
       await player.goto();
       await use({ page: p, player });
@@ -216,6 +230,7 @@ export const test = base.extend<TestFixtures>({
       await p.goto('/');
       await p.waitForLoadState('domcontentloaded');
       await ensureAuthenticated(p, 'E2E_LM_EMAIL', 'E2E_LM_PASSWORD');
+      await waitForAppHydrated(p);
       const lm = new LeagueManagerPage(p);
       await lm.goto();
       await use({ page: p, lm });
@@ -248,6 +263,7 @@ export const test = base.extend<TestFixtures>({
       await p.goto('/');
       await p.waitForLoadState('domcontentloaded');
       await ensureAuthenticated(p, 'E2E_COACH_EMAIL', 'E2E_COACH_PASSWORD');
+      await waitForAppHydrated(p);
       const coach = new CoachPage(p);
       await coach.goto();
       await use({ page: p, coach });
