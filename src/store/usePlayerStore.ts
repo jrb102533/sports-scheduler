@@ -95,22 +95,48 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     subscribeToPlayers();
 
     // ── Sensitive PII subcollection ────────────────────────────────────────────
-    // Always subscribe — Firestore rules deny non-privileged users server-side.
-    const sensitiveUnsub = onSnapshot(
-      collectionGroup(db, 'sensitiveData'),
-      (snap) => {
-        snap.docs.forEach(d => {
-          const data = d.data() as SensitivePlayerData;
-          if (data.playerId) _sensitiveMap[data.playerId] = data;
-        });
-        set(state => ({ players: buildMergedPlayers(getPriv()), loading: state.loading }));
-      },
-      (error) => {
-        if (error.code !== 'permission-denied') {
-          console.error('sensitiveData subscription error:', error);
-        }
-      },
-    );
+    // Admins get an unfiltered collectionGroup query (isAdmin() is query-safe).
+    // Non-admins must filter by teamId — the rule uses resource.data.teamId to
+    // gate access, which makes unfiltered collectionGroup queries fail with
+    // permission-denied (Firestore rejects queries that could return inaccessible
+    // documents). Re-subscribed whenever role or teamId changes, same as players.
+    let activeSensitiveUnsub: (() => void) | null = null;
+
+    function buildSensitiveQuery() {
+      const profile = useAuthStore.getState().profile;
+      if (!profile) return null;
+      if (profile.role === 'admin') {
+        return collectionGroup(db, 'sensitiveData');
+      }
+      const teamId = getActiveMembership(profile)?.teamId ?? profile.teamId;
+      if (teamId) {
+        return query(collectionGroup(db, 'sensitiveData'), where('teamId', '==', teamId));
+      }
+      return null;
+    }
+
+    function subscribeToSensitiveData() {
+      activeSensitiveUnsub?.();
+      const q = buildSensitiveQuery();
+      if (!q) return;
+      activeSensitiveUnsub = onSnapshot(
+        q,
+        (snap) => {
+          snap.docs.forEach(d => {
+            const data = d.data() as SensitivePlayerData;
+            if (data.playerId) _sensitiveMap[data.playerId] = data;
+          });
+          set(state => ({ players: buildMergedPlayers(getPriv()), loading: state.loading }));
+        },
+        (error) => {
+          if (error.code !== 'permission-denied') {
+            console.error('sensitiveData subscription error:', error);
+          }
+        },
+      );
+    }
+
+    subscribeToSensitiveData();
 
     // ── Rebuild when profile role or teamId changes ───────────────────────────
     // Snapshots fire before the profile loads from Firestore. When role or teamId
@@ -126,13 +152,14 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
         lastRole = role;
         lastTeamId = teamId;
         subscribeToPlayers(); // re-subscribe with the new query
+        subscribeToSensitiveData(); // re-subscribe with the new teamId filter
         set(s => ({ players: buildMergedPlayers(getPriv()), loading: s.loading }));
       }
     });
 
     return () => {
       activePlayerUnsub?.();
-      sensitiveUnsub();
+      activeSensitiveUnsub?.();
       authUnsub();
     };
   },
