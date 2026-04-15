@@ -31,8 +31,8 @@ export default defineConfig({
   ],
 
   expect: {
-    // Firestore snapshots can take 15–25s to arrive on staging CI.
-    timeout: 30_000,
+    // waitForAppHydrated() handles Firestore startup; 15s covers remaining latency.
+    timeout: 15_000,
   },
 
   use: {
@@ -40,9 +40,8 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'on-first-retry',
-    // Generous timeouts for Firebase cold starts and Firestore hydration.
-    actionTimeout: 30_000,
-    navigationTimeout: 30_000,
+    actionTimeout: 15_000,
+    navigationTimeout: 20_000,
   },
 
   projects: [
