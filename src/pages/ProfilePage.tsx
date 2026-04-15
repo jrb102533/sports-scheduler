@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { useAuthStore, getMemberships } from '@/store/useAuthStore';
+import { useAuthStore, getMemberships, getActiveMembership } from '@/store/useAuthStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
@@ -44,16 +44,17 @@ export function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const team = teams.find(t => t.id === profile?.teamId);
   const memberships = getMemberships(profile ?? null);
   const activeIndex = profile?.activeContext ?? 0;
+  const activeMembershipTeamId = getActiveMembership(profile ?? null)?.teamId;
+  const team = teams.find(t => t.id === activeMembershipTeamId);
 
   const isPlayerOrParent = profile?.role === 'player' || profile?.role === 'parent';
   const linkedPlayer = profile?.playerId ? players.find(p => p.id === profile.playerId) : undefined;
   const linkedTeam = linkedPlayer
     ? teams.find(t => t.id === linkedPlayer.teamId)
-    : profile?.teamId
-    ? teams.find(t => t.id === profile.teamId)
+    : activeMembershipTeamId
+    ? teams.find(t => t.id === activeMembershipTeamId)
     : undefined;
 
   async function handleSetPrimary(index: number) {
