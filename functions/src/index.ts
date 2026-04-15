@@ -1150,6 +1150,39 @@ export const checkInviteAutoVerify = onCall<Record<string, never>, Promise<Check
   }
 );
 
+// ─── Revoke invite ────────────────────────────────────────────────────────────
+
+export const revokeInvite = onCall<{ inviteId: string }>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+    const uid = request.auth.uid;
+    const callerRole = await assertAdminOrCoach(uid);
+
+    const { inviteId } = request.data;
+    if (!inviteId?.trim()) throw new HttpsError('invalid-argument', 'inviteId is required.');
+
+    const db = admin.firestore();
+    const inviteRef = db.doc(`invites/${inviteId}`);
+    const inviteSnap = await inviteRef.get();
+
+    if (!inviteSnap.exists) throw new HttpsError('not-found', 'Invite not found.');
+
+    const invite = inviteSnap.data()!;
+
+    // Coaches may only revoke invites for their own teams.
+    if (callerRole !== 'admin') {
+      const teamDoc = await db.doc(`teams/${invite.teamId}`).get();
+      if (!teamDoc.exists || !isCoachOfTeamDoc(teamDoc.data()!, uid)) {
+        throw new HttpsError('permission-denied', 'You can only revoke invites for your own team.');
+      }
+    }
+
+    await inviteRef.delete();
+    console.log(`revokeInvite: uid=${uid} revoked invite=${inviteId}`);
+    return { success: true };
+  }
+);
+
 // ─── Email notifications (Firestore trigger) ──────────────────────────────────
 
 export const onNotificationCreated = onDocumentCreated(
