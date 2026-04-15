@@ -240,6 +240,12 @@ If production is down or actively leaking data:
 
 **Never ask the PM or any user for passwords, API keys, secrets, or credentials in this conversation.** All secrets live in GitHub Actions (Settings → Secrets) or Firebase Secret Manager. If credentials need to be verified or rotated, direct the user to those systems — do not ask them to paste values here.
 
+### GitHub Actions — never use `gh run watch` for long-running jobs
+
+**Never run `gh run watch` for CI jobs that take more than a few minutes.** It polls the GitHub API every 3 seconds and will exhaust the rate limit, blocking all API access for ~1 hour.
+
+Instead: check status on demand with `gh run view <run-id>` when asked. Do not leave a background watcher running for E2E suites or any job expected to run >10 minutes.
+
 ### Always give a recommendation
 
 When the PM asks for options or "what do you recommend", **always lead with a clear expert recommendation** — not a neutral list. Present the options briefly for context, then state which one to pick and why. The PM delegates technical decisions; hedging wastes their time.
