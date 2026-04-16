@@ -33,6 +33,23 @@ function addMinutes(time: string, minutes: number): string {
 
 const DEFAULT_DURATION = 90;
 
+const DURATION_OPTIONS = [
+  { value: '15', label: '15 min' },
+  { value: '20', label: '20 min' },
+  { value: '25', label: '25 min' },
+  { value: '30', label: '30 min' },
+  { value: '35', label: '35 min' },
+  { value: '40', label: '40 min' },
+  { value: '45', label: '45 min' },
+  { value: '50', label: '50 min' },
+  { value: '55', label: '55 min' },
+  { value: '60', label: '60 min' },
+  { value: '90', label: '90 min' },
+  { value: '120', label: '120 min' },
+  { value: '150', label: '150 min' },
+  { value: '180', label: '180 min' },
+];
+
 /** Returns true if time range A overlaps time range B.
  *  Falls back to DEFAULT_DURATION minutes when endTime is absent. */
 function timesOverlap(
@@ -117,13 +134,12 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const [type, setType] = useState<EventType>(editEvent?.type ?? initial?.type ?? 'game');
   const [date, setDate] = useState(editEvent?.date ?? initial?.date ?? todayISO());
   const [startTime, setStartTime] = useState(editEvent?.startTime ?? initial?.startTime ?? '09:00');
-  const [durationStr, setDurationStr] = useState<string>(String(editEvent?.duration ?? initial?.duration ?? DEFAULT_DURATION));
+  const [duration, setDuration] = useState<number>(editEvent?.duration ?? initial?.duration ?? DEFAULT_DURATION);
   const [location, setLocation] = useState(editEvent?.location ?? initial?.location ?? '');
   const [venueId, setVenueId] = useState(editEvent?.venueId ?? initial?.venueId ?? '');
   const [fieldId, setFieldId] = useState(editEvent?.fieldId ?? initial?.fieldId ?? '');
   const [notes, setNotes] = useState(editEvent?.notes ?? initial?.notes ?? '');
   const [isOutdoor, setIsOutdoor] = useState<boolean>(editEvent?.isOutdoor ?? initial?.isOutdoor ?? true);
-  const duration = parseInt(durationStr, 10) || 0;
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -372,15 +388,12 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
             {unavailablePlayers.map(p => `${p.firstName} ${p.lastName}`).join(', ')}
           </p>
         )}
-        <Input
-          label="Duration (minutes)"
-          type="number"
-          name="event-duration"
-          autoComplete="off"
-          value={durationStr}
-          onChange={e => setDurationStr(e.target.value)}
+        <Select
+          label="Duration"
+          value={String(duration)}
+          onChange={e => setDuration(Number(e.target.value))}
+          options={DURATION_OPTIONS}
           error={errors.duration}
-          placeholder="e.g. 90"
         />
         {savedVenues.length > 0 && (
           <Select
