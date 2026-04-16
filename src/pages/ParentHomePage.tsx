@@ -3,14 +3,16 @@ import { Card } from '@/components/ui/Card';
 import { RsvpButton } from '@/components/events/RsvpButton';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
+import { usePlayerStore } from '@/store/usePlayerStore';
 import { useAuthStore, getMemberships } from '@/store/useAuthStore';
 import { isUpcoming, formatDate, formatTime, todayISO } from '@/lib/dateUtils';
 import { SPORT_TYPE_LABELS } from '@/constants';
-import type { Team } from '@/types';
+import type { Player, Team } from '@/types';
 
 function resolveParentTeams(
   profile: ReturnType<typeof useAuthStore.getState>['profile'],
-  allTeams: Team[]
+  allTeams: Team[],
+  allPlayers: Player[]
 ): Team[] {
   if (!profile) return [];
 
@@ -20,19 +22,23 @@ function resolveParentTeams(
   const memberships = getMemberships(profile);
   for (const m of memberships) {
     if (m.teamId) teamIds.add(m.teamId);
+
+    // 2. If membership has playerId but no teamId (e.g. parent invited before
+    //    teamId was reliably stored), resolve via the player record.
+    if (m.playerId && !m.teamId) {
+      const player = allPlayers.find(p => p.id === m.playerId);
+      if (player?.teamId) teamIds.add(player.teamId);
+    }
   }
 
-  // 2. Legacy: top-level teamId field
+  // 3. Legacy: top-level teamId / playerId scalar fields
   if (profile.teamId) teamIds.add(profile.teamId);
-
-  if (teamIds.size > 0) {
-    return allTeams.filter(t => teamIds.has(t.id));
+  if (profile.playerId && teamIds.size === 0) {
+    const player = allPlayers.find(p => p.id === profile.playerId);
+    if (player?.teamId) teamIds.add(player.teamId);
   }
 
-  // 3. Fall back: teams where this user is the coach or creator
-  return allTeams.filter(
-    t => t.coachId === profile.uid || t.coachIds?.includes(profile.uid) || t.createdBy === profile.uid
-  );
+  return allTeams.filter(t => teamIds.has(t.id));
 }
 
 export function ParentHomePage() {
@@ -43,8 +49,9 @@ export function ParentHomePage() {
   const teamsLoading = useTeamStore(s => s.loading);
   const allEvents = useEventStore(s => s.events);
   const eventsLoading = useEventStore(s => s.loading);
+  const allPlayers = usePlayerStore(s => s.players);
 
-  const myTeams = resolveParentTeams(profile, allTeams);
+  const myTeams = resolveParentTeams(profile, allTeams, allPlayers);
   const myTeamIds = new Set(myTeams.map(t => t.id));
 
   const today = todayISO();
