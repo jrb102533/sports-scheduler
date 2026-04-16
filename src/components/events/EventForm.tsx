@@ -117,12 +117,13 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
   const [type, setType] = useState<EventType>(editEvent?.type ?? initial?.type ?? 'game');
   const [date, setDate] = useState(editEvent?.date ?? initial?.date ?? todayISO());
   const [startTime, setStartTime] = useState(editEvent?.startTime ?? initial?.startTime ?? '09:00');
-  const [duration, setDuration] = useState<number>(editEvent?.duration ?? initial?.duration ?? DEFAULT_DURATION);
+  const [durationStr, setDurationStr] = useState<string>(String(editEvent?.duration ?? initial?.duration ?? DEFAULT_DURATION));
   const [location, setLocation] = useState(editEvent?.location ?? initial?.location ?? '');
   const [venueId, setVenueId] = useState(editEvent?.venueId ?? initial?.venueId ?? '');
   const [fieldId, setFieldId] = useState(editEvent?.fieldId ?? initial?.fieldId ?? '');
   const [notes, setNotes] = useState(editEvent?.notes ?? initial?.notes ?? '');
   const [isOutdoor, setIsOutdoor] = useState<boolean>(editEvent?.isOutdoor ?? initial?.isOutdoor ?? true);
+  const duration = parseInt(durationStr, 10) || 0;
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -376,8 +377,8 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           type="number"
           name="event-duration"
           autoComplete="off"
-          value={String(duration)}
-          onChange={e => setDuration(Math.max(1, parseInt(e.target.value, 10) || 0))}
+          value={durationStr}
+          onChange={e => setDurationStr(e.target.value)}
           error={errors.duration}
           placeholder="e.g. 90"
         />
