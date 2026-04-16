@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import {
-  collection, onSnapshot, doc, setDoc, deleteDoc, query, orderBy,
+  collection, onSnapshot, doc, setDoc, deleteDoc, query, orderBy, where,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { todayISO } from '@/lib/dateUtils';
@@ -9,7 +9,7 @@ import type { ScheduledEvent, GameResult } from '@/types';
 interface EventStore {
   events: ScheduledEvent[];
   loading: boolean;
-  subscribe: () => () => void;
+  subscribe: (opts?: { excludeDrafts?: boolean }) => () => void;
   addEvent: (event: ScheduledEvent) => Promise<void>;
   updateEvent: (event: ScheduledEvent) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
@@ -23,8 +23,13 @@ export const useEventStore = create<EventStore>((set, get) => ({
   events: [],
   loading: true,
 
-  subscribe: () => {
-    const q = query(collection(db, 'events'), orderBy('date'));
+  subscribe: (opts) => {
+    // Parents/players cannot read draft events (Firestore rules block it).
+    // Querying without the filter causes the entire onSnapshot to fail for
+    // those roles, resulting in zero events shown.
+    const q = opts?.excludeDrafts
+      ? query(collection(db, 'events'), where('status', '!=', 'draft'))
+      : query(collection(db, 'events'), orderBy('date'));
     const unsub = onSnapshot(q, (snap) => {
       const events = snap.docs.map(d => ({ ...d.data(), id: d.id }) as ScheduledEvent);
       set({ events, loading: false });

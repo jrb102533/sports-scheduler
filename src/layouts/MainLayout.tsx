@@ -8,7 +8,7 @@ import { useNotificationTrigger } from '@/hooks/useNotificationTrigger';
 import { useAttendanceNotification } from '@/hooks/useAttendanceNotification';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
 import { SessionTimeoutModal } from '@/components/auth/SessionTimeoutModal';
-import { useAuthStore } from '@/store/useAuthStore';
+import { useAuthStore, isReadOnly } from '@/store/useAuthStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useEventStore } from '@/store/useEventStore';
@@ -43,13 +43,20 @@ export function MainLayout() {
 
   const handleTimeout = useCallback(() => { void logout(); }, [logout]);
   const { showWarning, countdown, resetTimer } = useIdleTimeout({ onTimeout: handleTimeout });
+
+  const profile = useAuthStore(s => s.profile);
+
+  // Before profile loads, default to excluding drafts (safe: works for all
+  // roles). Once profile arrives, only exclude drafts for read-only users
+  // (parents/players) whose Firestore rules block draft event reads.
+  const excludeDrafts = !profile || isReadOnly(profile);
+
   // Subscribe all Firestore collections when user is authenticated.
   useEffect(() => {
     if (!user) return;
     const unsubs = [
       useTeamStore.getState().subscribe(),
       usePlayerStore.getState().subscribe(),
-      useEventStore.getState().subscribe(),
       useNotificationStore.getState().subscribe(user.uid),
       useSettingsStore.getState().subscribe(user.uid),
       useLeagueStore.getState().subscribe(),
@@ -58,7 +65,14 @@ export function MainLayout() {
     return () => unsubs.forEach(u => u());
   }, [user]);
 
-  const profile = useAuthStore(s => s.profile);
+  // Event subscription depends on the user's role — parents/players need a
+  // filtered query that excludes draft events (Firestore rules deny them
+  // access to drafts, which causes the entire onSnapshot to fail).
+  useEffect(() => {
+    if (!user) return;
+    return useEventStore.getState().subscribe({ excludeDrafts });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, excludeDrafts]);
 
   // Write data-hydrated="true" to <body> once the initial Firestore snapshots
   // for the two highest-traffic stores have arrived. E2E tests wait on this
