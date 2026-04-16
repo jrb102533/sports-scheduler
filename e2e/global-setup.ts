@@ -309,6 +309,33 @@ async function seedTestData(db: ReturnType<typeof getFirestore>): Promise<void> 
     console.log(`[global-setup] Created E2E Team B: ${teamBId}`);
   }
 
+  // ── 4b. Link parent + player accounts to Team A ──────────────────────────
+  // Parent/player profiles need teamId set so the frontend resolves their team
+  // context. Without this, /parent shows empty state and cross-role tests fail.
+  // Uses merge: true to avoid overwriting other profile fields.
+  const accountsToLink: Array<{ envVar: string; role: string }> = [
+    { envVar: 'E2E_PARENT_EMAIL', role: 'parent' },
+    { envVar: 'E2E_PLAYER_EMAIL', role: 'player' },
+  ];
+
+  for (const { envVar, role } of accountsToLink) {
+    const email = process.env[envVar];
+    if (!email) {
+      console.warn(`[global-setup] ${envVar} not set — skipping ${role} team linkage`);
+      continue;
+    }
+    try {
+      const userRecord = await getAuth().getUserByEmail(email);
+      await db.collection('users').doc(userRecord.uid).set(
+        { teamId: teamAId, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      );
+      console.log(`[global-setup] Linked ${role} (${userRecord.uid}) → Team A: ${teamAId}`);
+    } catch (err) {
+      console.warn(`[global-setup] Could not link ${role} account to team —`, err);
+    }
+  }
+
   // ── 5. Season (subcollection of league) ──────────────────────────────────
   let seasonDoc = await findE2eSeason(db, leagueId);
   let seasonId: string;
