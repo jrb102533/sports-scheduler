@@ -65,8 +65,8 @@ export class AdminPage {
     const saveBtn = modal.getByRole('button', { name: /save|create team/i });
     await saveBtn.click();
 
-    // Modal should close
-    await expect(modal).not.toBeVisible({ timeout: 10_000 });
+    // Modal should close — createTeamAndBecomeCoach CF can take 15-20s on cold start in CI
+    await expect(modal).not.toBeVisible({ timeout: 30_000 });
   }
 
   /**

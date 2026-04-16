@@ -35,7 +35,7 @@ test('venues page shows New Venue button for admin', async ({ asAdmin }) => {
   await page.goto('/venues');
   await page.waitForLoadState('domcontentloaded');
 
-  await expect(page.getByRole('button', { name: /new venue/i })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('button', { name: /new venue/i }).first()).toBeVisible({ timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -47,7 +47,7 @@ test('admin can open the Add Venue modal and see Name and Address fields', async
   await page.goto('/venues');
   await page.waitForLoadState('domcontentloaded');
 
-  await page.getByRole('button', { name: /new venue/i }).click();
+  await page.getByRole('button', { name: /new venue/i }).first().click();
 
   const modal = page.getByRole('dialog');
   await expect(modal).toBeVisible({ timeout: 5_000 });
@@ -62,7 +62,7 @@ test('venue form modal shows Surface Type toggle buttons', async ({ asAdmin }) =
   await page.goto('/venues');
   await page.waitForLoadState('domcontentloaded');
 
-  await page.getByRole('button', { name: /new venue/i }).click();
+  await page.getByRole('button', { name: /new venue/i }).first().click();
 
   const modal = page.getByRole('dialog');
   await expect(modal).toBeVisible({ timeout: 5_000 });
@@ -83,7 +83,7 @@ test('@smoke admin can create a venue and it appears in the list', async ({ asAd
 
   const venueName = `E2E Venue ${Date.now()}`;
 
-  await page.getByRole('button', { name: /new venue/i }).click();
+  await page.getByRole('button', { name: /new venue/i }).first().click();
 
   const modal = page.getByRole('dialog');
   await expect(modal).toBeVisible({ timeout: 5_000 });
@@ -137,7 +137,7 @@ test('admin can edit a venue name and the update is reflected', async ({ asAdmin
   const updatedName = `${originalName} UPDATED`;
 
   // Create a throwaway venue first
-  await page.getByRole('button', { name: /new venue/i }).click();
+  await page.getByRole('button', { name: /new venue/i }).first().click();
   let modal = page.getByRole('dialog');
   await expect(modal).toBeVisible({ timeout: 5_000 });
   await modal.getByLabel('Name').fill(originalName);
@@ -206,7 +206,7 @@ test('admin can delete a venue and it disappears from the list', async ({ asAdmi
   const venueName = `E2E DeleteVenue ${Date.now()}`;
 
   // Create a throwaway venue
-  await page.getByRole('button', { name: /new venue/i }).click();
+  await page.getByRole('button', { name: /new venue/i }).first().click();
   const modal = page.getByRole('dialog');
   await expect(modal).toBeVisible({ timeout: 5_000 });
   await modal.getByLabel('Name').fill(venueName);
