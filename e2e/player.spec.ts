@@ -31,13 +31,13 @@ import { AuthPage } from './pages/AuthPage';
 // PLAYER-01 — routing: player is redirected from / to /parent
 // ---------------------------------------------------------------------------
 
-test('@smoke player navigating to / is redirected to /parent', async ({ asPlayer }) => {
+test('@smoke player navigating to / is redirected to /home', async ({ asPlayer }) => {
   const { page } = asPlayer;
 
   await page.goto('/');
 
-  // Dashboard redirects player/parent roles to /parent
-  await expect(page).toHaveURL(/\/parent/, { timeout: 10_000 });
+  // Dashboard redirects all authenticated users to /home
+  await expect(page).toHaveURL(/\/home/, { timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------

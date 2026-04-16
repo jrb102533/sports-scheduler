@@ -24,7 +24,7 @@
  *   e2e/.auth/test-data.json.  Falls back to Sharks if seeding was skipped.
  */
 
-import { test, expect } from './fixtures/auth.fixture';
+import { test, expect, waitForAppHydrated } from './fixtures/auth.fixture';
 import { AuthPage } from './pages/AuthPage';
 import { loadTestData } from './helpers/test-data';
 
@@ -55,6 +55,9 @@ test('COACH-ROLE-01: coach navigating to / stays on / (not redirected to /parent
 
 test('COACH-ROLE-02: coach home page loads and shows the team card', async ({ asCoach }) => {
   const { coach, page } = asCoach;
+
+  // Wait for Firestore team subscription to deliver data before asserting
+  await waitForAppHydrated(page);
 
   // "My Teams" heading must be present
   const myTeamsVisible = await coach.myTeamsHeading.isVisible({ timeout: 10_000 }).catch(() => false);

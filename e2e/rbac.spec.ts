@@ -83,11 +83,12 @@ test('parent visiting a team detail page sees no edit or delete buttons', async 
 // Parent is redirected from / to /parent
 // ---------------------------------------------------------------------------
 
-test('parent navigating to / is redirected to /parent', async ({ asParent }) => {
+test('parent navigating to / is redirected away from / (lands on /home)', async ({ asParent }) => {
   const { page } = asParent;
 
   await page.goto('/');
-  await expect(page).toHaveURL(/\/parent/, { timeout: 10_000 });
+  // Dashboard redirects all authenticated users to /home regardless of role
+  await expect(page).toHaveURL(/\/home/, { timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
