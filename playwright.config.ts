@@ -30,10 +30,11 @@ export default defineConfig({
     ['list'],
   ],
 
-  // 60s per test: fixture setup (Firebase Auth refresh + Firestore hydration)
-  // consumes 15-35s in CI, leaving headroom for the actual test assertions.
-  // The 30s default caused fixture setup to race against the test timeout.
-  timeout: 60_000,
+  // 90s per test: with the storageState/IndexedDB gap, all sessions fall back to
+  // live login in CI. Worst-case fixture overhead is ~37s (20s redirect wait +
+  // 15s live login + navigations), leaving 53s for test assertions.
+  // Previously 60s, which left only 23s headroom — too tight for slow CI.
+  timeout: 90_000,
 
   expect: {
     timeout: 15_000,

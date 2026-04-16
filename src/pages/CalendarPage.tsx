@@ -45,9 +45,9 @@ export function CalendarPage() {
     <div className="p-4 sm:p-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Button variant="secondary" size="sm" onClick={prevMonth}><ChevronLeft size={16} /></Button>
+          <Button variant="secondary" size="sm" onClick={prevMonth} aria-label="Previous month"><ChevronLeft size={16} /></Button>
           <h2 className="text-lg font-semibold text-gray-900 w-44 text-center">{formatMonthYear(new Date(year, month))}</h2>
-          <Button variant="secondary" size="sm" onClick={nextMonth}><ChevronRight size={16} /></Button>
+          <Button variant="secondary" size="sm" onClick={nextMonth} aria-label="Next month"><ChevronRight size={16} /></Button>
           <Button variant="ghost" size="sm" onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); }}>Today</Button>
         </div>
         <div className="flex items-center gap-2">

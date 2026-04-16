@@ -94,13 +94,14 @@ test('parent navigating to / is redirected to /parent', async ({ asParent }) => 
 // Dashboard scope — admin sees all teams stat card
 // ---------------------------------------------------------------------------
 
-test('admin dashboard shows all-scope stat cards', async ({ asAdmin }) => {
+test('admin home shows admin access banner with teams link', async ({ asAdmin }) => {
   const { page } = asAdmin;
-  await page.goto('/');
+  await page.goto('/home');
   await page.waitForLoadState('domcontentloaded');
 
-  // Admin sees "Teams" stat card
-  await expect(page.getByText('Teams').first()).toBeVisible({ timeout: 10_000 });
+  // Admin sees the purple admin banner (not the My Teams section shown to other roles)
+  await expect(page.getByText(/you have admin access to all teams/i)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('button', { name: /go to teams/i })).toBeVisible({ timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
