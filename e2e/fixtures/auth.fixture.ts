@@ -69,7 +69,9 @@ async function gotoAndWaitForAuthRedirect(
       { timeout: 20_000 },
     );
   } catch {
-    // Redirect didn't happen — proceed with current URL and let ensureAuthenticated decide.
+    // Redirect didn't happen within 20s — proceed with current URL.
+    // ensureAuthenticated will inspect the URL and live-login if needed.
+    console.warn(`[auth.fixture] gotoAndWaitForAuthRedirect timed out — current URL: ${page.url()}`);
   }
 }
 
