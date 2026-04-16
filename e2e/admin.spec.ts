@@ -18,12 +18,13 @@ import { test, expect } from './fixtures/auth.fixture';
 // Team management
 // ---------------------------------------------------------------------------
 
-test('admin dashboard shows Teams stat card', async ({ asAdmin }) => {
+test('admin home shows admin access banner', async ({ asAdmin }) => {
   const { page } = asAdmin;
-  await page.goto('/');
+  await page.goto('/home');
+  await page.waitForLoadState('domcontentloaded');
 
-  // Dashboard renders a "Teams" stat card
-  await expect(page.getByText('Teams').first()).toBeVisible({ timeout: 10_000 });
+  // Admin sees the purple banner with "Go to Teams" link (not the My Teams section)
+  await expect(page.getByRole('button', { name: /go to teams/i })).toBeVisible({ timeout: 10_000 });
 });
 
 test('admin can navigate to the Teams page', async ({ asAdmin }) => {
