@@ -46,9 +46,40 @@ function hasStorageState(role: string): boolean {
 }
 
 /**
+ * Navigate to / and wait for Firebase Auth to initialize and the route guard to
+ * redirect. Authenticated sessions land on /home; expired sessions land on /login.
+ *
+ * `waitForLoadState('domcontentloaded')` fires before React mounts and before
+ * Firebase Auth determines the session state, so ensureAuthenticated would check
+ * the URL too early and see "/" instead of "/login". This helper waits for the
+ * auth-driven redirect to complete before handing off.
+ */
+async function gotoAndWaitForAuthRedirect(
+  page: import('@playwright/test').Page,
+): Promise<void> {
+  await page.goto('/');
+  try {
+    // Wait for Firebase Auth to settle: /home (valid session) or /login (expired).
+    // Falls back gracefully if the redirect doesn't happen within 20s.
+    await page.waitForURL(
+      url => {
+        const u = url.toString();
+        return u.includes('/home') || u.includes('/login');
+      },
+      { timeout: 20_000 },
+    );
+  } catch {
+    // Redirect didn't happen — proceed with current URL and let ensureAuthenticated decide.
+  }
+}
+
+/**
  * After restoring a storageState context, the Firebase token may have expired
  * if the suite has been running for >1 hour. If the page lands on /login,
  * re-authenticate with the env-var credentials so the test can proceed.
+ *
+ * Always call gotoAndWaitForAuthRedirect() before this so the URL has had
+ * time to settle to /home or /login.
  */
 async function ensureAuthenticated(
   page: import('@playwright/test').Page,
@@ -139,8 +170,7 @@ export const test = base.extend<TestFixtures>({
         storageState: authStatePath(role),
       });
       const p = await context.newPage();
-      await p.goto('/');
-      await p.waitForLoadState('domcontentloaded');
+      await gotoAndWaitForAuthRedirect(p);
       await ensureAuthenticated(p, 'E2E_ADMIN_EMAIL', 'E2E_ADMIN_PASSWORD');
       const admin = new AdminPage(p);
       await use({ page: p, admin });
@@ -170,8 +200,7 @@ export const test = base.extend<TestFixtures>({
         storageState: authStatePath(role),
       });
       const p = await context.newPage();
-      await p.goto('/');
-      await p.waitForLoadState('domcontentloaded');
+      await gotoAndWaitForAuthRedirect(p);
       await ensureAuthenticated(p, 'E2E_PARENT_EMAIL', 'E2E_PARENT_PASSWORD');
       const parent = new ParentHomePage(p);
       await parent.goto();
@@ -202,8 +231,7 @@ export const test = base.extend<TestFixtures>({
         storageState: authStatePath(role),
       });
       const p = await context.newPage();
-      await p.goto('/');
-      await p.waitForLoadState('domcontentloaded');
+      await gotoAndWaitForAuthRedirect(p);
       await ensureAuthenticated(p, 'E2E_PLAYER_EMAIL', 'E2E_PLAYER_PASSWORD');
       const player = new PlayerHomePage(p);
       await player.goto();
@@ -234,8 +262,7 @@ export const test = base.extend<TestFixtures>({
         storageState: authStatePath(role),
       });
       const p = await context.newPage();
-      await p.goto('/');
-      await p.waitForLoadState('domcontentloaded');
+      await gotoAndWaitForAuthRedirect(p);
       await ensureAuthenticated(p, 'E2E_LM_EMAIL', 'E2E_LM_PASSWORD');
       const lm = new LeagueManagerPage(p);
       await lm.goto();
@@ -266,8 +293,7 @@ export const test = base.extend<TestFixtures>({
         storageState: authStatePath(role),
       });
       const p = await context.newPage();
-      await p.goto('/');
-      await p.waitForLoadState('domcontentloaded');
+      await gotoAndWaitForAuthRedirect(p);
       await ensureAuthenticated(p, 'E2E_COACH_EMAIL', 'E2E_COACH_PASSWORD');
       const coach = new CoachPage(p);
       await coach.goto();
