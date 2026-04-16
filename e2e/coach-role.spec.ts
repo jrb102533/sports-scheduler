@@ -46,7 +46,7 @@ test('COACH-ROLE-01: coach navigating to / stays on / (not redirected to /parent
   await expect(page).not.toHaveURL(/\/parent/, { timeout: 5_000 });
 
   // We must be on the home route (/ or /home)
-  await expect(page).toHaveURL(/^\/(home)?$/, { timeout: 5_000 });
+  await expect(page).toHaveURL(/\/(home)?$/, { timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -161,7 +161,7 @@ test('COACH-ROLE-06: coach visiting /users is redirected away', async ({ asCoach
 
   // RoleGuard with redirect=true sends non-admin back to /
   await expect(page).not.toHaveURL(/\/users/, { timeout: 10_000 });
-  await expect(page).toHaveURL(/^\/(home)?$/, { timeout: 5_000 });
+  await expect(page).toHaveURL(/\/(home)?$/, { timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------

@@ -38,7 +38,7 @@ import { test, expect } from './fixtures/auth.fixture';
 async function openNewVenueModal(page: import('@playwright/test').Page) {
   await page.goto('/venues');
   await page.waitForLoadState('domcontentloaded');
-  await page.getByRole('button', { name: /new venue/i }).click();
+  await page.getByRole('button', { name: /new venue/i }).first().click();
   const modal = page.getByRole('dialog');
   await expect(modal).toBeVisible({ timeout: 5_000 });
   return modal;

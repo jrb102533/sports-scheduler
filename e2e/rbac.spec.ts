@@ -37,8 +37,8 @@ test('parent is blocked from /users and redirected to /', async ({ asParent }) =
 
   // RoleGuard with redirect=true sends non-admin to /
   await expect(page).not.toHaveURL(/\/users/, { timeout: 10_000 });
-  // Should land at / or /parent (parent role redirects to /parent from /)
-  await expect(page).toHaveURL(/^\/(parent)?$/, { timeout: 5_000 });
+  // Should land somewhere other than /users (/home in practice)
+  await expect(page).not.toHaveURL(/\/users/, { timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------

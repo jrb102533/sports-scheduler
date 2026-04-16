@@ -151,7 +151,7 @@ test('player is blocked from /users and redirected away', async ({ asPlayer }) =
   // RoleGuard with redirect=true sends non-admin back to /
   // Dashboard then redirects player role to /parent
   await expect(page).not.toHaveURL(/\/users/, { timeout: 10_000 });
-  await expect(page).toHaveURL(/^\/(parent|home)?$/, { timeout: 5_000 });
+  await expect(page).toHaveURL(/\/(parent|home)?$/, { timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------

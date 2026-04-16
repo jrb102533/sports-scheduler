@@ -232,7 +232,7 @@ test('CROSS-05: coach sees no edit controls on a team they do not coach', async 
 
   // Step 1: confirm the coach lands on / (home) after fixture setup
   await expect(page).not.toHaveURL(/\/parent/, { timeout: 5_000 });
-  await expect(page).toHaveURL(/^\/(home)?$/, { timeout: 5_000 });
+  await expect(page).toHaveURL(/\/(home)?$/, { timeout: 5_000 });
 
   // Step 2: navigate to /teams and verify the coach can access the page
   await coach.gotoTeams();
