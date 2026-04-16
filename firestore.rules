@@ -37,6 +37,15 @@ service cloud.firestore {
       );
     }
 
+    // Returns true if the caller is a league manager of the league that manages
+    // the given team. Uses _managedLeagueId (set by addTeamToLeague) as the link.
+    // Falls back gracefully if the field is absent — returns false (not an error).
+    function isManagerOfTeam(teamData) {
+      return isLeagueManager()
+        && teamData._managedLeagueId is string
+        && isManagerOfLeagueById(teamData._managedLeagueId);
+    }
+
     match /users/{uid} {
       allow read: if request.auth != null;
       allow create: if request.auth.uid == uid || isAdmin();
@@ -198,15 +207,22 @@ service cloud.firestore {
       );
       // SEC-48: scope create to coaches of the target team only.
       // SEC-55 backfill confirmed complete — broad isCoach() fallback removed.
+      // LM access is team-scoped via isManagerOfTeam (checks _managedLeagueId).
       allow create: if isAdmin()
-        || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(request.resource.data.teamId)).data);
+        || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(request.resource.data.teamId)).data)
+        || isManagerOfTeam(get(/databases/$(database)/documents/teams/$(request.resource.data.teamId)).data);
       allow delete: if isAdmin()
-        || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data);
+        || isCoachOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data)
+        || isManagerOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data);
       // SEC-57: coach update branch enforces teamId immutability — a coach cannot
       // move a player to a different team by changing request.resource.data.teamId.
       allow update: if isAdmin()
         || (
           isCoachOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data)
+          && request.resource.data.teamId == resource.data.teamId
+        )
+        || (
+          isManagerOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data)
           && request.resource.data.teamId == resource.data.teamId
         )
         // A player may update their own record (e.g. RSVP) but must never touch status fields
