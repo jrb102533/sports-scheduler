@@ -1,10 +1,15 @@
 import { create } from 'zustand';
 import {
-  collection, onSnapshot, doc, setDoc, deleteDoc, query, orderBy,
+  collection, onSnapshot, doc, setDoc, deleteDoc, query, orderBy, where,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { todayISO } from '@/lib/dateUtils';
+import { useAuthStore } from '@/store/useAuthStore';
 import type { ScheduledEvent, GameResult } from '@/types';
+
+// Statuses readable by any authenticated user without triggering the
+// resource.data.status != 'draft' rule guard on unfiltered list queries.
+const NON_DRAFT_STATUSES = ['scheduled', 'completed', 'cancelled', 'postponed'] as const;
 
 interface EventStore {
   events: ScheduledEvent[];
@@ -24,11 +29,26 @@ export const useEventStore = create<EventStore>((set, get) => ({
   loading: true,
 
   subscribe: () => {
-    const q = query(collection(db, 'events'), orderBy('date'));
+    const profile = useAuthStore.getState().profile;
+    const isElevated = profile?.role === 'admin'
+      || profile?.role === 'coach'
+      || profile?.role === 'league_manager';
+
+    // Elevated users (admin/coach/LM) need draft events — load all.
+    // Parents and players cannot list drafts per Firestore rules
+    // (resource.data.status in an unfiltered query causes a permission-denied).
+    // Adding the status filter makes the query statically satisfiable.
+    const q = isElevated
+      ? query(collection(db, 'events'), orderBy('date'))
+      : query(collection(db, 'events'), where('status', 'in', [...NON_DRAFT_STATUSES]), orderBy('date'));
+
     const unsub = onSnapshot(q, (snap) => {
       const events = snap.docs.map(d => ({ ...d.data(), id: d.id }) as ScheduledEvent);
       set({ events, loading: false });
-    }, () => set({ loading: false }));
+    }, (err) => {
+      console.error('[useEventStore] subscription error:', err);
+      set({ loading: false });
+    });
     return unsub;
   },
 
