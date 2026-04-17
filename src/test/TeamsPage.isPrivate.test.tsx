@@ -59,6 +59,21 @@ vi.mock('@/store/useAuthStore', () => ({
     const state = { profile: currentProfile, user: currentUser };
     return sel ? sel(state) : state;
   },
+  hasRole: (profile: UserProfile | null, ...roles: string[]) => {
+    if (!profile) return false;
+    const memberships = profile.memberships && profile.memberships.length > 0
+      ? profile.memberships
+      : [{ role: profile.role, isPrimary: true }];
+    return memberships.some((m: { role: string }) => roles.includes(m.role));
+  },
+  isMemberOfTeam: (profile: UserProfile | null, teamId: string) => {
+    if (!profile) return false;
+    const memberships = profile.memberships && profile.memberships.length > 0
+      ? profile.memberships
+      : [{ role: profile.role, isPrimary: true, teamId: profile.teamId }];
+    if (memberships.some((m: { role: string }) => m.role === 'admin')) return true;
+    return memberships.some((m: { teamId?: string }) => m.teamId === teamId);
+  },
 }));
 
 // ─── Team store ───────────────────────────────────────────────────────────────

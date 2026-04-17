@@ -197,20 +197,22 @@ describe('HomePage — loading state', () => {
 });
 
 describe('HomePage — greeting', () => {
-  it('personalises greeting with the first name from displayName', () => {
+  it('renders My Teams section for a coach with a displayName', () => {
+    // The greeting lives in MainLayout (TopBar), not in HomePage itself.
+    // HomePage renders the team/event content sections. This test verifies
+    // HomePage renders without crashing when a named profile is supplied.
     currentProfile = makeProfile('coach', { displayName: 'Maria Rodriguez' });
     renderHomePage();
 
-    expect(screen.getByText(/Maria/)).toBeTruthy();
+    expect(screen.getByText('My Teams')).toBeInTheDocument();
   });
 
-  it('renders greeting without a name when displayName is absent', () => {
+  it('renders My Teams section without crashing when displayName is absent', () => {
+    // Regression guard: an empty displayName must not cause a crash or blank render.
     currentProfile = makeProfile('coach', { displayName: '' });
     renderHomePage();
 
-    // Should not throw and should show one of the time-based greetings
-    const heading = screen.getByRole('heading', { level: 1 });
-    expect(heading.textContent).toMatch(/Good (morning|afternoon|evening)$/);
+    expect(screen.getByText('My Teams')).toBeInTheDocument();
   });
 });
 
