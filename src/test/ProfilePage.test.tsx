@@ -42,6 +42,12 @@ vi.mock('@/store/useAuthStore', () => ({
     return selector ? selector(state) : state;
   },
   getMemberships: () => [],
+  getActiveMembership: () => null,
+  hasRole: () => false,
+  isReadOnly: () => false,
+  isMemberOfTeam: () => false,
+  isCoachOfTeam: () => false,
+  isManagerOfLeague: () => false,
 }));
 
 vi.mock('@/store/useTeamStore', () => ({

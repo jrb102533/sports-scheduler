@@ -58,10 +58,29 @@ vi.mock('@/store/useAuthStore', () => ({
   useAuthStore: (selector: (s: { user: null; profile: typeof currentProfile }) => unknown) =>
     selector({ user: null, profile: currentProfile }),
   getActiveMembership: vi.fn(() => null),
+  getMemberships: (profile: UserProfile | null) => {
+    if (!profile) return [];
+    if (profile.memberships && profile.memberships.length > 0) return profile.memberships;
+    return [{ role: profile.role, isPrimary: true, teamId: profile.teamId }];
+  },
   hasRole: vi.fn((profile: UserProfile | null, ...roles: string[]) => {
     if (!profile) return false;
     return roles.includes(profile.role);
   }),
+  isCoachOfTeam: (profile: UserProfile | null, teamId: string) => {
+    if (!profile) return false;
+    if (profile.role === 'admin') return true;
+    return profile.role === 'coach' && profile.teamId === teamId;
+  },
+  isManagerOfLeague: (profile: UserProfile | null) => {
+    if (!profile) return false;
+    return profile.role === 'admin' || profile.role === 'league_manager';
+  },
+  isMemberOfTeam: (profile: UserProfile | null, teamId: string) => {
+    if (!profile) return false;
+    if (profile.role === 'admin') return true;
+    return profile.teamId === teamId;
+  },
 }));
 
 vi.mock('@/store/useTeamStore', () => ({
