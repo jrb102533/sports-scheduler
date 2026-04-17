@@ -29,7 +29,7 @@
  *   a past-dated game event.  If not set, data-dependent tests self-skip.
  */
 
-import { test, expect } from './fixtures/auth.fixture';
+import { test, expect, waitForAppHydrated } from './fixtures/auth.fixture';
 import { loadTestData } from './helpers/test-data';
 
 // ---------------------------------------------------------------------------
@@ -47,7 +47,8 @@ async function openE2ETeamEvent(
   if (testData) {
     // Navigate directly to the seeded team detail page via the known team ID
     await page.goto(`/teams/${testData.teamAId}`);
-    await page.waitForLoadState('domcontentloaded');
+    // Wait for Firestore teams store to hydrate before looking for tabs
+    await waitForAppHydrated(page);
   } else {
     // Fallback: navigate to /teams and find any team the coach has access to
     await page.goto('/teams');

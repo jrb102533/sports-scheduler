@@ -90,6 +90,8 @@ test('COACH-ROLE-02: coach home page loads and shows the team card', async ({ as
 test('COACH-ROLE-03: coach can navigate to their team detail page', async ({ asCoach }) => {
   const { coach, page } = asCoach;
 
+  await waitForAppHydrated(page);
+
   const teamVisible = await page.getByText(KNOWN_TEAM_NAME, { exact: false }).first().isVisible({ timeout: 10_000 }).catch(() => false);
 
   if (!teamVisible) {
@@ -100,7 +102,7 @@ test('COACH-ROLE-03: coach can navigate to their team detail page', async ({ asC
   await coach.clickFirstTeamCard();
 
   await expect(page).toHaveURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('domcontentloaded');
+  await waitForAppHydrated(page);
 
   // Team name heading must appear on the detail page
   const teamHeading = page.getByRole('heading', { name: new RegExp(KNOWN_TEAM_NAME, 'i') }).first();
@@ -114,6 +116,8 @@ test('COACH-ROLE-03: coach can navigate to their team detail page', async ({ asC
 test('COACH-ROLE-04: coach can see the Roster tab on their team detail page', async ({ asCoach }) => {
   const { coach, page } = asCoach;
 
+  await waitForAppHydrated(page);
+
   const teamVisible = await page.getByText(KNOWN_TEAM_NAME, { exact: false }).first().isVisible({ timeout: 10_000 }).catch(() => false);
 
   if (!teamVisible) {
@@ -123,7 +127,7 @@ test('COACH-ROLE-04: coach can see the Roster tab on their team detail page', as
 
   await coach.clickFirstTeamCard();
   await expect(page).toHaveURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('domcontentloaded');
+  await waitForAppHydrated(page);
 
   // Roster tab must be rendered (coach has canSeeRequests + isCoachOfTeam)
   const rosterTab = page.getByRole('tab', { name: /roster/i });
@@ -137,6 +141,8 @@ test('COACH-ROLE-04: coach can see the Roster tab on their team detail page', as
 test('COACH-ROLE-05: coach can see the Schedule tab on their team detail page', async ({ asCoach }) => {
   const { coach, page } = asCoach;
 
+  await waitForAppHydrated(page);
+
   const teamVisible = await page.getByText(KNOWN_TEAM_NAME, { exact: false }).first().isVisible({ timeout: 10_000 }).catch(() => false);
 
   if (!teamVisible) {
@@ -146,7 +152,7 @@ test('COACH-ROLE-05: coach can see the Schedule tab on their team detail page', 
 
   await coach.clickFirstTeamCard();
   await expect(page).toHaveURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('domcontentloaded');
+  await waitForAppHydrated(page);
 
   // Schedule tab is always the default; it must be visible
   const scheduleTab = page.getByRole('tab', { name: /schedule/i });
@@ -189,6 +195,7 @@ test('COACH-ROLE-08: coach can access /teams page and sees their team listed', a
   await coach.gotoTeams();
 
   await expect(page).toHaveURL(/\/teams/, { timeout: 10_000 });
+  await waitForAppHydrated(page);
 
   // The team must appear in the teams list
   const teamEntry = page.getByText(KNOWN_TEAM_NAME, { exact: false }).first();

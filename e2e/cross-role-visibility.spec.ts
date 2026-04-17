@@ -24,7 +24,7 @@
  *   testData.teamAName — display name ('E2E Team A')
  */
 
-import { test, expect } from './fixtures/auth.fixture';
+import { test, expect, waitForAppHydrated } from './fixtures/auth.fixture';
 import { loadTestData } from './helpers/test-data';
 
 // ---------------------------------------------------------------------------
@@ -47,7 +47,7 @@ test('CROSS-01: coach can see the Schedule tab on the E2E Team A detail page', a
     // Navigate directly to the known team detail page
     await page.goto(`/teams/${testData.teamAId}`);
     await page.waitForURL(/\/teams\/.+/);
-    await page.waitForLoadState('domcontentloaded');
+    await waitForAppHydrated(page);
   } else {
     // Fallback: navigate to /teams and open the first visible team
     await coach.gotoTeams();
@@ -65,7 +65,7 @@ test('CROSS-01: coach can see the Schedule tab on the E2E Team A detail page', a
 
     await coach.clickTeamByName(KNOWN_TEAM_NAME);
     await expect(page).toHaveURL(/\/teams\/.+/, { timeout: 10_000 });
-    await page.waitForLoadState('domcontentloaded');
+    await waitForAppHydrated(page);
   }
 
   // Schedule tab must be rendered and accessible

@@ -29,7 +29,7 @@
  * All tests authenticate as admin except STAND-04 (parent) and STAND-RT-01 (coach).
  */
 
-import { test, expect } from './fixtures/auth.fixture';
+import { test, expect, waitForAppHydrated } from './fixtures/auth.fixture';
 import { loadTestData } from './helpers/test-data';
 
 // ---------------------------------------------------------------------------
@@ -363,7 +363,7 @@ test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increment
   if (testData) {
     // Navigate directly to the seeded team detail page
     await page.goto(`/teams/${testData.teamAId}`);
-    await page.waitForLoadState('domcontentloaded');
+    await waitForAppHydrated(page);
   } else {
     // Fallback: scan /teams for Sharks (legacy staging data)
     await page.goto('/teams');
@@ -377,7 +377,7 @@ test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increment
     }
     await sharksLink.click();
     await page.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
-    await page.waitForLoadState('domcontentloaded');
+    await waitForAppHydrated(page);
   }
 
   const scheduleTab = page.getByRole('tab', { name: /schedule/i });
@@ -526,7 +526,7 @@ test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increment
   }
 
   await page.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
-  await page.waitForLoadState('domcontentloaded');
+  await waitForAppHydrated(page);
 
   const scheduleTabAgain = page.getByRole('tab', { name: /schedule/i });
   await expect(scheduleTabAgain).toBeVisible({ timeout: 10_000 });

@@ -477,6 +477,27 @@ async function globalSetup(): Promise<void> {
       fs.writeFileSync(testDataPath, JSON.stringify({}, null, 2));
     }
   }
+
+  // ── Step 3: Warm up createTeamAndBecomeCoach Cloud Function ──────────────
+  // This CF has a 15-20s cold start in CI. Pinging it here with an intentionally
+  // invalid payload (returns 401 immediately) warms the container so tests that
+  // call it via the UI don't time out waiting for the first real invocation.
+  const functionsBase =
+    process.env.E2E_FUNCTIONS_BASE ??
+    'https://us-central1-first-whistle-e76f4.cloudfunctions.net';
+  try {
+    const warmupUrl = `${functionsBase}/createTeamAndBecomeCoach`;
+    const res = await fetch(warmupUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: {} }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    console.log(`[global-setup] CF warmup ping → HTTP ${res.status} (container is warm)`);
+  } catch (err) {
+    // Non-fatal: warmup best-effort only. Tests may still hit cold starts.
+    console.warn('[global-setup] CF warmup ping failed (non-fatal) —', (err as Error).message);
+  }
 }
 
 export default globalSetup;
