@@ -377,6 +377,23 @@ async function seedTestData(db: ReturnType<typeof getFirestore>): Promise<void> 
     }
   }
 
+  // ── 4d. Reset createTeam rate-limit counter for admin E2E account ────────
+  // Each admin.spec.ts run creates up to 4 teams. The CF rate limit is 20 per
+  // 60s window (raised from 5 to accommodate real-user bulk paths). If CI
+  // retries or rapid re-runs occur within the same window, the counter can
+  // still accumulate across runs. Resetting at setup start ensures each run
+  // always starts from 0 regardless of prior runs within the window.
+  const adminEmail = process.env.E2E_ADMIN_EMAIL;
+  if (adminEmail) {
+    try {
+      const adminRecord = await getAuth().getUserByEmail(adminEmail);
+      await db.doc(`rateLimits/${adminRecord.uid}_createTeam`).delete();
+      console.log(`[global-setup] Reset createTeam rate-limit for admin (${adminRecord.uid})`);
+    } catch (err) {
+      console.warn('[global-setup] Could not reset admin createTeam rate-limit —', err);
+    }
+  }
+
   // ── 5. Season (subcollection of league) ──────────────────────────────────
   let seasonDoc = await findE2eSeason(db, leagueId);
   let seasonId: string;
