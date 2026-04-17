@@ -520,7 +520,11 @@ export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Pro
     if (!ALLOWED_SPORT_TYPES.includes(sportType)) throw new HttpsError('invalid-argument', 'Invalid sport type.');
     if (color && !ALLOWED_TEAM_COLORS.includes(color)) throw new HttpsError('invalid-argument', 'Invalid team color.');
 
-    await checkRateLimit(uid, 'createTeam', 5);
+    // Limit raised from 5 to 20 per 60s window (2026-04-17) to accommodate
+    // real-user bulk creation paths: league managers onboarding 8-12 teams at
+    // once, or retry fumbling when a CF call feels slow. Still blocks scripted
+    // abuse (>1200/hour). Revisit at prod scale — see backlog issue.
+    await checkRateLimit(uid, 'createTeam', 20);
 
     try {
       // Generate ref before transaction — ID generation is safe outside the tx.
