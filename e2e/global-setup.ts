@@ -336,6 +336,47 @@ async function seedTestData(db: ReturnType<typeof getFirestore>): Promise<void> 
     }
   }
 
+  // ── 4c. Seed consent records for all E2E accounts ────────────────────────
+  // ConsentUpdateModal (fixed z-50 overlay) renders on every page when
+  // users/{uid}/consents/{termsOfService,privacyPolicy} docs are missing or
+  // have a version != LEGAL_VERSIONS. That modal blocks pointer events and
+  // fails ~80 tests at 15s action timeout. Seed current-version consents
+  // for every E2E role so the modal never appears.
+  // Keep this in sync with src/legal/versions.ts (LEGAL_VERSIONS).
+  const CONSENT_VERSION = '1.0';
+  const consentAccounts: Array<{ envVar: string; role: string }> = [
+    { envVar: 'E2E_ADMIN_EMAIL', role: 'admin' },
+    { envVar: 'E2E_COACH_EMAIL', role: 'coach' },
+    { envVar: 'E2E_PARENT_EMAIL', role: 'parent' },
+    { envVar: 'E2E_PLAYER_EMAIL', role: 'player' },
+    { envVar: 'E2E_LM_EMAIL', role: 'lm' },
+  ];
+
+  for (const { envVar, role } of consentAccounts) {
+    const email = process.env[envVar];
+    if (!email) {
+      console.warn(`[global-setup] ${envVar} not set — skipping ${role} consent seeding`);
+      continue;
+    }
+    try {
+      const userRecord = await getAuth().getUserByEmail(email);
+      const agreedAt = new Date().toISOString();
+      await Promise.all([
+        db.doc(`users/${userRecord.uid}/consents/termsOfService`).set({
+          version: CONSENT_VERSION,
+          agreedAt,
+        }),
+        db.doc(`users/${userRecord.uid}/consents/privacyPolicy`).set({
+          version: CONSENT_VERSION,
+          agreedAt,
+        }),
+      ]);
+      console.log(`[global-setup] Seeded consents for ${role} (${userRecord.uid})`);
+    } catch (err) {
+      console.warn(`[global-setup] Could not seed consents for ${role} —`, err);
+    }
+  }
+
   // ── 5. Season (subcollection of league) ──────────────────────────────────
   let seasonDoc = await findE2eSeason(db, leagueId);
   let seasonId: string;
