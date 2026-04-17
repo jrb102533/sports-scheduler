@@ -353,11 +353,12 @@ async function seedTestData(db: ReturnType<typeof getFirestore>): Promise<void> 
   ];
 
   for (const { envVar, role } of consentAccounts) {
-    const email = process.env[envVar];
-    if (!email) {
+    const rawEmail = process.env[envVar];
+    if (!rawEmail) {
       console.warn(`[global-setup] ${envVar} not set — skipping ${role} consent seeding`);
       continue;
     }
+    const email = rawEmail.trim().toLowerCase();
     try {
       const userRecord = await getAuth().getUserByEmail(email);
       const agreedAt = new Date().toISOString();
@@ -383,8 +384,9 @@ async function seedTestData(db: ReturnType<typeof getFirestore>): Promise<void> 
   // retries or rapid re-runs occur within the same window, the counter can
   // still accumulate across runs. Resetting at setup start ensures each run
   // always starts from 0 regardless of prior runs within the window.
-  const adminEmail = process.env.E2E_ADMIN_EMAIL;
-  if (adminEmail) {
+  const adminEmailRaw = process.env.E2E_ADMIN_EMAIL;
+  if (adminEmailRaw) {
+    const adminEmail = adminEmailRaw.trim().toLowerCase();
     try {
       const adminRecord = await getAuth().getUserByEmail(adminEmail);
       await db.doc(`rateLimits/${adminRecord.uid}_createTeam`).delete();
