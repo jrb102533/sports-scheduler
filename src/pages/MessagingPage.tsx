@@ -686,10 +686,12 @@ export function MessagingPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Tab bar */}
-      <div className="flex gap-0 border-b border-gray-200 bg-white px-2 sm:px-4 flex-shrink-0">
+      <div role="tablist" className="flex gap-0 border-b border-gray-200 bg-white px-2 sm:px-4 flex-shrink-0">
         {tabs.map(t => (
           <button
             key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
             className={`px-4 py-3 text-sm font-medium transition-colors flex items-center gap-1.5 border-b-2 ${
               tab === t.id
