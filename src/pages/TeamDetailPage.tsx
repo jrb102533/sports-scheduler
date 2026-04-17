@@ -336,10 +336,12 @@ export function TeamDetailPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-4 border-b border-gray-200 overflow-x-auto">
+      <div role="tablist" className="flex gap-1 mb-4 border-b border-gray-200 overflow-x-auto">
         {tabs.map(t => (
           <button
             key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
             className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
               tab === t.key ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-800'
