@@ -21,18 +21,14 @@ import {
   generatePairings,
   assignFixtures,
   buildOutput,
-  scorePenalty,
   shufflePairings,
   daysBetween,
   fnv32a,
   type GenerateScheduleInput,
   type ScheduleVenueInput,
   type ScheduleTeamInput,
-  type RecurringVenueWindowSched,
   type GeneratedFixture,
-  type Slot,
   type Pairing,
-  type TeamState,
 } from './scheduleAlgorithm';
 
 // ─── Test Data Factory ────────────────────────────────────────────────────────
@@ -239,7 +235,7 @@ function allExpectedPairs(teams: ScheduleTeamInput[]): Set<string> {
 function maxConsecutiveAwayRuns(fixtures: GeneratedFixture[]): Map<string, number> {
   const byTeam = new Map<string, GeneratedFixture[]>();
   for (const f of fixtures) {
-    for (const [teamId, isAway] of [[f.homeTeamId, false], [f.awayTeamId, true]] as [string, boolean][]) {
+    for (const teamId of [f.homeTeamId, f.awayTeamId]) {
       if (!byTeam.has(teamId)) byTeam.set(teamId, []);
       byTeam.get(teamId)!.push(f);
     }
@@ -396,13 +392,7 @@ describe('Section 2: Scale tests', () => {
         }],
       });
 
-      let output: ReturnType<typeof runSchedule>;
-      try {
-        output = runSchedule(input);
-      } catch (e) {
-        // If feasibility pre-check fires, we need more slots — rethrow so test fails clearly
-        throw e;
-      }
+      const output: ReturnType<typeof runSchedule> = runSchedule(input);
 
       it(`generates without error and returns ${expectedFixtures} required fixtures`, () => {
         expect(output.stats.totalFixturesRequired).toBe(expectedFixtures);
@@ -1470,11 +1460,6 @@ describe('Section 7: Determinism', () => {
     const input2 = { ...buildFixture({ teamCount: 6 }), leagueId: 'league-beta' };
     const run1 = runSchedule(input1);
     const run2 = runSchedule(input2);
-    const dates1 = run1.fixtures.map(f => f.date).join(',');
-    const dates2 = run2.fixtures.map(f => f.date).join(',');
-    // Different seeds → different slot assignment order → likely different dates
-    // Not guaranteed, but extremely likely for any meaningful season
-    // We just verify both produce the same number of fixtures (sanity)
     expect(run1.fixtures.length).toBe(run2.fixtures.length);
   });
 });

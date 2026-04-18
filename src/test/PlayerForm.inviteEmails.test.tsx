@@ -130,7 +130,6 @@ function setPlayerEmail(email: string) {
  * to the P1 Email input and is stable.
  */
 function setP1Email(email: string) {
-  // eslint-disable-next-line testing-library/no-node-access
   const input = document.querySelector<HTMLInputElement>('input[name="parent-email"]');
   if (!input) throw new Error('P1 email input not found — is the parent section visible?');
   fireEvent.change(input, { target: { value: email } });
@@ -367,7 +366,6 @@ describe('PlayerForm — player email format validation', () => {
 describe('PlayerForm — no dead parentInviteEmail references', () => {
   it('does not render any input with id or name containing "parentInviteEmail"', () => {
     renderForm();
-    // eslint-disable-next-line testing-library/no-node-access
     const el = document.querySelector('[id*="parentInviteEmail"], [name*="parentInviteEmail"]');
     expect(el).toBeNull();
   });
@@ -375,7 +373,6 @@ describe('PlayerForm — no dead parentInviteEmail references', () => {
   it('does not render a label or placeholder containing "parent invite"', () => {
     renderForm();
     expect(screen.queryByText(/parent invite/i)).not.toBeInTheDocument();
-    // eslint-disable-next-line testing-library/no-node-access
     const placeholders = Array.from(document.querySelectorAll('[placeholder]'))
       .map(el => el.getAttribute('placeholder') ?? '');
     expect(placeholders.some(p => /parentInviteEmail/i.test(p))).toBe(false);

@@ -329,7 +329,7 @@ function renderLeagueDetail(leagueId = 'league-1') {
 
 // ── Helper: navigate TeamDetailPage to Info tab ───────────────────────────────
 function clickInfoTab() {
-  const infoTab = screen.queryByRole('button', { name: /info/i });
+  const infoTab = screen.queryByRole('tab', { name: /info/i });
   if (infoTab) fireEvent.click(infoTab);
 }
 

@@ -191,7 +191,7 @@ async function seedTestData(db: ReturnType<typeof getFirestore>): Promise<void> 
   const year = new Date().getFullYear();
 
   // ── 1. League ────────────────────────────────────────────────────────────
-  let leagueDoc = await findE2eDoc(db, 'leagues');
+  const leagueDoc = await findE2eDoc(db, 'leagues');
   let leagueId: string;
 
   if (leagueDoc) {
@@ -210,7 +210,7 @@ async function seedTestData(db: ReturnType<typeof getFirestore>): Promise<void> 
   }
 
   // ── 2. Venue ─────────────────────────────────────────────────────────────
-  let venueDoc = await findE2eDoc(db, 'venues');
+  const venueDoc = await findE2eDoc(db, 'venues');
   let venueId: string;
 
   if (venueDoc) {
@@ -397,7 +397,7 @@ async function seedTestData(db: ReturnType<typeof getFirestore>): Promise<void> 
   }
 
   // ── 5. Season (subcollection of league) ──────────────────────────────────
-  let seasonDoc = await findE2eSeason(db, leagueId);
+  const seasonDoc = await findE2eSeason(db, leagueId);
   let seasonId: string;
 
   if (seasonDoc) {
@@ -424,7 +424,7 @@ async function seedTestData(db: ReturnType<typeof getFirestore>): Promise<void> 
   }
 
   // ── 6. Event (past-dated game — "Submit Result" section appears for coach) ─
-  let eventDoc = await findE2eDoc(db, 'events');
+  const eventDoc = await findE2eDoc(db, 'events');
   let eventId: string;
 
   if (eventDoc) {
