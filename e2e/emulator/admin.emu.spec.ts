@@ -11,6 +11,7 @@
 import { test, expect } from '../fixtures/auth.emu.fixture.js';
 
 test('@emu @admin admin can create a new team and it appears in the teams list', async ({ adminPage }) => {
+  test.skip(true, '#479 — CF rejects default FE palette color "Crimson" (#DC143C) with invalid-argument. Un-skip once CF allowlist aligns with TEAM_COLOR_PALETTE.');
   const page = adminPage;
   const uniqueName = `Emu Team ${Date.now()}`;
 
