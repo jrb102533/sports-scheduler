@@ -4,27 +4,51 @@ import {
   query, orderBy, where, writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { useAuthStore, getActiveMembership } from './useAuthStore';
-import type { Player, SensitivePlayerData } from '@/types';
+import { useAuthStore, getMemberships } from './useAuthStore';
+import type { Player, SensitivePlayerData, UserProfile } from '@/types';
 
 // Module-level caches — shared across the singleton store instance.
-// Updated by onSnapshot callbacks and merged before storing in Zustand state.
-let _basePlayers: Player[] = [];
+// Players are partitioned by teamId so we can add/remove per-team listeners
+// independently as the user's memberships change.
+const _playersByTeam: Record<string, Player[]> = {};
+let _adminPlayers: Player[] | null = null;
 const _sensitiveMap: Record<string, SensitivePlayerData> = {};
 
-function buildMergedPlayers(isPrivileged: boolean): Player[] {
-  return _basePlayers.map(p => {
+function flattenPlayers(useAdminCache: boolean): Player[] {
+  if (useAdminCache && _adminPlayers) return _adminPlayers;
+  const seen = new Set<string>();
+  const out: Player[] = [];
+  for (const arr of Object.values(_playersByTeam)) {
+    for (const p of arr) {
+      if (seen.has(p.id)) continue;
+      seen.add(p.id);
+      out.push(p);
+    }
+  }
+  return out;
+}
+
+function buildMergedPlayers(isPrivileged: boolean, useAdminCache: boolean): Player[] {
+  const base = flattenPlayers(useAdminCache);
+  return base.map(p => {
     if (!isPrivileged) {
-      // Strip coach-only fields for players/parents.
       const safe = { ...p };
       delete (safe as Partial<Player>).statusNote;
       return safe;
     }
-    // Merge sensitive PII for coaches/admins — all existing component
-    // code reads from the player object directly so nothing else changes.
     const sensitive = _sensitiveMap[p.id];
     return sensitive ? { ...p, ...sensitive } : p;
   });
+}
+
+function extractTeamIds(profile: UserProfile | null): string[] {
+  if (!profile) return [];
+  const set = new Set<string>();
+  for (const m of getMemberships(profile)) {
+    if (m.teamId) set.add(m.teamId);
+  }
+  if (profile.teamId) set.add(profile.teamId);
+  return [...set];
 }
 
 interface PlayerStore {
@@ -43,123 +67,185 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   players: [],
   loading: true,
 
+  // Subscribes to the players the current user can see. Uses a fan-out pattern:
+  // one onSnapshot listener per teamId the user has membership in. This scales
+  // to any number of teams (no Firestore `in`-query 30-cap) and reconciles
+  // automatically as memberships change. Admins use an unfiltered query since
+  // rules allow it and a per-team fan-out would be wasteful at platform scale.
   subscribe: () => {
-    const getPriv = () => ['admin', 'coach', 'league_manager']
-      .includes(useAuthStore.getState().profile?.role ?? '');
+    const teamListeners: Record<string, () => void> = {};
+    const sensitiveListeners: Record<string, () => void> = {};
+    let adminUnsub: (() => void) | null = null;
+    let adminSensitiveUnsub: (() => void) | null = null;
 
-    // ── Main player docs ───────────────────────────────────────────────────────
-    // Admins get an unfiltered query (isAdmin() is query-safe in rules).
-    // All other roles must filter by teamId — the rule uses resource.data.teamId
-    // which makes unfiltered list queries fail with permission-denied.
-    let activePlayerUnsub: (() => void) | null = null;
+    const getProfile = () => useAuthStore.getState().profile;
+    const isAdminRole = () => getProfile()?.role === 'admin';
+    const isPrivileged = () =>
+      ['admin', 'coach', 'league_manager'].includes(getProfile()?.role ?? '');
 
-    function buildPlayerQuery() {
-      const profile = useAuthStore.getState().profile;
-      if (!profile) return null;
-      if (profile.role === 'admin') {
-        return query(collection(db, 'players'), orderBy('createdAt'));
-      }
-      // Coaches/parents/players store their teamId in the active membership,
-      // not necessarily in the legacy top-level profile.teamId field.
-      const teamId = getActiveMembership(profile)?.teamId ?? profile.teamId;
-      if (teamId) {
-        return query(
-          collection(db, 'players'),
-          where('teamId', '==', teamId),
-          orderBy('createdAt'),
-        );
-      }
-      return null; // no teamId yet — wait for profile to load
+    function publish() {
+      set({
+        players: buildMergedPlayers(isPrivileged(), isAdminRole()),
+        loading: false,
+      });
     }
 
-    function subscribeToPlayers() {
-      activePlayerUnsub?.();
-      const q = buildPlayerQuery();
-      if (!q) {
-        set({ players: [], loading: false });
-        return;
-      }
-      activePlayerUnsub = onSnapshot(
+    function subscribeTeam(teamId: string) {
+      if (teamListeners[teamId]) return;
+      const q = query(
+        collection(db, 'players'),
+        where('teamId', '==', teamId),
+        orderBy('createdAt'),
+      );
+      teamListeners[teamId] = onSnapshot(
         q,
         (snap) => {
-          _basePlayers = snap.docs.map(d => ({ ...d.data(), id: d.id }) as Player);
-          set({ players: buildMergedPlayers(getPriv()), loading: false });
+          _playersByTeam[teamId] = snap.docs.map(d => ({ ...d.data(), id: d.id }) as Player);
+          publish();
         },
         (err) => {
-          console.error('[usePlayerStore] player subscription error:', err);
-          set({ loading: false });
+          console.error(`[usePlayerStore] player subscription error (team=${teamId}):`, err);
         },
       );
     }
 
-    subscribeToPlayers();
-
-    // ── Sensitive PII subcollection ────────────────────────────────────────────
-    // Admins get an unfiltered collectionGroup query (isAdmin() is query-safe).
-    // Non-admins must filter by teamId — the rule uses resource.data.teamId to
-    // gate access, which makes unfiltered collectionGroup queries fail with
-    // permission-denied (Firestore rejects queries that could return inaccessible
-    // documents). Re-subscribed whenever role or teamId changes, same as players.
-    let activeSensitiveUnsub: (() => void) | null = null;
-
-    function buildSensitiveQuery() {
-      const profile = useAuthStore.getState().profile;
-      if (!profile) return null;
-      if (profile.role === 'admin') {
-        return collectionGroup(db, 'sensitiveData');
-      }
-      const teamId = getActiveMembership(profile)?.teamId ?? profile.teamId;
-      if (teamId) {
-        return query(collectionGroup(db, 'sensitiveData'), where('teamId', '==', teamId));
-      }
-      return null;
+    function unsubscribeTeam(teamId: string) {
+      teamListeners[teamId]?.();
+      delete teamListeners[teamId];
+      delete _playersByTeam[teamId];
     }
 
-    function subscribeToSensitiveData() {
-      activeSensitiveUnsub?.();
-      const q = buildSensitiveQuery();
-      if (!q) return;
-      activeSensitiveUnsub = onSnapshot(
+    function subscribeSensitive(teamId: string) {
+      if (sensitiveListeners[teamId]) return;
+      const q = query(
+        collectionGroup(db, 'sensitiveData'),
+        where('teamId', '==', teamId),
+      );
+      sensitiveListeners[teamId] = onSnapshot(
         q,
         (snap) => {
           snap.docs.forEach(d => {
             const data = d.data() as SensitivePlayerData;
             if (data.playerId) _sensitiveMap[data.playerId] = data;
           });
-          set(state => ({ players: buildMergedPlayers(getPriv()), loading: state.loading }));
+          publish();
         },
-        (error) => {
-          if (error.code !== 'permission-denied') {
-            console.error('sensitiveData subscription error:', error);
+        (err) => {
+          if (err.code !== 'permission-denied') {
+            console.error(
+              `[usePlayerStore] sensitive subscription error (team=${teamId}):`,
+              err,
+            );
           }
         },
       );
     }
 
-    subscribeToSensitiveData();
+    function unsubscribeSensitive(teamId: string) {
+      sensitiveListeners[teamId]?.();
+      delete sensitiveListeners[teamId];
+    }
 
-    // ── Rebuild when profile role or teamId changes ───────────────────────────
-    // Snapshots fire before the profile loads from Firestore. When role or teamId
-    // arrives (null → 'coach', teamId undefined → actual id), re-subscribe with
-    // the correct filtered query and rebuild merged players.
-    let lastRole: string | undefined = useAuthStore.getState().profile?.role;
-    let lastTeamId: string | undefined = getActiveMembership(useAuthStore.getState().profile)?.teamId
-      ?? useAuthStore.getState().profile?.teamId;
+    function teardownNonAdmin() {
+      for (const id of Object.keys(teamListeners)) unsubscribeTeam(id);
+      for (const id of Object.keys(sensitiveListeners)) unsubscribeSensitive(id);
+    }
+
+    function teardownAdmin() {
+      adminUnsub?.();
+      adminUnsub = null;
+      adminSensitiveUnsub?.();
+      adminSensitiveUnsub = null;
+      _adminPlayers = null;
+    }
+
+    function reconcile() {
+      const profile = getProfile();
+      if (!profile) {
+        teardownNonAdmin();
+        teardownAdmin();
+        set({ players: [], loading: false });
+        return;
+      }
+
+      if (profile.role === 'admin') {
+        teardownNonAdmin();
+        if (!adminUnsub) {
+          const q = query(collection(db, 'players'), orderBy('createdAt'));
+          adminUnsub = onSnapshot(
+            q,
+            (snap) => {
+              _adminPlayers = snap.docs.map(d => ({ ...d.data(), id: d.id }) as Player);
+              publish();
+            },
+            (err) => {
+              console.error('[usePlayerStore] admin player subscription error:', err);
+            },
+          );
+        }
+        if (!adminSensitiveUnsub) {
+          adminSensitiveUnsub = onSnapshot(
+            collectionGroup(db, 'sensitiveData'),
+            (snap) => {
+              snap.docs.forEach(d => {
+                const data = d.data() as SensitivePlayerData;
+                if (data.playerId) _sensitiveMap[data.playerId] = data;
+              });
+              publish();
+            },
+            (err) => {
+              if (err.code !== 'permission-denied') {
+                console.error('[usePlayerStore] admin sensitive subscription error:', err);
+              }
+            },
+          );
+        }
+        return;
+      }
+
+      // Non-admin: fan-out listeners across every team the user has membership in.
+      teardownAdmin();
+      const wanted = new Set(extractTeamIds(profile));
+
+      for (const id of Object.keys(teamListeners)) {
+        if (!wanted.has(id)) unsubscribeTeam(id);
+      }
+      for (const id of Object.keys(sensitiveListeners)) {
+        if (!wanted.has(id)) unsubscribeSensitive(id);
+      }
+
+      for (const id of wanted) {
+        subscribeTeam(id);
+        subscribeSensitive(id);
+      }
+
+      if (wanted.size === 0) {
+        set({ players: [], loading: false });
+      }
+    }
+
+    reconcile();
+
+    // Re-reconcile whenever the profile's role or set of teamIds changes.
+    // A signature string lets us ignore unrelated auth-store changes (token
+    // refresh, unrelated field updates) that would otherwise churn listeners.
+    const computeSignature = (p: UserProfile | null) => {
+      if (!p) return '';
+      const ids = extractTeamIds(p).sort().join(',');
+      return `${p.role}|${ids}`;
+    };
+    let lastSignature = computeSignature(getProfile());
     const authUnsub = useAuthStore.subscribe((state) => {
-      const role = state.profile?.role;
-      const teamId = getActiveMembership(state.profile)?.teamId ?? state.profile?.teamId;
-      if (role !== lastRole || teamId !== lastTeamId) {
-        lastRole = role;
-        lastTeamId = teamId;
-        subscribeToPlayers(); // re-subscribe with the new query
-        subscribeToSensitiveData(); // re-subscribe with the new teamId filter
-        set(s => ({ players: buildMergedPlayers(getPriv()), loading: s.loading }));
+      const sig = computeSignature(state.profile);
+      if (sig !== lastSignature) {
+        lastSignature = sig;
+        reconcile();
       }
     });
 
     return () => {
-      activePlayerUnsub?.();
-      activeSensitiveUnsub?.();
+      teardownNonAdmin();
+      teardownAdmin();
       authUnsub();
     };
   },
@@ -175,7 +261,8 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     await setDoc(doc(db, 'players', playerId, 'sensitiveData', 'private'), docData);
     _sensitiveMap[playerId] = docData;
     const priv = ['admin', 'coach', 'league_manager'].includes(useAuthStore.getState().profile?.role ?? '');
-    set(state => ({ players: buildMergedPlayers(priv), loading: state.loading }));
+    const useAdminCache = useAuthStore.getState().profile?.role === 'admin';
+    set(state => ({ players: buildMergedPlayers(priv, useAdminCache), loading: state.loading }));
   },
 
   updatePlayer: async (player) => {
@@ -189,7 +276,8 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     await setDoc(doc(db, 'players', playerId, 'sensitiveData', 'private'), updated);
     _sensitiveMap[playerId] = updated;
     const priv = ['admin', 'coach', 'league_manager'].includes(useAuthStore.getState().profile?.role ?? '');
-    set(state => ({ players: buildMergedPlayers(priv), loading: state.loading }));
+    const useAdminCache = useAuthStore.getState().profile?.role === 'admin';
+    set(state => ({ players: buildMergedPlayers(priv, useAdminCache), loading: state.loading }));
   },
 
   deletePlayer: async (id) => {
@@ -199,10 +287,18 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
 
   deletePlayersForTeam: async (teamId) => {
     const batch = writeBatch(db);
-    _basePlayers.filter(p => p.teamId === teamId).forEach(p => {
+    const scoped = _playersByTeam[teamId] ?? [];
+    scoped.forEach(p => {
       batch.delete(doc(db, 'players', p.id));
       delete _sensitiveMap[p.id];
     });
+    // Admin may only have _adminPlayers populated; cover that branch too.
+    if (scoped.length === 0 && _adminPlayers) {
+      _adminPlayers.filter(p => p.teamId === teamId).forEach(p => {
+        batch.delete(doc(db, 'players', p.id));
+        delete _sensitiveMap[p.id];
+      });
+    }
     await batch.commit();
   },
 }));

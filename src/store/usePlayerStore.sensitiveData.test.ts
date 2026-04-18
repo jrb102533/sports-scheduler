@@ -63,6 +63,11 @@ vi.mock('./useAuthStore', () => ({
   },
   getActiveMembership: (profile: { teamId?: string } | null) =>
     profile ? { teamId: profile.teamId } : null,
+  getMemberships: (profile: { teamId?: string; memberships?: Array<{ teamId?: string }> } | null) => {
+    if (!profile) return [];
+    if (profile.memberships && profile.memberships.length > 0) return profile.memberships;
+    return [{ teamId: profile.teamId }];
+  },
 }));
 
 // ── Import store AFTER mocks are registered ───────────────────────────────────

@@ -79,6 +79,10 @@ vi.mock('@/store/useAuthStore', () => ({
   // getActiveMembership mirrors the real implementation for the mock profile shape
   getActiveMembership: (profile: MockProfile | null) =>
     profile ? { role: profile.role, teamId: profile.teamId } : null,
+  // getMemberships: synthesise a single membership from profile.teamId when
+  // the mock profile has no `memberships` array (the shape these older tests use).
+  getMemberships: (profile: MockProfile | null) =>
+    profile ? [{ role: profile.role, teamId: profile.teamId }] : [],
 }));
 
 function setProfile(profile: MockProfile | null) {
