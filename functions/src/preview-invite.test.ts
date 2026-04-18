@@ -137,6 +137,20 @@ const mockDb = {
       set: (ref: MockDocRef, data: DocData) => {
         _store.set(ref.path, data);
       },
+      update: (ref: MockDocRef, data: DocData) => {
+        const existing = _store.get(ref.path) ?? {};
+        // Resolve FieldValue.increment sentinel values.
+        const resolved: DocData = {};
+        for (const [k, v] of Object.entries(data)) {
+          if (v && typeof v === 'object' && '__increment' in (v as object)) {
+            const current = (existing[k] as number | undefined) ?? 0;
+            resolved[k] = current + ((v as { __increment: number }).__increment);
+          } else {
+            resolved[k] = v;
+          }
+        }
+        _store.set(ref.path, { ...existing, ...resolved });
+      },
     };
     return fn(tx);
   }),
