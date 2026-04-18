@@ -51,6 +51,8 @@ export const EMU_IDS = {
   teamAId: 'emu-team-a',
   teamBId: 'emu-team-b',
   eventId: 'emu-event',
+  // Invite-signup allowlist bypass spec (fix/invite-signup-allowlist)
+  inviteSecret: 'emu-invite-secret-001',
 } as const;
 
 const LEGAL_VERSION = '1.0';
@@ -234,6 +236,43 @@ async function seedFixtures(): Promise<void> {
   }, { merge: true });
 }
 
+// ── Seed: Invite-signup allowlist bypass data ────────────────────────────────
+// Seeds the data required by e2e/emulator/invite-signup-allowlist.emu.spec.ts:
+//   - system/signupConfig with open=false (no allowedEmails/Domains) so the
+//     allowlist gate would normally block any unknown address
+//   - an invite doc for invitee@external.test with EMU_IDS.inviteSecret so
+//     previewInvite() can verify the secret and return { valid: true, email }
+// The invitee is intentionally NOT a seeded Auth user — the spec tests the
+// first-time parent signup path (no prior account exists).
+
+async function seedInviteSignupData(): Promise<void> {
+  const db = getFirestore();
+  const now = FieldValue.serverTimestamp();
+
+  // Closed signup — allowlist would normally block invitee@external.test.
+  await db.doc('system/signupConfig').set(
+    { open: false, allowedEmails: [], allowedDomains: [] },
+    { merge: true },
+  );
+
+  // Pending invite: previewInvite queries by inviteSecret + status=='pending'.
+  // autoVerify=true so checkInviteAutoVerify skips email verification post-signup.
+  const inviteId = `invitee-external-test_${EMU_IDS.teamAId}_parent`;
+  await db.doc(`invites/${inviteId}`).set(
+    {
+      email: 'invitee@external.test',
+      teamId: EMU_IDS.teamAId,
+      role: 'parent',
+      inviteSecret: EMU_IDS.inviteSecret,
+      status: 'pending',
+      autoVerify: true,
+      isE2eData: true,
+      invitedAt: now,
+    },
+    { merge: true },
+  );
+}
+
 // ── Entry point ─────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -259,6 +298,9 @@ async function main(): Promise<void> {
     await seedProfile(user);
     console.log(`[seed-emulator] Profile + consents ready: ${user.email}`);
   }
+
+  await seedInviteSignupData();
+  console.log('[seed-emulator] Invite-signup allowlist bypass data ready');
 
   console.log('[seed-emulator] Done.');
 }
