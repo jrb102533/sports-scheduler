@@ -13,8 +13,10 @@ import { test, expect } from '@playwright/test';
 test('@emu @auth login form renders against emulator stack', async ({ page }) => {
   await page.goto('/login');
   await expect(page.getByRole('heading', { name: /welcome back/i })).toBeVisible();
-  await expect(page.getByLabel(/email/i)).toBeVisible();
-  await expect(page.getByLabel(/password/i)).toBeVisible();
+  // Use role-scoped matchers so the password input isn't confused with the
+  // "Show password" toggle button (which also has aria-label containing "password").
+  await expect(page.getByRole('textbox', { name: /email/i })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: /password/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible();
 });
 
