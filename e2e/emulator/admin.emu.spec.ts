@@ -20,19 +20,14 @@
  * requires building the functions bundle (`npm run build` inside `functions/`)
  * which adds ~60s to the job and is a separate infrastructure decision.
  *
- * Tracked in: https://github.com/jrb102533/sports-scheduler/issues — file a
- * new issue "Enable Functions emulator in e2e-emulator.yml (Phase 3b)" and
- * replace the TODO below with the issue number once filed.
- *
- * TODO: replace skip reason with issue number when filed (#TBD).
+ * Tracked in: https://github.com/jrb102533/sports-scheduler/issues/476
  */
 import { test, expect } from '../fixtures/auth.emu.fixture.js';
 
 test.skip(
   true,
   'createTeamAndBecomeCoach calls the Functions emulator which is not started in the ' +
-  'e2e-emulator.yml CI workflow (only auth,firestore,storage). ' +
-  'Track in a Phase 3b issue to add --only=functions to the workflow.',
+  'e2e-emulator.yml CI workflow (only auth,firestore,storage). Tracked in #476.',
 );
 
 // The test body below is preserved so it can be enabled once the Functions
