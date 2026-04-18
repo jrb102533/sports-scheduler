@@ -127,14 +127,40 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   signup: async (email, password, displayName, role, teamId, memberships, inviteSecret = '') => {
     set({ error: null });
     try {
+      // Before the allowlist check, attempt server-side verification of the
+      // inviteSecret (if one is present).  previewInvite is a read-only CF that
+      // returns { valid, email } without consuming the invite.  If it confirms
+      // the secret is valid AND the email matches what the user typed, we skip
+      // the allowlist gate — the invite itself is sufficient authorization.
+      // An attacker cannot bypass this by adding ?inviteSecret=foo to the URL
+      // because the CF verifies the secret against pending invite docs.
+      let inviteVerifiedForEmail: string | null = null;
+      if (inviteSecret) {
+        try {
+          const previewFn = httpsCallable<{ inviteSecret: string }, { valid: boolean; email: string | null }>(
+            functions, 'previewInvite'
+          );
+          const preview = await previewFn({ inviteSecret });
+          if (preview.data.valid && preview.data.email) {
+            inviteVerifiedForEmail = preview.data.email;
+          }
+        } catch {
+          // CF unavailable or rate-limited — fall through to allowlist check.
+        }
+      }
+
       // Check the sign-up allowlist before creating the account.
       // system/signupConfig: { open: boolean, allowedEmails: string[], allowedDomains: string[] }
-      {
+      // Bypass the allowlist when the server has verified an invite for this exact email.
+      const normalizedEmail = email.toLowerCase();
+      const inviteBypassAllowed = inviteVerifiedForEmail !== null &&
+        inviteVerifiedForEmail === normalizedEmail;
+
+      if (!inviteBypassAllowed) {
         const configSnap = await getDoc(doc(db, 'system', 'signupConfig'));
         if (configSnap.exists()) {
           const config = configSnap.data() as { open?: boolean; allowedEmails?: string[]; allowedDomains?: string[] };
           if (!config.open) {
-            const normalizedEmail = email.toLowerCase();
             const domain = normalizedEmail.split('@')[1] ?? '';
             const emailAllowed = config.allowedEmails?.map(e => e.toLowerCase()).includes(normalizedEmail);
             const domainAllowed = config.allowedDomains?.map(d => d.toLowerCase()).includes(domain);

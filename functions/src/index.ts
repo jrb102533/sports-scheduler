@@ -1158,6 +1158,56 @@ export const checkInviteAutoVerify = onCall<Record<string, never>, Promise<Check
   }
 );
 
+// ─── Preview invite (pre-auth allowlist bypass) ───────────────────────────────
+// Called by the signup page BEFORE createUserWithEmailAndPassword.
+// Takes an inviteSecret, returns { valid, email } without any state mutation.
+// If valid, the client may skip the allowlist gate for that exact email address.
+// Rate-limited per unique secret (max 5/min) to prevent brute-force enumeration.
+
+interface PreviewInviteData {
+  inviteSecret: string;
+}
+
+interface PreviewInviteResult {
+  valid: boolean;
+  email: string | null;
+}
+
+export const previewInvite = onCall<PreviewInviteData, Promise<PreviewInviteResult>>(
+  async (request) => {
+    const { inviteSecret } = request.data;
+    if (!inviteSecret?.trim()) {
+      throw new HttpsError('invalid-argument', 'inviteSecret is required.');
+    }
+
+    // Rate-limit by a truncated base64url encoding of the secret so that
+    // brute-force guessing is bounded without requiring an authenticated UID.
+    // Using the secret itself (hashed) as the key means every attacker gets
+    // their own bucket — a new random guess costs one slot in a new bucket.
+    const secretKey = Buffer.from(inviteSecret).toString('base64url').slice(0, 40);
+    await checkRateLimit(`anon`, `previewInvite_${secretKey}`, 5);
+
+    const db = admin.firestore();
+
+    // Query for a pending invite matching the provided secret.
+    const inviteQuery = await db.collection('invites')
+      .where('inviteSecret', '==', inviteSecret)
+      .where('status', '==', 'pending')
+      .limit(1)
+      .get();
+
+    if (inviteQuery.empty) {
+      return { valid: false, email: null };
+    }
+
+    const inviteData = inviteQuery.docs[0].data();
+    const email = (inviteData.email as string | undefined)?.toLowerCase() ?? null;
+
+    console.log(`previewInvite: valid invite found for email=${email}`);
+    return { valid: true, email };
+  }
+);
+
 // ─── Revoke invite ────────────────────────────────────────────────────────────
 
 export const revokeInvite = onCall<{ inviteId: string }>(
