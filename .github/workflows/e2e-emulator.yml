@@ -9,12 +9,14 @@ name: E2E Emulator
 on:
   pull_request:
     branches: [main]
-    # Only run when changes could actually affect E2E coverage. Skips docs-only,
-    # functions-only, and script-only PRs — those have their own CI lanes and
-    # can't break UI/rules-level flows.
+    # Only run when changes could actually affect E2E coverage. Skips docs-only
+    # and script-only PRs — those have their own CI lanes and can't break
+    # UI/rules-level flows. Functions are included (Phase 3b) because callable-
+    # backed specs now run against the Functions emulator.
     paths:
       - 'src/**'
       - 'e2e/**'
+      - 'functions/**'
       - 'public/**'
       - 'index.html'
       - 'firestore.rules'
@@ -67,6 +69,12 @@ jobs:
       - name: Install Firebase CLI
         run: npm install -g firebase-tools@14
 
+      - name: Install Functions dependencies
+        run: npm --prefix functions ci
+
+      - name: Build Functions bundle
+        run: npm --prefix functions run build
+
       - name: Build app in emulator mode
         run: npm run build:emulator
 
@@ -75,14 +83,13 @@ jobs:
           E2E_TIER: emulator
           E2E_BASE_URL: http://localhost:5173
           E2E_EMULATOR_URL: http://localhost:5173
-        # Phase 2b: seed-emulator.ts runs after emulators boot (FIREBASE_AUTH_EMULATOR_HOST
-        # and FIRESTORE_EMULATOR_HOST are injected by emulators:exec) and before Playwright
-        # starts. If the seed fails we bail immediately so Playwright never runs against
-        # broken fixtures.
+        # Phase 3b: emulators boot → seed runs → Vite preview starts → Playwright runs
+        # against the emulator suite (auth/firestore/storage/functions). Functions bundle
+        # must be built before emulators:exec so the Functions emulator can load lib/index.js.
         run: |
           firebase emulators:exec \
             --project=first-whistle-e76f4 \
-            --only=auth,firestore,storage \
+            --only=auth,firestore,storage,functions \
             "npx vite preview --mode emulator --port 5173 --host 127.0.0.1 & \
              VITE_PID=\$!; \
              npx wait-on http://127.0.0.1:5173 -t 60000; \
