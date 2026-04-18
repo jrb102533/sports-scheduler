@@ -509,6 +509,10 @@ const ALLOWED_SPORT_TYPES = ['soccer', 'basketball', 'baseball', 'softball', 'vo
 const ALLOWED_TEAM_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f59e0b', '#6366f1'];
 
 export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Promise<CreateTeamAndBecomeCoachResult>>(
+  // Pin one warm instance: Gen 2 cold start is 15-20s in CI and blocks both the
+  // E2E admin-create-team modal (30s timeout) and real-user "create your first
+  // team" UX. ~$1.30/mo at idle — trivial for the UX win.
+  { minInstances: 1, memory: '512MiB' },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
     const uid = request.auth.uid;
