@@ -487,6 +487,16 @@ async function seedTestData(db: ReturnType<typeof getFirestore>): Promise<void> 
 // ---------------------------------------------------------------------------
 
 async function globalSetup(): Promise<void> {
+  // Short-circuit when the run is targeting the local emulator tier.
+  // The emulator project uses its own lightweight seeding (issue #466 Phase 1
+  // is a pure POC that needs no preseeded roles or Firestore data). Skipping
+  // the staging login + admin SDK seeding keeps the emulator run self-contained
+  // and free of staging credential/Firestore cost.
+  if (process.env.E2E_TIER === 'emulator') {
+    console.log('[global-setup] E2E_TIER=emulator — skipping staging auth + seeding.');
+    return;
+  }
+
   // Ensure the .auth directory exists
   if (!fs.existsSync(authDir)) {
     fs.mkdirSync(authDir, { recursive: true });
