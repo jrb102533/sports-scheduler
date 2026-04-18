@@ -246,7 +246,7 @@ type CreateTeamData = {
   homeVenue?: string;
 };
 
-const VALID_BASE: CreateTeamData = { name: 'Test Team', sportType: 'soccer', color: '#3b82f6' };
+const VALID_BASE: CreateTeamData = { name: 'Test Team', sportType: 'soccer', color: '#DC143C' };
 
 function makeRequest(uid: string | null, data: CreateTeamData = {}) {
   const merged = { ...VALID_BASE, ...data };
