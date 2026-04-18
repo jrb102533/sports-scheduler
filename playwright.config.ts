@@ -76,6 +76,18 @@ export default defineConfig({
       },
       testMatch: /.*\.staging\.spec\.ts/,
     },
+    // Emulator project — runs @emu-tagged specs against the local Firebase
+    // Emulator Suite (see firebase.json "emulators" block). No Firestore cost,
+    // no network latency. CI workflow: .github/workflows/e2e-emulator.yml.
+    // Local run: `npm run dev:local` then `npm run test:e2e:emulator`.
+    {
+      name: 'emulator',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: process.env.E2E_EMULATOR_URL ?? 'http://localhost:5173',
+      },
+      testMatch: /.*\.emu\.spec\.ts/,
+    },
   ],
 
   // Spin up the Vite dev server automatically for local runs.

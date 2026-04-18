@@ -126,6 +126,11 @@ async function deleteE2eSeasons(
 // ---------------------------------------------------------------------------
 
 async function globalTeardown(): Promise<void> {
+  // Emulator tier has ephemeral state — nothing to clean up in staging Firestore.
+  if (process.env.E2E_TIER === 'emulator') {
+    return;
+  }
+
   const db = initAdmin();
   if (!db) return;
 
