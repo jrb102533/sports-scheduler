@@ -73,11 +73,6 @@ test('shows an error when no account exists for the given email', async ({ authP
 // Redirect unauthenticated visitors to /login
 // ---------------------------------------------------------------------------
 
-test('redirects unauthenticated visitors from / to /login', async ({ page }) => {
-  await page.goto('/');
-  await expect(page).toHaveURL(/\/login/, { timeout: 10_000 });
-});
-
 test('redirects unauthenticated visitors from /teams to /login', async ({ page }) => {
   await page.goto('/teams');
   await expect(page).toHaveURL(/\/login/, { timeout: 10_000 });

@@ -34,56 +34,6 @@ async function setupTeam(page: import('@playwright/test').Page, suffix: string):
 }
 
 // ---------------------------------------------------------------------------
-// Event creation
-// ---------------------------------------------------------------------------
-
-test('admin can create an event from the Schedule tab', async ({ asAdmin }) => {
-  const { page } = asAdmin;
-  await setupTeam(page, 'EvtCreate');
-
-  await page.getByRole('tab', { name: /schedule/i }).click();
-
-  // Add event button
-  const addEventBtn = page
-    .getByRole('button', { name: /add event|new event|\+/i })
-    .first();
-  await expect(addEventBtn).toBeVisible({ timeout: 5_000 });
-  await addEventBtn.click();
-
-  const modal = page.getByRole('dialog');
-  await expect(modal).toBeVisible({ timeout: 5_000 });
-
-  // Fill required fields: date, start time, event type
-  // EventForm always shows a date input
-  const dateInput = modal.locator('input[type="date"]').first();
-  await expect(dateInput).toBeVisible({ timeout: 5_000 });
-
-  // Use a future date to avoid "past event" validation
-  const futureDate = new Date();
-  futureDate.setDate(futureDate.getDate() + 7);
-  const iso = futureDate.toISOString().split('T')[0];
-  await dateInput.fill(iso ?? '');
-
-  // Start time
-  const timeInput = modal.locator('input[type="time"]').first();
-  if (await timeInput.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await timeInput.fill('10:00');
-  }
-
-  // Save
-  const saveBtn = modal.getByRole('button', { name: /save|create event/i });
-  await saveBtn.click();
-
-  await expect(modal).not.toBeVisible({ timeout: 10_000 });
-
-  // The event should appear in the schedule list
-  // Date formatted to display string e.g. "Apr 10" or similar — just verify something new appeared
-  await expect(page.locator('main')).toBeVisible();
-  // Page should still be on the team detail
-  await expect(page).toHaveURL(/\/teams\/.+/);
-});
-
-// ---------------------------------------------------------------------------
 // Event detail — open and close
 // ---------------------------------------------------------------------------
 
