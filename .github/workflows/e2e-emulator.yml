@@ -9,12 +9,14 @@ name: E2E Emulator
 on:
   pull_request:
     branches: [main]
-    # Only run when changes could actually affect E2E coverage. Skips docs-only,
-    # functions-only, and script-only PRs — those have their own CI lanes and
-    # can't break UI/rules-level flows.
+    # Only run when changes could actually affect E2E coverage. Skips docs-only
+    # and script-only PRs — those have their own CI lanes and can't break
+    # UI/rules-level flows. Functions are included (Phase 3b) because callable-
+    # backed specs now run against the Functions emulator.
     paths:
       - 'src/**'
       - 'e2e/**'
+      - 'functions/**'
       - 'public/**'
       - 'index.html'
       - 'firestore.rules'
@@ -67,6 +69,22 @@ jobs:
       - name: Install Firebase CLI
         run: npm install -g firebase-tools@14
 
+      - name: Install Functions dependencies
+        run: npm --prefix functions ci
+
+      - name: Build Functions bundle
+        run: npm --prefix functions run build
+
+      - name: Write Functions secret overrides for emulator
+        # The Functions emulator cannot reach Google Cloud Secret Manager in CI.
+        # Without .secret.local, defineSecret() at module top-level marks all
+        # secrets as unavailable and the emulator refuses to serve any function
+        # in the module — including createTeamAndBecomeCoach, which does not
+        # actually use SMTP. Dummy values satisfy the emulator's startup check;
+        # no real email is sent by the specs under test.
+        run: |
+          printf 'SMTP_HOST=emulator.local\nSMTP_PORT=587\nSMTP_USER=emulator\nSMTP_PASS=emulator\nEMAIL_FROM=no-reply@emulator.local\nRSVP_HMAC_SECRET=emulator-hmac-secret-32-chars-pad\nICAL_SECRET=emulator-ical-secret-32-chars-pad\n' > functions/.secret.local
+
       - name: Build app in emulator mode
         run: npm run build:emulator
 
@@ -75,14 +93,13 @@ jobs:
           E2E_TIER: emulator
           E2E_BASE_URL: http://localhost:5173
           E2E_EMULATOR_URL: http://localhost:5173
-        # Phase 2b: seed-emulator.ts runs after emulators boot (FIREBASE_AUTH_EMULATOR_HOST
-        # and FIRESTORE_EMULATOR_HOST are injected by emulators:exec) and before Playwright
-        # starts. If the seed fails we bail immediately so Playwright never runs against
-        # broken fixtures.
+        # Phase 3b: emulators boot → seed runs → Vite preview starts → Playwright runs
+        # against the emulator suite (auth/firestore/storage/functions). Functions bundle
+        # must be built before emulators:exec so the Functions emulator can load lib/index.js.
         run: |
           firebase emulators:exec \
             --project=first-whistle-e76f4 \
-            --only=auth,firestore,storage \
+            --only=auth,firestore,storage,functions \
             "npx vite preview --mode emulator --port 5173 --host 127.0.0.1 & \
              VITE_PID=\$!; \
              npx wait-on http://127.0.0.1:5173 -t 60000; \
