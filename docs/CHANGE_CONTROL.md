@@ -94,6 +94,7 @@ production
 
 ### 5.2 Production deploys
 - **Never deploy to production from the CLI** — always via the `release.yml` GitHub Actions workflow
+- The workflow runs a programmatic **smoke gate** (`smoke-gate` job) that verifies the `E2E Smoke — Staging` workflow passed for the exact SHA being deployed before the deploy job can proceed — see `docs/TESTING_TIERS.md` for the full tier model
 - The workflow pauses at a `environment: production` gate for human approval
 - No production deploy without a merged PR
 
