@@ -155,8 +155,13 @@ test('shows validation error when first name is missing', async ({ authPage }) =
 test('shows Session Expiring modal after 30 minutes of inactivity', async ({ authPage, page }) => {
   await authPage.loginAndWaitForApp(creds.admin().email, creds.admin().password);
 
-  // Install a fake clock so we can skip 30 minutes instantly
+  // Install a fake clock so we can skip 30 minutes instantly.
+  // Must be installed AFTER login (so Firebase Auth uses real time) and followed
+  // by a reload, so useIdleTimeout's setTimeout re-registers on the fake clock —
+  // timers queued before install() stay on the real clock and never fire.
   await page.clock.install();
+  await page.reload();
+  await expect(page.getByText('First Whistle').first()).toBeVisible({ timeout: 15_000 });
 
   // Fast-forward 30 minutes + 1 second to trigger the idle timeout
   await page.clock.fastForward('30:01');
@@ -177,6 +182,8 @@ test('Stay Signed In dismisses the session timeout modal', async ({ authPage, pa
   await authPage.loginAndWaitForApp(creds.admin().email, creds.admin().password);
 
   await page.clock.install();
+  await page.reload();
+  await expect(page.getByText('First Whistle').first()).toBeVisible({ timeout: 15_000 });
   await page.clock.fastForward('30:01');
 
   // Wait for modal
@@ -203,6 +210,8 @@ test('auto-logs out when countdown expires after session timeout warning', async
   await authPage.loginAndWaitForApp(creds.admin().email, creds.admin().password);
 
   await page.clock.install();
+  await page.reload();
+  await expect(page.getByText('First Whistle').first()).toBeVisible({ timeout: 15_000 });
 
   // Fast-forward 30 minutes to show the warning, then another 61 seconds to exhaust countdown
   await page.clock.fastForward('30:01');
