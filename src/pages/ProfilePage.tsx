@@ -43,6 +43,10 @@ export function ProfilePage() {
   const [lastNameTouched, setLastNameTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // Track the last value we successfully saved. The dirty check compares against
+  // this, not profile.displayName, because profile is refreshed via an async
+  // onSnapshot listener and can lag (or race) a same-session save. See #475.
+  const [savedDisplayName, setSavedDisplayName] = useState(profile?.displayName ?? '');
 
   const memberships = getMemberships(profile ?? null);
   const activeIndex = profile?.activeContext ?? 0;
@@ -78,6 +82,7 @@ export function ProfilePage() {
     setSaving(true);
     const displayName = `${firstName.trim()} ${lastName.trim()}`.trim();
     await updateProfile({ displayName });
+    setSavedDisplayName(displayName);
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -141,7 +146,7 @@ export function ProfilePage() {
         </div>
         <Input label="Email" name="email" autoComplete="email" value={profile.email} disabled className="opacity-60 cursor-not-allowed" />
         <div className="flex gap-3">
-          <Button onClick={handleSave} disabled={saving || `${firstName.trim()} ${lastName.trim()}`.trim() === profile.displayName}>
+          <Button onClick={handleSave} disabled={saving || `${firstName.trim()} ${lastName.trim()}`.trim() === savedDisplayName}>
             {saving ? 'Saving…' : saved ? 'Saved!' : 'Save Changes'}
           </Button>
         </div>

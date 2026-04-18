@@ -4,11 +4,9 @@
  * Ported from e2e/profile.spec.ts line 96:
  *   "admin can update first and last name and see the saved confirmation"
  *
- * NOTE: This test is currently FAILING on staging (Save Changes button stays
- * disabled after filling fields — tracked as a known bug). The emulator spec
- * may surface the same bug against emulator Firestore rules. A failure here is
- * a legitimate finding — it confirms the bug is rules-level or data-model-level,
- * not a staging environment artifact.
+ * Issue #475 fix: ProfilePage now tracks savedDisplayName locally so the dirty
+ * check no longer races the async profile.displayName refresh. The restore
+ * save below works in-place without a page reload.
  */
 import { test, expect } from '../fixtures/auth.emu.fixture.js';
 
@@ -42,14 +40,6 @@ test('@emu @profile admin can update first and last name and see the saved confi
 
   // Restore the original values so the seeded user stays deterministic for
   // subsequent test runs.
-  //
-  // NOTE: The Save Changes button remains disabled after a successful save when the
-  // form is immediately re-filled — this is a known bug (confirmed on both staging
-  // and emulator). We reload the page to reset the form's dirty-detection state
-  // before performing the restore save, which is a workaround, not a fix.
-  await page.reload();
-  await page.waitForLoadState('domcontentloaded');
-  await expect(firstNameInput).toBeVisible({ timeout: 10_000 });
   await firstNameInput.clear();
   await firstNameInput.fill(originalFirst || 'Emu Admin');
   await lastNameInput.clear();

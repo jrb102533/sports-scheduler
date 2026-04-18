@@ -96,7 +96,8 @@ function getLastNameInput() {
 }
 
 function getSaveButton() {
-  return screen.getByRole('button', { name: /save changes/i });
+  // Matches the button across its transient labels: "Save Changes" → "Saving…" → "Saved!".
+  return screen.getByRole('button', { name: /save changes|saving|saved!/i });
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -273,6 +274,40 @@ describe('ProfilePage — submit guard and save behaviour', () => {
     await waitFor(() => {
       expect(mockUpdateProfile).toHaveBeenCalledWith({ displayName: 'Jane Doe' });
     });
+  });
+
+  // Regression: #475 — after a successful save, the Save button must compare
+  // dirty state against the *locally-tracked saved value*, not profile.displayName.
+  // profile.displayName is refreshed by an async onSnapshot listener and can lag
+  // (or, in some emulator races, never re-fire before the user edits again). If
+  // the user re-types values matching the *pre-save* displayName, the stale
+  // comparison would disable the button even though the actual saved value has
+  // changed.
+  it('enables Save after a successful save when fields are restored to the pre-save displayName', async () => {
+    currentProfile = makeProfile({ displayName: 'Emu Admin' });
+    renderPage();
+    const firstInput = getFirstNameInput();
+    const lastInput = getLastNameInput();
+
+    // Change to a new name and save.
+    await userEvent.clear(firstInput);
+    await userEvent.type(firstInput, 'New');
+    await userEvent.clear(lastInput);
+    await userEvent.type(lastInput, 'Name');
+    await userEvent.click(getSaveButton());
+    await waitFor(() => {
+      expect(mockUpdateProfile).toHaveBeenCalledWith({ displayName: 'New Name' });
+    });
+
+    // profile.displayName is still 'Emu Admin' (no onSnapshot fired in this mock).
+    // Restore fields to the pre-save values. Button MUST be enabled — the
+    // currently-saved displayName is 'New Name', not 'Emu Admin'.
+    await userEvent.clear(firstInput);
+    await userEvent.type(firstInput, 'Emu');
+    await userEvent.clear(lastInput);
+    await userEvent.type(lastInput, 'Admin');
+
+    expect(getSaveButton()).toBeEnabled();
   });
 
   it('trims whitespace from names before calling updateProfile', async () => {
