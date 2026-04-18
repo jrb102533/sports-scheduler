@@ -141,6 +141,7 @@ async function seedProfile(user: EmuUser): Promise<void> {
   await Promise.all([
     db.doc(`users/${user.uid}/consents/termsOfService`).set({ version: LEGAL_VERSION, agreedAt }),
     db.doc(`users/${user.uid}/consents/privacyPolicy`).set({ version: LEGAL_VERSION, agreedAt }),
+    db.doc(`users/${user.uid}/consents/liabilityLimitations`).set({ version: LEGAL_VERSION, agreedAt }),
   ]);
 }
 
