@@ -19,6 +19,7 @@ import {
   type ScheduleAlgorithmOutput,
 } from './scheduleAlgorithm';
 import { isCoachOfTeamDoc, isManagerOfLeagueDoc } from './rbacHelpers';
+import { isAllowedTeamColor } from './teamColors';
 
 const APP_URL = process.env.APP_URL ?? 'https://first-whistle-e76f4.web.app';
 const FUNCTIONS_BASE = process.env.FUNCTIONS_BASE ?? 'https://us-central1-first-whistle-e76f4.cloudfunctions.net';
@@ -506,7 +507,6 @@ interface CreateTeamAndBecomeCoachResult {
 }
 
 const ALLOWED_SPORT_TYPES = ['soccer', 'basketball', 'baseball', 'softball', 'volleyball', 'football', 'hockey', 'tennis', 'other'];
-const ALLOWED_TEAM_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f59e0b', '#6366f1'];
 
 export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Promise<CreateTeamAndBecomeCoachResult>>(
   // Pin one warm instance: Gen 2 cold start is 15-20s in CI and blocks both the
@@ -522,7 +522,7 @@ export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Pro
     if (name.trim().length > 100) throw new HttpsError('invalid-argument', 'Team name is too long.');
     if (!sportType?.trim()) throw new HttpsError('invalid-argument', 'Sport type is required.');
     if (!ALLOWED_SPORT_TYPES.includes(sportType)) throw new HttpsError('invalid-argument', 'Invalid sport type.');
-    if (color && !ALLOWED_TEAM_COLORS.includes(color)) throw new HttpsError('invalid-argument', 'Invalid team color.');
+    if (color && !isAllowedTeamColor(color)) throw new HttpsError('invalid-argument', 'Invalid team color.');
 
     // Limit raised from 5 to 20 per 60s window (2026-04-17) to accommodate
     // real-user bulk creation paths: league managers onboarding 8-12 teams at
