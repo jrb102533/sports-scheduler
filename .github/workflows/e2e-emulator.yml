@@ -75,9 +75,10 @@ jobs:
           E2E_TIER: emulator
           E2E_BASE_URL: http://localhost:5173
           E2E_EMULATOR_URL: http://localhost:5173
-        # Phase 1: no --import (emulator-data is gitignored). Phase 2 will add
-        # a deterministic seed script that boots test roles + fixtures into the
-        # running emulators before Playwright starts.
+        # Phase 2b: seed-emulator.ts runs after emulators boot (FIREBASE_AUTH_EMULATOR_HOST
+        # and FIRESTORE_EMULATOR_HOST are injected by emulators:exec) and before Playwright
+        # starts. If the seed fails we bail immediately so Playwright never runs against
+        # broken fixtures.
         run: |
           firebase emulators:exec \
             --project=first-whistle-e76f4 \
@@ -85,6 +86,7 @@ jobs:
             "npx vite preview --mode emulator --port 5173 --host 127.0.0.1 & \
              VITE_PID=\$!; \
              npx wait-on http://127.0.0.1:5173 -t 60000; \
+             npx tsx e2e/seed-emulator.ts || { kill \$VITE_PID 2>/dev/null || true; exit 1; }; \
              npx playwright test --project=emulator; \
              EXIT=\$?; \
              kill \$VITE_PID 2>/dev/null || true; \
