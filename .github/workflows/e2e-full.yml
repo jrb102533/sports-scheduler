@@ -1,14 +1,13 @@
 name: E2E Full Suite — Staging
 
-# Full Playwright suite on a schedule or on-demand.
+# Full Playwright suite on-demand only.
 #
-#   - Nightly at 02:00 UTC — only if commits landed on main in the last 24 hours
 #   - Manual dispatch — optional --grep filter to narrow scope
+#
+# Nightly cron removed 2026-04-17 to cut Firestore read costs. Re-add once we
+# have per-test read budgets or a dedicated E2E project isolated from prod billing.
 
 on:
-  schedule:
-    - cron: '0 2 * * *'
-
   workflow_dispatch:
     inputs:
       grep:
@@ -23,32 +22,9 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  check-activity:
-    name: Check for recent commits
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'schedule' }}
-    outputs:
-      has_commits: ${{ steps.check.outputs.has_commits }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Check commits to main in last 24h
-        id: check
-        run: |
-          COUNT=$(git log --oneline --since="24 hours ago" origin/main | wc -l | tr -d ' ')
-          echo "Commits in last 24h: $COUNT"
-          echo "has_commits=$( [ "$COUNT" -gt 0 ] && echo true || echo false )" >> $GITHUB_OUTPUT
-
   e2e-full:
     name: Playwright Full Suite — Staging
     runs-on: ubuntu-latest
-    needs: [check-activity]
-    if: |
-      always() && (
-        (github.event_name == 'schedule' && needs.check-activity.outputs.has_commits == 'true') ||
-        github.event_name == 'workflow_dispatch'
-      )
 
     steps:
       - uses: actions/checkout@v4
