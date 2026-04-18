@@ -75,6 +75,16 @@ jobs:
       - name: Build Functions bundle
         run: npm --prefix functions run build
 
+      - name: Write Functions secret overrides for emulator
+        # The Functions emulator cannot reach Google Cloud Secret Manager in CI.
+        # Without .secret.local, defineSecret() at module top-level marks all
+        # secrets as unavailable and the emulator refuses to serve any function
+        # in the module — including createTeamAndBecomeCoach, which does not
+        # actually use SMTP. Dummy values satisfy the emulator's startup check;
+        # no real email is sent by the specs under test.
+        run: |
+          printf 'SMTP_HOST=emulator.local\nSMTP_PORT=587\nSMTP_USER=emulator\nSMTP_PASS=emulator\nEMAIL_FROM=no-reply@emulator.local\nRSVP_HMAC_SECRET=emulator-hmac-secret-32-chars-pad\nICAL_SECRET=emulator-ical-secret-32-chars-pad\n' > functions/.secret.local
+
       - name: Build app in emulator mode
         run: npm run build:emulator
 
