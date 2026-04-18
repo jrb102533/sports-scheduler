@@ -14,7 +14,12 @@ export default defineConfig({
     globals: true,
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     setupFiles: ['./src/test/setup.ts'],
-    exclude: ['functions/**', 'node_modules/**'],
+    // *.integration.test.ts files require a running Firestore emulator (they
+    // connect to 127.0.0.1:8080 via @firebase/rules-unit-testing). The default
+    // `npm test` run does NOT boot an emulator, so these tests are excluded
+    // from the default run. To execute them, start the emulator first:
+    //   firebase emulators:exec --only=firestore,auth "npx vitest run --testNamePattern=integration"
+    exclude: ['functions/**', 'node_modules/**', 'src/**/*.integration.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

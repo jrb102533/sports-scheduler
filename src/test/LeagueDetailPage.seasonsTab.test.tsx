@@ -256,7 +256,7 @@ describe('LeagueDetailPage — Seasons tab visibility', () => {
     });
     renderLeagueDetail('league-1');
 
-    expect(screen.queryByRole('button', { name: /seasons/i })).toBeNull();
+    expect(screen.queryByRole('tab', { name: /seasons/i })).toBeNull();
   });
 
   it('shows the Seasons tab for an admin even when there are no seasons', () => {
@@ -266,7 +266,7 @@ describe('LeagueDetailPage — Seasons tab visibility', () => {
     renderLeagueDetail('league-1');
 
     // "Seasons (0)" or just "Seasons" — the button with seasons text should exist
-    expect(screen.getByRole('button', { name: /seasons/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /seasons/i })).toBeInTheDocument();
   });
 
   it('shows the Seasons tab for a league_manager who manages this league when there are no seasons', () => {
@@ -277,7 +277,7 @@ describe('LeagueDetailPage — Seasons tab visibility', () => {
     });
     renderLeagueDetail('league-1');
 
-    expect(screen.getByRole('button', { name: /seasons/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /seasons/i })).toBeInTheDocument();
   });
 
   it('shows the Seasons tab for a read-only user when at least one season exists', () => {
@@ -289,7 +289,7 @@ describe('LeagueDetailPage — Seasons tab visibility', () => {
     renderLeagueDetail('league-1');
 
     // With 1 season the tab label is the season name
-    expect(screen.getByRole('button', { name: /spring 2026/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /spring 2026/i })).toBeInTheDocument();
   });
 });
 
@@ -304,8 +304,8 @@ describe('LeagueDetailPage — Seasons tab label', () => {
     currentProfile = makeProfile('admin');
     renderLeagueDetail('league-1');
 
-    expect(screen.getByRole('button', { name: /spring 2026/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /seasons \(1\)/i })).toBeNull();
+    expect(screen.getByRole('tab', { name: /spring 2026/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /seasons \(1\)/i })).toBeNull();
   });
 
   it('shows "Seasons (2)" when two seasons exist', () => {
@@ -317,7 +317,7 @@ describe('LeagueDetailPage — Seasons tab label', () => {
     currentProfile = makeProfile('admin');
     renderLeagueDetail('league-1');
 
-    expect(screen.getByRole('button', { name: /seasons \(2\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /seasons \(2\)/i })).toBeInTheDocument();
   });
 });
 
@@ -332,7 +332,7 @@ describe('LeagueDetailPage — single-season tab click navigates directly', () =
     currentProfile = makeProfile('admin');
     renderLeagueDetail('league-1');
 
-    fireEvent.click(screen.getByRole('button', { name: /spring 2026/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /spring 2026/i }));
 
     expect(mockNavigate).toHaveBeenCalledWith('/leagues/league-1/seasons/s-42');
   });
@@ -343,7 +343,7 @@ describe('LeagueDetailPage — single-season tab click navigates directly', () =
     currentProfile = makeProfile('admin');
     renderLeagueDetail('league-1');
 
-    fireEvent.click(screen.getByRole('button', { name: /spring 2026/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /spring 2026/i }));
 
     // The "0 seasons" count label and "Create First Season" CTA both live
     // inside the seasons tab panel — they must NOT be visible because the
@@ -367,7 +367,7 @@ describe('LeagueDetailPage — multi-season tab click switches tab, does not nav
     currentProfile = makeProfile('admin');
     renderLeagueDetail('league-1');
 
-    fireEvent.click(screen.getByRole('button', { name: /seasons \(2\)/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /seasons \(2\)/i }));
 
     // navigate should not have been called for the seasons tab
     expect(mockNavigate).not.toHaveBeenCalledWith(
@@ -384,7 +384,7 @@ describe('LeagueDetailPage — multi-season tab click switches tab, does not nav
     currentProfile = makeProfile('admin');
     renderLeagueDetail('league-1');
 
-    fireEvent.click(screen.getByRole('button', { name: /seasons \(2\)/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /seasons \(2\)/i }));
 
     // Both season names appear in the list
     expect(screen.getByText('Spring 2026')).toBeInTheDocument();
@@ -403,7 +403,7 @@ describe('LeagueDetailPage — empty Seasons tab CTA', () => {
     currentProfile = makeProfile('admin');
     renderLeagueDetail('league-1');
 
-    fireEvent.click(screen.getByRole('button', { name: /seasons/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /seasons/i }));
 
     expect(screen.getByRole('button', { name: /create first season/i })).toBeInTheDocument();
   });
@@ -416,7 +416,7 @@ describe('LeagueDetailPage — empty Seasons tab CTA', () => {
     });
     renderLeagueDetail('league-1');
 
-    fireEvent.click(screen.getByRole('button', { name: /seasons/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /seasons/i }));
 
     expect(screen.getByRole('button', { name: /create first season/i })).toBeInTheDocument();
   });
