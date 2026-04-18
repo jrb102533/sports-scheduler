@@ -9,6 +9,25 @@ name: E2E Emulator
 on:
   pull_request:
     branches: [main]
+    # Only run when changes could actually affect E2E coverage. Skips docs-only,
+    # functions-only, and script-only PRs — those have their own CI lanes and
+    # can't break UI/rules-level flows.
+    paths:
+      - 'src/**'
+      - 'e2e/**'
+      - 'public/**'
+      - 'index.html'
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
+      - 'firebase.json'
+      - 'playwright.config.ts'
+      - 'vite.config.ts'
+      - 'vitest.config.ts'
+      - 'tailwind.config.*'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.env.emulator'
+      - '.github/workflows/e2e-emulator.yml'
   push:
     branches: [main]
   workflow_dispatch:
