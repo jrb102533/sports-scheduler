@@ -103,7 +103,7 @@ export function LoginPage() {
           {resetError && <p className="text-xs text-red-600 mt-1">{resetError}</p>}
         </div>
         {error && (
-          <div role="alert" className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 space-y-2">
+          <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 space-y-2">
             <p>{error}</p>
             {error.includes('verify your email') && (
               resentVerification ? (

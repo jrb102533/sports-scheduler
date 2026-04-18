@@ -84,12 +84,8 @@ async function loginRole(
     // (main app, forced password change, consent modal, etc.)
     await page.waitForURL(url => !url.toString().includes('/login'), { timeout: 30_000 });
 
-    // Persist the session. indexedDB: true is required — Firebase Auth v9+
-    // stores refresh tokens in IndexedDB by default, and without this flag
-    // the saved state has no usable auth, forcing every test to fall back to
-    // live login. After ~1 hour of accumulated fallback logins, Firebase Auth
-    // starts throttling and the suite cascade-fails.
-    await context.storageState({ path: statePath, indexedDB: true });
+    // Persist the session
+    await context.storageState({ path: statePath });
   } finally {
     await context.close();
     await browser.close();
