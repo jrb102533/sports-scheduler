@@ -39,7 +39,7 @@ test('@emu @invite parent-with-invite can sign up despite allowlist restriction'
   await page.waitForLoadState('domcontentloaded');
 
   // Signup form should be visible.
-  await expect(page.getByText('Create account')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('heading', { name: /create account/i })).toBeVisible({ timeout: 10_000 });
 
   // Fill in the form with the invited email.
   const firstName = page.getByLabel('First Name');
