@@ -193,8 +193,19 @@ const fn = previewInvite as unknown as (
 ) => Promise<{ valid: boolean; email: string | null }>;
 
 /** Build a request with no auth (unauthenticated caller). */
-function makeRequest(inviteSecret: string) {
-  return { auth: null, data: { inviteSecret } };
+function makeRequest(inviteSecret: string, ip: string = '203.0.113.42') {
+  return {
+    auth: null,
+    data: { inviteSecret },
+    rawRequest: { headers: { 'x-forwarded-for': ip } },
+  };
+}
+
+/** Sanitize an IP the same way the CF does, for seeding the rate-limit doc. */
+function ipKey(ip: string): string {
+  return (ip && ip.trim().length > 0 ? ip : 'unknown')
+    .replace(/[^a-zA-Z0-9._:-]/g, '_')
+    .slice(0, 64);
 }
 
 function seedDoc(path: string, data: DocData) {
@@ -215,6 +226,10 @@ beforeEach(() => {
   // Seed rate-limit doc at 0 for the valid secret so tests don't trip the limit.
   const secretKey = Buffer.from(VALID_SECRET).toString('base64url').slice(0, 40);
   seedDoc(`rateLimits/anon_previewInvite_${secretKey}`, { count: 0, windowStart: Date.now() });
+  // Seed the per-IP rate-limit bucket at 0 for the default test IP.
+  seedDoc(`rateLimits/ip_${ipKey('203.0.113.42')}_previewInvite`, {
+    count: 0, windowStart: Date.now(),
+  });
 });
 
 // ─── previewInvite tests ──────────────────────────────────────────────────────
@@ -305,5 +320,66 @@ describe('previewInvite', () => {
     await expect(fn(makeRequest(VALID_SECRET))).rejects.toMatchObject({
       code: 'resource-exhausted',
     });
+  });
+
+  // ── IP-keyed rate limit (SEC-#484) ───────────────────────────────────────
+
+  it('(6) throws resource-exhausted after 20 calls from the same IP, even with rotating secrets', async () => {
+    // Pre-fill the per-IP bucket to the cap; the next call (any secret) must fail.
+    const attackerIp = '198.51.100.77';
+    seedDoc(`rateLimits/ip_${ipKey(attackerIp)}_previewInvite`, {
+      count: 20, windowStart: Date.now(),
+    });
+
+    // A fresh (unseen) secret would normally open a new per-secret bucket
+    // with 5 slots — the IP bucket must block it regardless.
+    await expect(
+      fn(makeRequest('never-before-seen-secret-xyz', attackerIp)),
+    ).rejects.toMatchObject({ code: 'resource-exhausted' });
+  });
+
+  // ── Missing XFF header fallback (SEC-#488) ───────────────────────────────
+
+  it('(6b) succeeds when X-Forwarded-For header is absent (falls back to "unknown" bucket)', async () => {
+    // Seed an invite so the call reaches a successful result.
+    seedDoc('invites/parent@example.com_team1_parent', {
+      email: INVITE_EMAIL,
+      teamId: 'team1',
+      role: 'parent',
+      inviteSecret: VALID_SECRET,
+      status: 'pending',
+    });
+    // Seed the fallback "unknown" per-IP bucket so it doesn't trip the limit.
+    seedDoc(`rateLimits/ip_unknown_previewInvite`, {
+      count: 0, windowStart: Date.now(),
+    });
+
+    // No `headers` at all → rawIp resolves to null → bucket keyed as 'unknown'.
+    const req = {
+      auth: null,
+      data: { inviteSecret: VALID_SECRET },
+      rawRequest: {},
+    };
+    const result = await fn(req);
+    expect(result).toEqual({ valid: true, email: INVITE_EMAIL });
+  });
+
+  // ── Email normalization regression (PR #485 follow-up) ───────────────────
+
+  it('(7) returns lowercased email even when the stored invite email has mixed case', async () => {
+    // Simulates a stored invite whose email field was written with mixed
+    // case. The CF must always return the email lowercased so the client
+    // comparison (normalizedEmail === preview.data.email) holds regardless
+    // of how the user types their address on the signup form.
+    seedDoc('invites/mixedcase_team1_parent', {
+      email: 'User@Example.COM',
+      teamId: 'team1',
+      role: 'parent',
+      inviteSecret: VALID_SECRET,
+      status: 'pending',
+    });
+
+    const result = await fn(makeRequest(VALID_SECRET));
+    expect(result).toEqual({ valid: true, email: 'user@example.com' });
   });
 });

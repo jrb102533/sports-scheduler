@@ -10,6 +10,7 @@
  *   2. Invalid invite (CF returns valid:false) → allowlist IS checked; blocked user sees error
  *   3. Empty inviteSecret → allowlist IS checked; blocked user sees error
  *   4. Valid invite but email mismatch → allowlist IS checked; blocked user sees error
+ *   5. Mixed-case typed email matches lowercase invite email → allowlist NOT checked (regression)
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -181,5 +182,36 @@ describe('signup() — invite allowlist bypass', () => {
     ).catch(() => {});
 
     expect(useAuthStore.getState().error).toBe(ALLOWLIST_ERROR);
+  });
+
+  it('(5) mixed-case typed email matches lowercase invite email — allowlist NOT enforced (regression)', async () => {
+    // The invite was stored with a lowercased email (as all invites are
+    // normalized server-side). The user types their email with mixed case
+    // on the signup form — signup() must lowercase before comparing so the
+    // bypass still fires. Regression guard for PR #485 follow-up #484.
+    const LOWERCASE_EMAIL = 'user@example.com';
+    const MIXED_CASE_TYPED = 'User@Example.COM';
+
+    mockPreviewInviteFn.mockResolvedValue({
+      data: { valid: true, email: LOWERCASE_EMAIL },
+    });
+    mockCreateUserWithEmailAndPassword.mockResolvedValue({
+      user: makeFakeUser(MIXED_CASE_TYPED),
+    });
+
+    await useAuthStore.getState().signup(
+      MIXED_CASE_TYPED, 'password123', 'New Parent', 'parent',
+      undefined, undefined, VALID_SECRET,
+    ).catch(() => {
+      // verifyInvitedUser may reject in this harness; we only assert the
+      // allowlist bypass fired (i.e. error stays null).
+    });
+
+    // Strong assertion: the allowlist bypass fired and nothing else set an
+    // error. `not.toBe(ALLOWLIST_ERROR)` would also pass if *any other* error
+    // were set, which would silently mask a real regression.
+    expect(useAuthStore.getState().error).toBeNull();
+    // previewInvite was called with the inviteSecret (not the typed email).
+    expect(mockPreviewInviteFn).toHaveBeenCalledWith({ inviteSecret: VALID_SECRET });
   });
 });
