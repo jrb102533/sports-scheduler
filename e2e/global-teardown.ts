@@ -14,7 +14,6 @@
  */
 
 import { fileURLToPath } from 'url';
-import path from 'path';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore, WriteBatch } from 'firebase-admin/firestore';
 

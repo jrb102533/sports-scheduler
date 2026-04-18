@@ -126,7 +126,7 @@ function sensitiveDataWriteAllowed(
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 const teamA = { id: 'team-a', coachId: 'uid-coach-a', coachIds: ['uid-coach-a'] };
-const teamB = { id: 'team-b', coachId: 'uid-coach-b', coachIds: ['uid-coach-b'] };
+const _teamB = { id: 'team-b', coachId: 'uid-coach-b', coachIds: ['uid-coach-b'] };
 
 const coachA = 'uid-coach-a';
 const coachB = 'uid-coach-b';

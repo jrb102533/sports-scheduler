@@ -26,7 +26,7 @@ vi.mock('@/lib/firebase', () => ({ db: { _tag: 'mock-db' }, auth: {}, app: {}, f
 
 // Track every query built so tests can inspect args.
 const capturedQueries: unknown[][] = [];
-let onSnapshotCallback: ((snap: { docs: unknown[] }) => void) | null = null;
+let _onSnapshotCallback: ((snap: { docs: unknown[] }) => void) | null = null;
 
 const mockWhere = vi.fn((...args: unknown[]) => ({ _type: 'where', args }));
 const mockOrderBy = vi.fn((...args: unknown[]) => ({ _type: 'orderBy', args }));
@@ -44,7 +44,7 @@ vi.mock('firebase/firestore', () => ({
   where: (...args: unknown[]) => mockWhere(...args),
   orderBy: (...args: unknown[]) => mockOrderBy(...args),
   onSnapshot: vi.fn((q, success) => {
-    onSnapshotCallback = success as (snap: { docs: unknown[] }) => void;
+    _onSnapshotCallback = success as (snap: { docs: unknown[] }) => void;
     // Fire immediately with empty snapshot so loading=false
     success({ docs: [] });
     return vi.fn(); // unsub
@@ -114,7 +114,7 @@ describe('usePlayerStore.subscribe() — query scoping (regression: SEC-48/49/50
   beforeEach(async () => {
     vi.clearAllMocks();
     capturedQueries.length = 0;
-    onSnapshotCallback = null;
+    _onSnapshotCallback = null;
     mockProfile = null;
     authSubscribers.length = 0;
     vi.resetModules();

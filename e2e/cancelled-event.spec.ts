@@ -138,7 +138,7 @@ async function cancelFirstEvent(
 
 test('CANCEL-01: cancelled event is hidden from the parent home page', async ({
   asAdmin,
-  page: parentPage,
+  page: _parentPage,
 }) => {
   // Step 1: Admin creates a team + event, then cancels it
   const { page: adminPage } = asAdmin;
