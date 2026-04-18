@@ -1187,6 +1187,28 @@ export const previewInvite = onCall<PreviewInviteData, Promise<PreviewInviteResu
     const secretKey = Buffer.from(inviteSecret).toString('base64url').slice(0, 40);
     await checkRateLimit(`anon`, `previewInvite_${secretKey}`, 5);
 
+    // SEC-#484: Additionally rate-limit per caller IP so a single attacker
+    // cannot trivially enumerate the invite secret space by rotating the
+    // `inviteSecret` param (which otherwise yields a fresh 5-call bucket per
+    // guess). This is a low-frequency legitimate action (a human clicking an
+    // invite link); 20/min per IP is generous for real users but curbs abuse.
+    // Falls back to `unknown` when the caller IP is not available so the
+    // bucket is still bounded rather than unlimited.
+    //
+    // SEC-#487: On Cloud Run (Firebase Functions v2) `req.ip` is always the
+    // Google load-balancer's internal IP, so every caller would share one
+    // bucket. The caller's real IP is in the `X-Forwarded-For` header — the
+    // last entry is the IP closest to Cloud Run (the LB's view of the client,
+    // which clients cannot forge past the LB).
+    const xff = request.rawRequest.headers?.['x-forwarded-for'];
+    const rawIp = typeof xff === 'string'
+      ? xff.split(',').pop()?.trim() ?? null
+      : null;
+    const ipKey = (rawIp && rawIp.trim().length > 0 ? rawIp : 'unknown')
+      .replace(/[^a-zA-Z0-9._:-]/g, '_')
+      .slice(0, 64);
+    await checkRateLimit(`ip_${ipKey}`, 'previewInvite', 20);
+
     const db = admin.firestore();
 
     // Query for a pending invite matching the provided secret.
