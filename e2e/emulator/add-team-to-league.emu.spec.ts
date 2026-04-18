@@ -14,22 +14,18 @@
  * Ported from the addTeamToLeague flow in e2e/league-manager.spec.ts.
  */
 import { test, expect } from '../fixtures/auth.emu.fixture.js';
+import { EMU_IDS } from '../seed-emulator.js';
 
 // Seeded team name to look for in the picker.
 const TEAM_B_NAME = 'Emu Team B';
-// Seeded league name.
-const LEAGUE_NAME = 'Emu League';
 
 test('@emu @lm LM can open the Teams tab on a league and add a team', async ({ lmPage }) => {
   const page = lmPage;
 
-  await page.goto('/leagues');
+  // Navigate directly to the seeded league detail page to avoid matching
+  // "Emu League" text in the sidebar role badge (which is not a nav link).
+  await page.goto(`/leagues/${EMU_IDS.leagueId}`);
   await page.waitForLoadState('domcontentloaded');
-
-  // Navigate into the seeded league.
-  const leagueLink = page.getByText(LEAGUE_NAME, { exact: false }).first();
-  await expect(leagueLink).toBeVisible({ timeout: 10_000 });
-  await leagueLink.click();
   await page.waitForURL(/\/leagues\/.+/, { timeout: 10_000 });
 
   // Switch to the Teams tab.

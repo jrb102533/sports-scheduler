@@ -226,7 +226,7 @@ async function seedFixtures(): Promise<void> {
     date: yesterdayIso(),
     startTime: '10:00',
     endTime: '11:30',
-    status: 'published',
+    status: 'scheduled',
     isRecurring: false,
     isE2eData: true,
     createdAt: now,
