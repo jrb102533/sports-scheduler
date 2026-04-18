@@ -210,7 +210,7 @@ export function SignupPage() {
           />
 
           {signinError === 'no-account' ? (
-            <div role="alert" className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
+            <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
               No account found with that email.{' '}
               <button
                 type="button"
@@ -221,9 +221,9 @@ export function SignupPage() {
               </button>
             </div>
           ) : signinError ? (
-            <div role="alert" className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{signinError}</div>
+            <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{signinError}</div>
           ) : error ? (
-            <div role="alert" className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>
+            <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>
           ) : null}
 
           <Button type="submit" className="w-full" disabled={signinLoading}>
@@ -321,7 +321,7 @@ export function SignupPage() {
           </div>
 
           {displayedError && (
-            <div role="alert" className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
+            <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
               {displayedError}
               {hasInvite && emailInUse && (
                 <>
