@@ -9,7 +9,41 @@
  * All 5 roles tested: admin, coach, league_manager, parent, player.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// ── Firebase mocks (pure-function tests need no real Firebase connection) ─────
+
+vi.mock('firebase/auth', () => ({
+  createUserWithEmailAndPassword: vi.fn(),
+  signInWithEmailAndPassword: vi.fn(),
+  signOut: vi.fn(),
+  onAuthStateChanged: vi.fn(() => () => {}),
+  updateProfile: vi.fn(),
+  updatePassword: vi.fn(),
+  sendEmailVerification: vi.fn(),
+}));
+
+vi.mock('firebase/firestore', () => ({
+  doc: vi.fn(),
+  setDoc: vi.fn(),
+  getDoc: vi.fn(),
+  onSnapshot: vi.fn(() => () => {}),
+  updateDoc: vi.fn(),
+}));
+
+vi.mock('firebase/functions', () => ({
+  httpsCallable: vi.fn(),
+}));
+
+vi.mock('@/lib/firebase', () => ({ auth: {}, db: {}, functions: {} }));
+
+vi.mock('@/lib/consent', () => ({
+  getUserConsents: vi.fn(),
+}));
+
+vi.mock('@/legal/versions', () => ({
+  LEGAL_VERSIONS: { termsOfService: '1.0', privacyPolicy: '1.0' },
+}));
 import {
   getMemberships,
   getActiveMembership,
@@ -235,6 +269,30 @@ describe('canEdit', () => {
   it('returns true when user uid is in coachIds array', () => {
     const profile = makeProfile({ uid: 'uid-1', role: 'coach' });
     const team = makeTeam('t1', { coachIds: ['uid-other', 'uid-1'] });
+    expect(canEdit(profile, team)).toBe(true);
+  });
+
+  // ── Bug #343 regression tests ─────────────────────────────────────────────
+  // Ensures the coachIds[] array path is checked independently of the legacy
+  // scalar coachId field. Both paths must remain independently sufficient.
+
+  it('(#343) returns true when uid is in coachIds[] but scalar coachId belongs to a different user', () => {
+    const profile = makeProfile({ uid: 'uid-coach-array', role: 'coach' });
+    const team = makeTeam('t1', {
+      createdBy: 'uid-other',
+      coachId: 'uid-coach-scalar',   // different user — scalar path must NOT match
+      coachIds: ['uid-coach-array'],  // only array path should match
+    });
+    expect(canEdit(profile, team)).toBe(true);
+  });
+
+  it('(#343) scalar coachId path still grants access independently of coachIds[]', () => {
+    const profile = makeProfile({ uid: 'uid-coach-scalar', role: 'coach' });
+    const team = makeTeam('t1', {
+      createdBy: 'uid-other',
+      coachId: 'uid-coach-scalar',   // only scalar path should match
+      coachIds: ['uid-coach-array'],  // array contains a different user — must NOT be required
+    });
     expect(canEdit(profile, team)).toBe(true);
   });
 
