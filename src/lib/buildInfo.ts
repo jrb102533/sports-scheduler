@@ -18,7 +18,7 @@ export const buildInfo = {
   pr:         __BUILD_PR__,
   env:        _env,
 
-  get isProduction(): boolean { return import.meta.env.PROD; },
+  get isProduction(): boolean { return import.meta.env.MODE === 'production'; },
   get shortSha(): string { return __BUILD_SHA__.slice(0, 7); },
   get releaseDate(): string {
     try { return new Date(__BUILD_TIME__).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }); }
