@@ -199,11 +199,13 @@ service cloud.firestore {
       // on the platform regardless of team membership.
       // Coaches of the player's team can read; parents/players on the same team can
       // read; a user can always read their own linked player record.
+      // LM access is team-scoped via isManagerOfTeam (mirrors create rule).
       allow read: if request.auth != null && (
         isAdmin() ||
         resource.data.linkedUid == request.auth.uid ||
         isCoachOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data) ||
-        getProfile().teamId == resource.data.teamId
+        getProfile().teamId == resource.data.teamId ||
+        isManagerOfTeam(get(/databases/$(database)/documents/teams/$(resource.data.teamId)).data)
       );
       // SEC-48: scope create to coaches of the target team only.
       // SEC-55 backfill confirmed complete — broad isCoach() fallback removed.
