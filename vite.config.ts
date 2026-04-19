@@ -37,9 +37,6 @@ export default defineConfig(({ mode }) => {
       __BUILD_TIME__:   JSON.stringify(env.VITE_BUILD_TIME   ?? process.env.VITE_BUILD_TIME   ?? new Date().toISOString()),
       __BUILD_BRANCH__: JSON.stringify(env.VITE_BUILD_BRANCH ?? process.env.VITE_BUILD_BRANCH ?? git(['rev-parse', '--abbrev-ref', 'HEAD'], 'local')),
       __BUILD_PR__:     JSON.stringify(env.VITE_BUILD_PR     ?? process.env.VITE_BUILD_PR     ?? null),
-      // Derived from Vite mode (set by --mode flag in package.json scripts).
-      // Not from env vars — mode is the 12-factor source of truth for environment identity.
-      __APP_ENV__:      JSON.stringify(mode === 'production' ? 'production' : mode === 'staging' ? 'staging' : 'development'),
     },
     resolve: {
       alias: {
