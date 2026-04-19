@@ -17,9 +17,10 @@ import { useVenueStore } from '@/store/useVenueStore';
 import { useLeagueVenueStore } from '@/store/useLeagueVenueStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { DEFAULT_CONSTRAINTS } from '@/types/wizard';
+import type { WizardSurface } from '@/types/wizard';
 import { getTopCoverageSlots } from '@/lib/coverageUtils';
 import type { Venue, LeagueVenue, RecurringVenueWindow } from '@/types/venue';
-import type { League, Team, ScheduledEvent, Season, WizardMode, ScheduleConstraint, CoachAvailabilityResponse } from '@/types';
+import type { Division, League, Team, ScheduledEvent, Season, WizardMode, ScheduleConstraint, CoachAvailabilityResponse } from '@/types';
 import type { ScheduleConfig, ScheduleVenueConfig } from '@/types/scheduleConfig';
 
 // ─── Local types ──────────────────────────────────────────────────────────────
@@ -27,13 +28,15 @@ import type { ScheduleConfig, ScheduleVenueConfig } from '@/types/scheduleConfig
 interface WizardVenueConfig {
   selectedVenueId: string | null; // null = manual entry
   name: string;
-  concurrentPitches: number;
+  surfaces: WizardSurface[];
   availableDays: string[]; // derived from defaultAvailabilityWindows for generator compat
   availableTimeStart: string;
   availableTimeEnd: string;
   blackoutDates: string[];
   // New availability windows (v2)
   availabilityWindows: RecurringVenueWindow[];
+  // Per-division surface preferences: divisionId -> array of surface preference entries
+  divisionSurfacePrefs: Record<string, Array<{ surfaceId: string; preference: 'preferred' | 'required' }>>;
 }
 
 interface GeneratedFixture {
@@ -65,6 +68,13 @@ interface FallbackFixtureSummary {
   reason: string;
 }
 
+interface DivisionResult {
+  divisionId: string;
+  divisionName: string;
+  fixtures: GeneratedFixture[];
+  unassignedCount: number;
+}
+
 interface ScheduleOutput {
   fixtures: GeneratedFixture[];
   unassignedPairings?: Array<{
@@ -90,6 +100,7 @@ interface ScheduleOutput {
   summary: string;
   warnings?: Array<{ code: string; message: string }>;
   fallbackFixtures?: FallbackFixtureSummary[];
+  divisionResults?: DivisionResult[];
 }
 
 type WizardStep = 'mode' | 'config' | 'teams' | 'cadence' | 'venues' | 'preferences' | 'availability' | 'blackouts' | 'generate' | 'preview' | 'publish';
@@ -141,20 +152,24 @@ function newVenueConfig(): WizardVenueConfig {
   return {
     selectedVenueId: null,
     name: '',
-    concurrentPitches: 1,
+    surfaces: [],
     availableDays: ['Saturday', 'Sunday'],
     availableTimeStart: '09:00',
     availableTimeEnd: '17:00',
     blackoutDates: [],
     availabilityWindows: [],
+    divisionSurfacePrefs: {},
   };
 }
 
 function venueConfigFromSaved(saved: Venue): Partial<WizardVenueConfig> {
+  const surfaces: WizardSurface[] = (saved.fields && saved.fields.length > 0)
+    ? saved.fields.map(f => ({ id: f.id, name: f.name }))
+    : [{ id: crypto.randomUUID(), name: 'Field 1' }];
   return {
     selectedVenueId: saved.id,
     name: saved.name,
-    concurrentPitches: saved.fields?.length ?? 1,
+    surfaces,
   };
 }
 
@@ -389,10 +404,11 @@ interface Props {
   season?: Season;
   currentUserUid: string;
   divisionId?: string;
+  divisions?: Division[];
   resumeAtPreview?: boolean;
 }
 
-export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season, currentUserUid, divisionId, resumeAtPreview }: Props) {
+export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season, currentUserUid, divisionId, divisions, resumeAtPreview }: Props) {
   const { addEvent } = useEventStore();
   const { createCollection, saveWizardDraft, clearWizardDraft, wizardDraft, activeCollection, responses, loadCollection } = useCollectionStore();
 
@@ -453,6 +469,12 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [quickCreateTargetIdx, setQuickCreateTargetIdx] = useState<number | null>(null);
 
+  // Per-venue card advanced section open state (keyed by venue index)
+  const [venueAdvancedOpen, setVenueAdvancedOpen] = useState<Set<number>>(new Set());
+
+  // Per-venue surface name input state (one input per venue card)
+  const [surfaceNameInputs, setSurfaceNameInputs] = useState<string[]>(['']);
+
   // Per-venue blackout input state (one input per venue card)
   const [venueBlackoutInputs, setVenueBlackoutInputs] = useState<string[]>(['']);
 
@@ -506,6 +528,9 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
   // ── Preview: per-fixture fallback acknowledgement ────────────────────────
   const [acknowledgedFallbacks, setAcknowledgedFallbacks] = useState<Set<number>>(new Set());
+
+  // ── Preview: active division tab ──────────────────────────────────────────
+  const [activeDivisionTab, setActiveDivisionTab] = useState<string | null>(null);
 
   // ── Validation errors ────────────────────────────────────────────────────────
   const [configError, setConfigError] = useState('');
@@ -582,17 +607,33 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       if (cfg.collectionId) setCollectionId(cfg.collectionId);
 
       if (cfg.venueConfigs?.length) {
-        setVenueConfigs(cfg.venueConfigs.map((svc: ScheduleVenueConfig): WizardVenueConfig => ({
-          selectedVenueId: svc.venueId || null,
-          name: svc.name,
-          concurrentPitches: svc.concurrentPitches ?? 1,
-          availableDays: svc.availableDays ?? ['Saturday', 'Sunday'],
-          availableTimeStart: svc.availableTimeStart ?? '09:00',
-          availableTimeEnd: svc.availableTimeEnd ?? '17:00',
-          blackoutDates: svc.blackoutDates ?? [],
-          availabilityWindows: svc.availabilityWindows ?? [],
-        })));
+        setVenueConfigs(cfg.venueConfigs.map((svc: ScheduleVenueConfig): WizardVenueConfig => {
+          const surfaces: WizardSurface[] = svc.surfaces && svc.surfaces.length > 0
+            ? svc.surfaces.map(s => ({ id: s.id, name: s.name, availabilityWindowsOverride: s.availabilityWindows, blackoutDatesOverride: s.blackoutDates }))
+            : Array.from({ length: svc.concurrentPitches ?? 1 }, (_, idx) => ({ id: `_pitch_${idx}`, name: `Pitch ${idx + 1}` }));
+          const divisionSurfacePrefs: Record<string, Array<{ surfaceId: string; preference: 'preferred' | 'required' }>> = {};
+          if (cfg.divisionConfigs) {
+            for (const dc of cfg.divisionConfigs) {
+              const prefs = (dc.surfacePreferences ?? []).filter(p => p.venueId === (svc.venueId || ''));
+              if (prefs.length > 0) {
+                divisionSurfacePrefs[dc.divisionId] = prefs.map(p => ({ surfaceId: p.surfaceId, preference: p.preference }));
+              }
+            }
+          }
+          return {
+            selectedVenueId: svc.venueId || null,
+            name: svc.name,
+            surfaces,
+            availableDays: svc.availableDays ?? ['Saturday', 'Sunday'],
+            availableTimeStart: svc.availableTimeStart ?? '09:00',
+            availableTimeEnd: svc.availableTimeEnd ?? '17:00',
+            blackoutDates: svc.blackoutDates ?? [],
+            availabilityWindows: svc.availabilityWindows ?? [],
+            divisionSurfacePrefs,
+          };
+        }));
         setVenueBlackoutInputs(cfg.venueConfigs.map(() => ''));
+        setSurfaceNameInputs(cfg.venueConfigs.map(() => ''));
       }
 
       // resumeAtPreview prop: "Edit Draft" CTA — jump straight to generate step
@@ -643,13 +684,32 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     const venueConfigsMapped: ScheduleVenueConfig[] = venueConfigs.map(vc => ({
       venueId: vc.selectedVenueId ?? '',
       name: vc.name,
-      concurrentPitches: vc.concurrentPitches,
+      surfaces: vc.surfaces.map(s => ({
+        id: s.id,
+        name: s.name,
+        ...(s.availabilityWindowsOverride?.length ? { availabilityWindows: s.availabilityWindowsOverride } : {}),
+        ...(s.blackoutDatesOverride?.length ? { blackoutDates: s.blackoutDatesOverride } : {}),
+      })),
       availableDays: vc.availableDays,
       availableTimeStart: vc.availableTimeStart,
       availableTimeEnd: vc.availableTimeEnd,
       availabilityWindows: vc.availabilityWindows,
       blackoutDates: vc.blackoutDates,
     }));
+
+    const divisionConfigsMap = new Map<string, Array<{ venueId: string; surfaceId: string; preference: 'required' | 'preferred' }>>();
+    for (const vc of venueConfigs) {
+      const venueId = vc.selectedVenueId ?? vc.name;
+      for (const [divId, prefs] of Object.entries(vc.divisionSurfacePrefs)) {
+        if (!divisionConfigsMap.has(divId)) divisionConfigsMap.set(divId, []);
+        for (const p of prefs) {
+          divisionConfigsMap.get(divId)!.push({ venueId, surfaceId: p.surfaceId, preference: p.preference });
+        }
+      }
+    }
+    const divisionConfigs = divisionConfigsMap.size > 0
+      ? Array.from(divisionConfigsMap.entries()).map(([divisionId, surfacePreferences]) => ({ divisionId, surfacePreferences }))
+      : undefined;
 
     const cfg: ScheduleConfig = {
       id: configId,
@@ -668,6 +728,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       maxConsecAway: parseInt(maxConsecAway),
       constraints,
       venueConfigs: venueConfigsMapped,
+      ...(divisionConfigs ? { divisionConfigs } : {}),
       seasonBlackouts,
       teamIds: leagueTeams.map(t => t.id),
       availabilityOption,
@@ -743,6 +804,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   function validateVenues(): boolean {
     const errs = venueConfigs.map(v => {
       if (!v.name.trim()) return 'Venue name is required.';
+      if (v.surfaces.length < 1) return 'Add at least one surface.';
       if (!(v.availableDays ?? []).length) return 'Select at least one available day.';
       if (v.availableTimeStart >= v.availableTimeEnd) return 'End time must be after start time.';
       return '';
@@ -919,12 +981,20 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
           ? [...new Set(resolvedWindows.map(w => DAY_NAMES[w.dayOfWeek]))]
           : (vc.availableDays ?? []);
         const firstWindow = resolvedWindows[0];
+        const venueId = vc.selectedVenueId ?? vc.name;
         return {
           // id is required by the algorithm for duplicate-detection; use the saved
           // venue id when available, otherwise fall back to the manual entry name.
-          id: vc.selectedVenueId ?? vc.name,
+          id: venueId,
           name: vc.name,
-          concurrentPitches: vc.concurrentPitches,
+          surfaces: vc.surfaces.map(s => ({
+            id: s.id,
+            name: s.name,
+            ...(s.availabilityWindowsOverride?.length ? { availabilityWindows: s.availabilityWindowsOverride } : {}),
+            ...(s.blackoutDatesOverride?.length ? { blackoutDates: s.blackoutDatesOverride } : {}),
+          })),
+          // Keep concurrentPitches for algorithm backward compat when surfaces are empty
+          concurrentPitches: vc.surfaces.length > 0 ? vc.surfaces.length : 1,
           availableDays: days,
           availableTimeStart: firstWindow?.startTime ?? vc.availableTimeStart,
           availableTimeEnd: firstWindow?.endTime ?? vc.availableTimeEnd,
@@ -946,6 +1016,22 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         .filter(c => c.type === 'soft' && c.enabled && WIZARD_TO_ALGO[c.id])
         .sort((a, b) => a.priority - b.priority)
         .map(c => WIZARD_TO_ALGO[c.id]);
+
+      const divisionsPayload = (!isPractice && divisions && divisions.length > 0)
+        ? divisions.map(div => ({
+            id: div.id,
+            name: div.name,
+            teamIds: div.teamIds,
+            format: div.format ?? 'single_round_robin',
+            gamesPerTeam: div.gamesPerTeam ?? gpt,
+            matchDurationMinutes: div.matchDurationMinutes ?? parseInt(matchDuration),
+            surfacePreferences: venueConfigs.flatMap(vc => {
+              const venueId = vc.selectedVenueId ?? vc.name;
+              const prefs = vc.divisionSurfacePrefs[div.id] ?? [];
+              return prefs.map(p => ({ venueId, surfaceId: p.surfaceId, preference: p.preference }));
+            }),
+          }))
+        : undefined;
 
       const payload: Record<string, unknown> = {
         mode: mode ?? 'season',
@@ -972,6 +1058,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         homeAwayMode: homeAwayBalance ? 'strict' : 'relaxed',
         ...(useHomeVenues ? { homeVenueEnforcement: 'soft' } : {}),
         coachAvailability,
+        ...(divisionsPayload ? { divisions: divisionsPayload } : {}),
         ...(isPractice
           ? {
               practiceTimeWindows: practiceTimes,
@@ -990,6 +1077,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       const { data } = await generateScheduleFn(payload);
       setResult(data);
       setAcknowledgedFallbacks(new Set());
+      setActiveDivisionTab(data.divisionResults?.[0]?.divisionId ?? null);
       setStep('preview');
     } catch (err: unknown) {
       const msg = (err as { message?: string })?.message ?? 'Schedule generation failed.';
@@ -1154,7 +1242,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             ...venueFields,
             leagueId: league.id,
             ...(season?.id ? { seasonId: season.id } : {}),
-            ...(divisionId ? { divisionId } : {}),
+            ...(fixture.divisionId ? { divisionId: fixture.divisionId } : divisionId ? { divisionId } : {}),
           };
           return addEvent(event);
         })
@@ -1163,11 +1251,17 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       // If "Publish Now" was requested, call the server-side publishSchedule
       // callable to atomically transition draft events to scheduled.
       if (publishNow && season?.id && league?.id) {
-        await publishScheduleFn({
-          leagueId: league.id,
-          seasonId: season.id,
-          ...(divisionId ? { divisionId } : {}),
-        });
+        if (result.divisionResults && result.divisionResults.length > 0) {
+          await Promise.all(result.divisionResults.map(dr =>
+            publishScheduleFn({ leagueId: league.id, seasonId: season.id, divisionId: dr.divisionId })
+          ));
+        } else {
+          await publishScheduleFn({
+            leagueId: league.id,
+            seasonId: season.id,
+            ...(divisionId ? { divisionId } : {}),
+          });
+        }
       } else if (!publishNow && divisionId && season?.id) {
         // Mark division as having a draft schedule so the dashboard CTA updates.
         await updateDoc(
@@ -1246,11 +1340,21 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   function addVenueCard() {
     setVenueConfigs(vs => [...vs, newVenueConfig()]);
     setVenueBlackoutInputs(bi => [...bi, '']);
+    setSurfaceNameInputs(si => [...si, '']);
   }
 
   function removeVenueCard(i: number) {
     setVenueConfigs(vs => vs.filter((_, idx) => idx !== i));
     setVenueBlackoutInputs(bi => bi.filter((_, idx) => idx !== i));
+    setSurfaceNameInputs(si => si.filter((_, idx) => idx !== i));
+    setVenueAdvancedOpen(prev => {
+      const next = new Set<number>();
+      for (const idx of prev) {
+        if (idx < i) next.add(idx);
+        else if (idx > i) next.add(idx - 1);
+      }
+      return next;
+    });
   }
 
   // ─── Practice cadence helpers ────────────────────────────────────────────────
@@ -1712,6 +1816,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                 const startMs = new Date(seasonStart).getTime();
                 const endMs = new Date(seasonEnd).getTime();
                 const weeks = Math.max(1, Math.floor((endMs - startMs) / (7 * 24 * 60 * 60 * 1000)));
+                const surfaceCount = vc.surfaces.length > 0 ? vc.surfaces.length : 1;
                 const windows = vc.availabilityWindows;
                 if (windows.length > 0) {
                   for (const w of windows) {
@@ -1719,7 +1824,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                     const endMins = parseInt(w.endTime.split(':')[0]) * 60 + parseInt(w.endTime.split(':')[1]);
                     const slotDuration = Math.max(parseInt(matchDuration) + parseInt(bufferMinutes), 30);
                     const slotsPerDay = Math.floor((endMins - startMins) / slotDuration);
-                    total += slotsPerDay * vc.concurrentPitches * weeks;
+                    total += slotsPerDay * surfaceCount * weeks;
                   }
                 } else {
                   const dayCount = vc.availableDays.length;
@@ -1727,7 +1832,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                   const endMins = parseInt(vc.availableTimeEnd.split(':')[0]) * 60 + parseInt(vc.availableTimeEnd.split(':')[1]);
                   const slotDuration = Math.max(parseInt(matchDuration) + parseInt(bufferMinutes), 30);
                   const slotsPerDay = Math.floor((endMins - startMins) / slotDuration);
-                  total += slotsPerDay * vc.concurrentPitches * dayCount * weeks;
+                  total += slotsPerDay * surfaceCount * dayCount * weeks;
                 }
                 return total;
               }, 0);
@@ -1772,21 +1877,68 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                 />
 
                 {/* Editable detail fields */}
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Venue Name"
-                    value={venueConfig.name}
-                    onChange={e => updateVenueConfig(i, { name: e.target.value, selectedVenueId: null })}
-                    placeholder="e.g. Riverside Park"
-                    error={venueErrors[i]}
-                  />
-                  <Input
-                    label={isPracticeMode ? 'Concurrent Courts' : 'Concurrent Pitches'}
-                    type="number"
-                    min="1"
-                    value={String(venueConfig.concurrentPitches)}
-                    onChange={e => updateVenueConfig(i, { concurrentPitches: parseInt(e.target.value) || 1 })}
-                  />
+                <Input
+                  label="Venue Name"
+                  value={venueConfig.name}
+                  onChange={e => updateVenueConfig(i, { name: e.target.value, selectedVenueId: null })}
+                  placeholder="e.g. Riverside Park"
+                  error={venueErrors[i]}
+                />
+
+                {/* Named surfaces */}
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-1.5">{isPracticeMode ? 'Courts / Areas' : 'Surfaces / Fields'}</p>
+                  {venueConfig.surfaces.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {venueConfig.surfaces.map(s => (
+                        <span key={s.id} className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2.5 py-1 font-medium">
+                          {s.name}
+                          <button
+                            type="button"
+                            aria-label={`Remove ${s.name}`}
+                            onClick={() => updateVenueConfig(i, { surfaces: venueConfig.surfaces.filter(x => x.id !== s.id) })}
+                            className="hover:text-blue-900 ml-0.5"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder={isPracticeMode ? 'e.g. Court A' : 'e.g. Field 1'}
+                      value={surfaceNameInputs[i] ?? ''}
+                      onChange={e => setSurfaceNameInputs(si => si.map((v, idx) => idx === i ? e.target.value : v))}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const name = (surfaceNameInputs[i] ?? '').trim();
+                          if (name) {
+                            updateVenueConfig(i, { surfaces: [...venueConfig.surfaces, { id: crypto.randomUUID(), name }] });
+                            setSurfaceNameInputs(si => si.map((v, idx) => idx === i ? '' : v));
+                          }
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        const name = (surfaceNameInputs[i] ?? '').trim();
+                        if (name) {
+                          updateVenueConfig(i, { surfaces: [...venueConfig.surfaces, { id: crypto.randomUUID(), name }] });
+                          setSurfaceNameInputs(si => si.map((v, idx) => idx === i ? '' : v));
+                        }
+                      }}
+                    >
+                      <Plus size={14} /> Add surface
+                    </Button>
+                  </div>
+                  {venueErrors[i] === 'Add at least one surface.' && (
+                    <p className="text-xs text-red-600 mt-1">{venueErrors[i]}</p>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Input
@@ -1857,6 +2009,137 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                     </div>
                   )}
                 </div>
+
+                {/* Advanced options expander */}
+                {venueConfig.surfaces.length >= 1 && (
+                  <div className="border-t border-gray-100 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setVenueAdvancedOpen(prev => {
+                        const next = new Set(prev);
+                        next.has(i) ? next.delete(i) : next.add(i);
+                        return next;
+                      })}
+                      className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                    >
+                      <ChevronDown size={13} className={`transition-transform ${venueAdvancedOpen.has(i) ? 'rotate-180' : ''}`} />
+                      Advanced options
+                    </button>
+
+                    {venueAdvancedOpen.has(i) && (
+                      <div className="mt-3 space-y-4">
+                        {/* Per-surface availability overrides */}
+                        <div>
+                          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Surface availability overrides</p>
+                          <div className="space-y-2">
+                            {venueConfig.surfaces.map(surface => (
+                              <div key={surface.id} className="rounded-lg border border-gray-200 p-3 space-y-2">
+                                <p className="text-sm font-medium text-gray-700">{surface.name}</p>
+                                {(!surface.availabilityWindowsOverride?.length && !surface.blackoutDatesOverride?.length) && (
+                                  <p className="text-xs text-gray-400 italic">Inherits venue availability</p>
+                                )}
+                                {surface.availabilityWindowsOverride && surface.availabilityWindowsOverride.length > 0 && (
+                                  <div className="space-y-1">
+                                    {surface.availabilityWindowsOverride.map((w, wi) => (
+                                      <div key={wi} className="flex items-center gap-2 text-xs text-gray-600">
+                                        <span>{DAY_NAMES[w.dayOfWeek]}</span>
+                                        <span>{w.startTime} – {w.endTime}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const updated = venueConfig.surfaces.map(s =>
+                                              s.id === surface.id
+                                                ? { ...s, availabilityWindowsOverride: s.availabilityWindowsOverride?.filter((_, wIdx) => wIdx !== wi) }
+                                                : s
+                                            );
+                                            updateVenueConfig(i, { surfaces: updated });
+                                          }}
+                                          className="text-gray-400 hover:text-red-500"
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Division surface preferences — only when multiple divisions */}
+                        {(divisions?.length ?? 0) > 1 && (
+                          <div>
+                            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Division preferences</p>
+                            <div className="space-y-2">
+                              {(divisions ?? []).map(div => {
+                                const divPrefs = venueConfig.divisionSurfacePrefs[div.id] ?? [];
+                                const selectionType: 'any' | 'preferred' | 'required' =
+                                  divPrefs.length === 0 ? 'any'
+                                  : divPrefs[0]?.preference === 'required' ? 'required' : 'preferred';
+
+                                return (
+                                  <div key={div.id} className="rounded-lg border border-gray-100 p-3 space-y-2 bg-gray-50">
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-sm font-medium text-gray-700 flex-1">{div.name}</span>
+                                      <select
+                                        className="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        value={selectionType}
+                                        onChange={e => {
+                                          const val = e.target.value as 'any' | 'preferred' | 'required';
+                                          if (val === 'any') {
+                                            updateVenueConfig(i, { divisionSurfacePrefs: { ...venueConfig.divisionSurfacePrefs, [div.id]: [] } });
+                                          } else {
+                                            updateVenueConfig(i, {
+                                              divisionSurfacePrefs: {
+                                                ...venueConfig.divisionSurfacePrefs,
+                                                [div.id]: divPrefs.length > 0
+                                                  ? divPrefs.map(p => ({ ...p, preference: val }))
+                                                  : [],
+                                              },
+                                            });
+                                          }
+                                        }}
+                                      >
+                                        <option value="any">Any surface</option>
+                                        <option value="preferred">Preferred</option>
+                                        <option value="required">Required</option>
+                                      </select>
+                                    </div>
+
+                                    {selectionType !== 'any' && venueConfig.surfaces.length > 0 && (
+                                      <div className="space-y-1 pl-1">
+                                        {venueConfig.surfaces.map(surface => {
+                                          const isSelected = divPrefs.some(p => p.surfaceId === surface.id);
+                                          return (
+                                            <label key={surface.id} className="flex items-center gap-2 cursor-pointer">
+                                              <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={() => {
+                                                  const next = isSelected
+                                                    ? divPrefs.filter(p => p.surfaceId !== surface.id)
+                                                    : [...divPrefs, { surfaceId: surface.id, preference: selectionType }];
+                                                  updateVenueConfig(i, { divisionSurfacePrefs: { ...venueConfig.divisionSurfacePrefs, [div.id]: next } });
+                                                }}
+                                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                                              />
+                                              <span className="text-xs text-gray-700">{surface.name}</span>
+                                            </label>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
             <Button variant="secondary" onClick={addVenueCard}>
@@ -2109,6 +2392,12 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             {(!seasonStart || !seasonEnd) && (
               <p className="text-xs text-amber-600">Season start and end dates are required before generating.</p>
             )}
+            {divisions && divisions.length > 0 && divisions.some(d => !d.format || !d.gamesPerTeam) && (
+              <p className="text-xs text-amber-600 flex items-start gap-1.5">
+                <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+                Some divisions are missing schedule configuration. Set format and games per team on the Season page before generating.
+              </p>
+            )}
           </div>
         )}
 
@@ -2255,48 +2544,91 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
             <div>
               <p className="text-sm font-semibold text-gray-700 mb-2">{isPracticeMode ? 'Sessions' : 'Fixtures'}</p>
-              <div className="border border-gray-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr>
-                      <th className="text-left px-3 py-2 text-gray-500 font-medium">Date</th>
-                      <th className="text-left px-3 py-2 text-gray-500 font-medium">Time</th>
-                      {isPracticeMode ? (
-                        <th className="text-left px-3 py-2 text-gray-500 font-medium">Team</th>
-                      ) : (
-                        <>
-                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Home</th>
-                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Away</th>
-                        </>
+
+              {/* Division tab bar — shown only when divisionResults are present */}
+              {result.divisionResults && result.divisionResults.length > 0 && (
+                <div className="flex gap-1 mb-2 border-b border-gray-200">
+                  {result.divisionResults.map(dr => (
+                    <button
+                      key={dr.divisionId}
+                      type="button"
+                      onClick={() => setActiveDivisionTab(dr.divisionId)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-t-lg border border-b-0 transition-colors ${
+                        activeDivisionTab === dr.divisionId
+                          ? 'bg-white border-gray-200 text-blue-700 -mb-px'
+                          : 'border-transparent text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {dr.divisionName}
+                      {dr.unassignedCount > 0 && (
+                        <span className="ml-1.5 text-amber-600">({dr.unassignedCount} unscheduled)</span>
                       )}
-                      <th className="text-left px-3 py-2 text-gray-500 font-medium hidden sm:table-cell">Venue</th>
-                      <th className="text-left px-3 py-2 text-gray-500 font-medium hidden sm:table-cell">
-                        {isPracticeMode ? '' : 'Stage'}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {result.fixtures.map((f, i) => (
-                      <tr key={i} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{f.date}</td>
-                        <td className="px-3 py-2 text-gray-700">{f.startTime}</td>
-                        {isPracticeMode ? (
-                          <td className="px-3 py-2 font-medium text-gray-900">{f.homeTeamName}</td>
-                        ) : (
-                          <>
-                            <td className="px-3 py-2 font-medium text-gray-900">{f.homeTeamName}</td>
-                            <td className="px-3 py-2 text-gray-700">{f.awayTeamName}</td>
-                          </>
-                        )}
-                        <td className="px-3 py-2 text-gray-500 hidden sm:table-cell">{f.venueName ?? f.venue}</td>
-                        <td className="px-3 py-2 text-gray-400 hidden sm:table-cell">
-                          {isPracticeMode ? '' : (f.stage ?? `Rd ${f.round}`)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setActiveDivisionTab(null)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-t-lg border border-b-0 transition-colors ${
+                      activeDivisionTab === null
+                        ? 'bg-white border-gray-200 text-blue-700 -mb-px'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    All
+                  </button>
+                </div>
+              )}
+
+              {(() => {
+                const displayFixtures = result.divisionResults && result.divisionResults.length > 0 && activeDivisionTab !== null
+                  ? (result.divisionResults.find(dr => dr.divisionId === activeDivisionTab)?.fixtures ?? [])
+                  : result.fixtures;
+
+                return (
+                  <div className="border border-gray-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Date</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Time</th>
+                          {isPracticeMode ? (
+                            <th className="text-left px-3 py-2 text-gray-500 font-medium">Team</th>
+                          ) : (
+                            <>
+                              <th className="text-left px-3 py-2 text-gray-500 font-medium">Home</th>
+                              <th className="text-left px-3 py-2 text-gray-500 font-medium">Away</th>
+                            </>
+                          )}
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium hidden sm:table-cell">Venue</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium hidden sm:table-cell">
+                            {isPracticeMode ? '' : 'Stage'}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {displayFixtures.map((f, i) => (
+                          <tr key={i} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{f.date}</td>
+                            <td className="px-3 py-2 text-gray-700">{f.startTime}</td>
+                            {isPracticeMode ? (
+                              <td className="px-3 py-2 font-medium text-gray-900">{f.homeTeamName}</td>
+                            ) : (
+                              <>
+                                <td className="px-3 py-2 font-medium text-gray-900">{f.homeTeamName}</td>
+                                <td className="px-3 py-2 text-gray-700">{f.awayTeamName}</td>
+                              </>
+                            )}
+                            <td className="px-3 py-2 text-gray-500 hidden sm:table-cell">{f.venueName ?? f.venue}</td>
+                            <td className="px-3 py-2 text-gray-400 hidden sm:table-cell">
+                              {isPracticeMode ? '' : (f.stage ?? `Rd ${f.round}`)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </div>
 
             {!canPublish && (
@@ -2374,7 +2706,13 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             {step === 'generate' && generatePhase === 'configure' ? (
               <Button
                 onClick={() => void handleGenerate()}
-                disabled={!seasonStart || !seasonEnd}
+                disabled={
+                  !seasonStart ||
+                  !seasonEnd ||
+                  (divisions !== undefined &&
+                    divisions.length > 0 &&
+                    divisions.some(d => !d.format || !d.gamesPerTeam))
+                }
               >
                 <Wand2 size={15} /> Generate Schedule
               </Button>

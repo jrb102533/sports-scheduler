@@ -13,6 +13,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
+import { DivisionScheduleSetupCard } from '@/components/leagues/DivisionScheduleSetupCard';
 import { StandingsTable } from '@/components/standings/StandingsTable';
 import { db } from '@/lib/firebase';
 import { useSeasonStore } from '@/store/useSeasonStore';
@@ -739,25 +740,42 @@ export function SeasonDashboard() {
               No divisions yet. Divisions let you organise teams into sub-groups with separate schedules.
             </div>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {divisions.map(div => (
-                <div
-                  key={div.id}
-                  className="flex items-center gap-2 border border-gray-200 bg-white rounded-lg px-3 py-2"
-                >
-                  <span className="text-sm font-medium text-gray-800">{div.name}</span>
-                  <DivisionStatusBadge status={div.scheduleStatus} />
-                  {canManage && div.scheduleStatus === 'draft' && (
-                    <button
-                      className="text-xs text-amber-700 hover:text-amber-900 font-medium underline ml-1"
-                      onClick={() => void handlePublishDraft(div.id)}
-                      disabled={publishing}
-                    >
-                      Publish
-                    </button>
-                  )}
+            <div className="space-y-3">
+              {/* Status pills row */}
+              <div className="flex flex-wrap gap-2">
+                {divisions.map(div => (
+                  <div
+                    key={div.id}
+                    className="flex items-center gap-2 border border-gray-200 bg-white rounded-lg px-3 py-2"
+                  >
+                    <span className="text-sm font-medium text-gray-800">{div.name}</span>
+                    <DivisionStatusBadge status={div.scheduleStatus} />
+                    {canManage && div.scheduleStatus === 'draft' && (
+                      <button
+                        className="text-xs text-amber-700 hover:text-amber-900 font-medium underline ml-1"
+                        onClick={() => void handlePublishDraft(div.id)}
+                        disabled={publishing}
+                      >
+                        Publish
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Per-division schedule configuration (managers only) */}
+              {canManage && (
+                <div className="space-y-3 pt-1">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Schedule Configuration</p>
+                  {divisions.map(div => (
+                    <DivisionScheduleSetupCard
+                      key={div.id}
+                      division={div}
+                      leagueId={leagueId}
+                    />
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </section>
@@ -807,6 +825,7 @@ export function SeasonDashboard() {
           season={season}
           currentUserUid={profile?.uid ?? ''}
           divisionId={divisions.length === 1 ? divisions[0].id : undefined}
+          divisions={divisions.length > 0 ? divisions : undefined}
           resumeAtPreview={wizardResumeAtPreview}
         />
       )}

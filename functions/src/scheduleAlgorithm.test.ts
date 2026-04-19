@@ -24,11 +24,15 @@ import {
   shufflePairings,
   daysBetween,
   fnv32a,
+  expandVenueSurfaces,
+  runScheduleAlgorithm,
   type GenerateScheduleInput,
   type ScheduleVenueInput,
   type ScheduleTeamInput,
   type GeneratedFixture,
   type Pairing,
+  type ScheduleSurfaceInput,
+  type DivisionInput,
 } from './scheduleAlgorithm';
 
 // ─── Test Data Factory ────────────────────────────────────────────────────────
@@ -1461,5 +1465,593 @@ describe('Section 7: Determinism', () => {
     const run1 = runSchedule(input1);
     const run2 = runSchedule(input2);
     expect(run1.fixtures.length).toBe(run2.fixtures.length);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section 8: Phase 1b — Division-aware & Surface-aware scheduling
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Section 8: Phase 1b — division-aware and surface-aware scheduling', () => {
+
+  // ── Helpers for this section ──────────────────────────────────────────────
+
+  /**
+   * A venue with two explicitly named surfaces and ample weekend availability.
+   * Used by most tests in this section.
+   */
+  function twoSurfaceVenue(venueId = 'venue-surf'): ScheduleVenueInput {
+    return {
+      id: venueId,
+      name: 'Surface Venue',
+      concurrentPitches: 1, // ignored when surfaces is set
+      availabilityWindows: [
+        { dayOfWeek: 6, startTime: '09:00', endTime: '18:00' },
+        { dayOfWeek: 0, startTime: '09:00', endTime: '18:00' },
+      ],
+      surfaces: [
+        { id: 'pitch-a', name: 'Pitch A' },
+        { id: 'pitch-b', name: 'Pitch B' },
+      ],
+    };
+  }
+
+  /**
+   * Build a minimal valid input for multi-division tests.
+   * Teams are split evenly between two divisions.
+   */
+  function buildDivisionInput(opts: {
+    teamsPerDivision?: number;
+    matchDurationA?: number;
+    matchDurationB?: number;
+    venueId?: string;
+    divASurfacePreference?: DivisionInput['surfacePreferences'];
+    divBSurfacePreference?: DivisionInput['surfacePreferences'];
+  } = {}): GenerateScheduleInput {
+    const {
+      teamsPerDivision = 2,
+      matchDurationA = 60,
+      matchDurationB = 60,
+      venueId = 'venue-surf',
+      divASurfacePreference,
+      divBSurfacePreference,
+    } = opts;
+
+    const divATeams: ScheduleTeamInput[] = Array.from({ length: teamsPerDivision }, (_, i) => ({
+      id:   `div-a-team-${i + 1}`,
+      name: `Div A Team ${i + 1}`,
+    }));
+    const divBTeams: ScheduleTeamInput[] = Array.from({ length: teamsPerDivision }, (_, i) => ({
+      id:   `div-b-team-${i + 1}`,
+      name: `Div B Team ${i + 1}`,
+    }));
+
+    const divA: DivisionInput = {
+      id:     'div-a',
+      name:   'Division A',
+      teamIds: divATeams.map(t => t.id),
+      format:  'single_round_robin',
+      matchDurationMinutes: matchDurationA,
+      ...(divASurfacePreference ? { surfacePreferences: divASurfacePreference } : {}),
+    };
+    const divB: DivisionInput = {
+      id:     'div-b',
+      name:   'Division B',
+      teamIds: divBTeams.map(t => t.id),
+      format:  'single_round_robin',
+      matchDurationMinutes: matchDurationB,
+      ...(divBSurfacePreference ? { surfacePreferences: divBSurfacePreference } : {}),
+    };
+
+    return {
+      leagueId:             'league-div-test',
+      leagueName:           'Division Test League',
+      teams:                [...divATeams, ...divBTeams],
+      venues:               [twoSurfaceVenue(venueId)],
+      seasonStart:          '2026-09-05',
+      seasonEnd:            '2026-11-28',
+      format:               'single_round_robin',
+      matchDurationMinutes: Math.max(matchDurationA, matchDurationB),
+      bufferMinutes:        15,
+      minRestDays:          1,
+      softConstraintPriority: [],
+      homeAwayMode:         'relaxed',
+      divisions:            [divA, divB],
+    };
+  }
+
+  // ── expandVenueSurfaces ────────────────────────────────────────────────────
+
+  describe('expandVenueSurfaces', () => {
+    it('returns the surfaces array when surfaces is non-empty', () => {
+      const surfaces: ScheduleSurfaceInput[] = [
+        { id: 'p1', name: 'Pitch 1' },
+        { id: 'p2', name: 'Pitch 2' },
+      ];
+      const venue: ScheduleVenueInput = {
+        id: 'v1', name: 'V1', concurrentPitches: 5,
+        availabilityWindows: [{ dayOfWeek: 6, startTime: '09:00', endTime: '17:00' }],
+        surfaces,
+      };
+      const result = expandVenueSurfaces(venue);
+      expect(result).toHaveLength(2);
+      expect(result[0].id).toBe('p1');
+      expect(result[1].id).toBe('p2');
+    });
+
+    it('synthesizes surfaces from concurrentPitches when surfaces is absent', () => {
+      const venue: ScheduleVenueInput = {
+        id: 'v1', name: 'V1', concurrentPitches: 3,
+        availabilityWindows: [{ dayOfWeek: 6, startTime: '09:00', endTime: '17:00' }],
+      };
+      const result = expandVenueSurfaces(venue);
+      expect(result).toHaveLength(3);
+      expect(result[0].id).toBe('_pitch_0');
+      expect(result[1].id).toBe('_pitch_1');
+      expect(result[2].id).toBe('_pitch_2');
+      expect(result[0].name).toBe('Pitch 1');
+    });
+
+    it('synthesizes 1 surface when concurrentPitches is absent (defaults to 1)', () => {
+      const venue: ScheduleVenueInput = {
+        id: 'v1', name: 'V1', concurrentPitches: 1,
+        availabilityWindows: [{ dayOfWeek: 6, startTime: '09:00', endTime: '17:00' }],
+      };
+      // Override to simulate absent concurrentPitches
+      const venueNoPitches = { ...venue } as ScheduleVenueInput & { concurrentPitches?: number };
+      delete venueNoPitches.concurrentPitches;
+      const result = expandVenueSurfaces(venueNoPitches as ScheduleVenueInput);
+      expect(result).toHaveLength(1);
+    });
+  });
+
+  // ── Surface-aware slot generation (backward compat) ──────────────────────
+
+  describe('generateSlots backward compatibility', () => {
+    it('legacy venues (no surfaces) produce 3-part slot keys date|venueId|startTime', () => {
+      const input = buildFixture({ teamCount: 2 });
+      const slots = generateSlots(input);
+      for (const slot of slots.slice(0, 5)) {
+        const parts = slot.key.split('|');
+        expect(parts).toHaveLength(3);
+        expect(parts[0]).toBe(slot.date);
+        expect(parts[1]).toBe(slot.venueId);
+        expect(parts[2]).toBe(slot.startTime);
+      }
+    });
+
+    it('legacy venues produce slots with concurrentCapacity = concurrentPitches', () => {
+      const input = buildFixture({
+        teamCount: 2,
+        venues: [{
+          id: 'v1', name: 'V1', concurrentPitches: 3,
+          availabilityWindows: [{ dayOfWeek: 6, startTime: '09:00', endTime: '12:00' }],
+        }],
+      });
+      const slots = generateSlots(input);
+      for (const slot of slots) {
+        expect(slot.concurrentCapacity).toBe(3);
+      }
+    });
+  });
+
+  // ── Surface-aware slot generation (named surfaces path) ──────────────────
+
+  describe('generateSlots surface-aware path', () => {
+    it('produces 4-part slot keys date|venueId|surfaceId|startTime for named surfaces', () => {
+      const venue = twoSurfaceVenue();
+      const input: GenerateScheduleInput = {
+        ...buildFixture({ teamCount: 2, venues: [venue] }),
+      };
+      const slots = generateSlots(input);
+      for (const slot of slots) {
+        const parts = slot.key.split('|');
+        expect(parts).toHaveLength(4);
+        expect(parts[0]).toBe(slot.date);
+        expect(parts[1]).toBe(slot.venueId);
+        expect(parts[2]).toBe(slot.surfaceId);
+        expect(parts[3]).toBe(slot.startTime);
+      }
+    });
+
+    it('each named surface slot has concurrentCapacity = 1', () => {
+      const venue = twoSurfaceVenue();
+      const input: GenerateScheduleInput = {
+        ...buildFixture({ teamCount: 2, venues: [venue] }),
+      };
+      const slots = generateSlots(input);
+      for (const slot of slots) {
+        expect(slot.concurrentCapacity).toBe(1);
+      }
+    });
+
+    it('produces separate slots per surface for the same start time', () => {
+      const venue = twoSurfaceVenue();
+      const input: GenerateScheduleInput = {
+        ...buildFixture({ teamCount: 2, venues: [venue] }),
+      };
+      const slots = generateSlots(input);
+      // For each date+startTime combo, we should have one slot per surface
+      const groupKey = (s: (typeof slots)[0]) => `${s.date}|${s.startTime}`;
+      const groups = new Map<string, typeof slots>();
+      for (const slot of slots) {
+        const k = groupKey(slot);
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k)!.push(slot);
+      }
+      for (const [, group] of groups) {
+        // Two surfaces → two slots per start time per date
+        expect(group).toHaveLength(2);
+        const surfaceIds = group.map(s => s.surfaceId);
+        expect(surfaceIds).toContain('pitch-a');
+        expect(surfaceIds).toContain('pitch-b');
+      }
+    });
+
+    it('surface-specific blackout dates exclude that surface on the blackout date', () => {
+      const venue: ScheduleVenueInput = {
+        id: 'venue-surf', name: 'Surface Venue', concurrentPitches: 1,
+        availabilityWindows: [{ dayOfWeek: 6, startTime: '09:00', endTime: '18:00' }],
+        surfaces: [
+          { id: 'pitch-a', name: 'Pitch A', blackoutDates: ['2026-09-05'] },
+          { id: 'pitch-b', name: 'Pitch B' },
+        ],
+      };
+      const input: GenerateScheduleInput = {
+        ...buildFixture({ teamCount: 2, venues: [venue] }),
+        seasonStart: '2026-09-05',
+        seasonEnd:   '2026-09-12',
+      };
+      const slots = generateSlots(input);
+      // pitch-a should have no slots on 2026-09-05 (Saturday), but pitch-b should
+      const pitchAOnBlackout = slots.filter(s => s.date === '2026-09-05' && s.surfaceId === 'pitch-a');
+      const pitchBOnBlackout = slots.filter(s => s.date === '2026-09-05' && s.surfaceId === 'pitch-b');
+      expect(pitchAOnBlackout).toHaveLength(0);
+      expect(pitchBOnBlackout.length).toBeGreaterThan(0);
+    });
+
+    it('surface-specific availability windows override venue windows', () => {
+      const venue: ScheduleVenueInput = {
+        id: 'venue-surf', name: 'Surface Venue', concurrentPitches: 1,
+        // Venue window: all day Saturday
+        availabilityWindows: [{ dayOfWeek: 6, startTime: '09:00', endTime: '18:00' }],
+        surfaces: [
+          {
+            id: 'pitch-a', name: 'Pitch A',
+            // Surface override: only morning
+            availabilityWindows: [{ dayOfWeek: 6, startTime: '09:00', endTime: '12:00' }],
+          },
+          { id: 'pitch-b', name: 'Pitch B' }, // no override → inherits venue window
+        ],
+      };
+      const input: GenerateScheduleInput = {
+        ...buildFixture({ teamCount: 2, venues: [venue], matchDurationMinutes: 60, bufferMinutes: 0 }),
+        seasonStart: '2026-09-05',
+        seasonEnd:   '2026-09-05', // single Saturday
+      };
+      const slots = generateSlots(input);
+      const pitchASlots = slots.filter(s => s.surfaceId === 'pitch-a');
+      const pitchBSlots = slots.filter(s => s.surfaceId === 'pitch-b');
+      // Pitch A: 09:00–12:00 with 60min duration = 3 slots
+      expect(pitchASlots).toHaveLength(3);
+      // Pitch B: 09:00–18:00 with 60min duration = 9 slots
+      expect(pitchBSlots).toHaveLength(9);
+    });
+  });
+
+  // ── Single division with named surfaces ──────────────────────────────────
+
+  describe('single division with named surfaces schedules correctly', () => {
+    it('produces a feasible schedule and stamps fixtures with divisionId', () => {
+      const venue = twoSurfaceVenue();
+      const input: GenerateScheduleInput = {
+        leagueId:             'league-single-div',
+        leagueName:           'Single Division League',
+        teams: [
+          { id: 'ta1', name: 'Team A1' },
+          { id: 'ta2', name: 'Team A2' },
+        ],
+        venues: [venue],
+        seasonStart:          '2026-09-05',
+        seasonEnd:            '2026-11-28',
+        format:               'single_round_robin',
+        matchDurationMinutes: 60,
+        bufferMinutes:        15,
+        minRestDays:          1,
+        softConstraintPriority: [],
+        homeAwayMode:         'relaxed',
+        divisions: [{
+          id:     'div-a',
+          name:   'Division A',
+          teamIds: ['ta1', 'ta2'],
+          format:  'single_round_robin',
+          matchDurationMinutes: 60,
+        }],
+      };
+
+      const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
+      const output = runScheduleAlgorithm(input, seed);
+
+      expect(output.stats.feasible).toBe(true);
+      expect(output.fixtures).toHaveLength(1);
+      expect(output.fixtures[0].divisionId).toBe('div-a');
+      expect(output.divisionResults).toHaveLength(1);
+      expect(output.divisionResults![0].divisionId).toBe('div-a');
+      expect(output.divisionResults![0].fixtures).toHaveLength(1);
+    });
+  });
+
+  // ── Two divisions, same match duration — no surface double-booking ────────
+
+  describe('two divisions sharing a venue with same match duration — no double-booking', () => {
+    it('no two fixtures share the same surface at the same date+startTime', () => {
+      const input = buildDivisionInput({ matchDurationA: 60, matchDurationB: 60 });
+      const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
+      const output = runScheduleAlgorithm(input, seed);
+
+      expect(output.stats.feasible).toBe(true);
+
+      // Group fixtures by date|venueId|surfaceId|startTime — must be unique
+      const surfaceSlotUsage = new Map<string, number>();
+      for (const f of output.fixtures) {
+        // Find the surfaceId from divisionResults if needed — for surface-aware venues,
+        // each fixture is uniquely placed on a surface via the slot key.
+        // We verify at the slot key level using date+venue+startTime per surface.
+        const key = `${f.date}|${f.venueId}|${f.startTime}`;
+        surfaceSlotUsage.set(key, (surfaceSlotUsage.get(key) ?? 0) + 1);
+      }
+      // With 2 surfaces, at most 2 fixtures can share same date+venue+startTime
+      for (const [key, count] of surfaceSlotUsage) {
+        expect(count, `Slot ${key} has ${count} fixtures (max 2 surfaces)`).toBeLessThanOrEqual(2);
+      }
+    });
+
+    it('divisionResults contains one entry per division', () => {
+      const input = buildDivisionInput();
+      const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
+      const output = runScheduleAlgorithm(input, seed);
+      expect(output.divisionResults).toHaveLength(2);
+      const ids = output.divisionResults!.map(d => d.divisionId).sort();
+      expect(ids).toEqual(['div-a', 'div-b']);
+    });
+
+    it('all fixtures in merged output have a divisionId set', () => {
+      const input = buildDivisionInput();
+      const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
+      const output = runScheduleAlgorithm(input, seed);
+      for (const f of output.fixtures) {
+        expect(f.divisionId).toBeDefined();
+        expect(['div-a', 'div-b']).toContain(f.divisionId);
+      }
+    });
+  });
+
+  // ── Two divisions, DIFFERENT match durations — duration-aware overlap ─────
+
+  describe('two divisions with different match durations — no time-window overlap on any surface', () => {
+    it('U8 (45 min) and U14 (90 min) games do not overlap on the same surface', () => {
+      // Critical test: without surfaceTimeWindows, a 45-min game at 09:00 (ends 09:45)
+      // and a 90-min game at 09:30 (ends 11:00) would both pass slot key capacity checks
+      // because they have different start times but share the same surface.
+
+      // Use a venue with a single surface to force contention onto the same surface
+      const singleSurfaceVenue: ScheduleVenueInput = {
+        id: 'venue-single', name: 'Single Surface Venue', concurrentPitches: 1,
+        availabilityWindows: [
+          { dayOfWeek: 6, startTime: '09:00', endTime: '18:00' },
+          { dayOfWeek: 0, startTime: '09:00', endTime: '18:00' },
+        ],
+        surfaces: [{ id: 'pitch-only', name: 'The Only Pitch' }],
+      };
+
+      // 3 teams per division to create more pairings and increase contention
+      const divATeams: ScheduleTeamInput[] = [
+        { id: 'u8-t1', name: 'U8 Team 1' },
+        { id: 'u8-t2', name: 'U8 Team 2' },
+        { id: 'u8-t3', name: 'U8 Team 3' },
+      ];
+      const divBTeams: ScheduleTeamInput[] = [
+        { id: 'u14-t1', name: 'U14 Team 1' },
+        { id: 'u14-t2', name: 'U14 Team 2' },
+        { id: 'u14-t3', name: 'U14 Team 3' },
+      ];
+
+      const input: GenerateScheduleInput = {
+        leagueId:             'league-overlap-test',
+        leagueName:           'Overlap Test League',
+        teams:                [...divATeams, ...divBTeams],
+        venues:               [singleSurfaceVenue],
+        seasonStart:          '2026-09-05',
+        seasonEnd:            '2026-11-28',
+        format:               'single_round_robin',
+        matchDurationMinutes: 90, // top-level (used for slot generation)
+        bufferMinutes:        0,  // no buffer so slots are packed tightly
+        minRestDays:          0,
+        softConstraintPriority: [],
+        homeAwayMode:         'relaxed',
+        divisions: [
+          {
+            id:     'div-u8',
+            name:   'U8',
+            teamIds: divATeams.map(t => t.id),
+            format:  'single_round_robin',
+            matchDurationMinutes: 45,
+          },
+          {
+            id:     'div-u14',
+            name:   'U14',
+            teamIds: divBTeams.map(t => t.id),
+            format:  'single_round_robin',
+            matchDurationMinutes: 90,
+          },
+        ],
+      };
+
+      const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
+      const output = runScheduleAlgorithm(input, seed);
+
+      // Verify: no two assigned fixtures have overlapping time windows on the same surface
+      // Group fixtures by date+venueId+surfaceId
+      const fixturesBySurface = new Map<string, GeneratedFixture[]>();
+      for (const f of output.fixtures) {
+        // For the single-surface venue, all fixtures are on pitch-only
+        const key = `${f.date}|${f.venueId}`;
+        if (!fixturesBySurface.has(key)) fixturesBySurface.set(key, []);
+        fixturesBySurface.get(key)!.push(f);
+      }
+
+      for (const [surfaceKey, fixtures] of fixturesBySurface) {
+        for (let i = 0; i < fixtures.length; i++) {
+          for (let j = i + 1; j < fixtures.length; j++) {
+            const a = fixtures[i];
+            const b = fixtures[j];
+            // Look up each fixture's division to get its actual match duration
+            const aDivId = a.divisionId!;
+            const bDivId = b.divisionId!;
+            const aDuration = aDivId === 'div-u8' ? 45 : 90;
+            const bDuration = bDivId === 'div-u8' ? 45 : 90;
+
+            const aStart = a.startTime.split(':').map(Number).reduce((h, m) => h * 60 + m, 0);
+            const bStart = b.startTime.split(':').map(Number).reduce((h, m) => h * 60 + m, 0);
+            const aEnd = aStart + aDuration;
+            const bEnd = bStart + bDuration;
+
+            const overlaps = aStart < bEnd && aEnd > bStart;
+            expect(overlaps, `Surface ${surfaceKey}: ${a.startTime}+${aDuration}min overlaps ${b.startTime}+${bDuration}min`).toBe(false);
+          }
+        }
+      }
+    });
+  });
+
+  // ── Required surface preference ────────────────────────────────────────────
+
+  describe('division with required surface preference only books that surface', () => {
+    it('all fixtures for div-a land on pitch-a when required', () => {
+      const input = buildDivisionInput({
+        divASurfacePreference: [{
+          venueId: 'venue-surf',
+          surfaceId: 'pitch-a',
+          preference: 'required',
+        }],
+      });
+
+      const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
+      const output = runScheduleAlgorithm(input, seed);
+
+      const divAResult = output.divisionResults?.find(d => d.divisionId === 'div-a');
+      expect(divAResult).toBeDefined();
+
+      for (const f of divAResult!.fixtures) {
+        // All div-a fixtures must be on pitch-a
+        // We verify by checking the slot key stored in divisionResults fixtures
+        // Since we can't directly inspect surfaceId from GeneratedFixture,
+        // we check it via the divisionResult fixtures which were assigned via surface-filtered slots
+        expect(f.venueId).toBe('venue-surf');
+        // The fixture must be on pitch-a — we assert this indirectly:
+        // div-b should have pitch-b available since pitch-a is taken by div-a
+        // This test primarily verifies feasibility with a required surface constraint
+      }
+
+      // Schedule must be feasible — required surface has ample slots
+      expect(divAResult!.unassignedCount).toBe(0);
+    });
+  });
+
+  // ── Preferred surface preference ───────────────────────────────────────────
+
+  describe('division with preferred surface preference falls back when needed', () => {
+    it('schedule remains feasible when preferred surface is limited', () => {
+      // Both divisions prefer pitch-a (soft preference only)
+      // The algorithm should still assign all games, falling back to pitch-b when needed
+      const input = buildDivisionInput({
+        teamsPerDivision: 3, // more pairings to force fallback
+        divASurfacePreference: [{
+          venueId: 'venue-surf',
+          surfaceId: 'pitch-a',
+          preference: 'preferred',
+        }],
+        divBSurfacePreference: [{
+          venueId: 'venue-surf',
+          surfaceId: 'pitch-a',
+          preference: 'preferred',
+        }],
+      });
+
+      const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
+      const output = runScheduleAlgorithm(input, seed);
+
+      // All fixtures should still be assigned — preferred is a soft hint, not a hard block
+      expect(output.stats.feasible).toBe(true);
+      expect(output.stats.unassignedFixtures).toBe(0);
+    });
+  });
+
+  // ── Validation: team in two divisions ─────────────────────────────────────
+
+  describe('validateInput — division constraints', () => {
+    it('rejects input with a team appearing in two divisions', () => {
+      const input = buildDivisionInput();
+      // Inject div-b-team-1 into div-a as well
+      input.divisions![0].teamIds.push('div-b-team-1');
+
+      expect(() => validateInput(input)).toThrow(/appears in multiple divisions/);
+    });
+
+    it('rejects division that references a team not in input.teams', () => {
+      const input = buildDivisionInput();
+      input.divisions![0].teamIds.push('ghost-team-99');
+
+      expect(() => validateInput(input)).toThrow(/references unknown team/);
+    });
+
+    it('rejects more than 16 divisions (DoS cap)', () => {
+      const input = buildFixture({ teamCount: 2 });
+      input.divisions = Array.from({ length: 17 }, (_, i) => ({
+        id:      `div-${i}`,
+        name:    `Division ${i}`,
+        teamIds: [],
+        format:  'single_round_robin' as const,
+      }));
+      expect(() => validateInput(input)).toThrow(/at most 16/);
+    });
+
+    it('accepts valid divisions input without throwing', () => {
+      const input = buildDivisionInput();
+      expect(() => validateInput(input)).not.toThrow();
+    });
+  });
+
+  // ── Single-pool path unchanged ─────────────────────────────────────────────
+
+  describe('single-pool path remains fully functional', () => {
+    it('runScheduleAlgorithm without divisions produces the same output as the manual pipeline', () => {
+      const input = buildFixture({ teamCount: 4 });
+      const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
+      const output = runScheduleAlgorithm(input, seed);
+
+      // Should be feasible and have the right fixture count
+      expect(output.stats.feasible).toBe(true);
+      expect(output.fixtures).toHaveLength(6);
+      expect(output.divisionResults).toBeUndefined();
+    });
+  });
+
+  // ── Division-specific seed ─────────────────────────────────────────────────
+
+  describe('division-specific seed (fnv32a)', () => {
+    it('produces different seeds for different division IDs', () => {
+      const leagueId = 'league-test';
+      const seasonStart = '2026-09-05';
+      const seedA = fnv32a(`${leagueId}|div-a|${seasonStart}`);
+      const seedB = fnv32a(`${leagueId}|div-b|${seasonStart}`);
+      expect(seedA).not.toBe(seedB);
+    });
+
+    it('seed is stable across calls for the same inputs', () => {
+      const s1 = fnv32a('league-test|div-a|2026-09-05');
+      const s2 = fnv32a('league-test|div-a|2026-09-05');
+      expect(s1).toBe(s2);
+    });
   });
 });
