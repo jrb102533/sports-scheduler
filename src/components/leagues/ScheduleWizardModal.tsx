@@ -53,6 +53,7 @@ interface GeneratedFixture {
   isDoubleheader: boolean;
   doubleheaderSlot?: 1 | 2;
   isFallbackSlot: boolean;
+  divisionId?: string;
   // Legacy compatibility fields
   venue?: string;
   stage?: string;
