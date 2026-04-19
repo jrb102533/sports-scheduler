@@ -2,6 +2,14 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useCollectionStore } from '@/store/useCollectionStore';
+import {
+  SLOT_MORNING_START,
+  SLOT_MORNING_END,
+  SLOT_AFTERNOON_START,
+  SLOT_AFTERNOON_END,
+  SLOT_EVENING_START,
+  SLOT_EVENING_END,
+} from '@/lib/coverageUtils';
 import type { CoachAvailabilityResponse } from '@/types';
 
 interface Props {
@@ -28,9 +36,9 @@ const GRID_DAYS: { label: string; dayOfWeek: number }[] = [
 ];
 
 const BLOCKS: { id: Block; label: string; startTime: string; endTime: string }[] = [
-  { id: 'morning',   label: 'Morning',   startTime: '06:00', endTime: '12:00' },
-  { id: 'afternoon', label: 'Afternoon', startTime: '12:00', endTime: '17:00' },
-  { id: 'evening',   label: 'Evening',   startTime: '17:00', endTime: '22:00' },
+  { id: 'morning',   label: 'Morning',   startTime: SLOT_MORNING_START,   endTime: SLOT_MORNING_END   },
+  { id: 'afternoon', label: 'Afternoon', startTime: SLOT_AFTERNOON_START, endTime: SLOT_AFTERNOON_END },
+  { id: 'evening',   label: 'Evening',   startTime: SLOT_EVENING_START,   endTime: SLOT_EVENING_END   },
 ];
 
 type GridState = Record<number, Record<Block, boolean>>;

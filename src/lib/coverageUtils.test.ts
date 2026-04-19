@@ -4,6 +4,12 @@ import {
   getCellCoverage,
   getTopCoverageSlots,
   HEATMAP_SLOTS,
+  SLOT_MORNING_START,
+  SLOT_MORNING_END,
+  SLOT_AFTERNOON_START,
+  SLOT_AFTERNOON_END,
+  SLOT_EVENING_START,
+  SLOT_EVENING_END,
 } from '@/lib/coverageUtils';
 import type { CoachAvailabilityResponse } from '@/types';
 
@@ -191,5 +197,18 @@ describe('getTopCoverageSlots', () => {
     ];
     const result = getTopCoverageSlots(responses, ['t1'], { t1: 'Rockets' }, 10);
     expect(result.every(s => s.ratio > 0)).toBe(true);
+  });
+});
+
+// ─── Slot boundary constants ──────────────────────────────────────────────────
+
+describe('slot boundary constants', () => {
+  it('slot boundary constants match expected values', () => {
+    expect(SLOT_MORNING_START).toBe('06:00');
+    expect(SLOT_MORNING_END).toBe('12:00');
+    expect(SLOT_AFTERNOON_START).toBe('12:00');
+    expect(SLOT_AFTERNOON_END).toBe('17:00');
+    expect(SLOT_EVENING_START).toBe('17:00');
+    expect(SLOT_EVENING_END).toBe('22:00');
   });
 });

@@ -33,3 +33,4 @@ emulator-data/
 
 # Playwright auth state — contains Firebase ID tokens; never commit
 e2e/.auth/
+.claude/agent-memory/

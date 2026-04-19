@@ -11,6 +11,14 @@ export interface HeatmapSlot {
   end: string;
 }
 
+/** Canonical availability slot boundaries — single source of truth for form and heatmap. */
+export const SLOT_MORNING_START   = '06:00';
+export const SLOT_MORNING_END     = '12:00';
+export const SLOT_AFTERNOON_START = '12:00';
+export const SLOT_AFTERNOON_END   = '17:00';
+export const SLOT_EVENING_START   = '17:00';
+export const SLOT_EVENING_END     = '22:00';
+
 export const HEATMAP_DAYS: HeatmapDay[] = [
   { label: 'Mon', dayOfWeek: 1 },
   { label: 'Tue', dayOfWeek: 2 },
@@ -22,9 +30,9 @@ export const HEATMAP_DAYS: HeatmapDay[] = [
 ];
 
 export const HEATMAP_SLOTS: HeatmapSlot[] = [
-  { label: 'Morning',   start: '06:00', end: '12:00' },
-  { label: 'Afternoon', start: '12:00', end: '17:00' },
-  { label: 'Evening',   start: '17:00', end: '23:59' },
+  { label: 'Morning',   start: SLOT_MORNING_START,   end: SLOT_MORNING_END   },
+  { label: 'Afternoon', start: SLOT_AFTERNOON_START, end: SLOT_AFTERNOON_END },
+  { label: 'Evening',   start: SLOT_EVENING_START,   end: SLOT_EVENING_END   },
 ];
 
 function timeToMinutes(time: string): number {
