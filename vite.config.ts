@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => {
       __BUILD_BRANCH__: JSON.stringify(env.VITE_BUILD_BRANCH ?? process.env.VITE_BUILD_BRANCH ?? git(['rev-parse', '--abbrev-ref', 'HEAD'], 'local')),
       __BUILD_PR__:     JSON.stringify(env.VITE_BUILD_PR     ?? process.env.VITE_BUILD_PR     ?? null),
       // .env.staging / .env.production explicitly set VITE_APP_ENV; dev falls back to 'development'.
-      __APP_ENV__:      JSON.stringify(env.VITE_APP_ENV      ?? process.env.VITE_APP_ENV      ?? 'development'),
+      __APP_ENV__:      JSON.stringify(env.VITE_APP_ENV ?? 'development'),
     },
     resolve: {
       alias: {
