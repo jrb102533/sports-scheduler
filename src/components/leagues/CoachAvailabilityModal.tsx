@@ -1,5 +1,13 @@
 import { useState } from 'react';
 import { useCollectionStore } from '@/store/useCollectionStore';
+import {
+  SLOT_MORNING_START,
+  SLOT_MORNING_END,
+  SLOT_AFTERNOON_START,
+  SLOT_AFTERNOON_END,
+  SLOT_EVENING_START,
+  SLOT_EVENING_END,
+} from '@/lib/coverageUtils';
 import type { CoachAvailabilityResponse } from '@/types';
 
 interface Props {
@@ -19,9 +27,9 @@ const DAY_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 type Block = 'morning' | 'afternoon' | 'evening';
 
 const BLOCKS: { id: Block; label: string; defaultStart: string; defaultEnd: string }[] = [
-  { id: 'morning',   label: 'Morning',   defaultStart: '08:00', defaultEnd: '12:00' },
-  { id: 'afternoon', label: 'Afternoon', defaultStart: '12:00', defaultEnd: '17:00' },
-  { id: 'evening',   label: 'Evening',   defaultStart: '17:00', defaultEnd: '21:00' },
+  { id: 'morning',   label: 'Morning',   defaultStart: SLOT_MORNING_START,   defaultEnd: SLOT_MORNING_END   },
+  { id: 'afternoon', label: 'Afternoon', defaultStart: SLOT_AFTERNOON_START, defaultEnd: SLOT_AFTERNOON_END },
+  { id: 'evening',   label: 'Evening',   defaultStart: SLOT_EVENING_START,   defaultEnd: SLOT_EVENING_END   },
 ];
 
 interface DayBlock {
@@ -76,13 +84,15 @@ export function CoachAvailabilityModal({
     if (existingResponse) {
       const g = buildDefaultGrid();
       for (const w of existingResponse.weeklyWindows) {
-        const block = BLOCKS.find(b => b.defaultStart === w.startTime) ?? BLOCKS[0];
-        g[w.dayOfWeek][block.id] = {
-          available: w.available,
-          startTime: w.startTime,
-          endTime: w.endTime,
-          customised: false,
-        };
+        const block = BLOCKS.find(b => b.defaultStart === w.startTime);
+        if (block && g[w.dayOfWeek] !== undefined) {
+          g[w.dayOfWeek][block.id] = {
+            available: w.available,
+            startTime: block.defaultStart,
+            endTime: block.defaultEnd,
+            customised: false,
+          };
+        }
       }
       return g;
     }
