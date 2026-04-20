@@ -116,7 +116,7 @@ test('STAND-01: Standings section renders on SeasonDashboard', async ({ asAdmin 
 // STAND-02: Standings table has expected column headers
 // ---------------------------------------------------------------------------
 
-test('@smoke STAND-02: Standings table column headers include W, L, and Pts', async ({ asAdmin }) => {
+test('STAND-02: Standings table column headers include W, L, and Pts', async ({ asAdmin }) => {
   const { page } = asAdmin;
 
   const leagueHref = await getFirstLeagueHref(page);
@@ -341,7 +341,7 @@ test('STAND-05: Standings tab renders standings data or a defined empty state â€
 //
 // ---------------------------------------------------------------------------
 
-test('@smoke STAND-RT-01: submitting a game result via "Submit Result" increments the winning team\'s W count in the standings table', async ({
+test('STAND-RT-01: submitting a game result via "Submit Result" increments the winning team\'s W count in the standings table', async ({
   asCoach,
 }) => {
   const { page } = asCoach;

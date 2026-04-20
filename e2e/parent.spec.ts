@@ -50,7 +50,7 @@ test('parent home page shows the Upcoming Games heading', async ({ asParent }) =
 // RSVP
 // ---------------------------------------------------------------------------
 
-test('@smoke parent can RSVP Going on an event', async ({ asParent }) => {
+test('parent can RSVP Going on an event', async ({ asParent }) => {
   const { page } = asParent;
 
   const parentHome = new ParentHomePage(page);
@@ -75,7 +75,7 @@ test('@smoke parent can RSVP Going on an event', async ({ asParent }) => {
   await expect(goingBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });
 });
 
-test('@smoke RSVP state persists after page refresh', async ({ asParent }) => {
+test('RSVP state persists after page refresh', async ({ asParent }) => {
   const { page } = asParent;
 
   const parentHome = new ParentHomePage(page);
