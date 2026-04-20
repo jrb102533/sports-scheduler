@@ -305,7 +305,10 @@ async function main(): Promise<void> {
   console.log('[seed-emulator] Done.');
 }
 
-main().catch(err => {
-  console.error('[seed-emulator] FATAL:', err);
-  process.exit(1);
-});
+import { fileURLToPath } from 'url';
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch(err => {
+    console.error('[seed-emulator] FATAL:', err);
+    process.exit(1);
+  });
+}
