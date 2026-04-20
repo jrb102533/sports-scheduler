@@ -170,7 +170,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
               .split(',').map((p: string) => p.trim().toLowerCase()).filter(Boolean);
             const prefixAllowed = envPrefixes.some((p: string) => normalizedEmail.startsWith(p));
             if (!emailAllowed && !domainAllowed && !prefixAllowed) {
-              const err = 'This is a test environment. Sign-ups are restricted to authorized testers. Contact the administrator to request access.';
+              const err = 'Sign-ups are currently restricted. Contact the administrator to request access.';
               set({ error: err });
               throw new Error(err);
             }
