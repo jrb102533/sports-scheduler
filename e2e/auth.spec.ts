@@ -34,7 +34,7 @@ test('@smoke logs in with valid credentials and lands on the app shell', async (
 // Login — wrong password
 // ---------------------------------------------------------------------------
 
-test('@smoke shows "Incorrect email or password" when login fails with wrong password', async ({
+test('shows "Incorrect email or password" when login fails with wrong password', async ({
   authPage,
 }) => {
   // Use a throwaway non-existent email so Firebase never rate-limits a real account.

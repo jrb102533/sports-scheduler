@@ -234,7 +234,7 @@ async function createLeague(
 // League creation
 // ---------------------------------------------------------------------------
 
-test('@smoke admin can create a new league and it appears in the leagues list', async ({ asAdmin }) => {
+test('admin can create a new league and it appears in the leagues list', async ({ asAdmin }) => {
   const { page } = asAdmin;
   const leagueName = `E2E League Create ${Date.now()}`;
 
@@ -526,7 +526,7 @@ test('season dashboard is accessible from the league Seasons tab', async ({ asAd
 // Schedule Wizard
 // ---------------------------------------------------------------------------
 
-test('@smoke schedule wizard opens from league detail page', async ({ asAdmin }) => {
+test('schedule wizard opens from league detail page', async ({ asAdmin }) => {
   const { page } = asAdmin;
   const leagueName = `E2E League Wizard ${Date.now()}`;
 

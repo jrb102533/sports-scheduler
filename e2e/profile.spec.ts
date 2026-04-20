@@ -93,7 +93,7 @@ test('Save Changes button is present in the Edit Profile card', async ({ asAdmin
 // Save display name
 // ---------------------------------------------------------------------------
 
-test('@smoke admin can update first and last name and see the saved confirmation', async ({ asAdmin }) => {
+test('admin can update first and last name and see the saved confirmation', async ({ asAdmin }) => {
   const { page } = asAdmin;
   await page.goto('/profile');
   await page.waitForLoadState('domcontentloaded');
