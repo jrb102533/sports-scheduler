@@ -309,14 +309,14 @@ describe('SeasonDashboard — renders without error', () => {
   it('renders division name when one division exists', () => {
     currentDivisions = [makeDivision('div-1')];
     renderDashboard();
-    expect(screen.getByText('Division div-1')).toBeInTheDocument();
+    expect(screen.getAllByText('Division div-1')[0]).toBeInTheDocument();
   });
 
   it('renders all division names when multiple divisions exist', () => {
     currentDivisions = [makeDivision('div-A'), makeDivision('div-B')];
     renderDashboard();
-    expect(screen.getByText('Division div-A')).toBeInTheDocument();
-    expect(screen.getByText('Division div-B')).toBeInTheDocument();
+    expect(screen.getAllByText('Division div-A')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Division div-B')[0]).toBeInTheDocument();
   });
 
   it('Open Wizard button is enabled when 2 or more teams are present and a venue is configured', () => {

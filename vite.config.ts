@@ -37,10 +37,6 @@ export default defineConfig(({ mode }) => {
       __BUILD_TIME__:   JSON.stringify(env.VITE_BUILD_TIME   ?? process.env.VITE_BUILD_TIME   ?? new Date().toISOString()),
       __BUILD_BRANCH__: JSON.stringify(env.VITE_BUILD_BRANCH ?? process.env.VITE_BUILD_BRANCH ?? git(['rev-parse', '--abbrev-ref', 'HEAD'], 'local')),
       __BUILD_PR__:     JSON.stringify(env.VITE_BUILD_PR     ?? process.env.VITE_BUILD_PR     ?? null),
-      // Default to 'production' so an unset env var never shows the dev banner in prod.
-      // .env.staging sets VITE_APP_ENV=staging; .env.production sets VITE_APP_ENV=production.
-      // Local dev: set VITE_APP_ENV=local in .env.local to show the dev banner.
-      __APP_ENV__:      JSON.stringify(env.VITE_APP_ENV      ?? process.env.VITE_APP_ENV      ?? 'production'),
     },
     resolve: {
       alias: {

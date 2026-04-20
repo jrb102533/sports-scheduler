@@ -159,7 +159,7 @@ export function LeagueDetailPage() {
     { key: 'standings', label: 'Standings', icon: <Trophy size={14} /> },
     { key: 'teams', label: `Teams (${leagueTeams.length})`, icon: <Users size={14} /> },
     ...(seasons.length > 0 || canManage
-      ? [{ key: 'seasons' as Tab, label: seasons.length === 1 ? seasons[0].name : `Seasons (${seasons.length})`, icon: <Layers size={14} />, onClick: handleSeasonsTab }]
+      ? [{ key: 'seasons' as Tab, label: seasons.length > 1 ? `Seasons (${seasons.length})` : 'Seasons', icon: <Layers size={14} />, onClick: handleSeasonsTab }]
       : []),
     { key: 'venues', label: `Venues (${leagueVenueCount})`, icon: <MapPin size={14} /> },
   ];

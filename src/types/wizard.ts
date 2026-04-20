@@ -6,12 +6,21 @@ export interface RecurringVenueWindow {
   endTime: string;   // "HH:MM"
 }
 
+export interface WizardSurface {
+  id: string;
+  name: string;
+  availabilityWindowsOverride?: RecurringVenueWindow[];
+  blackoutDatesOverride?: string[];
+}
+
 export interface WizardVenueInput {
   name: string;
+  /** @deprecated — use surfaces instead */
   concurrentPitches: number;
   availabilityWindows: RecurringVenueWindow[];       // primary windows — scheduler uses these first
   fallbackWindows: RecurringVenueWindow[];           // used only when primary can't fill the schedule
   blackoutDates: string[];
+  surfaces?: WizardSurface[];
 }
 
 export interface ScheduleConstraint {

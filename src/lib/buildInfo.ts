@@ -5,9 +5,10 @@ declare const __BUILD_SHA__: string;
 declare const __BUILD_TIME__: string;
 declare const __BUILD_BRANCH__: string;
 declare const __BUILD_PR__: string | null;
-declare const __APP_ENV__: string;
-
 export type AppEnv = 'development' | 'staging' | 'production';
+
+const _mode = import.meta.env.MODE;
+const _env: AppEnv = _mode === 'production' ? 'production' : _mode === 'staging' ? 'staging' : 'development';
 
 export const buildInfo = {
   version:    __APP_VERSION__,
@@ -15,9 +16,9 @@ export const buildInfo = {
   time:       __BUILD_TIME__,
   branch:     __BUILD_BRANCH__,
   pr:         __BUILD_PR__,
-  env:        __APP_ENV__ as AppEnv,
+  env:        _env,
 
-  get isProduction(): boolean { return __APP_ENV__ === 'production'; },
+  get isProduction(): boolean { return import.meta.env.MODE === 'production'; },
   get shortSha(): string { return __BUILD_SHA__.slice(0, 7); },
   get releaseDate(): string {
     try { return new Date(__BUILD_TIME__).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }); }

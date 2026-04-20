@@ -1,15 +1,34 @@
 import type { WizardMode, ScheduleConstraint, RecurringVenueWindow } from './wizard';
 
+export interface VenueFieldConfig {
+  id: string;
+  name: string;
+  /** Per-surface availability override; inherits from venue if absent. */
+  availabilityWindows?: RecurringVenueWindow[];
+  blackoutDates?: string[];
+}
+
+export interface ScheduleDivisionConfig {
+  divisionId: string;
+  surfacePreferences?: Array<{
+    venueId: string;
+    surfaceId: string;
+    preference: 'required' | 'preferred';
+  }>;
+}
+
 /** Per-venue scheduling configuration stored at the schedule level (not on the venue). */
 export interface ScheduleVenueConfig {
   venueId: string;              // reference to the saved venue (or '' for manual entry)
   name: string;
+  /** @deprecated — use surfaces instead */
   concurrentPitches?: number;
   availableDays?: string[];
   availableTimeStart?: string;
   availableTimeEnd?: string;
   availabilityWindows?: RecurringVenueWindow[];
   blackoutDates?: string[];
+  surfaces?: VenueFieldConfig[];
 }
 
 /**
@@ -44,6 +63,7 @@ export interface ScheduleConfig {
 
   // Venues (per-venue availability at schedule level)
   venueConfigs: ScheduleVenueConfig[];
+  divisionConfigs?: ScheduleDivisionConfig[];
 
   // Season-level blackout dates
   seasonBlackouts: string[];

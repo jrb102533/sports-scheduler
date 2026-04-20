@@ -288,8 +288,8 @@ describe('LeagueDetailPage — Seasons tab visibility', () => {
     });
     renderLeagueDetail('league-1');
 
-    // With 1 season the tab label is the season name
-    expect(screen.getByRole('tab', { name: /spring 2026/i })).toBeInTheDocument();
+    // With 1 season the tab label is "Seasons" (not the season name)
+    expect(screen.getByRole('tab', { name: /^seasons$/i })).toBeInTheDocument();
   });
 });
 
@@ -298,13 +298,13 @@ describe('LeagueDetailPage — Seasons tab visibility', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('LeagueDetailPage — Seasons tab label', () => {
-  it('shows the season name (not "Seasons (1)") when exactly one season exists', () => {
+  it('shows "Seasons" (not "Seasons (1)" and not the season name) when exactly one season exists', () => {
     currentLeagues = [{ id: 'league-1', name: 'Spring League' }];
     currentSeasons = [makeSeason('s-1', { name: 'Spring 2026' })];
     currentProfile = makeProfile('admin');
     renderLeagueDetail('league-1');
 
-    expect(screen.getByRole('tab', { name: /spring 2026/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^seasons$/i })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: /seasons \(1\)/i })).toBeNull();
   });
 
@@ -332,7 +332,7 @@ describe('LeagueDetailPage — single-season tab click navigates directly', () =
     currentProfile = makeProfile('admin');
     renderLeagueDetail('league-1');
 
-    fireEvent.click(screen.getByRole('tab', { name: /spring 2026/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /^seasons$/i }));
 
     expect(mockNavigate).toHaveBeenCalledWith('/leagues/league-1/seasons/s-42');
   });
@@ -343,7 +343,7 @@ describe('LeagueDetailPage — single-season tab click navigates directly', () =
     currentProfile = makeProfile('admin');
     renderLeagueDetail('league-1');
 
-    fireEvent.click(screen.getByRole('tab', { name: /spring 2026/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /^seasons$/i }));
 
     // The "0 seasons" count label and "Create First Season" CTA both live
     // inside the seasons tab panel — they must NOT be visible because the

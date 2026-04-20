@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import {
-  collection, onSnapshot, doc, setDoc, updateDoc, query, where, orderBy,
+  collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, query, where, orderBy,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Division } from '@/types';
@@ -12,6 +12,7 @@ interface DivisionStore {
   fetchDivisions: (leagueId: string, seasonId: string) => () => void;
   createDivision: (leagueId: string, seasonId: string, data: Pick<Division, 'name' | 'teamIds'>) => Promise<Division>;
   updateDivision: (leagueId: string, divisionId: string, data: Partial<Division>) => Promise<void>;
+  deleteDivision: (leagueId: string, divisionId: string) => Promise<void>;
   addTeamToDivision: (leagueId: string, divisionId: string, teamId: string) => Promise<void>;
   removeTeamFromDivision: (leagueId: string, divisionId: string, teamId: string) => Promise<void>;
 }
@@ -35,6 +36,7 @@ export const useDivisionStore = create<DivisionStore>((set, get) => ({
         set({ divisions, loading: false });
       },
       (err) => {
+        console.error('[useDivisionStore] fetchDivisions error:', err);
         set({ loading: false, error: err.message });
       },
     );
@@ -63,6 +65,10 @@ export const useDivisionStore = create<DivisionStore>((set, get) => ({
       ...data,
       updatedAt: now,
     });
+  },
+
+  deleteDivision: async (leagueId, divisionId) => {
+    await deleteDoc(doc(db, 'leagues', leagueId, 'divisions', divisionId));
   },
 
   addTeamToDivision: async (leagueId, divisionId, teamId) => {

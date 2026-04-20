@@ -51,6 +51,7 @@ export const useSeasonStore = create<SeasonStore>((set, get) => ({
       updatedAt: now,
     };
     await setDoc(doc(db, 'leagues', leagueId, 'seasons', id), season);
+    set(state => ({ seasons: [season, ...state.seasons] }));
     return season;
   },
 

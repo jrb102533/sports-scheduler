@@ -35,6 +35,14 @@
     },
     {
       "collectionGroup": "divisions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "seasonId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "divisions",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
         { "fieldPath": "seasonId", "order": "ASCENDING" },

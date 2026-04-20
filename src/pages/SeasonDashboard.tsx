@@ -13,6 +13,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
+import { DivisionScheduleSetupCard } from '@/components/leagues/DivisionScheduleSetupCard';
 import { StandingsTable } from '@/components/standings/StandingsTable';
 import { db } from '@/lib/firebase';
 import { useSeasonStore } from '@/store/useSeasonStore';
@@ -146,10 +147,12 @@ interface AddDivisionModalProps {
   leagueId: string;
   seasonId: string;
   leagueTeams: Team[];
+  existingDivisions: Division[];
 }
 
-function AddDivisionModal({ open, onClose, leagueId, seasonId, leagueTeams }: AddDivisionModalProps) {
+function AddDivisionModal({ open, onClose, leagueId, seasonId, leagueTeams, existingDivisions }: AddDivisionModalProps) {
   const createDivision = useDivisionStore(s => s.createDivision);
+  const assignedTeamIds = new Set(existingDivisions.flatMap(d => d.teamIds));
   const [name, setName] = useState('');
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set());
   const [nameError, setNameError] = useState('');
@@ -205,21 +208,26 @@ function AddDivisionModal({ open, onClose, leagueId, seasonId, leagueTeams }: Ad
             <p className="text-xs text-gray-400 italic">No teams in this league yet.</p>
           ) : (
             <div className="border border-gray-200 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
-              {leagueTeams.map(team => (
-                <label
-                  key={team.id}
-                  className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedTeamIds.has(team.id)}
-                    onChange={() => toggleTeam(team.id)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
-                  <span className="text-sm text-gray-800">{team.name}</span>
-                </label>
-              ))}
+              {leagueTeams.map(team => {
+                const taken = assignedTeamIds.has(team.id);
+                return (
+                  <label
+                    key={team.id}
+                    className={`flex items-center gap-3 px-3 py-2.5 border-b border-gray-100 last:border-0 ${taken ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedTeamIds.has(team.id)}
+                      onChange={() => !taken && toggleTeam(team.id)}
+                      disabled={taken}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
+                    <span className="text-sm text-gray-800">{team.name}</span>
+                    {taken && <span className="ml-auto text-xs text-gray-400">In another division</span>}
+                  </label>
+                );
+              })}
             </div>
           )}
         </div>
@@ -229,6 +237,86 @@ function AddDivisionModal({ open, onClose, leagueId, seasonId, leagueTeams }: Ad
           <Button onClick={handleSubmit} disabled={saving}>
             {saving ? 'Creating…' : 'Create Division'}
           </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── Edit Division Modal ──────────────────────────────────────────────────────
+
+interface EditDivisionModalProps {
+  open: boolean;
+  onClose: () => void;
+  leagueId: string;
+  division: Division;
+  leagueTeams: Team[];
+  otherDivisions: Division[];
+}
+
+function EditDivisionModal({ open, onClose, leagueId, division, leagueTeams, otherDivisions }: EditDivisionModalProps) {
+  const updateDivision = useDivisionStore(s => s.updateDivision);
+  const takenByOthers = new Set(otherDivisions.flatMap(d => d.teamIds));
+  const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set(division.teamIds));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setSelectedTeamIds(new Set(division.teamIds));
+  }, [division.id, open]);
+
+  function toggleTeam(id: string) {
+    setSelectedTeamIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
+      return next;
+    });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await updateDivision(leagueId, division.id, { teamIds: [...selectedTeamIds] });
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Edit Division — ${division.name}`} size="sm">
+      <div className="space-y-4">
+        <div>
+          <p className="text-sm font-medium text-gray-700 mb-2">Assign Teams</p>
+          {leagueTeams.length === 0 ? (
+            <p className="text-xs text-gray-400 italic">No teams in this league yet.</p>
+          ) : (
+            <div className="border border-gray-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+              {leagueTeams.map(team => {
+                const taken = takenByOthers.has(team.id);
+                return (
+                  <label
+                    key={team.id}
+                    className={`flex items-center gap-3 px-3 py-2.5 border-b border-gray-100 last:border-0 ${taken ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedTeamIds.has(team.id)}
+                      onChange={() => !taken && toggleTeam(team.id)}
+                      disabled={taken}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
+                    <span className="text-sm text-gray-800">{team.name}</span>
+                    {taken && <span className="ml-auto text-xs text-gray-400">In another division</span>}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-3 pt-1">
+          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
         </div>
       </div>
     </Modal>
@@ -288,6 +376,7 @@ export function SeasonDashboard() {
 
   const leagues = useLeagueStore(s => s.leagues);
   const seasons = useSeasonStore(s => s.seasons);
+  const seasonsLoading = useSeasonStore(s => s.loading);
   const divisions = useDivisionStore(s => s.divisions);
   const teams = useTeamStore(s => s.teams);
   const venues = useVenueStore(s => s.venues);
@@ -296,6 +385,7 @@ export function SeasonDashboard() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardResumeAtPreview, setWizardResumeAtPreview] = useState(false);
   const [addDivisionOpen, setAddDivisionOpen] = useState(false);
+  const [editingDivision, setEditingDivision] = useState<Division | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState('');
   const [draftListOpen, setDraftListOpen] = useState(false);
@@ -359,7 +449,11 @@ export function SeasonDashboard() {
   const isAdmin = profile?.role === 'admin';
   // CVR-2026-008: use membership-aware helper so co-managers added via
   // assignScopedRole (memberships[] only, no legacy scalar leagueId) also get access.
-  const canManage = isAdmin || isManagerOfLeague(profile ?? null, leagueId ?? '');
+  // Also check league.managerIds directly — covers users who created the league but
+  // don't have a matching league_manager membership entry yet (multi-role gap, TD-501).
+  const canManage = isAdmin
+    || isManagerOfLeague(profile ?? null, leagueId ?? '')
+    || (profile?.uid != null && (league?.managerIds ?? []).includes(profile.uid));
   const hasPublishedDivision = divisions.some(d => d.scheduleStatus === 'published');
 
   // Draft/published schedule detection
@@ -436,6 +530,7 @@ export function SeasonDashboard() {
 
   if (!leagueId || !seasonId) return null;
   if (!league) return <div className="p-4 sm:p-6 text-gray-500">League not found.</div>;
+  if (!season && seasonsLoading) return <div className="p-4 sm:p-6 text-gray-400">Loading…</div>;
   if (!season) return <div className="p-4 sm:p-6 text-gray-500">Season not found.</div>;
 
   return (
@@ -451,6 +546,7 @@ export function SeasonDashboard() {
       {/* Header */}
       <div className="flex items-start gap-4 mb-6">
         <div className="flex-1">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-0.5">Season</p>
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-xl font-bold text-gray-900">{season.name}</h1>
             <SeasonStatusBadge status={season.status} />
@@ -739,25 +835,52 @@ export function SeasonDashboard() {
               No divisions yet. Divisions let you organise teams into sub-groups with separate schedules.
             </div>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {divisions.map(div => (
-                <div
-                  key={div.id}
-                  className="flex items-center gap-2 border border-gray-200 bg-white rounded-lg px-3 py-2"
-                >
-                  <span className="text-sm font-medium text-gray-800">{div.name}</span>
-                  <DivisionStatusBadge status={div.scheduleStatus} />
-                  {canManage && div.scheduleStatus === 'draft' && (
-                    <button
-                      className="text-xs text-amber-700 hover:text-amber-900 font-medium underline ml-1"
-                      onClick={() => void handlePublishDraft(div.id)}
-                      disabled={publishing}
-                    >
-                      Publish
-                    </button>
-                  )}
+            <div className="space-y-3">
+              {/* Status pills row */}
+              <div className="flex flex-wrap gap-2">
+                {divisions.map(div => (
+                  <div
+                    key={div.id}
+                    className={`flex items-center gap-2 border bg-white rounded-lg px-3 py-2 ${canManage ? 'cursor-pointer border-gray-200 hover:border-blue-300' : 'border-gray-200'}`}
+                    onClick={() => canManage && setEditingDivision(div)}
+                  >
+                    <span className="text-sm font-medium text-gray-800">{div.name}</span>
+                    <DivisionStatusBadge status={div.scheduleStatus} />
+                    {canManage && div.scheduleStatus === 'draft' && (
+                      <button
+                        className="text-xs text-amber-700 hover:text-amber-900 font-medium underline ml-1"
+                        onClick={e => { e.stopPropagation(); void handlePublishDraft(div.id); }}
+                        disabled={publishing}
+                      >
+                        Publish
+                      </button>
+                    )}
+                    {canManage && div.scheduleStatus === 'none' && (
+                      <button
+                        className="text-gray-300 hover:text-red-500 transition-colors ml-1"
+                        onClick={e => { e.stopPropagation(); void useDivisionStore.getState().deleteDivision(leagueId ?? '', div.id); }}
+                        title="Delete division"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Per-division schedule configuration (managers only) */}
+              {canManage && (
+                <div className="space-y-3 pt-1">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Schedule Configuration</p>
+                  {divisions.map(div => (
+                    <DivisionScheduleSetupCard
+                      key={div.id}
+                      division={div}
+                      leagueId={leagueId}
+                    />
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </section>
@@ -767,9 +890,16 @@ export function SeasonDashboard() {
       {hasPublishedDivision && (
         <section className="mb-8">
           <h2 className="text-base font-semibold text-gray-800 mb-3">Standings</h2>
-          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-            <StandingsTable leagueId={leagueId} seasonId={seasonId} />
-          </div>
+          {divisions.filter(d => d.scheduleStatus === 'published').map(div => (
+            <div key={div.id} className="mb-4 last:mb-0">
+              {divisions.length > 1 && (
+                <h3 className="text-sm font-medium text-gray-600 px-1 mb-1">{div.name}</h3>
+              )}
+              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                <StandingsTable leagueId={leagueId} seasonId={seasonId} teamIds={div.teamIds} />
+              </div>
+            </div>
+          ))}
         </section>
       )}
 
@@ -807,6 +937,7 @@ export function SeasonDashboard() {
           season={season}
           currentUserUid={profile?.uid ?? ''}
           divisionId={divisions.length === 1 ? divisions[0].id : undefined}
+          divisions={divisions.length > 0 ? divisions : undefined}
           resumeAtPreview={wizardResumeAtPreview}
         />
       )}
@@ -817,7 +948,19 @@ export function SeasonDashboard() {
         leagueId={leagueId}
         seasonId={seasonId}
         leagueTeams={leagueTeams}
+        existingDivisions={divisions}
       />
+
+      {editingDivision && (
+        <EditDivisionModal
+          open={editingDivision !== null}
+          onClose={() => setEditingDivision(null)}
+          leagueId={leagueId}
+          division={editingDivision}
+          leagueTeams={leagueTeams}
+          otherDivisions={divisions.filter(d => d.id !== editingDivision.id)}
+        />
+      )}
 
       <ConfirmDialog
         open={confirmClearAll}
