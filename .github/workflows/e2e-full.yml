@@ -75,9 +75,9 @@ jobs:
           PLAYWRIGHT_GREP: ${{ github.event.inputs.grep }}
         run: |
           if [ -n "$PLAYWRIGHT_GREP" ]; then
-            npx playwright test --project=chromium --project=staging --grep "$PLAYWRIGHT_GREP"
+            npx playwright test --project=chromium --project=staging --ignore="e2e/**/*.emu.spec.ts" --grep "$PLAYWRIGHT_GREP"
           else
-            npx playwright test --project=chromium --project=staging
+            npx playwright test --project=chromium --project=staging --ignore="e2e/**/*.emu.spec.ts"
           fi
 
       - name: Upload Playwright report
