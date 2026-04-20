@@ -2498,10 +2498,10 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             {(!seasonStart || !seasonEnd) && (
               <p className="text-xs text-amber-600">Season start and end dates are required before generating.</p>
             )}
-            {divisions && divisions.length > 0 && divisions.some(d => !divisionConfigs[d.id]?.gamesPerTeam) && (
+            {divisions && divisions.length > 0 && divisions.some(d => !d.format || !d.gamesPerTeam) && (
               <p className="text-xs text-amber-600 flex items-start gap-1.5">
                 <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
-                Set games per team for each division in the Season Setup step above.
+                Some divisions are missing schedule configuration — set format and games per team for each division before generating.
               </p>
             )}
           </div>
@@ -2819,7 +2819,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                   !seasonEnd ||
                   (divisions !== undefined &&
                     divisions.length > 0 &&
-                    divisions.some(d => !divisionConfigs[d.id]?.gamesPerTeam))
+                    divisions.some(d => !d.format || !d.gamesPerTeam))
                 }
               >
                 <Wand2 size={15} /> Generate Schedule

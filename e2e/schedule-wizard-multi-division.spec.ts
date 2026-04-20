@@ -111,23 +111,25 @@ async function setupLeagueAndSeason(
   await modal.getByRole('button', { name: /save|create/i }).click();
   await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
-  // Navigate to the season dashboard — click the season link that appeared
+  // Navigate to the season dashboard.  The UI may either:
+  // (a) show a seasons list with an <a href="/seasons/…"> link to click, or
+  // (b) auto-navigate when there is exactly one season (LM-SEA-03 behaviour).
+  // We try (a) first with a generous timeout; if not visible we re-click the
+  // Seasons tab which triggers the single-season direct-navigate behaviour.
   const seasonLink = page.locator('a[href*="/seasons/"]').first();
   const hasSeasonLink = await seasonLink
-    .isVisible({ timeout: 5_000 })
+    .isVisible({ timeout: 10_000 })
     .catch(() => false);
 
-  if (!hasSeasonLink) {
-    // Single-season tab may have navigated automatically
-    try {
-      await page.waitForURL(/\/leagues\/.+\/seasons\/.+/, { timeout: 8_000 });
-    } catch {
-      // Stay on league page — season link not available yet
-    }
-  } else {
+  if (hasSeasonLink) {
     await seasonLink.click();
-    await page.waitForURL(/\/leagues\/.+\/seasons\/.+/, { timeout: 10_000 });
+  } else {
+    // Re-click Seasons tab — triggers direct navigation for single-season leagues
+    await page.getByRole('tab', { name: /seasons/i }).click();
   }
+
+  // Wait until we are on the season dashboard regardless of which path was taken
+  await page.waitForURL(/\/leagues\/.+\/seasons\/.+/, { timeout: 15_000 });
 
   const seasonUrl = page.url();
   return { leagueUrl, seasonUrl };
@@ -168,6 +170,99 @@ async function setupLeagueSeasionWithDivision(
   await expect(divModal).not.toBeVisible({ timeout: 10_000 });
 
   return { seasonUrl };
+}
+
+/**
+ * Creates a league with two teams, a season, and one division.
+ * Use this for any test that needs to open the Schedule Wizard from the
+ * Season Dashboard (which requires ≥2 league teams for the button to be enabled).
+ */
+async function setupLeagueSeasonWithDivisionAndTeams(
+  page: import('@playwright/test').Page,
+  suffix: string,
+  divisionName: string,
+): Promise<{ seasonUrl: string }> {
+  const { AdminPage } = await import('./pages/AdminPage');
+  const admin = new AdminPage(page);
+
+  const leagueName = `E2E MDW LeagueDiv ${suffix}`;
+  const team1 = `E2E MDW T1 ${suffix}`;
+  const team2 = `E2E MDW T2 ${suffix}`;
+
+  // Create teams first (navigates to /teams each time)
+  await admin.createTeam({ name: team1 });
+  await admin.createTeam({ name: team2 });
+
+  // Create league and navigate to its detail page
+  await createLeagueAndNavigate(page, leagueName);
+
+  // Add both teams via the Teams tab
+  await page.getByRole('tab', { name: /teams/i }).click();
+  await addTeamToLeague(page, team1);
+  await addTeamToLeague(page, team2);
+
+  // Switch to Seasons tab and create a season
+  await page.getByRole('tab', { name: /seasons/i }).click();
+  const newSeasonBtn = page
+    .getByRole('button', { name: /create first season|new season/i })
+    .first();
+  await expect(newSeasonBtn).toBeVisible({ timeout: 8_000 });
+  await newSeasonBtn.click();
+
+  const modal = page.getByRole('dialog');
+  await expect(modal).toBeVisible({ timeout: 5_000 });
+
+  const nameInput = modal.getByLabel(/season name|name/i).first();
+  if (await nameInput.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await nameInput.fill(`Season ${suffix}`);
+  }
+
+  const dateInputs = modal.locator('input[type="date"]');
+  const today = new Date().toISOString().split('T')[0]!;
+  const inTwoMonths = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split('T')[0]!;
+  if (await dateInputs.first().isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await dateInputs.first().fill(today);
+  }
+  if (await dateInputs.last().isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await dateInputs.last().fill(inTwoMonths);
+  }
+
+  await modal.getByRole('button', { name: /save|create/i }).click();
+  await expect(modal).not.toBeVisible({ timeout: 10_000 });
+
+  // Navigate to the season dashboard (same reliable pattern as setupLeagueAndSeason)
+  const seasonLink = page.locator('a[href*="/seasons/"]').first();
+  const hasSeasonLink = await seasonLink
+    .isVisible({ timeout: 10_000 })
+    .catch(() => false);
+
+  if (hasSeasonLink) {
+    await seasonLink.click();
+  } else {
+    await page.getByRole('tab', { name: /seasons/i }).click();
+  }
+
+  await page.waitForURL(/\/leagues\/.+\/seasons\/.+/, { timeout: 15_000 });
+  await waitForAppHydrated(page);
+
+  // Add the division
+  const addDivBtn = page.getByRole('button', { name: /add division/i });
+  await expect(addDivBtn).toBeVisible({ timeout: 8_000 });
+  await addDivBtn.click();
+
+  const divModal = page.getByRole('dialog');
+  await expect(divModal).toBeVisible({ timeout: 5_000 });
+
+  const divNameInput = divModal.getByLabel(/division name/i).first();
+  await expect(divNameInput).toBeVisible({ timeout: 3_000 });
+  await divNameInput.fill(divisionName);
+
+  await divModal.getByRole('button', { name: /create division/i }).click();
+  await expect(divModal).not.toBeVisible({ timeout: 10_000 });
+
+  return { seasonUrl: page.url() };
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -393,8 +488,9 @@ test('MDW-03: Generate Schedule button is disabled when a division is missing fo
   const ts = String(Date.now());
   const divName = `U14 ${ts}`;
 
-  // Create a season with a division — deliberately leave format/gamesPerTeam unset
-  const { seasonUrl } = await setupLeagueSeasionWithDivision(page, ts, divName);
+  // Create a season with a division and 2 teams so the wizard button is enabled.
+  // Deliberately leave format/gamesPerTeam unset on the division.
+  const { seasonUrl } = await setupLeagueSeasonWithDivisionAndTeams(page, ts, divName);
 
   await page.goto(seasonUrl);
   await page.waitForLoadState('domcontentloaded');
@@ -628,8 +724,8 @@ test('MDW-07a: division preferences section is NOT shown in Advanced options whe
   const { page } = asAdmin;
   const ts = String(Date.now());
 
-  // Season with exactly one division
-  const { seasonUrl } = await setupLeagueSeasionWithDivision(
+  // Season with exactly one division and 2 teams (needed to open the wizard)
+  const { seasonUrl } = await setupLeagueSeasonWithDivisionAndTeams(
     page,
     ts,
     `SingleDiv ${ts}`
@@ -660,8 +756,8 @@ test('MDW-07b: division preferences section IS shown in Advanced options when se
   const { page } = asAdmin;
   const ts = String(Date.now());
 
-  // Create a season with one division, then add a second
-  const { seasonUrl } = await setupLeagueSeasionWithDivision(
+  // Create a season with one division and 2 teams (needed to open wizard), then add a second division
+  const { seasonUrl } = await setupLeagueSeasonWithDivisionAndTeams(
     page,
     ts,
     `DivA ${ts}`
