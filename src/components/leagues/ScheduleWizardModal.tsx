@@ -452,6 +452,22 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   const [maxConsecAway, setMaxConsecAway] = useState('2');
   const [distributionExpanded, setDistributionExpanded] = useState(false);
 
+  // ── Per-division config (when divisions prop is present) ─────────────────────
+  type DivisionConfigEntry = { format: string; gamesPerTeam: number; matchDurationMinutes: number };
+  const [divisionConfigs, setDivisionConfigs] = useState<Record<string, DivisionConfigEntry>>(() => {
+    if (!divisions || divisions.length === 0) return {};
+    return Object.fromEntries(
+      divisions.map(div => [
+        div.id,
+        {
+          format: div.format ?? 'single_round_robin',
+          gamesPerTeam: div.gamesPerTeam ?? (season?.gamesPerTeam ?? 8),
+          matchDurationMinutes: div.matchDurationMinutes ?? 60,
+        },
+      ])
+    );
+  });
+
   // ── Practice config ──────────────────────────────────────────────────────────
   const [practiceTeamIds, setPracticeTeamIds] = useState<Set<string>>(new Set());
   const [practiceTimes, setPracticeTimes] = useState<RecurringVenueWindow[]>([
@@ -1019,20 +1035,24 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         .map(c => WIZARD_TO_ALGO[c.id]);
 
       const divisionsPayload = (!isPractice && divisions && divisions.length > 0)
-        ? divisions.map(div => ({
-            id: div.id,
-            name: div.name,
-            teamIds: div.teamIds,
-            format: div.format ?? 'single_round_robin',
-            gamesPerTeam: div.gamesPerTeam ?? gpt,
-            matchDurationMinutes: div.matchDurationMinutes ?? parseInt(matchDuration),
-            surfacePreferences: venueConfigs.flatMap(vc => {
-              const venueId = vc.selectedVenueId ?? vc.name;
-              const prefs = vc.divisionSurfacePrefs[div.id] ?? [];
-              return prefs.map(p => ({ venueId, surfaceId: p.surfaceId, preference: p.preference }));
-            }),
-          }))
+        ? divisions.map(div => {
+            const divCfg = divisionConfigs[div.id];
+            return {
+              id: div.id,
+              name: div.name,
+              teamIds: div.teamIds,
+              format: divCfg?.format ?? div.format ?? 'single_round_robin',
+              gamesPerTeam: divCfg?.gamesPerTeam ?? div.gamesPerTeam ?? gpt,
+              matchDurationMinutes: divCfg?.matchDurationMinutes ?? div.matchDurationMinutes ?? parseInt(matchDuration),
+              surfacePreferences: venueConfigs.flatMap(vc => {
+                const venueId = vc.selectedVenueId ?? vc.name;
+                const prefs = vc.divisionSurfacePrefs[div.id] ?? [];
+                return prefs.map(p => ({ venueId, surfaceId: p.surfaceId, preference: p.preference }));
+              }),
+            };
+          })
         : undefined;
+
 
       const payload: Record<string, unknown> = {
         mode: mode ?? 'season',
@@ -1435,7 +1455,10 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
   return (
     <>
-      <Modal open={open} onClose={handleModalClose} title="Schedule Wizard" size="lg">
+      <Modal open={open} onClose={handleModalClose} title="Schedule Wizard" size="lg" fixedHeight>
+
+        {/* ── Scrollable step content ──────────────────────────────────────────── */}
+        <div className="flex-1 min-h-0 overflow-y-auto py-4">
 
         {/* Progress indicator */}
         {mode && step !== 'mode' && (
@@ -1595,11 +1618,93 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
               <Input label="Season Start" type="date" value={seasonStart} onChange={e => setSeasonStart(e.target.value)} />
               <Input label="Season End" type="date" value={seasonEnd} onChange={e => setSeasonEnd(e.target.value)} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Match Duration (min)" type="number" min="10" value={matchDuration} onChange={e => setMatchDuration(e.target.value)} />
+            {/* Buffer Between Games — always global */}
+            {!(divisions && divisions.length > 0) && (
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Match Duration (min)" type="number" min="10" value={matchDuration} onChange={e => setMatchDuration(e.target.value)} />
+                <Input label="Buffer Between Games (min)" type="number" min="0" value={bufferMinutes} onChange={e => setBufferMinutes(e.target.value)} />
+              </div>
+            )}
+            {divisions && divisions.length > 0 && (
               <Input label="Buffer Between Games (min)" type="number" min="0" value={bufferMinutes} onChange={e => setBufferMinutes(e.target.value)} />
-            </div>
-            {mode === 'season' && (
+            )}
+            {mode === 'season' && divisions && divisions.length > 0 && (
+              <>
+                {/* Per-division config grid */}
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">Division Settings</p>
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Division</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Format</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Games / Team</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Duration (min)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {divisions.map((div, idx) => {
+                          const cfg = divisionConfigs[div.id] ?? {
+                            format: 'single_round_robin',
+                            gamesPerTeam: season?.gamesPerTeam ?? 8,
+                            matchDurationMinutes: 60,
+                          };
+                          return (
+                            <tr key={div.id} className={`border-b border-gray-100 last:border-0 ${idx % 2 === 1 ? 'bg-gray-50' : 'bg-white'}`}>
+                              <td className="px-3 py-2 text-sm text-gray-800 font-medium whitespace-nowrap">{div.name}</td>
+                              <td className="px-3 py-2">
+                                <select
+                                  value={cfg.format}
+                                  onChange={e => setDivisionConfigs(prev => ({
+                                    ...prev,
+                                    [div.id]: { ...cfg, format: e.target.value },
+                                  }))}
+                                  className="text-sm border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                  aria-label={`Format for ${div.name}`}
+                                >
+                                  <option value="single_round_robin">Round Robin</option>
+                                  <option value="double_round_robin">Double Round Robin</option>
+                                  <option value="playoff">Playoff</option>
+                                </select>
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="100"
+                                  value={cfg.gamesPerTeam}
+                                  onChange={e => setDivisionConfigs(prev => ({
+                                    ...prev,
+                                    [div.id]: { ...cfg, gamesPerTeam: parseInt(e.target.value) || 1 },
+                                  }))}
+                                  className="w-16 text-sm border border-gray-300 rounded px-2 py-1 text-center focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                  aria-label={`Games per team for ${div.name}`}
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  min="10"
+                                  value={cfg.matchDurationMinutes}
+                                  onChange={e => setDivisionConfigs(prev => ({
+                                    ...prev,
+                                    [div.id]: { ...cfg, matchDurationMinutes: parseInt(e.target.value) || 60 },
+                                  }))}
+                                  className="w-16 text-sm border border-gray-300 rounded px-2 py-1 text-center focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                  aria-label={`Match duration for ${div.name}`}
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+            {mode === 'season' && !(divisions && divisions.length > 0) && (
               <>
                 <Input
                   label="Games Per Team"
@@ -2393,10 +2498,10 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             {(!seasonStart || !seasonEnd) && (
               <p className="text-xs text-amber-600">Season start and end dates are required before generating.</p>
             )}
-            {divisions && divisions.length > 0 && divisions.some(d => !d.format || !d.gamesPerTeam) && (
+            {divisions && divisions.length > 0 && divisions.some(d => !divisionConfigs[d.id]?.gamesPerTeam) && (
               <p className="text-xs text-amber-600 flex items-start gap-1.5">
                 <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
-                Some divisions are missing schedule configuration. Set format and games per team on the Season page before generating.
+                Set games per team for each division in the Season Setup step above.
               </p>
             )}
           </div>
@@ -2692,9 +2797,11 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
           </div>
         )}
 
+        </div>{/* end scrollable step content */}
+
         {/* ── Navigation ───────────────────────────────────────────────────────── */}
         {!showResumePrompt && !published && step !== 'mode' && !(step === 'generate' && generatePhase === 'running') && (
-          <div className="flex justify-between items-center pt-4 mt-4 border-t border-gray-100">
+          <div className="flex justify-between items-center flex-shrink-0 border-t border-gray-100 py-4">
             <div className="flex items-center gap-3">
               <Button variant="secondary" onClick={goBack} disabled={publishing}>
                 <ChevronLeft size={16} /> {currentStepIdx === 0 ? 'Change Mode' : 'Back'}
@@ -2712,7 +2819,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                   !seasonEnd ||
                   (divisions !== undefined &&
                     divisions.length > 0 &&
-                    divisions.some(d => !d.format || !d.gamesPerTeam))
+                    divisions.some(d => !divisionConfigs[d.id]?.gamesPerTeam))
                 }
               >
                 <Wand2 size={15} /> Generate Schedule
@@ -2771,7 +2878,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         )}
 
         {!showResumePrompt && step === 'mode' && (
-          <div className="flex justify-end pt-4 mt-4 border-t border-gray-100">
+          <div className="flex justify-end flex-shrink-0 border-t border-gray-100 py-4">
             <Button variant="secondary" onClick={handleModalClose}>Cancel</Button>
           </div>
         )}

@@ -9,12 +9,8 @@ import { buildEmail, rsvpButtonsHtml } from './emailTemplate';
 import {
   validateInput,
   feasibilityPreCheck,
-  generateSlots,
-  generatePairings,
-  shufflePairings,
   fnv32a,
-  assignFixtures,
-  buildOutput,
+  runScheduleAlgorithm,
   type GenerateScheduleInput,
   type ScheduleAlgorithmOutput,
 } from './scheduleAlgorithm';
@@ -3279,6 +3275,18 @@ export const generateSchedule = onCall(
         }
       }
 
+      // 4b. Division ownership check (SEC-74): verify all supplied divisionIds belong to this league
+      if (Array.isArray(input.divisions) && input.divisions.length > 0) {
+        const divSnaps = await Promise.all(
+          input.divisions.map((d: { id: string }) =>
+            admin.firestore().doc(`leagues/${input.leagueId}/divisions/${d.id}`).get()
+          )
+        );
+        if (divSnaps.some(s => !s.exists)) {
+          throw new HttpsError('permission-denied', 'One or more divisions do not belong to this league.');
+        }
+      }
+
       // 5. Input validation
       validateInput(input);
 
@@ -3318,12 +3326,8 @@ export const generateSchedule = onCall(
 
       // 8. Run algorithm — inner catch preserves algorithm-specific error context
       try {
-        const slots = generateSlots(input);
-        const rawPairings = generatePairings(input);
         const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
-        const shuffled = shufflePairings(rawPairings, seed);
-        const assignmentResult = assignFixtures(shuffled, slots, input);
-        return buildOutput(assignmentResult, input);
+        return runScheduleAlgorithm(input, seed);
       } catch (err: unknown) {
         if (err instanceof HttpsError) throw err;
         const raw = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
@@ -3332,12 +3336,10 @@ export const generateSchedule = onCall(
       }
 
     } catch (outerErr: unknown) {
-      // Re-throw HttpsErrors unchanged (they already have the right code + message)
       if (outerErr instanceof HttpsError) throw outerErr;
-      // Any other error (Firestore SDK, network, unexpected throws in steps 1-7)
       const raw = outerErr instanceof Error ? `${outerErr.name}: ${outerErr.message}` : String(outerErr);
       console.error('generateSchedule outer error', { raw, stack: outerErr instanceof Error ? outerErr.stack : undefined });
-      throw new HttpsError('failed-precondition', `DEBUG [outer] — ${raw}`);
+      throw new HttpsError('failed-precondition', `Schedule generation failed: ${raw}`);
     }
   }
 );

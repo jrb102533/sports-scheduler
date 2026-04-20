@@ -41,8 +41,7 @@ service cloud.firestore {
     // the given team. Uses _managedLeagueId (set by addTeamToLeague) as the link.
     // Falls back gracefully if the field is absent — returns false (not an error).
     function isManagerOfTeam(teamData) {
-      return isLeagueManager()
-        && teamData._managedLeagueId is string
+      return teamData._managedLeagueId is string
         && isManagerOfLeagueById(teamData._managedLeagueId);
     }
 
@@ -339,21 +338,21 @@ service cloud.firestore {
       // Coaches and players have no access.
       match /wizardDraft/draft {
         allow read, write: if isAdmin()
-          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
+          || isManagerOfLeagueById(leagueId);
       }
 
       // Availability collections — created/managed by LM; coaches read their own response only.
       match /availabilityCollections/{collectionId} {
         allow read: if isAdmin()
-          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
+          || isManagerOfLeagueById(leagueId);
         allow create, update, delete: if isAdmin()
-          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
+          || isManagerOfLeagueById(leagueId);
 
         // Coach responses — coaches read/write only their own; LM reads all.
         match /responses/{coachUid} {
           allow read: if isAdmin()
             || request.auth.uid == coachUid
-            || (isLeagueManager() && isManagerOfLeagueById(leagueId));
+            || isManagerOfLeagueById(leagueId);
           allow create, update: if request.auth != null
             && request.auth.uid == coachUid
             && request.resource.data.coachUid == request.auth.uid;
@@ -365,13 +364,13 @@ service cloud.firestore {
       match /fixtures/{fixtureId} {
         allow read: if request.auth != null;
         allow write: if isAdmin()
-          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
+          || isManagerOfLeagueById(leagueId);
       }
 
       // Schedule draft (backlog: async generation storage).
       match /drafts/{draftId} {
         allow read, write: if isAdmin()
-          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
+          || isManagerOfLeagueById(leagueId);
       }
 
       // Generation status — written only by Cloud Functions via Admin SDK.
@@ -383,16 +382,16 @@ service cloud.firestore {
       // Seasons — league managers can read/write; league members can read.
       match /seasons/{seasonId} {
         allow read: if request.auth != null && (
-          isAdmin() || isLeagueManager() || isCoach()
+          isAdmin() || isManagerOfLeagueById(leagueId) || isCoach()
           || getProfile().leagueId == leagueId
         );
         allow write: if isAdmin()
-          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
+          || isManagerOfLeagueById(leagueId);
 
         // Standings subcollection — same access as the parent season.
         match /standings/{standingId} {
           allow read: if request.auth != null && (
-            isAdmin() || isLeagueManager() || isCoach()
+            isAdmin() || isManagerOfLeagueById(leagueId) || isCoach()
             || getProfile().leagueId == leagueId
           );
           allow write: if false; // written exclusively by Cloud Functions (Admin SDK)
@@ -401,33 +400,33 @@ service cloud.firestore {
         // Schedule config subcollection — persisted wizard configurations.
         match /scheduleConfig/{configId} {
           allow read: if request.auth != null && (
-            isAdmin() || isLeagueManager() || isCoach()
+            isAdmin() || isManagerOfLeagueById(leagueId) || isCoach()
             || getProfile().leagueId == leagueId
           );
           allow write: if isAdmin()
-            || (isLeagueManager() && isManagerOfLeagueById(leagueId));
+            || isManagerOfLeagueById(leagueId);
         }
       }
 
       // Divisions — league managers can read/write; league members can read.
       match /divisions/{divisionId} {
         allow read: if request.auth != null && (
-          isAdmin() || isLeagueManager() || isCoach()
+          isAdmin() || isManagerOfLeagueById(leagueId) || isCoach()
           || getProfile().leagueId == leagueId
         );
         allow write: if isAdmin()
-          || (isLeagueManager() && isManagerOfLeagueById(leagueId));
+          || isManagerOfLeagueById(leagueId);
       }
 
       // Pending result submissions — written by callable function, readable by league managers/coaches.
       match /pendingResults/{eventId} {
-        allow read: if request.auth != null && (isAdmin() || isLeagueManager() || isCoach());
+        allow read: if request.auth != null && (isAdmin() || isManagerOfLeagueById(leagueId) || isCoach());
         allow write: if false; // written exclusively by Cloud Functions (Admin SDK)
       }
 
       // Result disputes — written by callable function, readable by league managers.
       match /resultDisputes/{eventId} {
-        allow read: if request.auth != null && (isAdmin() || isLeagueManager());
+        allow read: if request.auth != null && (isAdmin() || isManagerOfLeagueById(leagueId));
         allow write: if false; // written exclusively by Cloud Functions (Admin SDK)
       }
 

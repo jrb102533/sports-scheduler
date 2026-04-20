@@ -317,7 +317,7 @@ describe('generateSchedule', () => {
 
   // ── Minimum blocker cases ──────────────────────────────────────────────────
 
-  it('(1) outer catch wraps a raw Error from steps 1–4 as failed-precondition with "DEBUG [outer] — " prefix', async () => {
+  it('(1) outer catch wraps a raw Error from steps 1–4 as failed-precondition with "Schedule generation failed: " prefix', async () => {
     // Inject a plain Error during the Firestore read for the league doc (step 4).
     const spy = vi.spyOn(mockDb, 'doc').mockImplementation((path: string) => {
       if (path.startsWith('leagues/')) {
@@ -330,7 +330,7 @@ describe('generateSchedule', () => {
       await expect(fn(makeRequest(baseScheduleInput(), 'manager1')))
         .rejects.toMatchObject({
           code: 'failed-precondition',
-          message: expect.stringMatching(/^DEBUG \[outer\] — Error: Simulated SDK failure/),
+          message: expect.stringMatching(/^Schedule generation failed: Error: Simulated SDK failure/),
         });
     } finally {
       spy.mockRestore();
@@ -393,12 +393,12 @@ describe('generateSchedule', () => {
     expect((result.stats as Record<string, unknown>).feasible).toBe(true);
   });
 
-  it('(9) inner algorithm error (step 8) surfaces as failed-precondition with "DEBUG — " prefix, not "DEBUG [outer] — "', async () => {
-    // Patch generateSlots to throw a raw TypeError so the inner try/catch (step 8) fires.
+  it('(9) inner algorithm error (step 8) surfaces as failed-precondition with "DEBUG — " prefix, not "Schedule generation failed: "', async () => {
+    // Patch runScheduleAlgorithm to throw a raw TypeError so the inner try/catch (step 8) fires.
     // The inner catch wraps it as HttpsError('failed-precondition', 'DEBUG — TypeError: ...')
     // then re-throws; the outer catch sees an HttpsError and passes it through unchanged.
     const scheduleAlgorithm = await import('./scheduleAlgorithm');
-    const spy = vi.spyOn(scheduleAlgorithm, 'generateSlots').mockImplementation(() => {
+    const spy = vi.spyOn(scheduleAlgorithm, 'runScheduleAlgorithm').mockImplementation(() => {
       throw new TypeError('Unexpected slot shape');
     });
 
