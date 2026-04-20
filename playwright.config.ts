@@ -53,10 +53,12 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      testIgnore: /.*\.emu\.spec\.ts/,
     },
     {
       name: 'mobile-safari',
       use: { ...devices['iPhone 14'] },
+      testIgnore: /.*\.emu\.spec\.ts/,
     },
     // Production-only project — run with: npx playwright test --project=production
     {
