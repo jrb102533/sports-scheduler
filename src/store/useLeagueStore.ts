@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import {
-  collection, onSnapshot, doc, setDoc, query, orderBy,
+  collection, onSnapshot, doc, setDoc, query, orderBy, where,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@/lib/firebase';
@@ -20,11 +20,10 @@ export const useLeagueStore = create<LeagueStore>((set) => ({
   loading: true,
 
   subscribe: () => {
-    const q = query(collection(db, 'leagues'), orderBy('createdAt'));
+    const q = query(collection(db, 'leagues'), where('isDeleted', '!=', true), orderBy('isDeleted'), orderBy('createdAt'));
     const unsub = onSnapshot(q, (snap) => {
       const leagues = snap.docs
-        .map(d => ({ ...d.data(), id: d.id }) as League)
-        .filter(l => !l.isDeleted);
+        .map(d => ({ ...d.data(), id: d.id }) as League);
       set({ leagues, loading: false });
     }, () => set({ loading: false }));
     return unsub;

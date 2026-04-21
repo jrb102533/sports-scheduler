@@ -328,9 +328,12 @@ service cloud.firestore {
       // Phase 2: use managerIds access list instead of profile.leagueId cross-doc read.
       // SEC-29: non-admin writes may not touch access-control fields (managerIds, managedBy).
       // Admins retain unrestricted write access.
+      // SEC-76: isDeleted guard prevents a former manager from resurrecting a
+      // deleted league via updateDoc (update does not require read permission).
       allow update: if isAdmin()
         || (
           isManagerOfLeague(resource.data)
+          && resource.data.isDeleted != true
           && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['managerIds', 'managedBy'])
         );

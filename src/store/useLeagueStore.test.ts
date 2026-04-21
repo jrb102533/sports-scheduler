@@ -24,6 +24,7 @@ const mockCollection = vi.fn(() => ({}));
 const mockQuery = vi.fn(q => q);
 const mockOrderBy = vi.fn(() => ({}));
 const mockArrayRemove = vi.fn(v => ({ _remove: v }));
+const mockWhere = vi.fn(() => ({}));
 
 vi.mock('firebase/firestore', () => ({
   collection: (...args: unknown[]) => mockCollection(...args),
@@ -34,6 +35,7 @@ vi.mock('firebase/firestore', () => ({
   updateDoc: (...args: unknown[]) => mockUpdateDoc(...args),
   query: (...args: unknown[]) => mockQuery(...args),
   orderBy: (...args: unknown[]) => mockOrderBy(...args),
+  where: (...args: unknown[]) => mockWhere(...args),
   arrayRemove: (v: unknown) => mockArrayRemove(v),
 }));
 
@@ -131,15 +133,17 @@ beforeEach(() => {
 // ── subscribe() ───────────────────────────────────────────────────────────────
 
 describe('useLeagueStore — subscribe', () => {
-  it('populates leagues from snapshot, excluding soft-deleted ones', () => {
+  it('queries with server-side isDeleted filter and populates leagues from snapshot', () => {
     const active = makeLeague('l1');
-    const deleted = makeLeague('l2', { isDeleted: true });
     mockOnSnapshot.mockImplementation((_q, cb) => {
-      cb(makeSnapshot([active, deleted]));
+      cb(makeSnapshot([active]));
       return () => {};
     });
 
     useLeagueStore.getState().subscribe();
+
+    // Server-side filter is applied — isDeleted docs never reach the snapshot
+    expect(mockWhere).toHaveBeenCalledWith('isDeleted', '!=', true);
     const { leagues } = useLeagueStore.getState();
     expect(leagues).toHaveLength(1);
     expect(leagues[0].id).toBe('l1');
