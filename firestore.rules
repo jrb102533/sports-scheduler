@@ -316,7 +316,9 @@ service cloud.firestore {
     }
 
     match /leagues/{leagueId} {
-      allow read: if request.auth != null;
+      // SEC-44: soft-deleted leagues are not readable by anyone except admins.
+      allow read: if request.auth != null
+        && (isAdmin() || resource.data.isDeleted != true);
       // Any authenticated user who self-assigns as manager can create a league.
       // Aligns with createLeagueAndBecomeManager CF which has no role gate.
       // SEC-28: coaches/LMs with role='coach' at the top-level field are covered by
@@ -338,24 +340,25 @@ service cloud.firestore {
       // Coaches and players have no access.
       match /wizardDraft/draft {
         allow read, write: if isAdmin()
-          || isManagerOfLeagueById(leagueId);
+          || (isManagerOfLeagueById(leagueId) && get(/databases/$(database)/documents/leagues/$(leagueId)).data.isDeleted != true);
       }
 
       // Availability collections — created/managed by LM; coaches read their own response only.
       match /availabilityCollections/{collectionId} {
         allow read: if isAdmin()
-          || isManagerOfLeagueById(leagueId);
+          || (isManagerOfLeagueById(leagueId) && get(/databases/$(database)/documents/leagues/$(leagueId)).data.isDeleted != true);
         allow create, update, delete: if isAdmin()
-          || isManagerOfLeagueById(leagueId);
+          || (isManagerOfLeagueById(leagueId) && get(/databases/$(database)/documents/leagues/$(leagueId)).data.isDeleted != true);
 
         // Coach responses — coaches read/write only their own; LM reads all.
         match /responses/{coachUid} {
           allow read: if isAdmin()
-            || request.auth.uid == coachUid
-            || isManagerOfLeagueById(leagueId);
+            || ((request.auth.uid == coachUid || isManagerOfLeagueById(leagueId))
+              && get(/databases/$(database)/documents/leagues/$(leagueId)).data.isDeleted != true);
           allow create, update: if request.auth != null
             && request.auth.uid == coachUid
-            && request.resource.data.coachUid == request.auth.uid;
+            && request.resource.data.coachUid == request.auth.uid
+            && get(/databases/$(database)/documents/leagues/$(leagueId)).data.isDeleted != true;
           allow delete: if isAdmin();
         }
       }

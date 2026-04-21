@@ -37,7 +37,7 @@ export function LeagueDetailPage() {
 
   const leagues = useLeagueStore(s => s.leagues);
   const updateLeague = useLeagueStore(s => s.updateLeague);
-  const softDeleteLeague = useLeagueStore(s => s.softDeleteLeague);
+  const deleteLeague = useLeagueStore(s => s.deleteLeague);
   const teams = useTeamStore(s => s.teams);
   const addTeamToLeague = useTeamStore(s => s.addTeamToLeague);
   const removeTeamFromLeague = useTeamStore(s => s.removeTeamFromLeague);
@@ -511,7 +511,7 @@ export function LeagueDetailPage() {
           open={softDeleteOpen}
           league={league}
           onClose={() => setSoftDeleteOpen(false)}
-          onConfirm={() => softDeleteLeague(league.id).then(() => navigate('/leagues'))}
+          onConfirm={() => deleteLeague(league.id).then(() => navigate('/leagues'))}
         />
       )}
 
