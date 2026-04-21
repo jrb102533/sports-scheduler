@@ -41,6 +41,12 @@ export interface DivisionInput {
     surfaceId: string;
     preference: 'required' | 'preferred';
   }>;
+  /**
+   * Per-division coach availability enforcement mode.
+   * - 'soft' (default): unavailable slots incur a penalty but are still eligible
+   * - 'hard': unavailable slots are completely excluded (hard blackout)
+   */
+  enforcement?: 'soft' | 'hard';
 }
 
 export interface DivisionScheduleResult {
@@ -61,18 +67,24 @@ export interface ScheduleVenueInput {
   surfaces?:           ScheduleSurfaceInput[];
 }
 
+export type AvailabilityState = 'preferred' | 'available' | 'unavailable';
+
 export interface CoachAvailabilityInput {
   teamId:   string;
   weeklyWindows: {
     dayOfWeek: number;
     startTime: string;
     endTime:   string;
-    available: boolean;
+    /** Three-state availability (Phase 2). Takes precedence over `available` when present. */
+    state?: AvailabilityState;
+    /** Legacy boolean — kept for backward compatibility. Used when `state` is absent. */
+    available?: boolean;
   }[];
   dateOverrides: {
     start:     string;
     end:       string;
     available: false;
+    reason?: string;
   }[];
 }
 
@@ -444,11 +456,14 @@ export function validateInput(input: GenerateScheduleInput): void {
   if (input.doubleheader?.enabled && input.format !== 'double_round_robin')
     err('doubleheaders require format = double_round_robin');
 
-  // Validate coach availability time formats
+  // Validate coach availability time formats and state values
+  const VALID_AVAIL_STATES = new Set(['preferred', 'available', 'unavailable']);
   for (const ca of (input.coachAvailability ?? [])) {
     for (const w of (ca.weeklyWindows ?? [])) {
       if (!TIME_RE.test(w.startTime) || !TIME_RE.test(w.endTime))
         err('times must be HH:MM 24-hour format');
+      if (w.state !== undefined && !VALID_AVAIL_STATES.has(w.state))
+        err(`invalid availability state: ${w.state}`);
     }
   }
 
@@ -475,6 +490,8 @@ export function validateInput(input: GenerateScheduleInput): void {
         if (!teamIds.has(tid))
           err(`division ${div.id} references unknown team ${tid}`);
       }
+      if (div.enforcement !== undefined && div.enforcement !== 'soft' && div.enforcement !== 'hard')
+        err(`division ${div.id} has invalid enforcement value: ${div.enforcement}`);
     }
   }
 }
@@ -854,6 +871,73 @@ function timesOverlap(
          timeToMinutes(slotEnd) > timeToMinutes(eventStart);
 }
 
+/**
+ * Resolve the effective AvailabilityState for a weekly window entry.
+ * When `state` is present it takes precedence; otherwise fall back to
+ * the legacy `available` boolean (true → 'available', false → 'unavailable').
+ */
+function resolveWindowState(w: CoachAvailabilityInput['weeklyWindows'][number]): AvailabilityState {
+  if (w.state !== undefined) return w.state;
+  // Legacy boolean fallback
+  return w.available === true ? 'available' : 'unavailable';
+}
+
+/**
+ * Returns the penalty contribution for a single coach/team at a given slot.
+ *   preferred   → -1  (bonus: scheduler actively favors this slot)
+ *   available   →  0  (neutral)
+ *   unavailable → +1  (penalty: deprioritize)
+ *
+ * Date overrides always resolve to 'unavailable' (+1).
+ * No window defined for the day resolves to 'unavailable' (+1).
+ */
+function coachPenaltyForTeam(
+  slot: Slot,
+  ca: CoachAvailabilityInput,
+): number {
+  const slotDow = dayOfWeek(slot.date);
+
+  // Date overrides take priority — unavailable on the full date range
+  for (const ov of (ca.dateOverrides ?? [])) {
+    if (slot.date >= ov.start && slot.date <= ov.end) {
+      return 1; // unavailable
+    }
+  }
+
+  // Weekly windows
+  const matchingWindows = (ca.weeklyWindows ?? []).filter(w => w.dayOfWeek === slotDow);
+  if (matchingWindows.length === 0) {
+    // No window defined for this day — treat as unavailable
+    return 1;
+  }
+
+  // Find a window that covers the slot time; use the best state found.
+  // Priority order: preferred (-1) > available (0) > unavailable (+1).
+  const slotStart = timeToMinutes(slot.startTime);
+  const slotEnd   = timeToMinutes(slot.endTime);
+  // Use a numeric score to track best: -1 = preferred, 0 = available, 1 = unavailable.
+  // Start at +2 (sentinel = "no covering window found").
+  let bestScore = 2;
+
+  for (const w of matchingWindows) {
+    if (timeToMinutes(w.startTime) <= slotStart && timeToMinutes(w.endTime) >= slotEnd) {
+      const state = resolveWindowState(w);
+      const score = state === 'preferred' ? -1 : state === 'available' ? 0 : 1;
+      if (score < bestScore) {
+        bestScore = score;
+        if (bestScore === -1) break; // can't get better
+      }
+    }
+  }
+
+  if (bestScore === 2) {
+    // No window covered the slot time — treat as unavailable
+    return 1;
+  }
+
+  return bestScore; // -1, 0, or 1
+}
+
 function computeCoachAvailabilityPenalty(
   slot: Slot,
   pairing: Pairing,
@@ -861,41 +945,67 @@ function computeCoachAvailabilityPenalty(
 ): number {
   if (!coachAvailability) return 0;
   let penalty = 0;
-  const slotDow = dayOfWeek(slot.date);
+  const teamIds = [pairing.homeTeamId, pairing.awayTeamId];
+
+  for (const teamId of teamIds) {
+    const ca = coachAvailability.find(c => c.teamId === teamId);
+    if (!ca) continue;
+    penalty += coachPenaltyForTeam(slot, ca);
+  }
+
+  return penalty;
+}
+
+/**
+ * Hard-enforcement check: returns true if either coach is explicitly marked
+ * unavailable at the given slot via a date override or a weekly window entry
+ * that resolves to 'unavailable'.
+ *
+ * Key difference from coachPenaltyForTeam: an empty weeklyWindows array means
+ * "no preference specified" and does NOT constitute a hard block.  This avoids
+ * false positives when a coach submits date-override-only availability (no
+ * weekly grid entries) — without this guard, every non-override slot would
+ * incorrectly be treated as a hard blackout.
+ */
+export function isCoachUnavailable(
+  slot: Slot,
+  pairing: Pairing,
+  coachAvailability: CoachAvailabilityInput[] | undefined,
+): boolean {
+  if (!coachAvailability) return false;
   const teamIds = [pairing.homeTeamId, pairing.awayTeamId];
 
   for (const teamId of teamIds) {
     const ca = coachAvailability.find(c => c.teamId === teamId);
     if (!ca) continue;
 
-    // Check date overrides first
-    let overrideFound = false;
-    for (const ov of (ca.dateOverrides ?? [])) {
-      if (slot.date >= ov.start && slot.date <= ov.end) {
-        // Coach unavailable on this date
-        penalty += 1;
-        overrideFound = true;
-        break;
-      }
-    }
-    if (overrideFound) continue;
-
-    // Check weekly windows
-    const matchingWindows = (ca.weeklyWindows ?? []).filter(w => w.dayOfWeek === slotDow);
-    if (matchingWindows.length === 0) {
-      // No window defined for this day = not available
-      penalty += 1;
-      continue;
-    }
-    const isAvailable = matchingWindows.some(
-      w => w.available &&
-           timeToMinutes(w.startTime) <= timeToMinutes(slot.startTime) &&
-           timeToMinutes(w.endTime) >= timeToMinutes(slot.endTime)
+    // 1. Date overrides take absolute priority.
+    const hasDateBlock = (ca.dateOverrides ?? []).some(
+      ov => slot.date >= ov.start && slot.date <= ov.end,
     );
-    if (!isAvailable) penalty += 1;
+    if (hasDateBlock) return true;
+
+    // 2. Weekly windows — only consult if the coach submitted any weekly windows at all.
+    //    If weeklyWindows is empty, the coach submitted date-override-only availability
+    //    and we treat non-override slots as "no preference" (not a hard block).
+    const allWeeklyWindows = ca.weeklyWindows ?? [];
+    if (allWeeklyWindows.length === 0) continue;
+
+    // Coach has a weekly pattern. A day not listed = explicitly not available.
+    const slotDow = dayOfWeek(slot.date);
+    const matchingWindows = allWeeklyWindows.filter(w => w.dayOfWeek === slotDow);
+    if (matchingWindows.length === 0) return true; // day not in coach's weekly pattern
+
+    const slotStart = timeToMinutes(slot.startTime);
+    const slotEnd   = timeToMinutes(slot.endTime);
+    const isExplicitlyUnavailable = matchingWindows.some(w => {
+      if (timeToMinutes(w.startTime) > slotStart || timeToMinutes(w.endTime) < slotEnd) return false;
+      return resolveWindowState(w) === 'unavailable';
+    });
+    if (isExplicitlyUnavailable) return true;
   }
 
-  return penalty;
+  return false;
 }
 
 export function scorePenalty(
@@ -1063,6 +1173,12 @@ interface DivisionAssignmentContext {
   sharedSlotUsage: Map<string, number>;
   /** Shared across all divisions — must not be reset between divisions. */
   sharedSurfaceTimeWindows: SurfaceTimeWindowsMap;
+  /**
+   * Per-division coach availability enforcement mode.
+   * 'hard' → isCoachUnavailable() slots are skipped entirely (hard blackout).
+   * 'soft' (default) → scoring only, no slot is excluded.
+   */
+  coachEnforcement: 'soft' | 'hard';
 }
 
 export function assignFixtures(
@@ -1166,6 +1282,11 @@ export function assignFixtures(
       // 5. Home venue hard enforcement
       if (input.homeAwayMode === 'strict' && input.homeVenueEnforcement === 'hard') {
         if (homeTeam.homeVenueId && slot.venueId !== homeTeam.homeVenueId) continue;
+      }
+
+      // 6. Coach availability hard enforcement (per-division)
+      if (divisionCtx?.coachEnforcement === 'hard') {
+        if (isCoachUnavailable(slot, pairing, input.coachAvailability)) continue;
       }
 
       // ── Soft constraint scoring ─────────────────────────────────────────
@@ -1338,6 +1459,7 @@ export function runScheduleAlgorithm(
       preferredSurfaces,
       sharedSlotUsage,
       sharedSurfaceTimeWindows,
+      coachEnforcement: division.enforcement ?? 'soft',
     };
 
     // Generate pairings for this division's teams

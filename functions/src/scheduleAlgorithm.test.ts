@@ -26,6 +26,7 @@ import {
   fnv32a,
   expandVenueSurfaces,
   runScheduleAlgorithm,
+  isCoachUnavailable,
   type GenerateScheduleInput,
   type ScheduleVenueInput,
   type ScheduleTeamInput,
@@ -33,6 +34,8 @@ import {
   type Pairing,
   type ScheduleSurfaceInput,
   type DivisionInput,
+  type CoachAvailabilityInput,
+  type AvailabilityState,
 } from './scheduleAlgorithm';
 
 // ─── Test Data Factory ────────────────────────────────────────────────────────
@@ -2052,6 +2055,360 @@ describe('Section 8: Phase 1b — division-aware and surface-aware scheduling', 
       const s1 = fnv32a('league-test|div-a|2026-09-05');
       const s2 = fnv32a('league-test|div-a|2026-09-05');
       expect(s1).toBe(s2);
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section 9: Phase 2 — Three-state coach availability & per-division enforcement
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Section 9: Phase 2 — three-state coach availability', () => {
+
+  // Minimal slot factory for unit tests — avoids the full pipeline.
+  function makeSlot(date: string, startTime: string, endTime: string): Parameters<typeof isCoachUnavailable>[0] {
+    return {
+      key:               `${date}|venue-1|${startTime}`,
+      date,
+      startTime,
+      endTime,
+      venueId:           'venue-1',
+      venueName:         'Main Venue',
+      concurrentCapacity: 1,
+      isFallback:        false,
+    };
+  }
+
+  function makePairing(homeTeamId = 'team-1', awayTeamId = 'team-2'): Pairing {
+    return { homeTeamId, awayTeamId, homeTeamName: homeTeamId, awayTeamName: awayTeamId, round: 1, pairingIndex: 0 };
+  }
+
+  // ── isCoachUnavailable unit tests ──────────────────────────────────────────
+
+  describe('isCoachUnavailable', () => {
+    it('returns false when coachAvailability is undefined', () => {
+      const slot = makeSlot('2026-09-05', '10:00', '11:30');
+      const pairing = makePairing();
+      expect(isCoachUnavailable(slot, pairing, undefined)).toBe(false);
+    });
+
+    it('returns false when no entry exists for either team', () => {
+      const slot = makeSlot('2026-09-05', '10:00', '11:30');
+      const pairing = makePairing('team-1', 'team-2');
+      const ca: CoachAvailabilityInput[] = [
+        { teamId: 'team-99', weeklyWindows: [], dateOverrides: [] },
+      ];
+      expect(isCoachUnavailable(slot, pairing, ca)).toBe(false);
+    });
+
+    it('returns true when a date override covers the slot date', () => {
+      const slot = makeSlot('2026-10-10', '10:00', '11:30');
+      const pairing = makePairing('team-1', 'team-2');
+      const ca: CoachAvailabilityInput[] = [
+        {
+          teamId: 'team-1',
+          weeklyWindows: [],
+          dateOverrides: [{ start: '2026-10-09', end: '2026-10-11', available: false }],
+        },
+      ];
+      expect(isCoachUnavailable(slot, pairing, ca)).toBe(true);
+    });
+
+    it('returns false when a date override does NOT cover the slot date', () => {
+      const slot = makeSlot('2026-10-15', '10:00', '11:30');
+      const pairing = makePairing('team-1', 'team-2');
+      const ca: CoachAvailabilityInput[] = [
+        {
+          teamId: 'team-1',
+          weeklyWindows: [],
+          dateOverrides: [{ start: '2026-10-09', end: '2026-10-11', available: false }],
+        },
+      ];
+      expect(isCoachUnavailable(slot, pairing, ca)).toBe(false);
+    });
+
+    it('returns true when away coach has a date override covering the slot', () => {
+      const slot = makeSlot('2026-10-10', '10:00', '11:30');
+      const pairing = makePairing('team-1', 'team-2');
+      const ca: CoachAvailabilityInput[] = [
+        { teamId: 'team-1', weeklyWindows: [], dateOverrides: [] },
+        {
+          teamId: 'team-2',
+          weeklyWindows: [],
+          dateOverrides: [{ start: '2026-10-10', end: '2026-10-10', available: false }],
+        },
+      ];
+      expect(isCoachUnavailable(slot, pairing, ca)).toBe(true);
+    });
+
+    it('returns true when weekly window state is "unavailable" for the slot time', () => {
+      // 2026-09-05 is a Saturday (dayOfWeek = 6)
+      const slot = makeSlot('2026-09-05', '10:00', '11:30');
+      const pairing = makePairing('team-1', 'team-2');
+      const ca: CoachAvailabilityInput[] = [
+        {
+          teamId: 'team-1',
+          weeklyWindows: [
+            { dayOfWeek: 6, startTime: '09:00', endTime: '18:00', state: 'unavailable' },
+          ],
+          dateOverrides: [],
+        },
+      ];
+      expect(isCoachUnavailable(slot, pairing, ca)).toBe(true);
+    });
+
+    it('returns false when weekly window state is "preferred"', () => {
+      const slot = makeSlot('2026-09-05', '10:00', '11:30');
+      const pairing = makePairing('team-1', 'team-2');
+      const ca: CoachAvailabilityInput[] = [
+        {
+          teamId: 'team-1',
+          weeklyWindows: [
+            { dayOfWeek: 6, startTime: '09:00', endTime: '18:00', state: 'preferred' },
+          ],
+          dateOverrides: [],
+        },
+      ];
+      expect(isCoachUnavailable(slot, pairing, ca)).toBe(false);
+    });
+
+    it('returns false when weekly window state is "available"', () => {
+      const slot = makeSlot('2026-09-05', '10:00', '11:30');
+      const pairing = makePairing('team-1', 'team-2');
+      const ca: CoachAvailabilityInput[] = [
+        {
+          teamId: 'team-1',
+          weeklyWindows: [
+            { dayOfWeek: 6, startTime: '09:00', endTime: '18:00', state: 'available' },
+          ],
+          dateOverrides: [],
+        },
+      ];
+      expect(isCoachUnavailable(slot, pairing, ca)).toBe(false);
+    });
+
+    it('returns true when no weekly window is defined for the slot day', () => {
+      // 2026-09-05 is Saturday (6); only Sunday (0) is defined
+      const slot = makeSlot('2026-09-05', '10:00', '11:30');
+      const pairing = makePairing('team-1', 'team-2');
+      const ca: CoachAvailabilityInput[] = [
+        {
+          teamId: 'team-1',
+          weeklyWindows: [
+            { dayOfWeek: 0, startTime: '09:00', endTime: '18:00', state: 'available' },
+          ],
+          dateOverrides: [],
+        },
+      ];
+      expect(isCoachUnavailable(slot, pairing, ca)).toBe(true);
+    });
+
+    // Backward-compat: legacy `available` boolean
+    it('backward-compat: available:true treated as available (returns false)', () => {
+      const slot = makeSlot('2026-09-05', '10:00', '11:30');
+      const pairing = makePairing('team-1', 'team-2');
+      const ca: CoachAvailabilityInput[] = [
+        {
+          teamId: 'team-1',
+          weeklyWindows: [
+            { dayOfWeek: 6, startTime: '09:00', endTime: '18:00', available: true },
+          ],
+          dateOverrides: [],
+        },
+      ];
+      expect(isCoachUnavailable(slot, pairing, ca)).toBe(false);
+    });
+
+    it('backward-compat: available:false treated as unavailable (returns true)', () => {
+      const slot = makeSlot('2026-09-05', '10:00', '11:30');
+      const pairing = makePairing('team-1', 'team-2');
+      const ca: CoachAvailabilityInput[] = [
+        {
+          teamId: 'team-1',
+          weeklyWindows: [
+            { dayOfWeek: 6, startTime: '09:00', endTime: '18:00', available: false },
+          ],
+          dateOverrides: [],
+        },
+      ];
+      expect(isCoachUnavailable(slot, pairing, ca)).toBe(true);
+    });
+  });
+
+  // ── computeCoachAvailabilityPenalty — three-state scoring ─────────────────
+
+  describe('three-state penalty scoring via full pipeline', () => {
+    /**
+     * Build a minimal input where team-1 vs team-2 schedules one game.
+     * Inject coachAvailability and check which slots get chosen.
+     * The season contains only Saturdays so DOW=6 windows are all that matters.
+     */
+    function buildTwoTeamInput(
+      coachAvailability: CoachAvailabilityInput[],
+      constraints: GenerateScheduleInput['softConstraintPriority'] = ['respect_coach_availability'],
+    ): GenerateScheduleInput {
+      return {
+        leagueId:   'league-phase2',
+        leagueName: 'Phase 2 Test',
+        teams: [
+          { id: 'team-1', name: 'Team 1' },
+          { id: 'team-2', name: 'Team 2' },
+        ],
+        venues: [{
+          id:   'venue-1',
+          name: 'Main Venue',
+          concurrentPitches: 4,
+          // Multiple Saturday windows so the scheduler can pick between them
+          availabilityWindows: [
+            { dayOfWeek: 6, startTime: '09:00', endTime: '18:00' },
+          ],
+        }],
+        seasonStart: '2026-09-05',  // Saturday
+        seasonEnd:   '2026-11-28',
+        format:      'single_round_robin',
+        matchDurationMinutes: 90,
+        bufferMinutes:        0,
+        minRestDays:          1,
+        softConstraintPriority: constraints,
+        homeAwayMode: 'relaxed',
+        coachAvailability,
+      };
+    }
+
+    it('a "preferred" slot is chosen over an "available" slot when respect_coach_availability is active', () => {
+      // team-1 marks 09:00 as preferred, 12:00 as available
+      // Scheduler should pick 09:00 (negative penalty = lower total)
+      const ca: CoachAvailabilityInput[] = [
+        {
+          teamId: 'team-1',
+          weeklyWindows: [
+            { dayOfWeek: 6, startTime: '09:00', endTime: '10:30', state: 'preferred' },
+            { dayOfWeek: 6, startTime: '12:00', endTime: '13:30', state: 'available' },
+          ],
+          dateOverrides: [],
+        },
+      ];
+      const input = buildTwoTeamInput(ca);
+      const output = runSchedule(input);
+      expect(output.fixtures).toHaveLength(1);
+      // The preferred slot (09:00) should be selected
+      expect(output.fixtures[0].startTime).toBe('09:00');
+    });
+
+    it('an "unavailable" slot incurs a positive penalty (deprioritized but not excluded in soft mode)', () => {
+      // Both slots available; team-1 marks 12:00 as unavailable.
+      // With respect_coach_availability, scheduler should prefer the 09:00 slot.
+      const ca: CoachAvailabilityInput[] = [
+        {
+          teamId: 'team-1',
+          weeklyWindows: [
+            { dayOfWeek: 6, startTime: '09:00', endTime: '10:30', state: 'available' },
+            { dayOfWeek: 6, startTime: '12:00', endTime: '13:30', state: 'unavailable' },
+          ],
+          dateOverrides: [],
+        },
+      ];
+      const input = buildTwoTeamInput(ca);
+      const output = runSchedule(input);
+      expect(output.fixtures).toHaveLength(1);
+      expect(output.fixtures[0].startTime).toBe('09:00');
+    });
+  });
+
+  // ── Hard enforcement via division.enforcement === 'hard' ───────────────────
+
+  describe('hard enforcement via division enforcement mode', () => {
+    /**
+     * Build a division-aware input where one division has hard enforcement.
+     * The coach for team-1 is unavailable on all Saturdays (dateOverride spans the whole season).
+     * With hard enforcement, the algorithm must schedule the game on another day.
+     * We add Sunday windows to ensure there is a feasible alternative.
+     */
+    function buildHardEnforcementInput(enforcement: 'soft' | 'hard'): GenerateScheduleInput {
+      const teamA1: ScheduleTeamInput = { id: 'div-a-1', name: 'Div A Team 1' };
+      const teamA2: ScheduleTeamInput = { id: 'div-a-2', name: 'Div A Team 2' };
+
+      const divA: DivisionInput = {
+        id:     'div-a',
+        name:   'Division A',
+        teamIds: [teamA1.id, teamA2.id],
+        format:  'single_round_robin',
+        enforcement,
+      };
+
+      // Coach for div-a-1 unavailable all Saturdays
+      const coachAvailability: CoachAvailabilityInput[] = [
+        {
+          teamId: teamA1.id,
+          weeklyWindows: [
+            // Only available Sundays
+            { dayOfWeek: 0, startTime: '09:00', endTime: '18:00', state: 'available' },
+          ],
+          dateOverrides: [],
+        },
+      ];
+
+      return {
+        leagueId:   'league-hard',
+        leagueName: 'Hard Enforcement League',
+        teams:      [teamA1, teamA2],
+        venues: [{
+          id:   'venue-h',
+          name: 'Hard Venue',
+          concurrentPitches: 4,
+          availabilityWindows: [
+            { dayOfWeek: 6, startTime: '09:00', endTime: '18:00' }, // Saturday
+            { dayOfWeek: 0, startTime: '09:00', endTime: '18:00' }, // Sunday
+          ],
+        }],
+        seasonStart: '2026-09-05',  // Saturday
+        seasonEnd:   '2026-11-28',
+        format:      'single_round_robin',
+        matchDurationMinutes: 90,
+        bufferMinutes:        0,
+        minRestDays:          1,
+        softConstraintPriority: ['respect_coach_availability'],
+        homeAwayMode: 'relaxed',
+        coachAvailability,
+        divisions: [divA],
+      };
+    }
+
+    it('hard enforcement: game is never scheduled on a Saturday when coach is unavailable Saturdays', () => {
+      const input = buildHardEnforcementInput('hard');
+      const seed  = fnv32a(input.leagueId + '|' + input.seasonStart);
+      const output = runScheduleAlgorithm(input, seed);
+
+      expect(output.fixtures).toHaveLength(1);
+      // All fixtures must fall on Sunday (DOW=0); Saturday is blacked out
+      for (const f of output.fixtures) {
+        const dow = new Date(f.date + 'T00:00:00Z').getUTCDay();
+        expect(dow).toBe(0); // Sunday
+      }
+    });
+
+    it('soft enforcement: game may be scheduled on Saturday despite availability penalty', () => {
+      // Soft mode: Saturday is penalised but not excluded.
+      // With only 2 teams (1 game), the scheduler may still pick Saturday
+      // if no penalty-free alternative is ranked higher — we verify it doesn't crash
+      // and produces exactly 1 fixture (we do NOT assert the day, only feasibility).
+      const input = buildHardEnforcementInput('soft');
+      const seed  = fnv32a(input.leagueId + '|' + input.seasonStart);
+      const output = runScheduleAlgorithm(input, seed);
+
+      expect(output.fixtures).toHaveLength(1);
+    });
+
+    it('default enforcement is soft (no enforcement field) — does not crash', () => {
+      // Division without enforcement field — should default to 'soft'
+      const input = buildHardEnforcementInput('soft');
+      // Remove enforcement field from division to test default
+      const modifiedInput = {
+        ...input,
+        divisions: input.divisions!.map(({ enforcement: _e, ...rest }) => rest),
+      };
+      const seed = fnv32a(input.leagueId + '|' + input.seasonStart);
+      expect(() => runScheduleAlgorithm(modifiedInput, seed)).not.toThrow();
     });
   });
 });
