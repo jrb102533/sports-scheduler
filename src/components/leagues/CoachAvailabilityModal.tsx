@@ -61,6 +61,7 @@ function gridToWindows(grid: GridState) {
         dayOfWeek: d,
         startTime: cell.startTime,
         endTime: cell.endTime,
+        state: cell.available ? 'available' : 'unavailable',
         available: cell.available,
       });
     }
@@ -86,8 +87,11 @@ export function CoachAvailabilityModal({
       for (const w of existingResponse.weeklyWindows) {
         const block = BLOCKS.find(b => b.defaultStart === w.startTime);
         if (block && g[w.dayOfWeek] !== undefined) {
+          const available = w.state !== undefined
+            ? w.state !== 'unavailable'
+            : (w.available ?? true);
           g[w.dayOfWeek][block.id] = {
-            available: w.available,
+            available,
             startTime: block.defaultStart,
             endTime: block.defaultEnd,
             customised: false,

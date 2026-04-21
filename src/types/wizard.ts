@@ -1,5 +1,7 @@
 export type WizardMode = 'season' | 'practice' | 'playoff';
 
+export type AvailabilityState = 'preferred' | 'available' | 'unavailable';
+
 export interface RecurringVenueWindow {
   dayOfWeek: number; // 0 = Sunday, 1 = Monday … 6 = Saturday
   startTime: string; // "HH:MM"
@@ -37,7 +39,8 @@ export interface CoachAvailabilityInput {
     dayOfWeek: number;
     startTime: string;
     endTime: string;
-    available: boolean;
+    state: AvailabilityState;
+    available?: boolean; // backward-compat: old submissions use boolean; new submissions write state
   }[];
   dateOverrides: {
     start: string;
@@ -68,7 +71,8 @@ export interface CoachAvailabilityResponse {
     dayOfWeek: number;
     startTime: string;
     endTime: string;
-    available: boolean;
+    state: AvailabilityState;
+    available?: boolean; // backward-compat: old submissions use boolean; new submissions write state
   }[];
   dateOverrides: {
     start: string;

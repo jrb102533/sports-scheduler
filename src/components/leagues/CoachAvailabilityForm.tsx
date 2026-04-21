@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Check, Star } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useCollectionStore } from '@/store/useCollectionStore';
 import {
@@ -11,6 +11,7 @@ import {
   SLOT_EVENING_END,
 } from '@/lib/coverageUtils';
 import type { CoachAvailabilityResponse } from '@/types';
+import type { AvailabilityState } from '@/types/wizard';
 
 interface Props {
   leagueId: string;
@@ -41,12 +42,18 @@ const BLOCKS: { id: Block; label: string; startTime: string; endTime: string }[]
   { id: 'evening',   label: 'Evening',   startTime: SLOT_EVENING_START,   endTime: SLOT_EVENING_END   },
 ];
 
-type GridState = Record<number, Record<Block, boolean>>;
+type GridState = Record<number, Record<Block, AvailabilityState>>;
+
+const NEXT_STATE: Record<AvailabilityState, AvailabilityState> = {
+  unavailable: 'available',
+  available: 'preferred',
+  preferred: 'unavailable',
+};
 
 function buildDefaultGrid(): GridState {
   const grid: GridState = {};
   for (const day of GRID_DAYS) {
-    grid[day.dayOfWeek] = { morning: true, afternoon: true, evening: true };
+    grid[day.dayOfWeek] = { morning: 'available', afternoon: 'available', evening: 'available' };
   }
   return grid;
 }
@@ -56,7 +63,12 @@ function initGridFromResponse(response: CoachAvailabilityResponse): GridState {
   for (const w of response.weeklyWindows) {
     const block = BLOCKS.find(b => b.startTime === w.startTime);
     if (block && grid[w.dayOfWeek] !== undefined) {
-      grid[w.dayOfWeek][block.id] = w.available;
+      if (w.state) {
+        grid[w.dayOfWeek][block.id] = w.state;
+      } else if (w.available !== undefined) {
+        // Backward compat: old submissions used boolean
+        grid[w.dayOfWeek][block.id] = w.available ? 'available' : 'unavailable';
+      }
     }
   }
   return grid;
@@ -70,7 +82,7 @@ function gridToWindows(grid: GridState): CoachAvailabilityResponse['weeklyWindow
         dayOfWeek: day.dayOfWeek,
         startTime: block.startTime,
         endTime: block.endTime,
-        available: grid[day.dayOfWeek][block.id],
+        state: grid[day.dayOfWeek][block.id],
       });
     }
   }
@@ -111,12 +123,12 @@ export function CoachAvailabilityForm({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
 
-  function toggleCell(dayOfWeek: number, block: Block) {
+  function cycleCell(dayOfWeek: number, block: Block) {
     setGrid(prev => ({
       ...prev,
       [dayOfWeek]: {
         ...prev[dayOfWeek],
-        [block]: !prev[dayOfWeek][block],
+        [block]: NEXT_STATE[prev[dayOfWeek][block]],
       },
     }));
   }
@@ -168,7 +180,7 @@ export function CoachAvailabilityForm({
           {daysLeft > 0 ? ` · ${daysLeft} day${daysLeft !== 1 ? 's' : ''} remaining` : ' · Today'}
         </p>
         <p className="text-xs text-gray-400 mt-1">
-          Tap a block to mark it unavailable. All blocks are available by default.
+          Tap a block to cycle through: available → preferred → unavailable. All blocks are available by default.
         </p>
       </div>
 
@@ -195,19 +207,26 @@ export function CoachAvailabilityForm({
                   {block.label}
                 </div>
                 {GRID_DAYS.map(day => {
-                  const available = grid[day.dayOfWeek][block.id];
+                  const state = grid[day.dayOfWeek][block.id];
                   return (
                     <button
                       key={day.dayOfWeek}
-                      onClick={() => toggleCell(day.dayOfWeek, block.id)}
-                      className={`h-9 rounded text-xs font-medium transition-colors ${
-                        available
-                          ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                          : 'bg-red-100 text-red-600 hover:bg-red-200'
+                      onClick={() => cycleCell(day.dayOfWeek, block.id)}
+                      className={`h-9 rounded text-xs font-medium transition-colors flex items-center justify-center ${
+                        state === 'preferred'
+                          ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                          : state === 'available'
+                            ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                            : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
                       }`}
-                      aria-label={`${day.label} ${block.label}: ${available ? 'available' : 'unavailable'}`}
+                      aria-label={`${day.label} ${block.label}: ${state}`}
                     >
-                      {available ? '✓' : '✗'}
+                      {state === 'preferred'
+                        ? <Star size={13} className="fill-blue-500 text-blue-500" />
+                        : state === 'available'
+                          ? <Check size={13} />
+                          : <X size={13} />
+                      }
                     </button>
                   );
                 })}
@@ -216,7 +235,7 @@ export function CoachAvailabilityForm({
           </div>
         </div>
 
-        <p className="text-xs text-gray-400 mt-2">Green = available · Red = unavailable</p>
+        <p className="text-xs text-gray-400 mt-2">Green = available · Blue star = preferred · Gray = unavailable</p>
       </div>
 
       {/* Date-specific exceptions */}

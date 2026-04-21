@@ -453,7 +453,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   const [distributionExpanded, setDistributionExpanded] = useState(false);
 
   // ── Per-division config (when divisions prop is present) ─────────────────────
-  type DivisionConfigEntry = { format: string; gamesPerTeam: number; matchDurationMinutes: number };
+  type DivisionConfigEntry = { format: string; gamesPerTeam: number; matchDurationMinutes: number; coachEnforcement: 'soft' | 'hard' };
   const [divisionConfigs, setDivisionConfigs] = useState<Record<string, DivisionConfigEntry>>(() => {
     if (!divisions || divisions.length === 0) return {};
     return Object.fromEntries(
@@ -463,6 +463,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
           format: div.format ?? 'single_round_robin',
           gamesPerTeam: div.gamesPerTeam ?? (season?.gamesPerTeam ?? 8),
           matchDurationMinutes: div.matchDurationMinutes ?? 60,
+          coachEnforcement: 'soft' as const,
         },
       ])
     );
@@ -521,6 +522,15 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   // ── Generate step ─────────────────────────────────────────────────────────
   const [generatePhase, setGeneratePhase] = useState<'configure' | 'running'>('configure');
   const [recommendationDismissed, setRecommendationDismissed] = useState(false);
+
+  // ── Cross-division coach conflict detection ────────────────────────────────
+  interface CrossDivisionConflict {
+    coachId: string;
+    coachName: string;
+    teams: Array<{ teamName: string; divisionName: string }>;
+  }
+  const [coachConflicts, setCoachConflicts] = useState<CrossDivisionConflict[]>([]);
+  const [showConflictWarning, setShowConflictWarning] = useState(false);
 
   // ── Draft resume ───────────────────────────────────────────────────────────
   const [showResumePrompt, setShowResumePrompt] = useState(false);
@@ -782,6 +792,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     setResumeStep(null);
     setShowResumeStartOverConfirm(false);
     setShowModeChangeGuard(false);
+    setCoachConflicts([]);
+    setShowConflictWarning(false);
   }
 
   function handleModalClose() {
@@ -868,7 +880,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         setStep('generate');
         triggerAutoSave('generate');
       } else {
-        void handleGenerate();
+        handleGenerateClick();
       }
       return;
     }
@@ -944,6 +956,57 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     }
   }
 
+  // ─── Cross-division coach conflict detection ─────────────────────────────────
+
+  function detectCrossDivisionConflicts(): CrossDivisionConflict[] {
+    if (!divisions || divisions.length < 2) return [];
+
+    // Build a map: coachId -> [{ teamName, divisionName }]
+    const coachDivisions = new Map<string, Array<{ teamName: string; divisionName: string }>>();
+
+    for (const div of divisions) {
+      const divTeams = leagueTeams.filter(t => div.teamIds?.includes(t.id));
+      for (const team of divTeams) {
+        const coachIdSet = new Set<string>();
+        if (team.coachId) coachIdSet.add(team.coachId);
+        if (team.coachIds) team.coachIds.forEach(id => coachIdSet.add(id));
+
+        for (const coachId of coachIdSet) {
+          if (!coachDivisions.has(coachId)) coachDivisions.set(coachId, []);
+          coachDivisions.get(coachId)!.push({ teamName: team.name, divisionName: div.name });
+        }
+      }
+    }
+
+    const conflicts: CrossDivisionConflict[] = [];
+    for (const [coachId, entries] of coachDivisions.entries()) {
+      const divNames = new Set(entries.map(e => e.divisionName));
+      if (divNames.size > 1) {
+        // Find a display name: check team's coachName field for any team where this coach is primary
+        const representativeTeam = leagueTeams.find(t => t.coachId === coachId);
+        const coachName = representativeTeam?.coachName ?? coachId;
+        conflicts.push({ coachId, coachName, teams: entries });
+      }
+    }
+
+    return conflicts;
+  }
+
+  function handleGenerateClick() {
+    if (!divisions || divisions.length < 2) {
+      void handleGenerate();
+      return;
+    }
+
+    const conflicts = detectCrossDivisionConflicts();
+    if (conflicts.length > 0) {
+      setCoachConflicts(conflicts);
+      setShowConflictWarning(true);
+    } else {
+      void handleGenerate();
+    }
+  }
+
   // ─── Generate ───────────────────────────────────────────────────────────────
 
   async function handleGenerate() {
@@ -965,12 +1028,12 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       const activeFormat = mode === 'playoff' ? playoffFormat : (mode === 'practice' ? format : derivedSeasonFormat);
 
       // Resolve which collection to read responses from.
-      const resolvedCollectionId = collectionId ?? wizardDraft?.collectionId ?? null;
+      const activeCollectionId = collectionId ?? wizardDraft?.collectionId ?? null;
 
       let coachAvailability: CoachAvailabilityResponse[] = [];
-      if (resolvedCollectionId) {
+      if (activeCollectionId) {
         const snap = await getDocs(
-          collection(db, 'leagues', league.id, 'availabilityCollections', resolvedCollectionId, 'responses')
+          collection(db, 'leagues', league.id, 'availabilityCollections', activeCollectionId, 'responses')
         );
         coachAvailability = snap.docs.map(d => d.data() as CoachAvailabilityResponse);
       }
@@ -1044,6 +1107,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
               format: divCfg?.format ?? div.format ?? 'single_round_robin',
               gamesPerTeam: divCfg?.gamesPerTeam ?? div.gamesPerTeam ?? gpt,
               matchDurationMinutes: divCfg?.matchDurationMinutes ?? div.matchDurationMinutes ?? parseInt(matchDuration),
+              enforcement: divCfg?.coachEnforcement ?? 'soft',
               surfacePreferences: venueConfigs.flatMap(vc => {
                 const venueId = vc.selectedVenueId ?? vc.name;
                 const prefs = vc.divisionSurfacePrefs[div.id] ?? [];
@@ -1418,6 +1482,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
   // ─── Computed ────────────────────────────────────────────────────────────────
 
+  const resolvedCollectionId = collectionId ?? wizardDraft?.collectionId ?? null;
+
   const teamNameById = useMemo<Record<string, string>>(
     () => Object.fromEntries(leagueTeams.map(t => [t.id, t.name])),
     [leagueTeams],
@@ -1641,6 +1707,9 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                           <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Format</th>
                           <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Games / Team</th>
                           <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Duration (min)</th>
+                          {resolvedCollectionId && (
+                            <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Coach Availability</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
@@ -1649,6 +1718,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                             format: 'single_round_robin',
                             gamesPerTeam: season?.gamesPerTeam ?? 8,
                             matchDurationMinutes: 60,
+                            coachEnforcement: 'soft' as const,
                           };
                           return (
                             <tr key={div.id} className={`border-b border-gray-100 last:border-0 ${idx % 2 === 1 ? 'bg-gray-50' : 'bg-white'}`}>
@@ -1695,6 +1765,22 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                                   aria-label={`Match duration for ${div.name}`}
                                 />
                               </td>
+                              {resolvedCollectionId && (
+                                <td className="px-3 py-2">
+                                  <select
+                                    value={cfg.coachEnforcement}
+                                    onChange={e => setDivisionConfigs(prev => ({
+                                      ...prev,
+                                      [div.id]: { ...cfg, coachEnforcement: e.target.value as 'soft' | 'hard' },
+                                    }))}
+                                    className="text-sm border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                    aria-label={`Coach availability enforcement for ${div.name}`}
+                                  >
+                                    <option value="soft">Soft</option>
+                                    <option value="hard">Hard</option>
+                                  </select>
+                                </td>
+                              )}
                             </tr>
                           );
                         })}
@@ -1702,6 +1788,11 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                     </table>
                   </div>
                 </div>
+                {resolvedCollectionId && (
+                  <p className="text-xs text-gray-400 mt-2 px-1">
+                    Coach availability: <strong>Soft</strong> — algorithm tries to honor preferences, may schedule around them. <strong>Hard</strong> — unavailable slots are blackouts; games will not be placed there.
+                  </p>
+                )}
               </>
             )}
             {mode === 'season' && !(divisions && divisions.length > 0) && (
@@ -2504,6 +2595,58 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                 Some divisions are missing schedule configuration — set format and games per team for each division before generating.
               </p>
             )}
+
+            {/* Cross-division coach conflict warning */}
+            {showConflictWarning && coachConflicts.length > 0 && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900">Cross-division coach conflict detected</p>
+                    <p className="text-sm text-amber-800 mt-1">
+                      The following coaches are assigned to teams in multiple divisions:
+                    </p>
+                    <ul className="mt-2 space-y-1">
+                      {coachConflicts.map(conflict => (
+                        <li key={conflict.coachId} className="text-sm text-amber-800">
+                          <span className="font-medium">{conflict.coachName}</span>
+                          {' — '}
+                          {conflict.teams.map((t, i) => (
+                            <span key={i}>
+                              {i > 0 && ' and '}
+                              {t.teamName} <span className="text-amber-600">({t.divisionName})</span>
+                            </span>
+                          ))}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <div className="flex gap-2 pl-7">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setShowConflictWarning(false);
+                      setCoachConflicts([]);
+                      void handleGenerate();
+                    }}
+                  >
+                    Ignore and generate anyway
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowConflictWarning(false);
+                      setCoachConflicts([]);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -2813,7 +2956,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
 
             {step === 'generate' && generatePhase === 'configure' ? (
               <Button
-                onClick={() => void handleGenerate()}
+                onClick={handleGenerateClick}
                 disabled={
                   !seasonStart ||
                   !seasonEnd ||
