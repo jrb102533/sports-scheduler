@@ -78,6 +78,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
       set({ user, loading: false });
 
+      // Force a token refresh on sign-in so any custom claims set by
+      // syncUserClaims (role, etc.) are immediately available in
+      // request.auth.token within Firestore rules. Without this, the
+      // cached JWT may lag behind the server-side claims by up to 1 hour.
+      user.getIdToken(/* forceRefresh */ true).catch((err) => {
+        console.warn('[useAuthStore] token refresh on sign-in failed:', err);
+      });
+
       profileUnsub = onSnapshot(
         doc(db, 'users', user.uid),
         async (snap) => {

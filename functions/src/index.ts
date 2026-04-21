@@ -1,5 +1,5 @@
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
-import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
@@ -5164,3 +5164,78 @@ export const calendarFeed = onRequest(
     res.send(lines.join('\r\n'));
   }
 );
+
+// ─── Custom claims: sync role claim on user doc write ────────────────────────
+
+/**
+ * Firestore trigger that keeps the `role` Auth custom claim in sync with the
+ * `role` field on the user's Firestore profile document.
+ *
+ * This eliminates the getProfile() cross-doc read that firestore.rules previously
+ * made on nearly every rule evaluation. Rules now read request.auth.token.role
+ * instead of calling get(/databases/.../users/{uid}).
+ *
+ * NOTE: Existing users will not have the claim until their next profile write
+ * or until they call the refreshClaims callable. No backfill is performed here
+ * to avoid a fan-out spike on deploy. Use backfillAccessControl (admin callable)
+ * or run a one-off migration script if immediate population is needed.
+ */
+export const syncUserClaims = onDocumentWritten(
+  'users/{uid}',
+  async (event) => {
+    const uid = event.params.uid;
+    const after = event.data?.after;
+
+    if (!after?.exists) {
+      // Document was deleted — clear custom claims so stale role is not retained.
+      try {
+        await admin.auth().setCustomUserClaims(uid, {});
+        console.log(`syncUserClaims: cleared claims for deleted uid=${uid}`);
+      } catch (err: unknown) {
+        console.error(`syncUserClaims: failed to clear claims for uid=${uid}:`, (err as Error)?.message);
+      }
+      return;
+    }
+
+    const data = after.data();
+    const role: string | null = (data?.role as string) ?? null;
+
+    try {
+      await admin.auth().setCustomUserClaims(uid, { role });
+      console.log(`syncUserClaims: set role=${role} for uid=${uid}`);
+    } catch (err: unknown) {
+      console.error(`syncUserClaims: failed to set claims for uid=${uid}:`, (err as Error)?.message);
+    }
+  }
+);
+
+// ─── Custom claims: force token refresh ──────────────────────────────────────
+
+/**
+ * Callable that lets a client force a token refresh after a role change.
+ *
+ * Firebase ID tokens cache custom claims for up to 1 hour. After an admin
+ * changes a user's role, the affected client must call this function and then
+ * call user.getIdToken(true) to get a fresh token with the updated claim.
+ *
+ * Rate-limited to 10 calls per minute per user.
+ */
+export const refreshClaims = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Not signed in.');
+  const uid = request.auth.uid;
+
+  await checkRateLimit(uid, 'refreshClaims', 10);
+
+  const userDoc = await admin.firestore().collection('users').doc(uid).get();
+  const role: string | null = userDoc.exists ? ((userDoc.data()?.role as string) ?? null) : null;
+
+  try {
+    await admin.auth().setCustomUserClaims(uid, { role });
+    console.log(`refreshClaims: synced role=${role} for uid=${uid}`);
+  } catch (err: unknown) {
+    console.error(`refreshClaims: failed to set claims for uid=${uid}:`, (err as Error)?.message);
+    throw new HttpsError('internal', 'Failed to refresh claims. Please try again.');
+  }
+
+  return { success: true };
+});
