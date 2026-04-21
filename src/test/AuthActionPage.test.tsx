@@ -1,17 +1,27 @@
 /**
- * AuthActionPage — custom branded password reset page
+ * AuthActionPage — custom branded password reset + email verification page
  *
  * Covers:
  *   - Invalid/missing oobCode → shows invalid state (not the form)
- *   - Wrong mode (e.g. verifyEmail) → shows invalid state
  *   - Missing mode entirely → shows invalid state
- *   - Valid params → shows the password reset form
+ *   - Unknown mode → shows invalid state
+ *   - resetPassword with valid params → shows the password reset form
  *   - Form validates: password < 8 chars → shows error, does not call confirmPasswordReset
  *   - Form validates: passwords don't match → shows error
  *   - Successful submit → calls confirmPasswordReset(auth, oobCode, newPassword), shows success state
  *   - Firebase error auth/expired-action-code → shows user-friendly message
  *   - Firebase error auth/invalid-action-code → shows user-friendly message
  *   - "Back to sign in" link navigates to /login from both invalid and success states
+ *
+ *   verifyEmail mode:
+ *   - Shows loading state immediately on mount
+ *   - Calls applyActionCode(auth, oobCode) on mount
+ *   - Shows branded success screen on resolution
+ *   - Shows error screen with "expired" message for auth/expired-action-code
+ *   - Shows error screen with "expired" message for auth/invalid-action-code
+ *   - Shows generic error screen for unexpected errors
+ *   - "Sign in" link navigates to /login from verifyEmail success
+ *   - "Back to sign up" link navigates to /signup from verifyEmail error
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -27,9 +37,11 @@ vi.mock('@/lib/firebase', () => ({
 }));
 
 const mockConfirmPasswordReset = vi.fn();
+const mockApplyActionCode = vi.fn();
 
 vi.mock('firebase/auth', () => ({
   confirmPasswordReset: (...args: unknown[]) => mockConfirmPasswordReset(...args),
+  applyActionCode: (...args: unknown[]) => mockApplyActionCode(...args),
 }));
 
 vi.mock('@/lib/buildInfo', () => ({
@@ -81,8 +93,8 @@ describe('AuthActionPage — invalid state', () => {
     expect(screen.queryByRole('button', { name: /set new password/i })).not.toBeInTheDocument();
   });
 
-  it('shows the invalid-link state when mode is wrong (verifyEmail)', () => {
-    renderWithParams({ mode: 'verifyEmail', oobCode: 'abc123' });
+  it('shows the invalid-link state when mode is unrecognised', () => {
+    renderWithParams({ mode: 'recoverEmail', oobCode: 'abc123' });
     expect(screen.getByText(/invalid link/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /set new password/i })).not.toBeInTheDocument();
   });
@@ -273,6 +285,116 @@ describe('AuthActionPage — Firebase error handling', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /set new password/i })).not.toBeDisabled();
+    });
+  });
+});
+
+// ─── Tests: verifyEmail mode ───────────────────────────────────────────────────
+
+describe('AuthActionPage — verifyEmail mode', () => {
+  it('shows the loading state immediately before applyActionCode resolves', () => {
+    // Keep the promise pending so the component stays in loading
+    mockApplyActionCode.mockReturnValue(new Promise(() => {}));
+    renderWithParams({ mode: 'verifyEmail', oobCode: 'abc123' });
+    expect(screen.getByText(/verifying your link/i)).toBeInTheDocument();
+    expect(screen.queryByText(/email verified/i)).not.toBeInTheDocument();
+  });
+
+  it('calls applyActionCode with auth and the oobCode on mount', async () => {
+    mockApplyActionCode.mockResolvedValue(undefined);
+    renderWithParams({ mode: 'verifyEmail', oobCode: 'test-oob-code' });
+
+    await waitFor(() => {
+      expect(mockApplyActionCode).toHaveBeenCalledWith(
+        { name: 'mock-auth' },
+        'test-oob-code'
+      );
+    });
+  });
+
+  it('shows the branded success screen after applyActionCode resolves', async () => {
+    mockApplyActionCode.mockResolvedValue(undefined);
+    renderWithParams({ mode: 'verifyEmail', oobCode: 'abc123' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/email verified/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/verifying your link/i)).not.toBeInTheDocument();
+  });
+
+  it('renders a "Sign in" link pointing to /login on verifyEmail success', async () => {
+    mockApplyActionCode.mockResolvedValue(undefined);
+    renderWithParams({ mode: 'verifyEmail', oobCode: 'abc123' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/email verified/i)).toBeInTheDocument();
+    });
+
+    const link = screen.getByRole('link', { name: /sign in/i });
+    expect(link).toHaveAttribute('href', '/login');
+  });
+
+  it('does not show the password reset form on verifyEmail success', async () => {
+    mockApplyActionCode.mockResolvedValue(undefined);
+    renderWithParams({ mode: 'verifyEmail', oobCode: 'abc123' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/email verified/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /set new password/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the error screen with an "expired" message for auth/expired-action-code', async () => {
+    const err = Object.assign(new Error('expired'), { code: 'auth/expired-action-code' });
+    mockApplyActionCode.mockRejectedValue(err);
+    renderWithParams({ mode: 'verifyEmail', oobCode: 'expired-code' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/expired or already been used/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/email verified/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the error screen with an "expired" message for auth/invalid-action-code', async () => {
+    const err = Object.assign(new Error('invalid'), { code: 'auth/invalid-action-code' });
+    mockApplyActionCode.mockRejectedValue(err);
+    renderWithParams({ mode: 'verifyEmail', oobCode: 'invalid-code' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/expired or already been used/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows a generic error message for unexpected applyActionCode errors', async () => {
+    const err = Object.assign(new Error('network'), { code: 'auth/network-request-failed' });
+    mockApplyActionCode.mockRejectedValue(err);
+    renderWithParams({ mode: 'verifyEmail', oobCode: 'abc123' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/couldn't verify your email/i)).toBeInTheDocument();
+    });
+  });
+
+  it('renders a "Back to sign up" link pointing to /signup on verifyEmail error', async () => {
+    const err = Object.assign(new Error('expired'), { code: 'auth/expired-action-code' });
+    mockApplyActionCode.mockRejectedValue(err);
+    renderWithParams({ mode: 'verifyEmail', oobCode: 'abc123' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/expired or already been used/i)).toBeInTheDocument();
+    });
+
+    const link = screen.getByRole('link', { name: /back to sign up/i });
+    expect(link).toHaveAttribute('href', '/signup');
+  });
+
+  it('shows the "verification failed" title on error', async () => {
+    const err = Object.assign(new Error('expired'), { code: 'auth/expired-action-code' });
+    mockApplyActionCode.mockRejectedValue(err);
+    renderWithParams({ mode: 'verifyEmail', oobCode: 'abc123' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/verification failed/i)).toBeInTheDocument();
     });
   });
 });
