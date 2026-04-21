@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { MessageSquare, Phone, Users, AlertCircle, Mail, CheckCircle, XCircle, Shield, MessageCircle, ChevronLeft } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
-import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -286,12 +286,15 @@ function BroadcastPanel() {
       );
 
   useEffect(() => {
-    if (!isAdmin) return;
-    getDocs(collection(db, 'users')).then(snap => {
+    // Only fetch when the admin email-broadcast section is actually visible.
+    // Scoped to users with an email address set to avoid fetching incomplete accounts.
+    if (!isAdmin || channel !== 'email') return;
+    const q = query(collection(db, 'users'), where('email', '!=', ''));
+    getDocs(q).then(snap => {
       const users = snap.docs.map(d => d.data() as UserProfile).filter(u => u.uid !== profile?.uid);
       setPlatformUsers(users);
     });
-  }, [isAdmin, profile?.uid]);
+  }, [isAdmin, channel, profile?.uid]);
 
   const playersForChannel = (ch: Channel) =>
     players.filter(p =>
