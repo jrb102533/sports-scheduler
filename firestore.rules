@@ -117,7 +117,9 @@ service cloud.firestore {
     //   - LM updates league name + managerIds simultaneously → permission-denied
     //   - Admin updates coachIds → allowed
     match /teams/{teamId} {
-      allow read: if request.auth != null;
+      // SEC-80: non-admins may not read soft-deleted teams (mirrors SEC-44 for leagues)
+      allow read: if request.auth != null
+        && (isAdmin() || resource.data.isDeleted != true);
       // SEC-52: coaches/LMs may not create a team with leagueIds pre-set —
       // league assignment is an LM-gated update. Prevents bypassing SEC-36.
       allow create: if isAdmin()
