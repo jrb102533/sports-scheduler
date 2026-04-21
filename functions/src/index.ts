@@ -559,6 +559,7 @@ export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Pro
           ...(coachNameOverride?.trim() ? { coachName: coachNameOverride.trim() } : {}),
           ...(coachEmail?.trim() ? { coachEmail: coachEmail.trim() } : {}),
           isPrivate: isPrivate ?? true,
+          isDeleted: false,
           ...(logoUrl ? { logoUrl } : {}),
           ...(attendanceWarningThreshold != null ? { attendanceWarningThreshold } : {}),
         };
@@ -726,6 +727,7 @@ export const createLeagueAndBecomeManager = onCall<CreateLeagueAndBecomeManagerD
           ...(sportType ? { sportType } : {}),
           ...(season ? { season: season.trim() } : {}),
           ...(description ? { description: description.trim() } : {}),
+          isDeleted: false,
         };
 
         const existingMemberships: Record<string, unknown>[] = Array.isArray(profile.memberships)
