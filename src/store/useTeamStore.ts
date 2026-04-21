@@ -4,6 +4,7 @@ import {
   arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useAuthStore } from '@/store/useAuthStore';
 import type { Team } from '@/types';
 
 interface TeamStore {
@@ -38,13 +39,25 @@ export const useTeamStore = create<TeamStore>((set) => ({
     const unsub = onSnapshot(q, (snap) => {
       set({
         teams: snap.docs.map(d => ({ ...d.data(), id: d.id }) as Team),
-        // Deleted teams are excluded by the server-side filter; a separate
-        // admin-scoped query is needed to restore that view (follow-on work).
-        deletedTeams: [],
         loading: false,
       });
     }, () => set({ loading: false }));
-    return unsub;
+
+    // Open a second listener for deleted teams, scoped to admin users only.
+    const isAdmin = useAuthStore.getState().profile?.role === 'admin';
+    let unsubDeleted: (() => void) | undefined;
+    if (isAdmin) {
+      const qDeleted = query(
+        collection(db, 'teams'),
+        where('isDeleted', '==', true),
+        orderBy('deletedAt', 'desc'),
+      );
+      unsubDeleted = onSnapshot(qDeleted, (snap) => {
+        set({ deletedTeams: snap.docs.map(d => ({ ...d.data(), id: d.id }) as Team) });
+      }, (err) => console.error('[useTeamStore] deleted teams listener error:', err));
+    }
+
+    return () => { unsub(); if (unsubDeleted) unsubDeleted(); };
   },
 
   updateTeam: async (team) => {

@@ -48,6 +48,14 @@ vi.mock('firebase/firestore', () => ({
 
 vi.mock('@/lib/firebase', () => ({ db: {} }));
 
+// ── Auth store mock ───────────────────────────────────────────────────────────
+
+const mockGetAuthState = vi.fn(() => ({ profile: null }));
+
+vi.mock('@/store/useAuthStore', () => ({
+  useAuthStore: { getState: (...args: unknown[]) => mockGetAuthState(...args) },
+}));
+
 // ── Import store after mocks ──────────────────────────────────────────────────
 
 import { useTeamStore } from './useTeamStore';
@@ -81,6 +89,8 @@ beforeEach(() => {
   mockSetDoc.mockResolvedValue(undefined);
   mockUpdateDoc.mockResolvedValue(undefined);
   mockDeleteDoc.mockResolvedValue(undefined);
+  mockOnSnapshot.mockReturnValue(() => {});
+  mockGetAuthState.mockReturnValue({ profile: null });
   useTeamStore.setState({ teams: [], deletedTeams: [], loading: true });
 });
 
@@ -139,6 +149,85 @@ describe('useTeamStore — subscribe', () => {
 
     useTeamStore.getState().subscribe();
     expect(useTeamStore.getState().loading).toBe(false);
+  });
+
+  it('opens only one snapshot listener for non-admin users', () => {
+    mockGetAuthState.mockReturnValue({ profile: { role: 'coach' } });
+
+    useTeamStore.getState().subscribe();
+
+    expect(mockOnSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockWhere).toHaveBeenCalledTimes(1);
+    expect(mockWhere).toHaveBeenCalledWith('isDeleted', '!=', true);
+  });
+
+  it('keeps deletedTeams empty for non-admin users', () => {
+    mockGetAuthState.mockReturnValue({ profile: { role: 'coach' } });
+    mockOnSnapshot.mockImplementation((_q, cb) => {
+      cb(makeSnapshotDocs([]));
+      return () => {};
+    });
+
+    useTeamStore.getState().subscribe();
+
+    expect(useTeamStore.getState().deletedTeams).toEqual([]);
+  });
+
+  it('opens a second snapshot listener for admin users', () => {
+    mockGetAuthState.mockReturnValue({ profile: { role: 'admin' } });
+
+    useTeamStore.getState().subscribe();
+
+    expect(mockOnSnapshot).toHaveBeenCalledTimes(2);
+    expect(mockWhere).toHaveBeenCalledTimes(2);
+    expect(mockWhere).toHaveBeenCalledWith('isDeleted', '!=', true);
+    expect(mockWhere).toHaveBeenCalledWith('isDeleted', '==', true);
+  });
+
+  it('populates deletedTeams from the admin-scoped snapshot', () => {
+    mockGetAuthState.mockReturnValue({ profile: { role: 'admin' } });
+    const deleted1 = makeTeam('d1', { isDeleted: true, deletedAt: '2024-06-01T00:00:00.000Z' } as Partial<Team>);
+    const deleted2 = makeTeam('d2', { isDeleted: true, deletedAt: '2024-05-01T00:00:00.000Z' } as Partial<Team>);
+
+    // First call → main listener (active teams), second call → deleted teams listener
+    mockOnSnapshot
+      .mockImplementationOnce((_q, cb) => { cb(makeSnapshotDocs([])); return () => {}; })
+      .mockImplementationOnce((_q, cb) => { cb(makeSnapshotDocs([deleted1, deleted2])); return () => {}; });
+
+    useTeamStore.getState().subscribe();
+
+    const { deletedTeams } = useTeamStore.getState();
+    expect(deletedTeams).toHaveLength(2);
+    expect(deletedTeams.map(t => t.id)).toEqual(['d1', 'd2']);
+  });
+
+  it('tears down both listeners when unsubscribe is called for admin', () => {
+    mockGetAuthState.mockReturnValue({ profile: { role: 'admin' } });
+    const unsubMain = vi.fn();
+    const unsubDeleted = vi.fn();
+
+    mockOnSnapshot
+      .mockImplementationOnce(() => unsubMain)
+      .mockImplementationOnce(() => unsubDeleted);
+
+    const unsub = useTeamStore.getState().subscribe();
+    unsub();
+
+    expect(unsubMain).toHaveBeenCalledOnce();
+    expect(unsubDeleted).toHaveBeenCalledOnce();
+  });
+
+  it('tears down only the main listener when unsubscribe is called for non-admin', () => {
+    mockGetAuthState.mockReturnValue({ profile: { role: 'coach' } });
+    const unsubMain = vi.fn();
+
+    mockOnSnapshot.mockImplementationOnce(() => unsubMain);
+
+    const unsub = useTeamStore.getState().subscribe();
+    unsub();
+
+    expect(unsubMain).toHaveBeenCalledOnce();
+    expect(mockOnSnapshot).toHaveBeenCalledTimes(1);
   });
 });
 
