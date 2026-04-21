@@ -42,7 +42,6 @@ export function TeamCard({ team, playerCount, pendingRequestCount, onClick }: Te
               <div className="mt-1">
                 <Badge variant="default" className="text-[10px] px-1.5 py-0 font-medium text-gray-500 bg-gray-100">
                   {AGE_GROUP_LABELS[team.ageGroup]}
-                  {team.divisionLabel && ` · ${team.divisionLabel}`}
                 </Badge>
               </div>
             )}

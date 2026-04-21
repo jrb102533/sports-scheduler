@@ -289,7 +289,6 @@ export function TeamDetailPage() {
             {team.ageGroup && (
               <span className="ml-2 text-blue-500">
                 · {AGE_GROUP_LABELS[team.ageGroup]}
-                {team.divisionLabel && ` · ${team.divisionLabel}`}
               </span>
             )}
             {league && (
@@ -492,7 +491,6 @@ export function TeamDetailPage() {
               <span className="font-medium text-gray-700">Age Group:</span>
               <span className="text-gray-600 ml-2">
                 {AGE_GROUP_LABELS[team.ageGroup]}
-                {team.divisionLabel && ` · ${team.divisionLabel}`}
               </span>
             </div>
           )}

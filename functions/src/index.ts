@@ -491,10 +491,10 @@ interface CreateTeamAndBecomeCoachData {
   homeVenueId?: string;
   coachName?: string;
   coachEmail?: string;
-  divisionLabel?: string;
   logoUrl?: string;
   attendanceWarningsEnabled?: boolean;
   attendanceWarningThreshold?: number;
+  isPrivate?: boolean;
 }
 
 interface CreateTeamAndBecomeCoachResult {
@@ -512,7 +512,7 @@ export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Pro
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
     const uid = request.auth.uid;
-    const { name, sportType, color, ageGroup, homeVenue, homeVenueId, coachName: coachNameOverride, coachEmail, divisionLabel, logoUrl, attendanceWarningsEnabled, attendanceWarningThreshold } = request.data;
+    const { name, sportType, color, ageGroup, homeVenue, homeVenueId, coachName: coachNameOverride, coachEmail, logoUrl, attendanceWarningsEnabled, attendanceWarningThreshold, isPrivate } = request.data;
 
     if (!name?.trim()) throw new HttpsError('invalid-argument', 'Team name is required.');
     if (name.trim().length > 100) throw new HttpsError('invalid-argument', 'Team name is too long.');
@@ -558,7 +558,7 @@ export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Pro
           ...(homeVenueId ? { homeVenueId } : {}),
           ...(coachNameOverride?.trim() ? { coachName: coachNameOverride.trim() } : {}),
           ...(coachEmail?.trim() ? { coachEmail: coachEmail.trim() } : {}),
-          ...(divisionLabel?.trim() ? { divisionLabel: divisionLabel.trim() } : {}),
+          isPrivate: isPrivate ?? true,
           ...(logoUrl ? { logoUrl } : {}),
           ...(attendanceWarningThreshold != null ? { attendanceWarningThreshold } : {}),
         };

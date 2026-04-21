@@ -102,7 +102,10 @@ function getNameInput() {
   return screen.getByRole('textbox', { name: /team name/i });
 }
 
-function getFileInput() {
+/** Opens the Advanced section and returns the hidden file input. */
+function openAdvancedAndGetFileInput() {
+  const toggle = screen.getByRole('button', { name: /more details/i });
+  fireEvent.click(toggle);
   return document.querySelector('input[type="file"]') as HTMLInputElement;
 }
 
@@ -192,8 +195,9 @@ describe('TeamForm — logo file validation', () => {
 
     // Use fireEvent.change to bypass the `accept` attribute filter that
     // userEvent.upload would apply. The component validates MIME type itself.
+    // The Advanced section must be expanded first — the file input is inside it.
     const file = new File(['text content'], 'notes.txt', { type: 'text/plain' });
-    const input = getFileInput();
+    const input = openAdvancedAndGetFileInput();
     Object.defineProperty(input, 'files', { value: [file], configurable: true });
     fireEvent.change(input);
 
@@ -207,7 +211,7 @@ describe('TeamForm — logo file validation', () => {
     // property — define it explicitly.
     const file = new File(['x'], 'big-logo.png', { type: 'image/png' });
     Object.defineProperty(file, 'size', { value: 2 * 1024 * 1024 + 1 });
-    const input = getFileInput();
+    const input = openAdvancedAndGetFileInput();
     Object.defineProperty(input, 'files', { value: [file], configurable: true });
     fireEvent.change(input);
 
@@ -216,10 +220,10 @@ describe('TeamForm — logo file validation', () => {
 
   it('clears logo error when a valid file is subsequently selected', () => {
     render(<TeamForm open onClose={vi.fn()} />);
+    const input = openAdvancedAndGetFileInput();
 
     // First upload an invalid file to trigger the error
     const bad = new File(['txt'], 'doc.txt', { type: 'text/plain' });
-    const input = getFileInput();
     Object.defineProperty(input, 'files', { value: [bad], configurable: true });
     fireEvent.change(input);
     expect(screen.getByText(/file must be an image/i)).toBeInTheDocument();
@@ -236,8 +240,11 @@ describe('TeamForm — logo file validation', () => {
     const user = userEvent.setup();
     render(<TeamForm open onClose={vi.fn()} />);
 
+    // Expand the Advanced section before accessing the file input
+    fireEvent.click(screen.getByRole('button', { name: /more details/i }));
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File(['img-bytes'], 'logo.png', { type: 'image/png' });
-    await user.upload(getFileInput(), file);
+    await user.upload(fileInput, file);
 
     expect(screen.getByRole('img', { name: /team logo/i })).toBeInTheDocument();
   });

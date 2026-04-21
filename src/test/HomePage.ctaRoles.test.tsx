@@ -20,11 +20,25 @@ import { MemoryRouter } from 'react-router-dom';
 import type { UserProfile } from '@/types';
 
 // ─── Firebase stub ─────────────────────────────────────────────────────────────
+// storage is required because HomePage now renders TeamForm directly, which
+// imports firebase/storage for logo uploads.
 vi.mock('@/lib/firebase', () => ({
   app: {},
   auth: {},
   db: {},
   functions: {},
+  storage: {},
+}));
+
+vi.mock('firebase/functions', () => ({
+  httpsCallable: () => vi.fn().mockResolvedValue({ data: { teamId: 'new-team-id' } }),
+}));
+
+vi.mock('firebase/storage', () => ({
+  ref: vi.fn(),
+  uploadBytes: vi.fn().mockResolvedValue({}),
+  getDownloadURL: vi.fn().mockResolvedValue('https://storage.example.com/logo.png'),
+  deleteObject: vi.fn().mockResolvedValue(undefined),
 }));
 
 // ─── navigate stub ─────────────────────────────────────────────────────────────
@@ -55,6 +69,23 @@ vi.mock('@/store/useEventStore', () => ({
   useEventStore: (selector: (s: { events: []; loading: boolean }) => unknown) =>
     selector({ events: [], loading: false }),
 }));
+
+// ─── Settings store — required by TeamForm (rendered inside HomePage) ─────────
+vi.mock('@/store/useSettingsStore', () => ({
+  useSettingsStore: (selector: (s: { settings: { kidsSportsMode: boolean } }) => unknown) =>
+    selector({ settings: { kidsSportsMode: false } }),
+}));
+
+// ─── Venue store — required by TeamForm (rendered inside HomePage) ────────────
+vi.mock('@/store/useVenueStore', () => {
+  const subscribe = vi.fn().mockReturnValue(() => {});
+  const useVenueStore = (sel?: (s: { venues: never[]; subscribe: typeof subscribe }) => unknown) => {
+    const state = { venues: [] as never[], subscribe };
+    return sel ? sel(state) : state;
+  };
+  useVenueStore.getState = () => ({ venues: [] as never[], subscribe });
+  return { useVenueStore };
+});
 
 // ─── Stub heavy sub-components ────────────────────────────────────────────────
 vi.mock('@/components/events/EventDetailPanel', () => ({ EventDetailPanel: () => null }));
