@@ -5050,6 +5050,124 @@ export const getCalendarFeedUrl = onCall(
   }
 );
 
+// ─── Delete league (callable) ────────────────────────────────────────────────
+
+interface DeleteLeagueInput {
+  leagueId: string;
+}
+
+/**
+ * Soft-deletes a league and performs server-side cleanup that the client
+ * cannot do reliably (TD #517 — client-side Zustand cleanup misses records
+ * that were never loaded into memory).
+ *
+ * Cleanup sequence:
+ *   1. Fetch league doc — throws not-found if missing or already deleted.
+ *   2. Remove leagueId from leagueIds on all member teams (batch, max 500/batch).
+ *   3. Delete all events scoped to this league (batch, max 500/batch).
+ *   4. Soft-delete the league doc (isDeleted=true, deletedAt timestamp).
+ */
+export const deleteLeague = onCall<DeleteLeagueInput, Promise<{ success: boolean }>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+    const uid = request.auth.uid;
+
+    const { leagueId } = request.data;
+    if (!leagueId?.trim()) throw new HttpsError('invalid-argument', 'leagueId is required.');
+
+    await checkRateLimit(uid, 'deleteLeague', 3);
+
+    const db = admin.firestore();
+
+    // ── Step 1: fetch and validate league ─────────────────────────────────────
+    const leagueRef = db.doc(`leagues/${leagueId}`);
+    const leagueSnap = await leagueRef.get();
+
+    if (!leagueSnap.exists) throw new HttpsError('not-found', 'League not found.');
+    const leagueData = leagueSnap.data()!;
+    if (leagueData.isDeleted === true) throw new HttpsError('not-found', 'League not found.');
+
+    // ── Auth: admin OR manager of this specific league ─────────────────────────
+    const callerSnap = await db.doc(`users/${uid}`).get();
+    const callerData = callerSnap.data();
+    const legacyRole: string = callerData?.role ?? '';
+    const membershipRoles: string[] = (callerData?.memberships ?? []).map(
+      (m: Record<string, unknown>) => m.role as string,
+    );
+    const isAdmin = [legacyRole, ...membershipRoles].includes('admin');
+    const isLeagueManager = isManagerOfLeagueDoc(leagueData as Record<string, unknown>, uid);
+
+    if (!isAdmin && !isLeagueManager) {
+      throw new HttpsError('permission-denied', 'Only admins or league managers may delete a league.');
+    }
+
+    try {
+      const BATCH_SIZE = 490;
+
+      // ── Step 2: remove leagueId from all member teams ──────────────────────
+      const teamsSnap = await db
+        .collection('teams')
+        .where('leagueIds', 'array-contains', leagueId)
+        .get();
+
+      if (!teamsSnap.empty) {
+        let teamBatch = db.batch();
+        let teamOps = 0;
+
+        for (const teamDoc of teamsSnap.docs) {
+          teamBatch.update(teamDoc.ref, {
+            leagueIds: admin.firestore.FieldValue.arrayRemove(leagueId),
+          });
+          teamOps++;
+          if (teamOps >= BATCH_SIZE) {
+            await teamBatch.commit();
+            teamBatch = db.batch();
+            teamOps = 0;
+          }
+        }
+        if (teamOps > 0) await teamBatch.commit();
+        console.log(`deleteLeague: removed leagueId=${leagueId} from ${teamsSnap.size} teams`);
+      }
+
+      // ── Step 3: delete all events scoped to this league ────────────────────
+      const eventsSnap = await db
+        .collection('events')
+        .where('leagueId', '==', leagueId)
+        .get();
+
+      if (!eventsSnap.empty) {
+        let eventBatch = db.batch();
+        let eventOps = 0;
+
+        for (const eventDoc of eventsSnap.docs) {
+          eventBatch.delete(eventDoc.ref);
+          eventOps++;
+          if (eventOps >= BATCH_SIZE) {
+            await eventBatch.commit();
+            eventBatch = db.batch();
+            eventOps = 0;
+          }
+        }
+        if (eventOps > 0) await eventBatch.commit();
+        console.log(`deleteLeague: deleted ${eventsSnap.size} events for leagueId=${leagueId}`);
+      }
+
+      // ── Step 4: soft-delete the league doc ────────────────────────────────
+      await leagueRef.update({
+        isDeleted: true,
+        deletedAt: new Date().toISOString(),
+      });
+
+      console.log(`deleteLeague: soft-deleted leagueId=${leagueId} by uid=${uid}`);
+      return { success: true };
+    } catch (err: unknown) {
+      if (err instanceof HttpsError) throw err;
+      const message = err instanceof Error ? err.message : 'Failed to delete league.';
+      throw new HttpsError('internal', message);
+    }
+  },
+);
+
 /**
  * Serves a live iCal feed for a user's accessible events.
  * Authenticated via HMAC token (no Firebase Auth required — calendar apps poll silently).
