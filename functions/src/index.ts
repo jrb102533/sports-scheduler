@@ -5181,30 +5181,33 @@ export const calendarFeed = onRequest(
  * or run a one-off migration script if immediate population is needed.
  */
 export const syncUserClaims = onDocumentWritten(
-  'users/{uid}',
+  { document: 'users/{uid}', retry: true },
   async (event) => {
     const uid = event.params.uid;
+    const before = event.data?.before;
     const after = event.data?.after;
 
     if (!after?.exists) {
       // Document was deleted — clear custom claims so stale role is not retained.
-      try {
-        await admin.auth().setCustomUserClaims(uid, {});
-        console.log(`syncUserClaims: cleared claims for deleted uid=${uid}`);
-      } catch (err: unknown) {
-        console.error(`syncUserClaims: failed to clear claims for uid=${uid}:`, (err as Error)?.message);
-      }
+      await admin.auth().setCustomUserClaims(uid, {});
+      console.log(`syncUserClaims: cleared claims for deleted uid=${uid}`);
       return;
     }
 
     const data = after.data();
     const role: string | null = (data?.role as string) ?? null;
+    const roleBefore: string | null = (before?.exists ? (before.data()?.role as string) : null) ?? null;
 
-    try {
-      await admin.auth().setCustomUserClaims(uid, { role });
-      console.log(`syncUserClaims: set role=${role} for uid=${uid}`);
-    } catch (err: unknown) {
-      console.error(`syncUserClaims: failed to set claims for uid=${uid}:`, (err as Error)?.message);
+    await admin.auth().setCustomUserClaims(uid, { role });
+    console.log(`syncUserClaims: set role=${role} for uid=${uid}`);
+
+    // SEC-77: revoke refresh tokens when role is demoted so the next Auth
+    // request forces a new ID token — limits the stale-privilege window to
+    // the remaining TTL of the current access token (~≤1h) rather than
+    // until the refresh token expires.
+    if (roleBefore !== null && role !== roleBefore) {
+      await admin.auth().revokeRefreshTokens(uid);
+      console.log(`syncUserClaims: revoked refresh tokens for uid=${uid} (role changed ${roleBefore} → ${role})`);
     }
   }
 );
@@ -5226,8 +5229,15 @@ export const refreshClaims = onCall(async (request) => {
 
   await checkRateLimit(uid, 'refreshClaims', 10);
 
-  const userDoc = await admin.firestore().collection('users').doc(uid).get();
+  const [userDoc, authUser] = await Promise.all([
+    admin.firestore().collection('users').doc(uid).get(),
+    admin.auth().getUser(uid),
+  ]);
   const role: string | null = userDoc.exists ? ((userDoc.data()?.role as string) ?? null) : null;
+
+  // SEC-79: skip the write if the claim is already correct.
+  const existingRole = (authUser.customClaims as Record<string, unknown> | undefined)?.role ?? null;
+  if (existingRole === role) return { success: true, unchanged: true };
 
   try {
     await admin.auth().setCustomUserClaims(uid, { role });

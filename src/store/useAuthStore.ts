@@ -107,6 +107,17 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           const profile = snap.data() as UserProfile;
           set({ profile, mustChangePassword: profile.mustChangePassword === true });
 
+          // SEC-77: if the role in the Firestore profile differs from what's
+          // cached in the current token, force a refresh so rules see the
+          // updated claim without waiting for the 1-hour TTL to expire.
+          user.getIdTokenResult().then((result) => {
+            if ((result.claims.role ?? null) !== (profile.role ?? null)) {
+              user.getIdToken(true).catch((err) => {
+                console.warn('[useAuthStore] token refresh after role change failed:', err);
+              });
+            }
+          }).catch(() => { /* best-effort */ });
+
           // Check whether the user's stored consent versions are current
           try {
             const consents = await getUserConsents(user.uid);
