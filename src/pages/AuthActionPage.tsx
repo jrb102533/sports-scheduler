@@ -1,19 +1,20 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { confirmPasswordReset } from 'firebase/auth';
+import { confirmPasswordReset, applyActionCode } from 'firebase/auth';
 import { AuthLayout } from '@/layouts/AuthLayout';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { auth } from '@/lib/firebase';
 
-type PageState = 'form' | 'success' | 'invalid';
+type PageState = 'loading' | 'form' | 'success' | 'error' | 'invalid';
 
 export function AuthActionPage() {
   const [searchParams] = useSearchParams();
   const mode = searchParams.get('mode');
   const oobCode = searchParams.get('oobCode');
 
-  const [pageState, setPageState] = useState<PageState>('form');
+  const [pageState, setPageState] = useState<PageState>('loading');
+  const [errorMessage, setErrorMessage] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -22,9 +23,32 @@ export function AuthActionPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (mode !== 'resetPassword' || !oobCode) {
+    if (!oobCode) {
       setPageState('invalid');
+      return;
     }
+
+    if (mode === 'verifyEmail') {
+      applyActionCode(auth, oobCode)
+        .then(() => setPageState('success'))
+        .catch((err: unknown) => {
+          const code = (err as { code?: string }).code ?? '';
+          if (code === 'auth/expired-action-code' || code === 'auth/invalid-action-code') {
+            setErrorMessage('This verification link has expired or already been used.');
+          } else {
+            setErrorMessage('We couldn\'t verify your email. Please try signing up again.');
+          }
+          setPageState('error');
+        });
+      return;
+    }
+
+    if (mode === 'resetPassword') {
+      setPageState('form');
+      return;
+    }
+
+    setPageState('invalid');
   }, [mode, oobCode]);
 
   function validate(): boolean {
@@ -70,19 +94,61 @@ export function AuthActionPage() {
     }
   }
 
+  if (pageState === 'loading') {
+    return (
+      <AuthLayout title="Just a moment…" subtitle="">
+        <p className="text-sm text-gray-500 text-center">Verifying your link…</p>
+      </AuthLayout>
+    );
+  }
+
   if (pageState === 'invalid') {
     return (
       <AuthLayout title="Invalid link" subtitle="This link is invalid or has expired.">
         <div className="space-y-4">
           <p className="text-sm text-gray-600">
-            The password reset link is missing required information. This can happen if the link
-            was copied incorrectly or has already been used.
+            The link is missing required information. This can happen if it was copied
+            incorrectly or has already been used.
           </p>
           <Link
             to="/login"
             className="block w-full text-center px-4 py-2 text-sm font-medium text-white bg-[#1B3A6B] hover:bg-[#f97316] rounded-lg transition-colors"
           >
             Back to sign in
+          </Link>
+        </div>
+      </AuthLayout>
+    );
+  }
+
+  if (pageState === 'error') {
+    return (
+      <AuthLayout title="Verification failed" subtitle="">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">{errorMessage}</p>
+          <Link
+            to="/signup"
+            className="block w-full text-center px-4 py-2 text-sm font-medium text-white bg-[#1B3A6B] hover:bg-[#f97316] rounded-lg transition-colors"
+          >
+            Back to sign up
+          </Link>
+        </div>
+      </AuthLayout>
+    );
+  }
+
+  if (pageState === 'success' && mode === 'verifyEmail') {
+    return (
+      <AuthLayout title="Email verified!" subtitle="Your account is ready to go.">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Your email has been verified. You can now sign in to your account.
+          </p>
+          <Link
+            to="/login"
+            className="block w-full text-center px-4 py-2 text-sm font-medium text-white bg-[#1B3A6B] hover:bg-[#f97316] rounded-lg transition-colors"
+          >
+            Sign in
           </Link>
         </div>
       </AuthLayout>
