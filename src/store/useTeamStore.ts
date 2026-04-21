@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import {
-  collection, onSnapshot, doc, setDoc, deleteDoc, query, orderBy, updateDoc,
+  collection, onSnapshot, doc, setDoc, deleteDoc, query, orderBy, where, updateDoc,
   arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -27,12 +27,20 @@ export const useTeamStore = create<TeamStore>((set) => ({
   loading: true,
 
   subscribe: () => {
-    const q = query(collection(db, 'teams'), orderBy('createdAt'));
+    // Filter deleted teams server-side so Firestore never sends deleted docs
+    // over the wire. Firestore requires orderBy to match the inequality field first.
+    const q = query(
+      collection(db, 'teams'),
+      where('isDeleted', '!=', true),
+      orderBy('isDeleted'),
+      orderBy('createdAt'),
+    );
     const unsub = onSnapshot(q, (snap) => {
-      const all = snap.docs.map(d => ({ ...d.data(), id: d.id }) as Team);
       set({
-        teams: all.filter(t => !t.isDeleted),
-        deletedTeams: all.filter(t => t.isDeleted),
+        teams: snap.docs.map(d => ({ ...d.data(), id: d.id }) as Team),
+        // Deleted teams are excluded by the server-side filter; a separate
+        // admin-scoped query is needed to restore that view (follow-on work).
+        deletedTeams: [],
         loading: false,
       });
     }, () => set({ loading: false }));

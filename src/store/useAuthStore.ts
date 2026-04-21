@@ -78,6 +78,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
       set({ user, loading: false });
 
+      // Force a token refresh on sign-in so any custom claims set by
+      // syncUserClaims (role, etc.) are immediately available in
+      // request.auth.token within Firestore rules. Without this, the
+      // cached JWT may lag behind the server-side claims by up to 1 hour.
+      user.getIdToken(/* forceRefresh */ true).catch((err) => {
+        console.warn('[useAuthStore] token refresh on sign-in failed:', err);
+      });
+
       profileUnsub = onSnapshot(
         doc(db, 'users', user.uid),
         async (snap) => {
@@ -98,6 +106,17 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           }
           const profile = snap.data() as UserProfile;
           set({ profile, mustChangePassword: profile.mustChangePassword === true });
+
+          // SEC-77: if the role in the Firestore profile differs from what's
+          // cached in the current token, force a refresh so rules see the
+          // updated claim without waiting for the 1-hour TTL to expire.
+          user.getIdTokenResult().then((result) => {
+            if ((result.claims.role ?? null) !== (profile.role ?? null)) {
+              user.getIdToken(true).catch((err) => {
+                console.warn('[useAuthStore] token refresh after role change failed:', err);
+              });
+            }
+          }).catch(() => { /* best-effort */ });
 
           // Check whether the user's stored consent versions are current
           try {

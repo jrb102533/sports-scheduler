@@ -28,6 +28,7 @@ const mockDoc = vi.fn((...args) => ({ _path: args.slice(1).join('/') }));
 const mockCollection = vi.fn(() => ({ _coll: true }));
 const mockQuery = vi.fn(q => q);
 const mockOrderBy = vi.fn(() => ({ _orderBy: true }));
+const mockWhere = vi.fn((field, op, value) => ({ _where: { field, op, value } }));
 const mockArrayUnion = vi.fn(v => ({ _union: v }));
 const mockArrayRemove = vi.fn(v => ({ _remove: v }));
 
@@ -39,6 +40,7 @@ vi.mock('firebase/firestore', () => ({
   deleteDoc: (...args: unknown[]) => mockDeleteDoc(...args),
   query: (...args: unknown[]) => mockQuery(...args),
   orderBy: (...args: unknown[]) => mockOrderBy(...args),
+  where: (...args: unknown[]) => mockWhere(...args),
   updateDoc: (...args: unknown[]) => mockUpdateDoc(...args),
   arrayUnion: (v: unknown) => mockArrayUnion(v),
   arrayRemove: (v: unknown) => mockArrayRemove(v),
@@ -85,22 +87,31 @@ beforeEach(() => {
 // ── subscribe() ───────────────────────────────────────────────────────────────
 
 describe('useTeamStore — subscribe', () => {
-  it('populates teams and deletedTeams from a snapshot', () => {
-    const active = makeTeam('t1', { isDeleted: false });
-    const deleted = makeTeam('t2', { isDeleted: true, deletedAt: '2024-06-01T00:00:00.000Z' });
-
+  it('applies server-side where clause for isDeleted != true', () => {
     mockOnSnapshot.mockImplementation((_q, cb) => {
-      cb(makeSnapshotDocs([active, deleted]));
+      cb(makeSnapshotDocs([]));
       return () => {};
     });
 
     useTeamStore.getState().subscribe();
 
-    const { teams, deletedTeams } = useTeamStore.getState();
-    expect(teams).toHaveLength(1);
-    expect(teams[0].id).toBe('t1');
-    expect(deletedTeams).toHaveLength(1);
-    expect(deletedTeams[0].id).toBe('t2');
+    expect(mockWhere).toHaveBeenCalledWith('isDeleted', '!=', true);
+  });
+
+  it('maps all snapshot docs to teams (server already excludes deleted)', () => {
+    const t1 = makeTeam('t1');
+    const t2 = makeTeam('t2');
+
+    mockOnSnapshot.mockImplementation((_q, cb) => {
+      cb(makeSnapshotDocs([t1, t2]));
+      return () => {};
+    });
+
+    useTeamStore.getState().subscribe();
+
+    const { teams } = useTeamStore.getState();
+    expect(teams).toHaveLength(2);
+    expect(teams.map(t => t.id)).toEqual(['t1', 't2']);
   });
 
   it('sets loading to false after snapshot fires', () => {

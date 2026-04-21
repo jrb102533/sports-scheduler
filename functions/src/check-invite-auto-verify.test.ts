@@ -36,6 +36,7 @@ vi.mock('firebase-functions/v2/https', () => ({
 vi.mock('firebase-functions/v2/firestore', () => ({
   onDocumentCreated: vi.fn(),
   onDocumentUpdated: vi.fn(),
+  onDocumentWritten: vi.fn(),
 }));
 
 vi.mock('firebase-functions/v2/scheduler', () => ({

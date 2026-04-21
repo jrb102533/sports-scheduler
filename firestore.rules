@@ -2,15 +2,27 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Role helpers read from the Auth token claim set by the syncUserClaims
+    // Cloud Function trigger (users/{uid} onWrite). This eliminates the
+    // getProfile() cross-doc Firestore read that previously fired on every
+    // rule evaluation (~50–70% of total platform reads).
+    //
+    // getProfile() is retained below for the small number of rules that need
+    // non-role fields (teamId, leagueId) from the user document. Those sites
+    // are individually annotated.
+    function isAdmin() { return request.auth.token.role == 'admin'; }
+    // isCoach() and isLeagueManager() are retained for paths that have no
+    // resource-scoped access list to check against (events, players, invites).
+    function isCoach() { return request.auth.token.role == 'coach'; }
+    function isLeagueManager() { return request.auth.token.role == 'league_manager'; }
+
+    // Cross-doc read: still required for rules that check non-role profile fields
+    // (teamId for team message access, leagueId for season/division/standings
+    // member reads). These are the remaining getProfile() call sites after the
+    // role claim migration.
     function getProfile() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
-    function role() { return getProfile().role; }
-    function isAdmin() { return role() == 'admin'; }
-    // isCoach() and isLeagueManager() are retained for paths that have no
-    // resource-scoped access list to check against (events, players, invites).
-    function isCoach() { return role() == 'coach'; }
-    function isLeagueManager() { return role() == 'league_manager'; }
 
     // ── Phase 2: resource-scoped access helpers ───────────────────────────
     // These check the denormalized access lists backfilled in Phase 1.
