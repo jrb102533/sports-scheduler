@@ -2,7 +2,7 @@ import { CalendarDays, Trophy, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { BecomeCoachModal } from '@/components/onboarding/BecomeCoachModal';
+import { TeamForm } from '@/components/teams/TeamForm';
 import { BecomeLeagueManagerModal } from '@/components/onboarding/BecomeLeagueManagerModal';
 import { EventCard } from '@/components/events/EventCard';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
@@ -303,7 +303,11 @@ export function HomePage() {
 
       <EventDetailPanel event={selected} onClose={() => setSelected(null)} />
 
-      <BecomeCoachModal open={becomeCoachOpen} onClose={() => setBecomeCoachOpen(false)} />
+      <TeamForm
+        open={becomeCoachOpen}
+        onClose={() => setBecomeCoachOpen(false)}
+        onCreated={teamId => navigate(`/teams/${teamId}`)}
+      />
       <BecomeLeagueManagerModal open={becomeLMOpen} onClose={() => setBecomeLMOpen(false)} />
     </div>
   );

@@ -186,6 +186,8 @@ describe('TeamForm — new team calls CF (no logo)', () => {
 });
 
 // ─── Tests: new team (with logo) ─────────────────────────────────────────────
+// The logo upload button lives inside the "More details" advanced section which
+// is collapsed by default. Tests must expand it before accessing the file input.
 
 describe('TeamForm — new team calls CF (with logo)', () => {
   it('calls CF with logoUrl when a logo is uploaded for a new team', async () => {
@@ -195,7 +197,8 @@ describe('TeamForm — new team calls CF (with logo)', () => {
     await userEvent.clear(getNameInput());
     await userEvent.type(getNameInput(), 'Thunder Hawks');
 
-    // Simulate logo file selection
+    // Expand the advanced section to reveal the file input
+    fireEvent.click(screen.getByRole('button', { name: /more details/i }));
     const file = new File(['img-bytes'], 'logo.png', { type: 'image/png' });
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     await userEvent.upload(fileInput, file);
@@ -218,6 +221,8 @@ describe('TeamForm — new team calls CF (with logo)', () => {
     await userEvent.clear(getNameInput());
     await userEvent.type(getNameInput(), 'Thunder Hawks');
 
+    // Expand the advanced section to reveal the file input
+    fireEvent.click(screen.getByRole('button', { name: /more details/i }));
     const file = new File(['img-bytes'], 'logo.png', { type: 'image/png' });
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     await userEvent.upload(fileInput, file);

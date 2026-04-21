@@ -14,7 +14,7 @@ import { useVenueStore } from '@/store/useVenueStore';
 import { FLAGS } from '@/lib/flags';
 import { SPORT_TYPES, SPORT_TYPE_LABELS, TEAM_COLORS, AGE_GROUPS, AGE_GROUP_LABELS, SPORT_FORFEIT_THRESHOLDS } from '@/constants';
 import { ColorPickerGrid } from '@/components/ui/ColorPickerGrid';
-import { Upload, X, Image } from 'lucide-react';
+import { Upload, X, Image, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Team, SportType, AgeGroup } from '@/types';
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
@@ -24,6 +24,7 @@ interface TeamFormProps {
   open: boolean;
   onClose: () => void;
   editTeam?: Team;
+  onCreated?: (teamId: string) => void;
 }
 
 const sportOptions = SPORT_TYPES.map(s => ({ value: s, label: SPORT_TYPE_LABELS[s] }));
@@ -32,7 +33,21 @@ const ageGroupOptions = AGE_GROUPS.map(g => ({
   label: g === 'adult' ? `Adult League — Adult (18+)` : `${g} — ${AGE_GROUP_LABELS[g]}`,
 }));
 
-export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
+/** Returns true if any advanced field has a non-default value — used to auto-expand in edit mode. */
+function hasAdvancedValues(team: Team | undefined): boolean {
+  if (!team) return false;
+  return !!(
+    team.homeVenue ||
+    team.homeVenueId ||
+    team.coachName ||
+    team.coachEmail ||
+    team.logoUrl ||
+    (team.attendanceWarningsEnabled === false) ||
+    team.attendanceWarningThreshold !== undefined
+  );
+}
+
+export function TeamForm({ open, onClose, editTeam, onCreated }: TeamFormProps) {
   const updateTeam = useTeamStore(s => s.updateTeam);
   const kidsSetting = useSettingsStore(s => s.settings.kidsSportsMode);
   const kidsMode = FLAGS.KIDS_MODE && kidsSetting;
@@ -44,18 +59,22 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
     return useVenueStore.getState().subscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Core fields
   const [name, setName] = useState(editTeam?.name ?? '');
   const [sportType, setSportType] = useState<SportType>(editTeam?.sportType ?? 'soccer');
   const [color, setColor] = useState(editTeam?.color ?? TEAM_COLORS[0]);
+  const [ageGroup, setAgeGroup] = useState<AgeGroup | ''>(editTeam?.ageGroup ?? '');
+  // Visibility: stored as isPrivate in Firestore; UI shows "Make discoverable" (inverted)
+  // Default: private (isPrivate=true, discoverable=false)
+  const [isPrivate, setIsPrivate] = useState<boolean>(editTeam?.isPrivate ?? true);
+
+  // Advanced fields
   const [coachName, setCoachName] = useState(editTeam?.coachName ?? '');
   const [coachEmail, setCoachEmail] = useState(editTeam?.coachEmail ?? '');
-  const [ageGroup, setAgeGroup] = useState<AgeGroup | ''>(editTeam?.ageGroup ?? '');
-  const [divisionLabel, setDivisionLabel] = useState(editTeam?.divisionLabel ?? '');
   const [homeVenue, setHomeVenue] = useState(editTeam?.homeVenue ?? '');
   const [homeVenueId, setHomeVenueId] = useState(editTeam?.homeVenueId ?? '');
   const [coachId, setCoachId] = useState(editTeam?.coachId ?? '');
-  const [isPrivate, setIsPrivate] = useState<boolean>(editTeam?.isPrivate ?? false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
   const [attendanceWarningsEnabled, setAttendanceWarningsEnabled] = useState<boolean>(editTeam?.attendanceWarningsEnabled !== false);
   const [attendanceWarningThreshold, setAttendanceWarningThreshold] = useState<string>(
     editTeam?.attendanceWarningThreshold !== undefined ? String(editTeam.attendanceWarningThreshold) : ''
@@ -65,9 +84,14 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(editTeam?.logoUrl ?? null);
   const [removeLogo, setRemoveLogo] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Advanced section visibility
+  const [advancedOpen, setAdvancedOpen] = useState(() => hasAdvancedValues(editTeam));
+
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Reset all form fields when opening for a new team
   useEffect(() => {
@@ -75,10 +99,10 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
     setName('');
     setSportType('soccer');
     setColor(TEAM_COLORS[0]);
+    setAgeGroup('');
+    setIsPrivate(true);
     setCoachName('');
     setCoachEmail('');
-    setAgeGroup('');
-    setDivisionLabel('');
     setHomeVenue('');
     setHomeVenueId('');
     setCoachId('');
@@ -89,6 +113,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
     setRemoveLogo(false);
     setAttendanceWarningsEnabled(true);
     setAttendanceWarningThreshold('');
+    setAdvancedOpen(false);
     // Auto-fill coach fields from current user's profile
     if (profile?.email) setCoachEmail(profile.email);
     if (profile?.displayName) setCoachName(profile.displayName);
@@ -101,11 +126,12 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
     setLogoPreview(editTeam.logoUrl ?? null);
     setRemoveLogo(false);
     setLogoFile(null);
-    setIsPrivate(editTeam.isPrivate ?? false);
+    setIsPrivate(editTeam.isPrivate ?? true);
     setAttendanceWarningsEnabled(editTeam.attendanceWarningsEnabled !== false);
     setAttendanceWarningThreshold(
       editTeam.attendanceWarningThreshold !== undefined ? String(editTeam.attendanceWarningThreshold) : ''
     );
+    setAdvancedOpen(hasAdvancedValues(editTeam));
   }, [open, editTeam?.logoUrl, editTeam?.isPrivate, editTeam?.attendanceWarningsEnabled, editTeam?.attendanceWarningThreshold]);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -144,6 +170,7 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
   async function handleSubmit() {
     if (!validate()) return;
     setUploading(true);
+    setSaveError('');
     try {
       let logoUrl = editTeam?.logoUrl;
 
@@ -158,7 +185,6 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         await uploadBytes(storageRef, logoFile);
         logoUrl = await getDownloadURL(storageRef);
 
-        // If this is a new team we need to carry the id through
         const now = new Date().toISOString();
         const parsedThreshold = attendanceWarningThreshold !== '' ? parseInt(attendanceWarningThreshold, 10) : undefined;
         const base = {
@@ -170,7 +196,6 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
           ...(coachName.trim() ? { coachName: coachName.trim() } : {}),
           ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}),
           ...(ageGroup ? { ageGroup } : {}),
-          ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}),
           ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
           ...(homeVenueId ? { homeVenueId } : {}),
           ...(coachId ? { coachId } : {}),
@@ -180,11 +205,15 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         };
         if (editTeam) {
           await updateTeam({ ...editTeam, ...base });
+          onClose();
         } else {
           const createFn = httpsCallable<Record<string, unknown>, { teamId: string }>(functions, 'createTeamAndBecomeCoach');
-          await createFn({ name: name.trim(), sportType, color, ...(ageGroup ? { ageGroup } : {}), ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}), ...(homeVenueId ? { homeVenueId } : {}), ...(coachName.trim() ? { coachName: coachName.trim() } : {}), ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}), ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}), ...(logoUrl ? { logoUrl } : {}), attendanceWarningsEnabled, ...(parsedThreshold !== undefined && !isNaN(parsedThreshold) ? { attendanceWarningThreshold: parsedThreshold } : {}) });
+          const result = await createFn({ name: name.trim(), sportType, color, ...(ageGroup ? { ageGroup } : {}), ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}), ...(homeVenueId ? { homeVenueId } : {}), ...(coachName.trim() ? { coachName: coachName.trim() } : {}), ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}), ...(logoUrl ? { logoUrl } : {}), attendanceWarningsEnabled, ...(parsedThreshold !== undefined && !isNaN(parsedThreshold) ? { attendanceWarningThreshold: parsedThreshold } : {}), isPrivate });
+          if (onCreated) {
+            onCreated(result.data.teamId);
+          }
+          onClose();
         }
-        onClose();
         return;
       }
 
@@ -198,7 +227,6 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         ...(coachName.trim() ? { coachName: coachName.trim() } : {}),
         ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}),
         ...(ageGroup ? { ageGroup } : {}),
-        ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}),
         ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}),
         ...(homeVenueId ? { homeVenueId } : {}),
         ...(coachId ? { coachId } : {}),
@@ -213,11 +241,15 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
         const updated = { ...editTeam, ...base };
         if (!logoUrl) delete updated.logoUrl;
         await updateTeam(updated);
+        onClose();
       } else {
         const createFn = httpsCallable<Record<string, unknown>, { teamId: string }>(functions, 'createTeamAndBecomeCoach');
-        await createFn({ name: name.trim(), sportType, color, ...(ageGroup ? { ageGroup } : {}), ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}), ...(homeVenueId ? { homeVenueId } : {}), ...(coachName.trim() ? { coachName: coachName.trim() } : {}), ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}), ...(divisionLabel.trim() ? { divisionLabel: divisionLabel.trim() } : {}), attendanceWarningsEnabled, ...(parsedThreshold2 !== undefined && !isNaN(parsedThreshold2) ? { attendanceWarningThreshold: parsedThreshold2 } : {}) });
+        const result = await createFn({ name: name.trim(), sportType, color, ...(ageGroup ? { ageGroup } : {}), ...(homeVenue.trim() ? { homeVenue: homeVenue.trim() } : {}), ...(homeVenueId ? { homeVenueId } : {}), ...(coachName.trim() ? { coachName: coachName.trim() } : {}), ...(coachEmail.trim() ? { coachEmail: coachEmail.trim() } : {}), attendanceWarningsEnabled, ...(parsedThreshold2 !== undefined && !isNaN(parsedThreshold2) ? { attendanceWarningThreshold: parsedThreshold2 } : {}), isPrivate });
+        if (onCreated) {
+          onCreated(result.data.teamId);
+        }
+        onClose();
       }
-      onClose();
     } catch (e: unknown) {
       const msg = (e as { message?: string }).message ?? 'Save failed. Please try again.';
       setSaveError(msg.includes('Missing or insufficient permissions')
@@ -228,141 +260,149 @@ export function TeamForm({ open, onClose, editTeam }: TeamFormProps) {
     }
   }
 
-
   return (
     <Modal open={open} onClose={onClose} title={editTeam ? 'Edit Team' : 'New Team'}>
       <div className="space-y-4">
+
+        {/* ── Core fields ── */}
         <Input label="Team Name" name="team-name" autoComplete="off" value={name} onChange={e => setName(e.target.value)} error={errors.name} placeholder="e.g. City Hawks" />
         <Select label="Sport" value={sportType} onChange={e => setSportType(e.target.value as SportType)} options={sportOptions} />
-        <Select label="Age Group" value={ageGroup} onChange={e => setAgeGroup(e.target.value as AgeGroup)} options={ageGroupOptions} placeholder="Select age group" />
-        <div className="flex flex-col gap-1">
-          <Input
-            label="Division label (optional)"
-            name="division-label"
-            autoComplete="off"
-            value={divisionLabel}
-            onChange={e => setDivisionLabel(e.target.value)}
-            placeholder="e.g. Little League, Pee Wee, Rep"
-          />
-          <p className="text-xs text-gray-400">Use this for league-specific division names. Shown alongside the age group.</p>
-        </div>
+        <Select label="Age Group" value={ageGroup} onChange={e => setAgeGroup(e.target.value as AgeGroup)} options={ageGroupOptions} placeholder="Select age group (optional)" />
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-gray-700">Team Color</label>
           <ColorPickerGrid value={color} onChange={setColor} />
         </div>
 
-        {/* Logo upload */}
-        <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-gray-700">Team Logo <span className="text-gray-400 font-normal">(optional, max 2 MB)</span></label>
-            {logoPreview ? (
-              <div className="flex items-center gap-3">
-                <img src={logoPreview} alt="Team logo" className="w-16 h-16 rounded-xl object-contain border border-gray-200 bg-gray-50" />
-                <div className="flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                  >
-                    <Upload size={12} /> Replace
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRemoveLogo}
-                    className="text-xs text-red-500 hover:underline flex items-center gap-1"
-                  >
-                    <X size={12} /> Remove
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 px-3 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 hover:border-blue-300 hover:text-blue-500 transition-colors w-full"
-              >
-                <Image size={16} /> Upload logo image
-              </button>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ALLOWED_TYPES.join(',')}
-              className="hidden"
-              onChange={handleFileChange}
-            />
-            {errors.logo && <p className="text-xs text-red-500">{errors.logo}</p>}
-          </div>
-
-        <Input label={kidsMode ? 'Head Coach' : 'Coach Name (optional)'} name="coach-name" autoComplete="off" value={coachName} onChange={e => setCoachName(e.target.value)} />
-        <Input label="Coach Email (optional)" type="email" name="coach-email" autoComplete="off" value={coachEmail} onChange={e => setCoachEmail(e.target.value)} />
-        {savedVenues.length > 0 ? (
-          <Select
-            label="Home Venue (optional)"
-            value={homeVenueId}
-            onChange={e => {
-              const selected = savedVenues.find(v => v.id === e.target.value);
-              setHomeVenueId(e.target.value);
-              setHomeVenue(selected?.name ?? '');
-            }}
-            options={savedVenues.map(v => ({ value: v.id, label: v.name }))}
-            placeholder="Select a venue"
-          />
-        ) : (
-          <Input label="Home Venue (optional)" name="home-venue" autoComplete="off" value={homeVenue} onChange={e => setHomeVenue(e.target.value)} placeholder="e.g. City Park" />
-        )}
-        {/* Attendance Warnings */}
-        <div className="border-t border-gray-100 pt-4 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-700">Attendance Warnings</h3>
+        {/* Visibility */}
+        <div className="flex flex-col gap-1">
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={attendanceWarningsEnabled}
-              onChange={e => setAttendanceWarningsEnabled(e.target.checked)}
+              checked={!isPrivate}
+              onChange={e => setIsPrivate(!e.target.checked)}
               className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            <span className="text-sm text-gray-700">Warn me when confirmed attendance is low</span>
+            <span className="text-sm font-medium text-gray-700">Make this team discoverable</span>
           </label>
-          {attendanceWarningsEnabled && (
-            <div className="space-y-1">
-              <Input
-                label="Minimum players threshold"
-                type="number"
-                name="attendance-threshold"
-                autoComplete="off"
-                min={1}
-                value={attendanceWarningThreshold}
-                onChange={e => setAttendanceWarningThreshold(e.target.value)}
-                placeholder={`Default for ${sportType}: ${SPORT_FORFEIT_THRESHOLDS[sportType]}`}
-              />
-              <p className="text-xs text-gray-400">
-                Warn when fewer than this many players have confirmed. Leave blank to use the sport default.
-              </p>
+          <p className="text-xs text-gray-400 ml-7">League managers can find and add discoverable teams to their league.</p>
+        </div>
+
+        {/* ── Advanced section ── */}
+        <div className="border-t border-gray-100 pt-3">
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen(o => !o)}
+            className="flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors mb-3"
+            aria-expanded={advancedOpen}
+          >
+            {advancedOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+            More details
+          </button>
+
+          {advancedOpen && (
+            <div className="space-y-4">
+              {/* Home Venue */}
+              {savedVenues.length > 0 ? (
+                <Select
+                  label="Home Venue (optional)"
+                  value={homeVenueId}
+                  onChange={e => {
+                    const selected = savedVenues.find(v => v.id === e.target.value);
+                    setHomeVenueId(e.target.value);
+                    setHomeVenue(selected?.name ?? '');
+                  }}
+                  options={savedVenues.map(v => ({ value: v.id, label: v.name }))}
+                  placeholder="Select a venue"
+                />
+              ) : (
+                <Input label="Home Venue (optional)" name="home-venue" autoComplete="off" value={homeVenue} onChange={e => setHomeVenue(e.target.value)} placeholder="e.g. City Park" />
+              )}
+
+              {/* Coach fields */}
+              <Input label={kidsMode ? 'Head Coach' : 'Coach Name (optional)'} name="coach-name" autoComplete="off" value={coachName} onChange={e => setCoachName(e.target.value)} />
+              <Input label="Coach Email (optional)" type="email" name="coach-email" autoComplete="off" value={coachEmail} onChange={e => setCoachEmail(e.target.value)} />
+
+              {/* Logo upload */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700">Team Logo <span className="text-gray-400 font-normal">(optional, max 2 MB)</span></label>
+                {logoPreview ? (
+                  <div className="flex items-center gap-3">
+                    <img src={logoPreview} alt="Team logo" className="w-16 h-16 rounded-xl object-contain border border-gray-200 bg-gray-50" />
+                    <div className="flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                      >
+                        <Upload size={12} /> Replace
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoveLogo}
+                        className="text-xs text-red-500 hover:underline flex items-center gap-1"
+                      >
+                        <X size={12} /> Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-2 px-3 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 hover:border-blue-300 hover:text-blue-500 transition-colors w-full"
+                  >
+                    <Image size={16} /> Upload logo image
+                  </button>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ALLOWED_TYPES.join(',')}
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                {errors.logo && <p className="text-xs text-red-500">{errors.logo}</p>}
+              </div>
+
+              {/* Attendance Warnings */}
+              <div className="border-t border-gray-100 pt-3 space-y-3">
+                <h3 className="text-sm font-semibold text-gray-700">Attendance Warnings</h3>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={attendanceWarningsEnabled}
+                    onChange={e => setAttendanceWarningsEnabled(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Warn me when confirmed attendance is low</span>
+                </label>
+                {attendanceWarningsEnabled && (
+                  <div className="space-y-1">
+                    <Input
+                      label="Minimum players threshold"
+                      type="number"
+                      name="attendance-threshold"
+                      autoComplete="off"
+                      min={1}
+                      value={attendanceWarningThreshold}
+                      onChange={e => setAttendanceWarningThreshold(e.target.value)}
+                      placeholder={`Default for ${sportType}: ${SPORT_FORFEIT_THRESHOLDS[sportType]}`}
+                    />
+                    <p className="text-xs text-gray-400">
+                      Warn when fewer than this many players have confirmed. Leave blank to use the sport default.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
-
-        {/* Team Visibility — edit only, coaches and admins */}
-        {editTeam && (profile?.role === 'admin' || profile?.role === 'coach' || editTeam.coachId === profile?.uid || editTeam.createdBy === profile?.uid || editTeam.coachIds?.includes(profile?.uid ?? '')) && (
-          <div className="border-t border-gray-100 pt-4 space-y-2">
-            <h3 className="text-sm font-semibold text-gray-700">Visibility</h3>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isPrivate}
-                onChange={e => setIsPrivate(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              <span className="text-sm text-gray-700">Private team</span>
-            </label>
-            <p className="text-xs text-gray-400">Private teams won't appear in league assignment lists.</p>
-          </div>
-        )}
 
         {saveError && (
           <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>
         )}
         <div className="flex justify-end gap-3 pt-2">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" onClick={onClose} disabled={uploading}>Cancel</Button>
           <Button onClick={() => void handleSubmit()} disabled={uploading}>
             {uploading ? 'Saving…' : editTeam ? 'Save Changes' : 'Create Team'}
           </Button>
