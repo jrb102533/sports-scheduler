@@ -54,7 +54,6 @@ export function LeagueDetailPage() {
 
   const seasons = useSeasonStore(s => s.seasons);
   const activeCollection = useCollectionStore(s => s.activeCollection);
-  const responses = useCollectionStore(s => s.responses);
   const [collectionPanelOpen, setCollectionPanelOpen] = useState(false);
 
   const [tab, setTab] = useState<Tab>('schedule');
@@ -89,8 +88,6 @@ export function LeagueDetailPage() {
   }, [id]);
 
   const hasActiveCollection = activeCollection?.status === 'open';
-  const respondedCount = responses.length;
-  const totalCoaches = leagueTeams.filter(t => t.coachId).length;
 
   const coaches: CoachInfo[] = leagueTeams.map(team => ({
     uid: team.coachId ?? team.id,
