@@ -14,6 +14,9 @@
  *   7. League manager who does not own league → 'permission-denied'
  *   8. admin role bypasses ownership check → valid output
  *   9. Inner algorithm error (step 8) → 'failed-precondition' with "DEBUG — " prefix (not outer)
+ *  10. SEC-74: LM passing their own division → succeeds
+ *  11. SEC-74: LM passing a division from another league → permission-denied
+ *  12. SEC-74: Admin passing a division from any league → succeeds (admin bypasses division check)
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -390,6 +393,54 @@ describe('generateSchedule', () => {
     // admin1 has no ownership relationship with league1 — the check is skipped for admin.
     const result = await fn(makeRequest(baseScheduleInput(), 'admin1')) as Record<string, unknown>;
 
+    expect(Array.isArray(result.fixtures)).toBe(true);
+    expect((result.stats as Record<string, unknown>).feasible).toBe(true);
+  });
+
+  // ── SEC-74: division ownership guard ──────────────────────────────────────
+
+  it('(10) league_manager passing their own division (exists in their league) → succeeds', async () => {
+    // Seed the division document under the manager's league.
+    seedDoc('leagues/league1/divisions/div1', { name: 'Division A' });
+
+    const input = {
+      ...baseScheduleInput('league1'),
+      divisions: [{ id: 'div1', name: 'Division A', teamIds: ['t1', 't2'], format: 'single_round_robin' as const }],
+    };
+
+    const result = await fn(makeRequest(input, 'manager1')) as Record<string, unknown>;
+    expect(Array.isArray(result.fixtures)).toBe(true);
+    expect((result.stats as Record<string, unknown>).feasible).toBe(true);
+  });
+
+  it('(11) league_manager passing a division from another league → permission-denied', async () => {
+    // div-other is seeded under a different league, not league1.
+    seedDoc('leagues/other-league/divisions/div-other', { name: 'Foreign Division' });
+    // div-other is NOT in leagues/league1/divisions — so the check should fire.
+
+    const input = {
+      ...baseScheduleInput('league1'),
+      divisions: [{ id: 'div-other', name: 'Foreign Division', teamIds: ['t1', 't2'], format: 'single_round_robin' as const }],
+    };
+
+    await expect(fn(makeRequest(input, 'manager1')))
+      .rejects.toMatchObject({
+        code: 'permission-denied',
+        message: expect.stringContaining('do not belong to this league'),
+      });
+  });
+
+  it('(12) admin passing a division from a different league → succeeds (admin bypasses division check)', async () => {
+    // The division only exists under other-league, not under league1 that input references.
+    // An admin must be able to operate on any league/division combination without restriction.
+    seedDoc('leagues/other-league/divisions/div-other', { name: 'Foreign Division' });
+
+    const input = {
+      ...baseScheduleInput('league1'),
+      divisions: [{ id: 'div-other', name: 'Foreign Division', teamIds: ['t1', 't2'], format: 'single_round_robin' as const }],
+    };
+
+    const result = await fn(makeRequest(input, 'admin1')) as Record<string, unknown>;
     expect(Array.isArray(result.fixtures)).toBe(true);
     expect((result.stats as Record<string, unknown>).feasible).toBe(true);
   });

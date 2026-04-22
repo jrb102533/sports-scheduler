@@ -753,16 +753,16 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       mode,
       seasonStart,
       seasonEnd,
-      matchDuration: parseInt(matchDuration),
-      bufferMinutes: parseInt(bufferMinutes),
-      gamesPerTeam: parseInt(gamesPerTeam),
+      matchDuration: parseInt(matchDuration) || 60,
+      bufferMinutes: parseInt(bufferMinutes) || 15,
+      gamesPerTeam: parseInt(gamesPerTeam) || 10,
       homeAwayBalance,
       format,
       ...(mode === 'playoff' ? { playoffFormat } : {}),
-      ...(groupCount ? { groupCount: parseInt(groupCount) } : {}),
-      ...(groupAdvance ? { groupAdvance: parseInt(groupAdvance) } : {}),
-      minRestDays: parseInt(minRestDays),
-      maxConsecAway: parseInt(maxConsecAway),
+      ...(groupCount ? { groupCount: parseInt(groupCount) || 2 } : {}),
+      ...(groupAdvance ? { groupAdvance: parseInt(groupAdvance) || 2 } : {}),
+      minRestDays: parseInt(minRestDays) || 6,
+      maxConsecAway: parseInt(maxConsecAway) || 2,
       constraints,
       venueConfigs: venueConfigsMapped,
       ...(divisionConfigs ? { divisionConfigs } : {}),
@@ -1116,7 +1116,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
               teamIds: div.teamIds,
               format: divCfg?.format ?? div.format ?? 'single_round_robin',
               gamesPerTeam: divCfg?.gamesPerTeam ?? div.gamesPerTeam ?? gpt,
-              matchDurationMinutes: divCfg?.matchDurationMinutes ?? div.matchDurationMinutes ?? parseInt(matchDuration),
+              matchDurationMinutes: divCfg?.matchDurationMinutes ?? div.matchDurationMinutes ?? (parseInt(matchDuration) || 60),
               enforcement: divCfg?.coachEnforcement ?? 'soft',
               surfacePreferences: venueConfigs.flatMap(vc => {
                 const venueId = vc.selectedVenueId ?? vc.name;
@@ -1134,8 +1134,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         leagueName: league.name,
         seasonStart: isPractice ? practiceSeasonStart : seasonStart,
         seasonEnd: isPractice ? practiceSeasonEnd : seasonEnd,
-        matchDurationMinutes: parseInt(isPractice ? practiceDuration : matchDuration),
-        bufferMinutes: isPractice ? 0 : parseInt(bufferMinutes),
+        matchDurationMinutes: parseInt(isPractice ? practiceDuration : matchDuration) || (isPractice ? 90 : 60),
+        bufferMinutes: isPractice ? 0 : (parseInt(bufferMinutes) || 15),
         format: isPractice ? 'practice' : activeFormat,
         teams: isPractice
           ? leagueTeams
@@ -1157,14 +1157,14 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
         ...(isPractice
           ? {
               practiceTimeWindows: practiceTimes,
-              practiceMaxPerWeek: parseInt(practiceMaxPerWeek),
+              practiceMaxPerWeek: parseInt(practiceMaxPerWeek) || 2,
             }
           : {
               gamesPerTeam: gpt,
-              minRestDays: parseInt(minRestDays),
-              maxConsecutiveAway: parseInt(maxConsecAway),
+              minRestDays: parseInt(minRestDays) || 6,
+              maxConsecutiveAway: parseInt(maxConsecAway) || 2,
               ...(activeFormat === 'group_then_knockout'
-                ? { groupCount: parseInt(groupCount), groupAdvance: parseInt(groupAdvance) }
+                ? { groupCount: parseInt(groupCount) || 2, groupAdvance: parseInt(groupAdvance) || 2 }
                 : {}),
             }),
       };
@@ -1188,7 +1188,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     if (!result || !mode) return;
     setPublishing(true);
     const now = new Date().toISOString();
-    const durationMins = parseInt(mode === 'practice' ? practiceDuration : matchDuration);
+    const durationMins = parseInt(mode === 'practice' ? practiceDuration : matchDuration) || (mode === 'practice' ? 90 : 60);
     // Auto field assignment: round-robin across fields per venue+date+time slot
     const fieldSlotCounter = new Map<string, number>();
 
@@ -1298,7 +1298,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       // enforces server-side league-manager ownership and validation.
       await Promise.all(
         result.fixtures.map(fixture => {
-          const durationMins = parseInt(matchDuration);
+          const durationMins = parseInt(matchDuration) || 60;
           const [h, m] = fixture.startTime.split(':').map(Number);
           const endMinutes = h * 60 + m + durationMins;
           const endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`;
@@ -1390,7 +1390,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       setPublishedAsDraft(!publishNow);
       saveScheduleConfig();
       // Clear league-level wizardDraft — draft games are now persisted in Firestore
-      void clearWizardDraft(league.id);
+      clearWizardDraft(league.id).catch(err => console.error('[saveFixtures] clearWizardDraft failed:', err));
     } catch (err) {
       console.error('saveFixtures failed:', err);
       setGenError('Failed to save some events. Please check the schedule and try again.');
