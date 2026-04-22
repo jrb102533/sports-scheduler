@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { httpsCallable, getFunctions } from 'firebase/functions';
-import { updateDoc, doc } from 'firebase/firestore';
+import { updateDoc, doc, collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import {
   ArrowLeft, MapPin, Users, Wand2, Plus, CheckCircle2,
   AlertTriangle, AlertCircle, Clock, ChevronRight, Settings,
@@ -23,7 +23,7 @@ import { useTeamStore } from '@/store/useTeamStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useVenueStore } from '@/store/useVenueStore';
 import { useAuthStore, isManagerOfLeague } from '@/store/useAuthStore';
-import type { Division, Season, Team } from '@/types';
+import type { Division, Season, Team, ScheduledEvent } from '@/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -456,13 +456,31 @@ export function SeasonDashboard() {
     || (profile?.uid != null && (league?.managerIds ?? []).includes(profile.uid));
   const hasPublishedDivision = divisions.some(d => d.scheduleStatus === 'published');
 
+  // Local draft event subscription — the global event store intentionally excludes
+  // drafts (Firestore rules block non-managers from listing them). Managers get a
+  // separate targeted query here so the draft review list actually populates.
+  const [localDraftEvents, setLocalDraftEvents] = useState<ScheduledEvent[]>([]);
+  useEffect(() => {
+    if (!canManage || !seasonId) { setLocalDraftEvents([]); return; }
+    const q = query(
+      collection(db, 'events'),
+      where('seasonId', '==', seasonId),
+      where('status', '==', 'draft'),
+      orderBy('date'),
+      orderBy('startTime'),
+    );
+    return onSnapshot(q, snap => {
+      setLocalDraftEvents(snap.docs.map(d => ({ ...d.data(), id: d.id }) as ScheduledEvent));
+    }, err => console.error('[SeasonDashboard] draft events error:', err));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManage, seasonId]);
+
   // Draft/published schedule detection
   // For division-based seasons: use division.scheduleStatus
-  // For undivided seasons: look for draft/scheduled events in the event store
-  const seasonDraftEvents = allEvents.filter(e => e.seasonId === seasonId && e.status === 'draft');
+  // For undivided seasons: fall back to local draft event count
   const seasonScheduledEvents = allEvents.filter(e => e.seasonId === seasonId && e.status === 'scheduled');
   const hasDraftDivision = divisions.some(d => d.scheduleStatus === 'draft');
-  const hasDraftSchedule = hasDraftDivision || (divisions.length === 0 && seasonDraftEvents.length > 0);
+  const hasDraftSchedule = hasDraftDivision || (divisions.length === 0 && localDraftEvents.length > 0);
   const hasFullyPublished = divisions.length > 0
     ? divisions.every(d => d.scheduleStatus === 'published')
     : seasonScheduledEvents.length > 0;
@@ -470,10 +488,8 @@ export function SeasonDashboard() {
   const draftDivisions = divisions.filter(d => d.scheduleStatus === 'draft');
   const totalUnscheduled = draftDivisions.reduce((sum, d) => sum + (d.unscheduledCount ?? 0), 0);
 
-  // Draft events sorted by date for the collapsible list
-  const sortedDraftEvents = [...seasonDraftEvents].sort(
-    (a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)
-  );
+  // localDraftEvents is already ordered by date/startTime from the Firestore query
+  const sortedDraftEvents = localDraftEvents;
 
   async function handlePublishDraft(divId?: string) {
     if (!leagueId || !seasonId) return;
@@ -679,7 +695,7 @@ export function SeasonDashboard() {
                 <p className="text-xs text-gray-600 mt-1">
                   {draftDivisions.length > 0
                     ? `${draftDivisions.length} division${draftDivisions.length !== 1 ? 's' : ''} have a draft schedule waiting to be published.`
-                    : `${seasonDraftEvents.length} draft game${seasonDraftEvents.length !== 1 ? 's' : ''} waiting to be published.`}
+                    : `${localDraftEvents.length} draft event${localDraftEvents.length !== 1 ? 's' : ''} waiting to be published.`}
                 </p>
                 {totalUnscheduled > 0 && (
                   <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
