@@ -50,6 +50,8 @@ interface GeneratedFixture {
   endTime: string;
   venueId: string;
   venueName: string;
+  fieldId?: string;
+  fieldName?: string;
   isDoubleheader: boolean;
   doubleheaderSlot?: 1 | 2;
   isFallbackSlot: boolean;
@@ -2848,10 +2850,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                               <th className="text-left px-3 py-2 text-gray-500 font-medium">Away</th>
                             </>
                           )}
-                          <th className="text-left px-3 py-2 text-gray-500 font-medium hidden sm:table-cell">Venue</th>
-                          <th className="text-left px-3 py-2 text-gray-500 font-medium hidden sm:table-cell">
-                            {isPracticeMode ? '' : 'Stage'}
-                          </th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium hidden sm:table-cell">Venue / Field</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -2867,9 +2866,9 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                                 <td className="px-3 py-2 text-gray-700">{f.awayTeamName}</td>
                               </>
                             )}
-                            <td className="px-3 py-2 text-gray-500 hidden sm:table-cell">{f.venueName ?? f.venue}</td>
-                            <td className="px-3 py-2 text-gray-400 hidden sm:table-cell">
-                              {isPracticeMode ? '' : (f.stage ?? `Rd ${f.round}`)}
+                            <td className="px-3 py-2 text-gray-500 hidden sm:table-cell">
+                              {f.venueName ?? f.venue}
+                              {f.fieldName && <span className="text-gray-400"> · {f.fieldName}</span>}
                             </td>
                           </tr>
                         ))}
