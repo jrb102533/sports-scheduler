@@ -2848,9 +2848,25 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
               )}
 
               {(() => {
-                const displayFixtures = result.divisionResults && result.divisionResults.length > 0 && activeDivisionTab !== null
+                const rawFixtures = result.divisionResults && result.divisionResults.length > 0 && activeDivisionTab !== null
                   ? (result.divisionResults.find(dr => dr.divisionId === activeDivisionTab)?.fixtures ?? [])
                   : result.fixtures;
+
+                // Compute field assignments using the same round-robin logic as saveFixtures
+                // so the preview accurately reflects which field each game will land on.
+                const fieldSlotCounterPreview = new Map<string, number>();
+                const displayFixtures = rawFixtures.map(f => {
+                  const fixtureName = f.venueName ?? f.venue ?? '';
+                  const matchedConfig = venueConfigs.find(vc => vc.name === fixtureName);
+                  if (!matchedConfig?.selectedVenueId) return f;
+                  const selectedVenue = resolveVenue(matchedConfig.selectedVenueId);
+                  if (!selectedVenue?.fields || selectedVenue.fields.length <= 1) return f;
+                  const slotKey = `${matchedConfig.selectedVenueId}|${f.date}|${f.startTime}`;
+                  const slotIdx = fieldSlotCounterPreview.get(slotKey) ?? 0;
+                  fieldSlotCounterPreview.set(slotKey, slotIdx + 1);
+                  const assignedField = selectedVenue.fields[slotIdx % selectedVenue.fields.length];
+                  return { ...f, fieldName: assignedField.name };
+                });
 
                 return (
                   <div className="border border-gray-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
