@@ -666,6 +666,8 @@ export function SeasonDashboard() {
         </div>
 
         {/* Card 4: Schedule CTA — adapts based on draft / published state */}
+        {/* Draft banner is manager-only: hasDraftSchedule uses localDraftEvents which is manager-gated,
+            but hasDraftDivision reads division.scheduleStatus which coaches can see — wrap in canManage (SEC-84) */}
         {hasFullyPublished ? (
           <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
             <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -690,7 +692,7 @@ export function SeasonDashboard() {
               )}
             </div>
           </div>
-        ) : hasDraftSchedule ? (
+        ) : canManage && hasDraftSchedule ? (
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>

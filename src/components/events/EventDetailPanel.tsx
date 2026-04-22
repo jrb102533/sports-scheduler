@@ -288,7 +288,7 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
               </div>
             )}
 
-            {event.notes && !/^Round \d+/i.test(event.notes) && (
+            {event.notes && !/^Round \d+( — .*)?$/i.test(event.notes) && (
               <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">{event.notes}</div>
             )}
 
