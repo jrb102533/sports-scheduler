@@ -5,7 +5,7 @@ import { updateDoc, doc } from 'firebase/firestore';
 import {
   ArrowLeft, MapPin, Users, Wand2, Plus, CheckCircle2,
   AlertTriangle, AlertCircle, Clock, ChevronRight, Settings,
-  Send, Loader2, ChevronDown, ChevronUp, Trash2,
+  Send, Loader2, ChevronDown, ChevronUp, Trash2, Layers,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -572,45 +572,71 @@ export function SeasonDashboard() {
       <section className="mb-8">
         <h2 className="text-base font-semibold text-gray-800 mb-3">Regular Season</h2>
 
-        <div className="space-y-3">
-          {/* Card 1: Venue & Blackouts */}
-          <TaskCard
-            icon={<MapPin size={16} />}
-            title="Venue & Blackouts"
-            status={
-              venues.length === 0
-                ? 'Warning: no venues'
-                : `${venues.length} venue${venues.length !== 1 ? 's' : ''} configured`
-            }
-            statusVariant={venues.length === 0 ? 'warning' : 'ok'}
-            description="Configure venues and season-specific blackout dates."
-          >
-            <Link
-              to="/venues"
-              className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium"
+        {!hasFullyPublished && (
+          <div className="space-y-3">
+            {/* Step 1: Configure Venues */}
+            <TaskCard
+              icon={<MapPin size={16} />}
+              title="1. Configure Venues"
+              status={
+                venues.length === 0
+                  ? 'Warning: no venues'
+                  : `${venues.length} venue${venues.length !== 1 ? 's' : ''} configured`
+              }
+              statusVariant={venues.length === 0 ? 'warning' : 'ok'}
+              description="Venues are required before the schedule can be generated."
             >
-              {venues.length === 0 ? 'Set up venues' : 'Manage venues'}
-              <ChevronRight size={13} />
-            </Link>
-          </TaskCard>
+              <Link
+                to="/venues"
+                className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium"
+              >
+                {venues.length === 0 ? 'Set up venues' : 'Manage venues'}
+                <ChevronRight size={13} />
+              </Link>
+            </TaskCard>
 
-          {/* Card 2: Coach Availability (Optional) */}
-          <TaskCard
-            icon={<Users size={16} />}
-            title="Coach Availability"
-            status="Not sent"
-            statusVariant="neutral"
-            description="Collect coach availability before generating the schedule."
-            secondary
-          >
-            <div className="flex items-center gap-3">
-              <Button variant="secondary" size="sm" disabled>
-                Send availability request
-              </Button>
-              <span className="text-xs text-gray-400">Available in Sprint 2</span>
-            </div>
-          </TaskCard>
-        </div>
+            {/* Step 2: Add Teams */}
+            <TaskCard
+              icon={<Users size={16} />}
+              title="2. Add Teams"
+              status={
+                leagueTeams.length < 2
+                  ? `${leagueTeams.length} team${leagueTeams.length !== 1 ? 's' : ''} — need at least 2`
+                  : `${leagueTeams.length} team${leagueTeams.length !== 1 ? 's' : ''}`
+              }
+              statusVariant={leagueTeams.length < 2 ? 'warning' : 'ok'}
+              description="At least 2 teams are needed to generate a schedule."
+            >
+              <Link
+                to={`/leagues/${leagueId}`}
+                className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Go to league teams
+                <ChevronRight size={13} />
+              </Link>
+            </TaskCard>
+
+            {/* Step 3: Assign Teams to Divisions (only when divisions exist) */}
+            {divisions.length > 0 && (() => {
+              const divisionsWithFewTeams = divisions.filter(d => d.teamIds.length < 2);
+              const allDivisionsHaveTeams = divisionsWithFewTeams.length === 0;
+              const totalAssigned = divisions.reduce((s, d) => s + d.teamIds.length, 0);
+              return (
+                <TaskCard
+                  icon={<Layers size={16} />}
+                  title="3. Assign Teams to Divisions"
+                  status={
+                    allDivisionsHaveTeams
+                      ? `${totalAssigned} team${totalAssigned !== 1 ? 's' : ''} assigned`
+                      : `${divisionsWithFewTeams.length} division${divisionsWithFewTeams.length !== 1 ? 's' : ''} need teams`
+                  }
+                  statusVariant={allDivisionsHaveTeams ? 'ok' : 'warning'}
+                  description="Each division needs at least 2 teams to generate its schedule."
+                />
+              );
+            })()}
+          </div>
+        )}
 
         {/* Feasibility Advisory Panel */}
         <div className="mt-4">
@@ -637,7 +663,7 @@ export function SeasonDashboard() {
               </div>
               {canManage && (
                 <Button variant="secondary" size="sm" onClick={() => { setWizardResumeAtPreview(false); setWizardOpen(true); }}>
-                  <Wand2 size={14} /> Re-generate
+                  <Wand2 size={14} /> Regenerate
                 </Button>
               )}
             </div>
@@ -668,7 +694,7 @@ export function SeasonDashboard() {
               {canManage && (
                 <div className="flex gap-2 flex-wrap">
                   <Button variant="secondary" size="sm" onClick={() => { setWizardResumeAtPreview(true); setWizardOpen(true); }}>
-                    <Wand2 size={14} /> Edit Draft
+                    <Wand2 size={14} /> Edit Schedule
                   </Button>
                   <Button variant="danger" size="sm" onClick={() => setConfirmClearAll(true)} disabled={deleting}>
                     <Trash2 size={14} /> Clear Draft
@@ -806,14 +832,9 @@ export function SeasonDashboard() {
                 onClick={() => { setWizardResumeAtPreview(false); setWizardOpen(true); }}
                 disabled={!canGenerate || leagueTeams.length < 2}
               >
-                <Wand2 size={14} /> Open Wizard
+                <Wand2 size={14} /> Generate Schedule
               </Button>
             </div>
-            {leagueTeams.length < 2 && (
-              <p className="text-xs text-amber-700 mt-3">
-                At least 2 teams are required. Add teams to the league first.
-              </p>
-            )}
           </div>
         )}
       </section>

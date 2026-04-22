@@ -439,45 +439,26 @@ describe('LeagueDetailPage — empty Seasons tab CTA', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Schedule Wizard button visibility (ticket #207)
+// Schedule Wizard removed from LeagueDetailPage — scheduling is on SeasonDashboard
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('LeagueDetailPage — Schedule Wizard button visibility', () => {
-  it('shows the Schedule Wizard button for admin when league has no seasons', () => {
+describe('LeagueDetailPage — no Schedule Wizard entry point', () => {
+  it('never shows a Schedule Wizard button regardless of season count', () => {
     currentLeagues = [{ id: 'league-1', name: 'Spring League' }];
     currentSeasons = [];
     currentProfile = makeProfile('admin');
     renderLeagueDetail('league-1');
 
-    expect(screen.getByRole('button', { name: /schedule wizard/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /schedule wizard/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /generate schedule/i })).toBeNull();
   });
 
-  it('hides the Schedule Wizard button for admin when league has at least one season', () => {
+  it('never shows the draft banner edit button', () => {
     currentLeagues = [{ id: 'league-1', name: 'Spring League' }];
     currentSeasons = [makeSeason('s1')];
     currentProfile = makeProfile('admin');
     renderLeagueDetail('league-1');
 
-    expect(screen.queryByRole('button', { name: /schedule wizard/i })).toBeNull();
-  });
-
-  it('hides the Schedule Wizard button when league has multiple seasons', () => {
-    currentLeagues = [{ id: 'league-1', name: 'Spring League' }];
-    currentSeasons = [makeSeason('s1'), makeSeason('s2')];
-    currentProfile = makeProfile('admin');
-    renderLeagueDetail('league-1');
-
-    expect(screen.queryByRole('button', { name: /schedule wizard/i })).toBeNull();
-  });
-
-  it('does not show the Schedule Wizard button to non-manager users regardless of seasons', () => {
-    currentLeagues = [{ id: 'league-1', name: 'Spring League' }];
-    currentSeasons = [];
-    currentProfile = makeProfile('player', {
-      memberships: [{ role: 'player', teamId: 'team-1' }],
-    });
-    renderLeagueDetail('league-1');
-
-    expect(screen.queryByRole('button', { name: /schedule wizard/i })).toBeNull();
+    expect(screen.queryByText(/draft game.*pending review/i)).toBeNull();
   });
 });
