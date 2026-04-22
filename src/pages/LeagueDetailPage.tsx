@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Wand2, Layers, Search, MapPin } from 'lucide-react';
+import { ArrowLeft, Plus, CalendarDays, Trophy, Users, Pencil, Trash2, Layers, Search, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { EventCard } from '@/components/events/EventCard';
@@ -11,7 +11,6 @@ import { EventDetailPanel } from '@/components/events/EventDetailPanel';
 import { StandingsTable } from '@/components/standings/StandingsTable';
 import { LeagueForm } from '@/components/leagues/LeagueForm';
 import { TeamForm } from '@/components/teams/TeamForm';
-import { ScheduleWizardModal } from '@/components/leagues/ScheduleWizardModal';
 import { DeleteLeagueModal } from '@/components/leagues/DeleteLeagueModal';
 import { AssignCoManagerModal } from '@/components/leagues/AssignCoManagerModal';
 import { LeagueVenueTab } from '@/components/leagues/LeagueVenueTab';
@@ -42,7 +41,6 @@ export function LeagueDetailPage() {
   const addTeamToLeague = useTeamStore(s => s.addTeamToLeague);
   const removeTeamFromLeague = useTeamStore(s => s.removeTeamFromLeague);
   const allEvents = useEventStore(s => s.events);
-  const deleteEvent = useEventStore(s => s.deleteEvent);
   const profile = useAuthStore(s => s.profile);
 
   const league = leagues.find(l => l.id === id);
@@ -57,16 +55,13 @@ export function LeagueDetailPage() {
   const seasons = useSeasonStore(s => s.seasons);
   const activeCollection = useCollectionStore(s => s.activeCollection);
   const responses = useCollectionStore(s => s.responses);
-  const wizardDraft = useCollectionStore(s => s.wizardDraft);
   const [collectionPanelOpen, setCollectionPanelOpen] = useState(false);
 
   const [tab, setTab] = useState<Tab>('schedule');
-  const [isClearingDraft, setIsClearingDraft] = useState(false);
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [softDeleteOpen, setSoftDeleteOpen] = useState(false);
-  const [wizardOpen, setWizardOpen] = useState(false);
   const [seasonCreateOpen, setSeasonCreateOpen] = useState(false);
   const [addTeamOpen, setAddTeamOpen] = useState(false);
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
@@ -83,9 +78,7 @@ export function LeagueDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    const unsub1 = useCollectionStore.getState().loadCollection(id);
-    const unsub2 = useCollectionStore.getState().loadWizardDraft(id);
-    return () => { unsub1(); unsub2(); };
+    return useCollectionStore.getState().loadCollection(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -240,76 +233,11 @@ export function LeagueDetailPage() {
               )}
             </div>
             <div className="flex gap-2">
-              {canManage && seasons.length === 0 && draftEvents.length === 0 && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setWizardOpen(true)}
-                  disabled={leagueTeams.length < 2}
-                  title={leagueTeams.length < 2 ? 'Add at least 2 teams to use the Schedule Wizard' : undefined}
-                >
-                  <Wand2 size={14} />
-                  {wizardDraft ? 'Continue Schedule' : 'Schedule Wizard'}
-                  {hasActiveCollection && leagueTeams.length >= 2 && (
-                    <span className="ml-1 text-xs bg-blue-100 text-blue-700 rounded-full px-1.5">
-                      {respondedCount}/{totalCoaches}
-                    </span>
-                  )}
-                </Button>
-              )}
               <RoleGuard roles={['admin', 'league_manager', 'coach']}>
                 <Button size="sm" onClick={() => setEventFormOpen(true)}><Plus size={14} /> Add Event</Button>
               </RoleGuard>
             </div>
           </div>
-          {/* Draft schedule summary banner */}
-          {canManage && draftEvents.length > 0 && (
-            <div className="mb-3 bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-yellow-800">
-                  {draftEvents.length} draft game{draftEvents.length !== 1 ? 's' : ''} pending review
-                </p>
-                {(() => {
-                  const dates = draftEvents.map(e => e.date).sort();
-                  const first = dates[0];
-                  const last = dates[dates.length - 1];
-                  const fmt = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                  return (
-                    <p className="text-xs text-yellow-700 mt-0.5">
-                      {first === last ? fmt(first) : `${fmt(first)} – ${fmt(last)}`}
-                      {' · '}Create a season to publish
-                    </p>
-                  );
-                })()}
-              </div>
-              <div className="flex gap-2 flex-shrink-0">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setWizardOpen(true)}
-                >
-                  Edit
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  disabled={isClearingDraft}
-                  onClick={async () => {
-                    if (!window.confirm(`Delete all ${draftEvents.length} draft games? This cannot be undone.`)) return;
-                    setIsClearingDraft(true);
-                    try {
-                      await Promise.all(draftEvents.map(e => deleteEvent(e.id)));
-                      void useCollectionStore.getState().clearWizardDraft(id!);
-                    } finally {
-                      setIsClearingDraft(false);
-                    }
-                  }}
-                >
-                  {isClearingDraft ? 'Discarding…' : 'Discard'}
-                </Button>
-              </div>
-            </div>
-          )}
 
           {leagueEvents.filter(e => e.status !== 'draft').length === 0 && draftEvents.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-400">
@@ -461,16 +389,6 @@ export function LeagueDetailPage() {
 
       <EventForm open={eventFormOpen} onClose={() => setEventFormOpen(false)} />
       <EventDetailPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} leagueId={id} />
-
-      {wizardOpen && (
-        <ScheduleWizardModal
-          open={wizardOpen}
-          onClose={() => setWizardOpen(false)}
-          league={league}
-          leagueTeams={leagueTeams}
-          currentUserUid={profile?.uid ?? ''}
-        />
-      )}
 
       {collectionPanelOpen && (
         <Modal open onClose={() => setCollectionPanelOpen(false)} title="Availability Collection">

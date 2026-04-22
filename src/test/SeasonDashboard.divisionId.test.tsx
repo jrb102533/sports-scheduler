@@ -227,7 +227,7 @@ function renderDashboard() {
 }
 
 function clickOpenWizard() {
-  fireEvent.click(screen.getByRole('button', { name: /open wizard/i }));
+  fireEvent.click(screen.getByRole('button', { name: /generate schedule/i }));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -319,16 +319,16 @@ describe('SeasonDashboard — renders without error', () => {
     expect(screen.getAllByText('Division div-B')[0]).toBeInTheDocument();
   });
 
-  it('Open Wizard button is enabled when 2 or more teams are present and a venue is configured', () => {
+  it('Generate Schedule button is enabled when 2 or more teams are present and a venue is configured', () => {
     currentTeams = [makeTeam('t1'), makeTeam('t2')];
     currentDivisions = [];
     renderDashboard();
-    expect(screen.getByRole('button', { name: /open wizard/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /generate schedule/i })).toBeEnabled();
   });
 
-  it('Open Wizard button is disabled when fewer than 2 teams are present', () => {
+  it('Generate Schedule button is disabled when fewer than 2 teams are present', () => {
     currentTeams = [makeTeam('t1')];
     renderDashboard();
-    expect(screen.getByRole('button', { name: /open wizard/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /generate schedule/i })).toBeDisabled();
   });
 });
