@@ -1233,6 +1233,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                 createdAt: now,
                 updatedAt: now,
                 ...venueFields,
+                leagueId: league.id,
+                ...(season?.id ? { seasonId: season.id } : {}),
               }
             : {
                 id: crypto.randomUUID(),
@@ -1252,6 +1254,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                 createdAt: now,
                 updatedAt: now,
                 ...venueFields,
+                leagueId: league.id,
+                ...(season?.id ? { seasonId: season.id } : {}),
               };
 
           return addEvent(event);
@@ -1349,16 +1353,29 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             ...(divisionId ? { divisionId } : {}),
           });
         }
-      } else if (!publishNow && divisionId && season?.id) {
-        // Mark division as having a draft schedule so the dashboard CTA updates.
-        await updateDoc(
-          doc(db, 'leagues', league.id, 'divisions', divisionId),
-          {
-            scheduleStatus: 'draft',
-            unscheduledCount: result?.stats.unassignedFixtures ?? 0,
-            updatedAt: now,
-          }
-        );
+      } else if (!publishNow && season?.id) {
+        // Mark division(s) as having a draft schedule so the dashboard CTA updates.
+        if (result.divisionResults && result.divisionResults.length > 0) {
+          await Promise.all(result.divisionResults.map(dr =>
+            updateDoc(
+              doc(db, 'leagues', league.id, 'divisions', dr.divisionId),
+              {
+                scheduleStatus: 'draft',
+                unscheduledCount: dr.unassignedCount ?? 0,
+                updatedAt: now,
+              }
+            )
+          ));
+        } else if (divisionId) {
+          await updateDoc(
+            doc(db, 'leagues', league.id, 'divisions', divisionId),
+            {
+              scheduleStatus: 'draft',
+              unscheduledCount: result?.stats.unassignedFixtures ?? 0,
+              updatedAt: now,
+            }
+          );
+        }
       }
 
       setPublished(true);

@@ -719,35 +719,38 @@ export function SeasonDashboard() {
                   className="flex items-center gap-1.5 text-xs font-medium text-amber-800 hover:text-amber-900"
                 >
                   {draftListOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  {draftListOpen ? 'Hide' : 'View'} {sortedDraftEvents.length} draft game{sortedDraftEvents.length !== 1 ? 's' : ''}
+                  {draftListOpen ? 'Hide' : 'View'} {sortedDraftEvents.length} draft event{sortedDraftEvents.length !== 1 ? 's' : ''}
                 </button>
 
-                {draftListOpen && canManage && (
+                {draftListOpen && (
                   <div className="mt-2 space-y-1">
-                    {/* Select-all row */}
-                    <div className="flex items-center gap-2 px-3 py-1.5">
-                      <input
-                        type="checkbox"
-                        aria-label="Select all draft games"
-                        checked={selectedDraftIds.size === sortedDraftEvents.length}
-                        onChange={e =>
-                          setSelectedDraftIds(
-                            e.target.checked ? new Set(sortedDraftEvents.map(ev => ev.id)) : new Set()
-                          )
-                        }
-                        className="h-3.5 w-3.5 rounded border-gray-300 accent-amber-600"
-                      />
-                      <span className="text-xs text-gray-500">
-                        {selectedDraftIds.size > 0
-                          ? `${selectedDraftIds.size} of ${sortedDraftEvents.length} selected`
-                          : `Select all ${sortedDraftEvents.length} games`}
-                      </span>
-                    </div>
+                    {/* Select-all row — managers only */}
+                    {canManage && (
+                      <div className="flex items-center gap-2 px-3 py-1.5">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all draft events"
+                          checked={selectedDraftIds.size === sortedDraftEvents.length}
+                          onChange={e =>
+                            setSelectedDraftIds(
+                              e.target.checked ? new Set(sortedDraftEvents.map(ev => ev.id)) : new Set()
+                            )
+                          }
+                          className="h-3.5 w-3.5 rounded border-gray-300 accent-amber-600"
+                        />
+                        <span className="text-xs text-gray-500">
+                          {selectedDraftIds.size > 0
+                            ? `${selectedDraftIds.size} of ${sortedDraftEvents.length} selected`
+                            : `Select all ${sortedDraftEvents.length} events`}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Game rows */}
                     {sortedDraftEvents.map(e => {
+                      const isPractice = e.type === 'practice';
                       const homeTeam = leagueTeams.find(t => e.teamIds[0] === t.id);
-                      const awayTeam = leagueTeams.find(t => e.teamIds[1] === t.id);
+                      const awayTeam = !isPractice ? leagueTeams.find(t => e.teamIds[1] === t.id) : null;
                       const dateLabel = new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', {
                         weekday: 'short', month: 'short', day: 'numeric',
                       });
@@ -759,19 +762,23 @@ export function SeasonDashboard() {
                             checked ? 'bg-amber-50 border-amber-300' : 'bg-white border-amber-100 hover:bg-amber-50'
                           }`}
                         >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={ev => {
-                              const next = new Set(selectedDraftIds);
-                              ev.target.checked ? next.add(e.id) : next.delete(e.id);
-                              setSelectedDraftIds(next);
-                              setConfirmDeleteSelected(false);
-                            }}
-                            className="h-3.5 w-3.5 flex-shrink-0 rounded border-gray-300 accent-amber-600"
-                          />
+                          {canManage && (
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={ev => {
+                                const next = new Set(selectedDraftIds);
+                                ev.target.checked ? next.add(e.id) : next.delete(e.id);
+                                setSelectedDraftIds(next);
+                                setConfirmDeleteSelected(false);
+                              }}
+                              className="h-3.5 w-3.5 flex-shrink-0 rounded border-gray-300 accent-amber-600"
+                            />
+                          )}
                           <span className="font-medium text-gray-800 flex-1">
-                            {homeTeam?.name ?? 'TBD'} vs {awayTeam?.name ?? 'TBD'}
+                            {isPractice
+                              ? `${homeTeam?.name ?? 'Team'} — Practice`
+                              : `${homeTeam?.name ?? 'TBD'} vs ${awayTeam?.name ?? 'TBD'}`}
                           </span>
                           <span className="text-gray-500 tabular-nums">
                             {dateLabel} · {e.startTime}
