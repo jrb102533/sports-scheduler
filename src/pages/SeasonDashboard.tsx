@@ -5,7 +5,7 @@ import { updateDoc, doc, collection, query, where, orderBy, onSnapshot } from 'f
 import {
   ArrowLeft, MapPin, Users, Wand2, Plus, CheckCircle2,
   AlertTriangle, AlertCircle, Clock, ChevronRight, Settings,
-  Send, Loader2, ChevronDown, ChevronUp, Trash2, Layers,
+  Send, Loader2, ChevronDown, ChevronUp, Trash2, Layers, Dumbbell,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -23,7 +23,7 @@ import { useTeamStore } from '@/store/useTeamStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useVenueStore } from '@/store/useVenueStore';
 import { useAuthStore, isManagerOfLeague } from '@/store/useAuthStore';
-import type { Division, Season, Team, ScheduledEvent } from '@/types';
+import type { Division, Season, Team, ScheduledEvent, WizardMode } from '@/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -384,6 +384,7 @@ export function SeasonDashboard() {
 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardResumeAtPreview, setWizardResumeAtPreview] = useState(false);
+  const [wizardInitialMode, setWizardInitialMode] = useState<WizardMode | undefined>(undefined);
   const [addDivisionOpen, setAddDivisionOpen] = useState(false);
   const [editingDivision, setEditingDivision] = useState<Division | null>(null);
   const [publishing, setPublishing] = useState(false);
@@ -678,9 +679,14 @@ export function SeasonDashboard() {
                 </p>
               </div>
               {canManage && (
-                <Button variant="secondary" size="sm" onClick={() => { setWizardResumeAtPreview(false); setWizardOpen(true); }}>
-                  <Wand2 size={14} /> Regenerate
-                </Button>
+                <div className="flex gap-2 flex-wrap">
+                  <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode(undefined); setWizardResumeAtPreview(false); setWizardOpen(true); }}>
+                    <Wand2 size={14} /> Regenerate
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode('practice'); setWizardResumeAtPreview(false); setWizardOpen(true); }}>
+                    <Dumbbell size={14} /> Schedule Practices
+                  </Button>
+                </div>
               )}
             </div>
           </div>
@@ -709,8 +715,11 @@ export function SeasonDashboard() {
               </div>
               {canManage && (
                 <div className="flex gap-2 flex-wrap">
-                  <Button variant="secondary" size="sm" onClick={() => { setWizardResumeAtPreview(true); setWizardOpen(true); }}>
+                  <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode(undefined); setWizardResumeAtPreview(true); setWizardOpen(true); }}>
                     <Wand2 size={14} /> Edit Schedule
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode('practice'); setWizardResumeAtPreview(false); setWizardOpen(true); }}>
+                    <Dumbbell size={14} /> Schedule Practices
                   </Button>
                   <Button variant="danger" size="sm" onClick={() => setConfirmClearAll(true)} disabled={deleting}>
                     <Trash2 size={14} /> Clear Draft
@@ -791,12 +800,19 @@ export function SeasonDashboard() {
                               className="h-3.5 w-3.5 flex-shrink-0 rounded border-gray-300 accent-amber-600"
                             />
                           )}
-                          <span className="font-medium text-gray-800 flex-1">
-                            {isPractice
-                              ? `${homeTeam?.name ?? 'Team'} — Practice`
-                              : `${homeTeam?.name ?? 'TBD'} vs ${awayTeam?.name ?? 'TBD'}`}
+                          <span className="font-medium text-gray-800 flex-1 min-w-0">
+                            <span className="block">
+                              {isPractice
+                                ? `${homeTeam?.name ?? 'Team'} — Practice`
+                                : `${homeTeam?.name ?? 'TBD'} vs ${awayTeam?.name ?? 'TBD'}`}
+                            </span>
+                            {(e.location || e.fieldName) && (
+                              <span className="block text-xs font-normal text-gray-400 truncate">
+                                {[e.location, e.fieldName].filter(Boolean).join(' · ')}
+                              </span>
+                            )}
                           </span>
-                          <span className="text-gray-500 tabular-nums">
+                          <span className="text-gray-500 tabular-nums flex-shrink-0">
                             {dateLabel} · {e.startTime}
                           </span>
                         </label>
@@ -851,12 +867,21 @@ export function SeasonDashboard() {
                     : `Ready to schedule ${leagueTeams.length} team${leagueTeams.length !== 1 ? 's' : ''} across ${season.gamesPerTeam} games each.`}
                 </p>
               </div>
-              <Button
-                onClick={() => { setWizardResumeAtPreview(false); setWizardOpen(true); }}
-                disabled={!canGenerate || leagueTeams.length < 2}
-              >
-                <Wand2 size={14} /> Generate Schedule
-              </Button>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  onClick={() => { setWizardInitialMode(undefined); setWizardResumeAtPreview(false); setWizardOpen(true); }}
+                  disabled={!canGenerate || leagueTeams.length < 2}
+                >
+                  <Wand2 size={14} /> Generate Schedule
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => { setWizardInitialMode('practice'); setWizardResumeAtPreview(false); setWizardOpen(true); }}
+                  disabled={leagueTeams.length < 1}
+                >
+                  <Dumbbell size={14} /> Schedule Practices
+                </Button>
+              </div>
             </div>
           </div>
         )}
@@ -975,7 +1000,7 @@ export function SeasonDashboard() {
       {wizardOpen && (
         <ScheduleWizardModal
           open={wizardOpen}
-          onClose={() => setWizardOpen(false)}
+          onClose={() => { setWizardOpen(false); setWizardInitialMode(undefined); }}
           league={league}
           leagueTeams={leagueTeams}
           season={season}
@@ -983,6 +1008,7 @@ export function SeasonDashboard() {
           divisionId={divisions.length === 1 ? divisions[0].id : undefined}
           divisions={divisions.length > 0 ? divisions : undefined}
           resumeAtPreview={wizardResumeAtPreview}
+          initialMode={wizardInitialMode}
         />
       )}
 

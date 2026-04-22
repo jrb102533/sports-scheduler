@@ -245,10 +245,10 @@ export function EventCard({ event, teams, onClick }: EventCardProps) {
                   <Clock size={12} />
                   {formatDate(event.date)} · {formatTime(event.startTime)}
                 </span>
-                {event.location && (
+                {(event.location || event.fieldName) && (
                   <span className="flex items-center gap-1">
                     <MapPin size={12} />
-                    {event.location}
+                    {[event.location, event.fieldName].filter(Boolean).join(' · ')}
                   </span>
                 )}
               </div>

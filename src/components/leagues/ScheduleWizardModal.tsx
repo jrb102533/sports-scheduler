@@ -409,9 +409,10 @@ interface Props {
   divisionId?: string;
   divisions?: Division[];
   resumeAtPreview?: boolean;
+  initialMode?: WizardMode;
 }
 
-export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season, currentUserUid, divisionId, divisions, resumeAtPreview }: Props) {
+export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season, currentUserUid, divisionId, divisions, resumeAtPreview, initialMode }: Props) {
   const { addEvent } = useEventStore();
   const { createCollection, saveWizardDraft, clearWizardDraft, wizardDraft, activeCollection, responses, loadCollection } = useCollectionStore();
 
@@ -579,6 +580,13 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   useEffect(() => {
     if (!open || !league.id) return;
 
+    // initialMode prop: bypass all draft restore logic and jump straight to that mode's first step
+    if (initialMode) {
+      setMode(initialMode);
+      setStep(getSteps(initialMode)[0]);
+      return;
+    }
+
     // No-season path (wizard opened from LeagueDetailPage): restore from league-level wizardDraft
     if (!season?.id) {
       const draft = useCollectionStore.getState().wizardDraft;
@@ -702,7 +710,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       // Non-fatal: if the query fails, default wizard state is used
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, season?.id, league.id, resumeAtPreview]);
+  }, [open, season?.id, league.id, resumeAtPreview, initialMode]);
 
   // ─── Save wizard config to Firestore ────────────────────────────────────────
 
@@ -1250,7 +1258,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                 awayTeamId: fixture.awayTeamId,
                 teamIds: [fixture.homeTeamId, fixture.awayTeamId],
                 isRecurring: false,
-                notes: fixture.stage ? `Round ${fixture.round} — ${fixture.stage}` : `Round ${fixture.round}`,
+                notes: fixture.stage || undefined,
                 createdAt: now,
                 updatedAt: now,
                 ...venueFields,
@@ -1327,7 +1335,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             awayTeamId: fixture.awayTeamId,
             teamIds: [fixture.homeTeamId, fixture.awayTeamId],
             isRecurring: false,
-            notes: fixture.stage ? `Round ${fixture.round} — ${fixture.stage}` : `Round ${fixture.round}`,
+            notes: fixture.stage || undefined,
             createdAt: now,
             updatedAt: now,
             ...venueFields,
