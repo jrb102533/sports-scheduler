@@ -3277,8 +3277,9 @@ export const generateSchedule = onCall(
         }
       }
 
-      // 4b. Division ownership check (SEC-74): verify all supplied divisionIds belong to this league
-      if (Array.isArray(input.divisions) && input.divisions.length > 0) {
+      // 4b. Division ownership check (SEC-74): verify all supplied division IDs belong to
+      // the caller's league. Admins bypass this check (same pattern as step 4).
+      if (role !== 'admin' && Array.isArray(input.divisions) && input.divisions.length > 0) {
         const divSnaps = await Promise.all(
           input.divisions.map((d: { id: string }) =>
             admin.firestore().doc(`leagues/${input.leagueId}/divisions/${d.id}`).get()

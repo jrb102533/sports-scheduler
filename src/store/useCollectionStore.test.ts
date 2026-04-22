@@ -7,7 +7,7 @@
  *   - loadCollection sets activeCollection to null when no valid collection exists
  *   - loadWizardDraft populates wizardDraft when doc exists, null when not
  *   - saveWizardDraft writes to Firestore with updatedAt and updates local state
- *   - clearWizardDraft writes empty doc and sets wizardDraft to null
+ *   - clearWizardDraft deletes the doc and sets wizardDraft to null
  *   - createCollection writes with status: 'open', sets activeCollection, returns id
  *   - closeCollection calls updateDoc with status: 'closed', optimistically updates state
  *   - reopenCollection calls updateDoc with status: 'open' and new dueDate
@@ -21,6 +21,7 @@ import type { AvailabilityCollection, CoachAvailabilityResponse, WizardDraft } f
 
 const mockSetDoc = vi.fn();
 const mockUpdateDoc = vi.fn();
+const mockDeleteDoc = vi.fn();
 const mockGetDocs = vi.fn();
 const mockOnSnapshot = vi.fn(() => () => {});
 const mockDoc = vi.fn(() => ({}));
@@ -32,6 +33,7 @@ vi.mock('firebase/firestore', () => ({
   doc: (...args: unknown[]) => mockDoc(...args),
   setDoc: (...args: unknown[]) => mockSetDoc(...args),
   updateDoc: (...args: unknown[]) => mockUpdateDoc(...args),
+  deleteDoc: (...args: unknown[]) => mockDeleteDoc(...args),
   getDocs: (...args: unknown[]) => mockGetDocs(...args),
 }));
 
@@ -209,10 +211,10 @@ describe('useCollectionStore — saveWizardDraft', () => {
 // ── clearWizardDraft() ────────────────────────────────────────────────────────
 
 describe('useCollectionStore — clearWizardDraft', () => {
-  it('calls setDoc with empty object', async () => {
+  it('calls deleteDoc (not setDoc)', async () => {
     await useCollectionStore.getState().clearWizardDraft('league-1');
-    expect(mockSetDoc).toHaveBeenCalledOnce();
-    expect(mockSetDoc.mock.calls[0][1]).toEqual({});
+    expect(mockDeleteDoc).toHaveBeenCalledOnce();
+    expect(mockSetDoc).not.toHaveBeenCalled();
   });
 
   it('sets wizardDraft to null in local state', async () => {

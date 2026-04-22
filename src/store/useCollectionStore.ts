@@ -6,6 +6,7 @@ import {
   setDoc,
   updateDoc,
   getDocs,
+  deleteDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { AvailabilityCollection, CoachAvailabilityResponse, WizardDraft } from '@/types';
@@ -104,7 +105,7 @@ export const useCollectionStore = create<CollectionStore>((set) => ({
   },
 
   clearWizardDraft: async (leagueId) => {
-    await setDoc(doc(db, 'leagues', leagueId, 'wizardDraft', 'draft'), {});
+    await deleteDoc(doc(db, 'leagues', leagueId, 'wizardDraft', 'draft'));
     set({ wizardDraft: null });
   },
 
