@@ -50,6 +50,8 @@ interface GeneratedFixture {
   endTime: string;
   venueId: string;
   venueName: string;
+  fieldId?: string;
+  fieldName?: string;
   isDoubleheader: boolean;
   doubleheaderSlot?: 1 | 2;
   isFallbackSlot: boolean;
@@ -407,9 +409,10 @@ interface Props {
   divisionId?: string;
   divisions?: Division[];
   resumeAtPreview?: boolean;
+  initialMode?: WizardMode;
 }
 
-export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season, currentUserUid, divisionId, divisions, resumeAtPreview }: Props) {
+export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season, currentUserUid, divisionId, divisions, resumeAtPreview, initialMode }: Props) {
   const { addEvent } = useEventStore();
   const { createCollection, saveWizardDraft, clearWizardDraft, wizardDraft, activeCollection, responses, loadCollection } = useCollectionStore();
 
@@ -577,6 +580,13 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
   useEffect(() => {
     if (!open || !league.id) return;
 
+    // initialMode prop: bypass all draft restore logic and jump straight to that mode's first step
+    if (initialMode) {
+      setMode(initialMode);
+      setStep(getSteps(initialMode)[0]);
+      return;
+    }
+
     // No-season path (wizard opened from LeagueDetailPage): restore from league-level wizardDraft
     if (!season?.id) {
       const draft = useCollectionStore.getState().wizardDraft;
@@ -700,7 +710,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       // Non-fatal: if the query fails, default wizard state is used
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, season?.id, league.id, resumeAtPreview]);
+  }, [open, season?.id, league.id, resumeAtPreview, initialMode]);
 
   // ─── Save wizard config to Firestore ────────────────────────────────────────
 
@@ -1231,6 +1241,8 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                 createdAt: now,
                 updatedAt: now,
                 ...venueFields,
+                leagueId: league.id,
+                ...(season?.id ? { seasonId: season.id } : {}),
               }
             : {
                 id: crypto.randomUUID(),
@@ -1246,10 +1258,12 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                 awayTeamId: fixture.awayTeamId,
                 teamIds: [fixture.homeTeamId, fixture.awayTeamId],
                 isRecurring: false,
-                notes: fixture.stage ? `Round ${fixture.round} — ${fixture.stage}` : `Round ${fixture.round}`,
+                notes: fixture.stage || undefined,
                 createdAt: now,
                 updatedAt: now,
                 ...venueFields,
+                leagueId: league.id,
+                ...(season?.id ? { seasonId: season.id } : {}),
               };
 
           return addEvent(event);
@@ -1321,7 +1335,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             awayTeamId: fixture.awayTeamId,
             teamIds: [fixture.homeTeamId, fixture.awayTeamId],
             isRecurring: false,
-            notes: fixture.stage ? `Round ${fixture.round} — ${fixture.stage}` : `Round ${fixture.round}`,
+            notes: fixture.stage || undefined,
             createdAt: now,
             updatedAt: now,
             ...venueFields,
@@ -1347,16 +1361,29 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             ...(divisionId ? { divisionId } : {}),
           });
         }
-      } else if (!publishNow && divisionId && season?.id) {
-        // Mark division as having a draft schedule so the dashboard CTA updates.
-        await updateDoc(
-          doc(db, 'leagues', league.id, 'divisions', divisionId),
-          {
-            scheduleStatus: 'draft',
-            unscheduledCount: result?.stats.unassignedFixtures ?? 0,
-            updatedAt: now,
-          }
-        );
+      } else if (!publishNow && season?.id) {
+        // Mark division(s) as having a draft schedule so the dashboard CTA updates.
+        if (result.divisionResults && result.divisionResults.length > 0) {
+          await Promise.all(result.divisionResults.map(dr =>
+            updateDoc(
+              doc(db, 'leagues', league.id, 'divisions', dr.divisionId),
+              {
+                scheduleStatus: 'draft',
+                unscheduledCount: dr.unassignedCount ?? 0,
+                updatedAt: now,
+              }
+            )
+          ));
+        } else if (divisionId) {
+          await updateDoc(
+            doc(db, 'leagues', league.id, 'divisions', divisionId),
+            {
+              scheduleStatus: 'draft',
+              unscheduledCount: result?.stats.unassignedFixtures ?? 0,
+              updatedAt: now,
+            }
+          );
+        }
       }
 
       setPublished(true);
@@ -2829,9 +2856,25 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
               )}
 
               {(() => {
-                const displayFixtures = result.divisionResults && result.divisionResults.length > 0 && activeDivisionTab !== null
+                const rawFixtures = result.divisionResults && result.divisionResults.length > 0 && activeDivisionTab !== null
                   ? (result.divisionResults.find(dr => dr.divisionId === activeDivisionTab)?.fixtures ?? [])
                   : result.fixtures;
+
+                // Compute field assignments using the same round-robin logic as saveFixtures
+                // so the preview accurately reflects which field each game will land on.
+                const fieldSlotCounterPreview = new Map<string, number>();
+                const displayFixtures = rawFixtures.map(f => {
+                  const fixtureName = f.venueName ?? f.venue ?? '';
+                  const matchedConfig = venueConfigs.find(vc => vc.name === fixtureName);
+                  if (!matchedConfig?.selectedVenueId) return f;
+                  const selectedVenue = resolveVenue(matchedConfig.selectedVenueId);
+                  if (!selectedVenue?.fields || selectedVenue.fields.length <= 1) return f;
+                  const slotKey = `${matchedConfig.selectedVenueId}|${f.date}|${f.startTime}`;
+                  const slotIdx = fieldSlotCounterPreview.get(slotKey) ?? 0;
+                  fieldSlotCounterPreview.set(slotKey, slotIdx + 1);
+                  const assignedField = selectedVenue.fields[slotIdx % selectedVenue.fields.length];
+                  return { ...f, fieldName: assignedField.name };
+                });
 
                 return (
                   <div className="border border-gray-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
@@ -2848,10 +2891,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                               <th className="text-left px-3 py-2 text-gray-500 font-medium">Away</th>
                             </>
                           )}
-                          <th className="text-left px-3 py-2 text-gray-500 font-medium hidden sm:table-cell">Venue</th>
-                          <th className="text-left px-3 py-2 text-gray-500 font-medium hidden sm:table-cell">
-                            {isPracticeMode ? '' : 'Stage'}
-                          </th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium hidden sm:table-cell">Venue / Field</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -2867,9 +2907,9 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                                 <td className="px-3 py-2 text-gray-700">{f.awayTeamName}</td>
                               </>
                             )}
-                            <td className="px-3 py-2 text-gray-500 hidden sm:table-cell">{f.venueName ?? f.venue}</td>
-                            <td className="px-3 py-2 text-gray-400 hidden sm:table-cell">
-                              {isPracticeMode ? '' : (f.stage ?? `Rd ${f.round}`)}
+                            <td className="px-3 py-2 text-gray-500 hidden sm:table-cell">
+                              {f.venueName ?? f.venue}
+                              {f.fieldName && <span className="text-gray-400"> · {f.fieldName}</span>}
                             </td>
                           </tr>
                         ))}

@@ -263,10 +263,10 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
                 {formatDate(event.date)} at {formatTime(event.startTime)}
                 {event.endTime && ` \u2013 ${formatTime(event.endTime)}`}
               </div>
-              {event.location && (
+              {(event.location || event.fieldName) && (
                 <div className="flex items-center gap-2">
                   <MapPin size={14} className="text-gray-400" />
-                  <span>{event.location}</span>
+                  <span>{[event.location, event.fieldName].filter(Boolean).join(' · ')}</span>
                   {mapsUrl && (
                     <a
                       href={mapsUrl}
@@ -288,7 +288,7 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
               </div>
             )}
 
-            {event.notes && (
+            {event.notes && !/^Round \d+( — .*)?$/i.test(event.notes) && (
               <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">{event.notes}</div>
             )}
 

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { httpsCallable, getFunctions } from 'firebase/functions';
-import { updateDoc, doc } from 'firebase/firestore';
+import { updateDoc, doc, collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import {
   ArrowLeft, MapPin, Users, Wand2, Plus, CheckCircle2,
   AlertTriangle, AlertCircle, Clock, ChevronRight, Settings,
-  Send, Loader2, ChevronDown, ChevronUp, Trash2, Layers,
+  Send, Loader2, ChevronDown, ChevronUp, Trash2, Layers, Dumbbell,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -23,7 +23,7 @@ import { useTeamStore } from '@/store/useTeamStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useVenueStore } from '@/store/useVenueStore';
 import { useAuthStore, isManagerOfLeague } from '@/store/useAuthStore';
-import type { Division, Season, Team } from '@/types';
+import type { Division, Season, Team, ScheduledEvent, WizardMode } from '@/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -384,6 +384,7 @@ export function SeasonDashboard() {
 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardResumeAtPreview, setWizardResumeAtPreview] = useState(false);
+  const [wizardInitialMode, setWizardInitialMode] = useState<WizardMode | undefined>(undefined);
   const [addDivisionOpen, setAddDivisionOpen] = useState(false);
   const [editingDivision, setEditingDivision] = useState<Division | null>(null);
   const [publishing, setPublishing] = useState(false);
@@ -456,13 +457,31 @@ export function SeasonDashboard() {
     || (profile?.uid != null && (league?.managerIds ?? []).includes(profile.uid));
   const hasPublishedDivision = divisions.some(d => d.scheduleStatus === 'published');
 
+  // Local draft event subscription — the global event store intentionally excludes
+  // drafts (Firestore rules block non-managers from listing them). Managers get a
+  // separate targeted query here so the draft review list actually populates.
+  const [localDraftEvents, setLocalDraftEvents] = useState<ScheduledEvent[]>([]);
+  useEffect(() => {
+    if (!canManage || !seasonId) { setLocalDraftEvents([]); return; }
+    const q = query(
+      collection(db, 'events'),
+      where('seasonId', '==', seasonId),
+      where('status', '==', 'draft'),
+      orderBy('date'),
+      orderBy('startTime'),
+    );
+    return onSnapshot(q, snap => {
+      setLocalDraftEvents(snap.docs.map(d => ({ ...d.data(), id: d.id }) as ScheduledEvent));
+    }, err => console.error('[SeasonDashboard] draft events error:', err));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManage, seasonId]);
+
   // Draft/published schedule detection
   // For division-based seasons: use division.scheduleStatus
-  // For undivided seasons: look for draft/scheduled events in the event store
-  const seasonDraftEvents = allEvents.filter(e => e.seasonId === seasonId && e.status === 'draft');
+  // For undivided seasons: fall back to local draft event count
   const seasonScheduledEvents = allEvents.filter(e => e.seasonId === seasonId && e.status === 'scheduled');
   const hasDraftDivision = divisions.some(d => d.scheduleStatus === 'draft');
-  const hasDraftSchedule = hasDraftDivision || (divisions.length === 0 && seasonDraftEvents.length > 0);
+  const hasDraftSchedule = hasDraftDivision || (divisions.length === 0 && localDraftEvents.length > 0);
   const hasFullyPublished = divisions.length > 0
     ? divisions.every(d => d.scheduleStatus === 'published')
     : seasonScheduledEvents.length > 0;
@@ -470,10 +489,8 @@ export function SeasonDashboard() {
   const draftDivisions = divisions.filter(d => d.scheduleStatus === 'draft');
   const totalUnscheduled = draftDivisions.reduce((sum, d) => sum + (d.unscheduledCount ?? 0), 0);
 
-  // Draft events sorted by date for the collapsible list
-  const sortedDraftEvents = [...seasonDraftEvents].sort(
-    (a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)
-  );
+  // localDraftEvents is already ordered by date/startTime from the Firestore query
+  const sortedDraftEvents = localDraftEvents;
 
   async function handlePublishDraft(divId?: string) {
     if (!leagueId || !seasonId) return;
@@ -649,6 +666,8 @@ export function SeasonDashboard() {
         </div>
 
         {/* Card 4: Schedule CTA — adapts based on draft / published state */}
+        {/* Draft banner is manager-only: hasDraftSchedule uses localDraftEvents which is manager-gated,
+            but hasDraftDivision reads division.scheduleStatus which coaches can see — wrap in canManage (SEC-84) */}
         {hasFullyPublished ? (
           <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
             <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -662,13 +681,18 @@ export function SeasonDashboard() {
                 </p>
               </div>
               {canManage && (
-                <Button variant="secondary" size="sm" onClick={() => { setWizardResumeAtPreview(false); setWizardOpen(true); }}>
-                  <Wand2 size={14} /> Regenerate
-                </Button>
+                <div className="flex gap-2 flex-wrap">
+                  <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode(undefined); setWizardResumeAtPreview(false); setWizardOpen(true); }}>
+                    <Wand2 size={14} /> Regenerate
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode('practice'); setWizardResumeAtPreview(false); setWizardOpen(true); }}>
+                    <Dumbbell size={14} /> Schedule Practices
+                  </Button>
+                </div>
               )}
             </div>
           </div>
-        ) : hasDraftSchedule ? (
+        ) : canManage && hasDraftSchedule ? (
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
@@ -679,7 +703,7 @@ export function SeasonDashboard() {
                 <p className="text-xs text-gray-600 mt-1">
                   {draftDivisions.length > 0
                     ? `${draftDivisions.length} division${draftDivisions.length !== 1 ? 's' : ''} have a draft schedule waiting to be published.`
-                    : `${seasonDraftEvents.length} draft game${seasonDraftEvents.length !== 1 ? 's' : ''} waiting to be published.`}
+                    : `${localDraftEvents.length} draft event${localDraftEvents.length !== 1 ? 's' : ''} waiting to be published.`}
                 </p>
                 {totalUnscheduled > 0 && (
                   <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
@@ -693,8 +717,11 @@ export function SeasonDashboard() {
               </div>
               {canManage && (
                 <div className="flex gap-2 flex-wrap">
-                  <Button variant="secondary" size="sm" onClick={() => { setWizardResumeAtPreview(true); setWizardOpen(true); }}>
+                  <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode(undefined); setWizardResumeAtPreview(true); setWizardOpen(true); }}>
                     <Wand2 size={14} /> Edit Schedule
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode('practice'); setWizardResumeAtPreview(false); setWizardOpen(true); }}>
+                    <Dumbbell size={14} /> Schedule Practices
                   </Button>
                   <Button variant="danger" size="sm" onClick={() => setConfirmClearAll(true)} disabled={deleting}>
                     <Trash2 size={14} /> Clear Draft
@@ -719,35 +746,38 @@ export function SeasonDashboard() {
                   className="flex items-center gap-1.5 text-xs font-medium text-amber-800 hover:text-amber-900"
                 >
                   {draftListOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  {draftListOpen ? 'Hide' : 'View'} {sortedDraftEvents.length} draft game{sortedDraftEvents.length !== 1 ? 's' : ''}
+                  {draftListOpen ? 'Hide' : 'View'} {sortedDraftEvents.length} draft event{sortedDraftEvents.length !== 1 ? 's' : ''}
                 </button>
 
-                {draftListOpen && canManage && (
+                {draftListOpen && (
                   <div className="mt-2 space-y-1">
-                    {/* Select-all row */}
-                    <div className="flex items-center gap-2 px-3 py-1.5">
-                      <input
-                        type="checkbox"
-                        aria-label="Select all draft games"
-                        checked={selectedDraftIds.size === sortedDraftEvents.length}
-                        onChange={e =>
-                          setSelectedDraftIds(
-                            e.target.checked ? new Set(sortedDraftEvents.map(ev => ev.id)) : new Set()
-                          )
-                        }
-                        className="h-3.5 w-3.5 rounded border-gray-300 accent-amber-600"
-                      />
-                      <span className="text-xs text-gray-500">
-                        {selectedDraftIds.size > 0
-                          ? `${selectedDraftIds.size} of ${sortedDraftEvents.length} selected`
-                          : `Select all ${sortedDraftEvents.length} games`}
-                      </span>
-                    </div>
+                    {/* Select-all row — managers only */}
+                    {canManage && (
+                      <div className="flex items-center gap-2 px-3 py-1.5">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all draft events"
+                          checked={selectedDraftIds.size === sortedDraftEvents.length}
+                          onChange={e =>
+                            setSelectedDraftIds(
+                              e.target.checked ? new Set(sortedDraftEvents.map(ev => ev.id)) : new Set()
+                            )
+                          }
+                          className="h-3.5 w-3.5 rounded border-gray-300 accent-amber-600"
+                        />
+                        <span className="text-xs text-gray-500">
+                          {selectedDraftIds.size > 0
+                            ? `${selectedDraftIds.size} of ${sortedDraftEvents.length} selected`
+                            : `Select all ${sortedDraftEvents.length} events`}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Game rows */}
                     {sortedDraftEvents.map(e => {
+                      const isPractice = e.type === 'practice';
                       const homeTeam = leagueTeams.find(t => e.teamIds[0] === t.id);
-                      const awayTeam = leagueTeams.find(t => e.teamIds[1] === t.id);
+                      const awayTeam = !isPractice ? leagueTeams.find(t => e.teamIds[1] === t.id) : null;
                       const dateLabel = new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', {
                         weekday: 'short', month: 'short', day: 'numeric',
                       });
@@ -759,21 +789,32 @@ export function SeasonDashboard() {
                             checked ? 'bg-amber-50 border-amber-300' : 'bg-white border-amber-100 hover:bg-amber-50'
                           }`}
                         >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={ev => {
-                              const next = new Set(selectedDraftIds);
-                              ev.target.checked ? next.add(e.id) : next.delete(e.id);
-                              setSelectedDraftIds(next);
-                              setConfirmDeleteSelected(false);
-                            }}
-                            className="h-3.5 w-3.5 flex-shrink-0 rounded border-gray-300 accent-amber-600"
-                          />
-                          <span className="font-medium text-gray-800 flex-1">
-                            {homeTeam?.name ?? 'TBD'} vs {awayTeam?.name ?? 'TBD'}
+                          {canManage && (
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={ev => {
+                                const next = new Set(selectedDraftIds);
+                                ev.target.checked ? next.add(e.id) : next.delete(e.id);
+                                setSelectedDraftIds(next);
+                                setConfirmDeleteSelected(false);
+                              }}
+                              className="h-3.5 w-3.5 flex-shrink-0 rounded border-gray-300 accent-amber-600"
+                            />
+                          )}
+                          <span className="font-medium text-gray-800 flex-1 min-w-0">
+                            <span className="block">
+                              {isPractice
+                                ? `${homeTeam?.name ?? 'Team'} — Practice`
+                                : `${homeTeam?.name ?? 'TBD'} vs ${awayTeam?.name ?? 'TBD'}`}
+                            </span>
+                            {(e.location || e.fieldName) && (
+                              <span className="block text-xs font-normal text-gray-400 truncate">
+                                {[e.location, e.fieldName].filter(Boolean).join(' · ')}
+                              </span>
+                            )}
                           </span>
-                          <span className="text-gray-500 tabular-nums">
+                          <span className="text-gray-500 tabular-nums flex-shrink-0">
                             {dateLabel} · {e.startTime}
                           </span>
                         </label>
@@ -828,12 +869,21 @@ export function SeasonDashboard() {
                     : `Ready to schedule ${leagueTeams.length} team${leagueTeams.length !== 1 ? 's' : ''} across ${season.gamesPerTeam} games each.`}
                 </p>
               </div>
-              <Button
-                onClick={() => { setWizardResumeAtPreview(false); setWizardOpen(true); }}
-                disabled={!canGenerate || leagueTeams.length < 2}
-              >
-                <Wand2 size={14} /> Generate Schedule
-              </Button>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  onClick={() => { setWizardInitialMode(undefined); setWizardResumeAtPreview(false); setWizardOpen(true); }}
+                  disabled={!canGenerate || leagueTeams.length < 2}
+                >
+                  <Wand2 size={14} /> Generate Schedule
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => { setWizardInitialMode('practice'); setWizardResumeAtPreview(false); setWizardOpen(true); }}
+                  disabled={leagueTeams.length < 1}
+                >
+                  <Dumbbell size={14} /> Schedule Practices
+                </Button>
+              </div>
             </div>
           </div>
         )}
@@ -952,7 +1002,7 @@ export function SeasonDashboard() {
       {wizardOpen && (
         <ScheduleWizardModal
           open={wizardOpen}
-          onClose={() => setWizardOpen(false)}
+          onClose={() => { setWizardOpen(false); setWizardInitialMode(undefined); }}
           league={league}
           leagueTeams={leagueTeams}
           season={season}
@@ -960,6 +1010,7 @@ export function SeasonDashboard() {
           divisionId={divisions.length === 1 ? divisions[0].id : undefined}
           divisions={divisions.length > 0 ? divisions : undefined}
           resumeAtPreview={wizardResumeAtPreview}
+          initialMode={wizardInitialMode}
         />
       )}
 

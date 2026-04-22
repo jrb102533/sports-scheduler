@@ -29,9 +29,13 @@ import type { UserProfile } from '@/types';
 vi.mock('@/lib/firebase', () => ({ db: {}, auth: {}, app: {} }));
 
 vi.mock('firebase/firestore', () => ({
-  collection: vi.fn(),
+  collection: vi.fn(() => ({})),
+  query: vi.fn(() => ({})),
+  where: vi.fn(() => ({})),
+  orderBy: vi.fn(() => ({})),
   onSnapshot: vi.fn(() => () => {}),
   doc: vi.fn(),
+  updateDoc: vi.fn().mockResolvedValue(undefined),
 }));
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
