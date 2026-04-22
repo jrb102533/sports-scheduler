@@ -5318,8 +5318,13 @@ export const syncUserClaims = onDocumentWritten(
     const role: string | null = (data?.role as string) ?? null;
     const roleBefore: string | null = (before?.exists ? (before.data()?.role as string) : null) ?? null;
 
-    await admin.auth().setCustomUserClaims(uid, { role });
-    console.log(`syncUserClaims: set role=${role} for uid=${uid}`);
+    try {
+      await admin.auth().setCustomUserClaims(uid, { role });
+      console.log(`syncUserClaims: set role=${role} for uid=${uid}`);
+    } catch (err: unknown) {
+      console.error(`syncUserClaims: failed to set claims for uid=${uid}`, (err as Error)?.message);
+      return;
+    }
 
     // SEC-77: revoke refresh tokens when role is demoted so the next Auth
     // request forces a new ID token — limits the stale-privilege window to

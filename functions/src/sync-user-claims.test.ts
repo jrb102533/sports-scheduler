@@ -22,13 +22,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // other code runs. Variables inside vi.hoisted() are also hoisted and can be
 // referenced safely inside vi.mock() factories.
 
-const { claimsStore, firestoreStore, mockSetCustomUserClaims } = vi.hoisted(() => {
+const { claimsStore, firestoreStore, mockSetCustomUserClaims, mockGetUser } = vi.hoisted(() => {
   const claimsStore = new Map<string, Record<string, unknown>>();
   const firestoreStore = new Map<string, Record<string, unknown>>();
   const mockSetCustomUserClaims = vi.fn(async (uid: string, claims: Record<string, unknown>) => {
     claimsStore.set(uid, claims);
   });
-  return { claimsStore, firestoreStore, mockSetCustomUserClaims };
+  const mockGetUser = vi.fn().mockResolvedValue({ uid: 'test', customClaims: {}, email: 'test@test.com' });
+  return { claimsStore, firestoreStore, mockSetCustomUserClaims, mockGetUser };
 });
 
 // ─── Firebase Functions mocks ─────────────────────────────────────────────────
@@ -141,7 +142,7 @@ vi.mock('firebase-admin', () => {
 
   const authInstance = {
     setCustomUserClaims: mockSetCustomUserClaims,
-    getUser: vi.fn().mockResolvedValue({ uid: 'test', customClaims: {}, email: 'test@test.com' }),
+    getUser: mockGetUser,
     createUser: vi.fn().mockResolvedValue({ uid: 'new-uid' }),
     deleteUser: vi.fn().mockResolvedValue(undefined),
     generatePasswordResetLink: vi.fn().mockResolvedValue('https://reset.link'),
@@ -240,6 +241,7 @@ describe('refreshClaims', () => {
     claimsStore.clear();
     firestoreStore.clear();
     mockSetCustomUserClaims.mockClear();
+    mockGetUser.mockResolvedValue({ uid: 'test', customClaims: {}, email: 'test@test.com' });
   });
 
   it('throws unauthenticated when caller has no auth', async () => {
@@ -258,6 +260,8 @@ describe('refreshClaims', () => {
   });
 
   it('syncs role=null when user doc does not exist', async () => {
+    // SEC-79: getUser must return a non-null existing claim so the shortcut does not fire
+    mockGetUser.mockResolvedValueOnce({ uid: 'uid-ghost', customClaims: { role: 'coach' }, email: '' });
     const req = makeCallableRequest('uid-ghost');
     const result = await (refreshClaims as unknown as (r: unknown) => Promise<unknown>)(req);
     expect(mockSetCustomUserClaims).toHaveBeenCalledWith('uid-ghost', { role: null });
