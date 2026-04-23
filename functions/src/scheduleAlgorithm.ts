@@ -1547,7 +1547,7 @@ export function buildOutput(
   const { assigned, unassigned } = assignmentResult;
 
   // Build fixture list
-  const fixtures: GeneratedFixture[] = assigned.map(({ pairing, slot }) => ({
+  let fixtures: GeneratedFixture[] = assigned.map(({ pairing, slot }) => ({
     round:           pairing.round,
     homeTeamId:      pairing.homeTeamId,
     homeTeamName:    pairing.homeTeamName,
@@ -1562,6 +1562,48 @@ export function buildOutput(
     isDoubleheader:  false,
     isFallbackSlot:  slot.isFallback,
   }));
+
+  // Balance game counts across teams (relevant for odd N with BYE, or short seasons).
+  // If some pairings are unassigned the result may be skewed: one team appears more
+  // often in early rounds than others. Drop the latest-round game(s) from
+  // over-represented teams until all teams have equal game counts.
+  // Balance game counts: iterate in reverse (latest rounds first) and drop a
+  // game only when doing so strictly reduces the spread (max - min). This
+  // handles even-N short seasons where a symmetric drop equalises counts, but
+  // correctly leaves odd-N (3-team) distributions alone — for 3 teams any
+  // single drop also reduces the opponent's count, worsening balance.
+  const balanceTrimmed: GeneratedFixture[] = [];
+  if (fixtures.length > 0) {
+    const liveCounts = new Map<string, number>();
+    for (const f of fixtures) {
+      liveCounts.set(f.homeTeamId, (liveCounts.get(f.homeTeamId) ?? 0) + 1);
+      liveCounts.set(f.awayTeamId, (liveCounts.get(f.awayTeamId) ?? 0) + 1);
+    }
+    const spread = () => {
+      const vals = Array.from(liveCounts.values());
+      return Math.max(...vals) - Math.min(...vals);
+    };
+    const balanced: GeneratedFixture[] = [];
+    for (let i = fixtures.length - 1; i >= 0; i--) {
+      const f = fixtures[i];
+      const hCnt = liveCounts.get(f.homeTeamId) ?? 0;
+      const aCnt = liveCounts.get(f.awayTeamId) ?? 0;
+      const before = spread();
+      if (before === 0) { balanced.unshift(f); continue; }
+      // Simulate drop
+      liveCounts.set(f.homeTeamId, hCnt - 1);
+      liveCounts.set(f.awayTeamId, aCnt - 1);
+      if (spread() < before) {
+        balanceTrimmed.push(f);
+      } else {
+        // Drop doesn't help — restore counts and keep fixture
+        liveCounts.set(f.homeTeamId, hCnt);
+        liveCounts.set(f.awayTeamId, aCnt);
+        balanced.unshift(f);
+      }
+    }
+    fixtures = balanced;
+  }
 
   // Build conflicts
   const conflicts: ScheduleConflict[] = [];
@@ -1608,6 +1650,13 @@ export function buildOutput(
       severity:     'hard',
       constraintId: 'no_slot_found',
       description:  `No slot found for ${pairing.homeTeamName} vs ${pairing.awayTeamName} (${reason})`,
+    });
+  }
+  for (const f of balanceTrimmed) {
+    conflicts.push({
+      severity:     'hard',
+      constraintId: 'no_slot_found',
+      description:  `${f.homeTeamName} vs ${f.awayTeamName} dropped to balance team game counts (balance_trim)`,
     });
   }
 
@@ -1671,6 +1720,24 @@ export function buildOutput(
     });
   }
 
+  // Warn when teams end up with unequal game counts (short season, odd-N, etc.)
+  if (fixtures.length > 0) {
+    const finalCounts = new Map<string, number>();
+    for (const f of fixtures) {
+      finalCounts.set(f.homeTeamId, (finalCounts.get(f.homeTeamId) ?? 0) + 1);
+      finalCounts.set(f.awayTeamId, (finalCounts.get(f.awayTeamId) ?? 0) + 1);
+    }
+    const vals = Array.from(finalCounts.values());
+    const finalMax = Math.max(...vals);
+    const finalMin = Math.min(...vals);
+    if (finalMax > finalMin) {
+      warnings.push({
+        code:    'UNEQUAL_GAME_COUNTS',
+        message: `Season has insufficient slots to give all teams equal games. Teams have between ${finalMin} and ${finalMax} games scheduled.`,
+      });
+    }
+  }
+
   // Fallback slots used
   const fallbackSlotsUsed = fixtures.filter(f => f.isFallbackSlot).length;
 
@@ -1707,21 +1774,30 @@ export function buildOutput(
 
   return {
     fixtures,
-    unassignedPairings: unassigned.map(u => ({
-      homeTeamId:   u.pairing.homeTeamId,
-      homeTeamName: u.pairing.homeTeamName,
-      awayTeamId:   u.pairing.awayTeamId,
-      awayTeamName: u.pairing.awayTeamName,
-      reason:       u.reason,
-    })),
+    unassignedPairings: [
+      ...unassigned.map(u => ({
+        homeTeamId:   u.pairing.homeTeamId,
+        homeTeamName: u.pairing.homeTeamName,
+        awayTeamId:   u.pairing.awayTeamId,
+        awayTeamName: u.pairing.awayTeamName,
+        reason:       u.reason,
+      })),
+      ...balanceTrimmed.map(f => ({
+        homeTeamId:   f.homeTeamId,
+        homeTeamName: f.homeTeamName,
+        awayTeamId:   f.awayTeamId,
+        awayTeamName: f.awayTeamName,
+        reason:       'balance_trim',
+      })),
+    ],
     conflicts,
     teamStats,
     stats: {
       totalFixturesRequired: totalRequired,
       assignedFixtures:      fixtures.length,
-      unassignedFixtures:    unassigned.length,
+      unassignedFixtures:    unassigned.length + balanceTrimmed.length,
       fallbackSlotsUsed,
-      feasible:              unassigned.length === 0,
+      feasible:              unassigned.length === 0 && balanceTrimmed.length === 0,
     },
     summary,
     warnings,
