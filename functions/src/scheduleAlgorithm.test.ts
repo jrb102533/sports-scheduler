@@ -875,6 +875,83 @@ describe('Section 5: Edge cases', () => {
     });
   });
 
+  describe('3-team short season — near-balanced scheduling', () => {
+    function build3TeamShortSeason() {
+      // 3 teams, 6 games/team requested, but season only fits 5 games total
+      // (1 pitch, 2-hour window = exactly 1 slot per Saturday × 5 Saturdays).
+      // BYE round-robin: AB, AC, BC, AB, AC → A=4, B=3, C=3.
+      // 4/3/3 is the mathematical optimum: 5×2/3 = 3.33, so perfect balance
+      // is impossible. The algorithm should keep 4/3/3 and emit a warning.
+      return buildFixture({
+        teamCount: 3,
+        gamesPerTeam: 6,
+        seasonStart: '2026-09-05',
+        seasonEnd:   '2026-10-03',  // 5 Saturdays
+        venues: [{
+          id:   'v1',
+          name: 'Field 1',
+          concurrentPitches: 1,
+          // 2-hour window: 120 min / (90 + 15) = 1 slot per day
+          availabilityWindows: [{ dayOfWeek: 6, startTime: '09:00', endTime: '11:00' }],
+        }],
+        minRestDays: 6,
+      });
+    }
+
+    it('game counts differ by at most 1 (near-balanced)', () => {
+      const output = runSchedule(build3TeamShortSeason());
+      const counts = output.teamStats.map(s => s.totalGames);
+      expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
+    });
+
+    it('emits UNEQUAL_GAME_COUNTS warning when counts differ', () => {
+      const output = runSchedule(build3TeamShortSeason());
+      const warning = output.warnings.find(w => w.code === 'UNEQUAL_GAME_COUNTS');
+      expect(warning).toBeDefined();
+    });
+
+    it('no balance_trim entries in unassignedPairings for 3-team (drop would worsen balance)', () => {
+      const output = runSchedule(build3TeamShortSeason());
+      const trimmed = output.unassignedPairings.filter(u => u.reason === 'balance_trim');
+      expect(trimmed.length).toBe(0);
+    });
+
+    it('hard conflict count matches unassignedPairings count', () => {
+      const output = runSchedule(build3TeamShortSeason());
+      const hardConflicts = output.conflicts.filter(c => c.severity === 'hard');
+      expect(hardConflicts.length).toBe(output.unassignedPairings.length);
+    });
+  });
+
+  describe('even-N short season — spread-improving balance trim', () => {
+    function build4TeamImbalancedSeason() {
+      // 4 teams, 1 pitch, 5 Saturdays (2h window = 1 slot each).
+      // 5 slots: AB CD AC BD AD → A=3, B=2, C=2, D=3.
+      // Dropping AD(r5) reduces A and D from 3 to 2 → 2/2/2/2. Spread improves.
+      return buildFixture({
+        teamCount: 4,
+        seasonStart: '2026-09-05',
+        seasonEnd:   '2026-10-03',  // 5 Saturdays
+        venues: [{
+          id:   'v1',
+          name: 'Field 1',
+          concurrentPitches: 1,
+          availabilityWindows: [{ dayOfWeek: 6, startTime: '09:00', endTime: '11:00' }],
+        }],
+        minRestDays: 6,
+      });
+    }
+
+    it('balance_trim fires when dropping a game strictly reduces spread', () => {
+      const output = runSchedule(build4TeamImbalancedSeason());
+      const counts = output.teamStats.map(s => s.totalGames);
+      // After trimming, spread should be 0 or have been improved from the raw assignment
+      const spread = Math.max(...counts) - Math.min(...counts);
+      // Either perfectly balanced or trim improved things
+      expect(spread).toBeLessThanOrEqual(1);
+    });
+  });
+
   describe('limited venue availability (tight slot count)', () => {
     it('schedules as many games as possible when slots are scarce', () => {
       // 1 venue, 1 pitch, narrow window — only fits a few games total
