@@ -5630,77 +5630,88 @@ export const refreshClaims = onCall(async (request) => {
   return { success: true };
 });
 
-// ─── RSVP: server-side ownership validation ───────────────────────────────────
-
-interface SubmitRsvpData {
-  eventId: string;
-  playerId: string;
-  status: 'yes' | 'no' | 'maybe';
-  note?: string;
-}
-
-interface SubmitRsvpResult {
-  success: boolean;
-}
+// ─── Submit RSVP (callable) ───────────────────────────────────────────────────
 
 /**
- * SEC-81: Validates that the calling parent owns the playerId before writing
- * to the /events/{eventId}/rsvps/{uid}_{playerId} subcollection.
+ * Callable that writes an RSVP entry to events/{eventId}/rsvps/{docKey}.
  *
- * The client-side rule only validates that the doc key starts with the caller's
- * uid — it cannot verify that the playerId belongs to one of the caller's
- * children without a cross-doc read. This callable performs that ownership
- * check server-side using the caller's memberships[] array.
+ * SEC-99 / SEC-81: RSVP writes are blocked by `allow write: if false` in
+ * Firestore rules. All RSVP writes must go through this function so that
+ * ownership of the playerId is validated server-side.
+ *
+ * Self-RSVP (coach/player RSVPing for themselves):
+ *   - Omit playerId — the caller's uid is used as both the playerId and the
+ *     doc key, matching the existing uid-only key format in useRsvpStore.
+ *
+ * Parent RSVPing for a child:
+ *   - Provide playerId — validated against the parent's memberships[] array.
+ *   - Doc key is uid_playerId (matches useRsvpStore's existing format).
+ *
+ * Rate-limited to 20 calls per minute per user.
  */
-export const submitRsvp = onCall<SubmitRsvpData, Promise<SubmitRsvpResult>>(
-  async (request) => {
-    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required.');
-    const uid = request.auth.uid;
+export const submitRsvp = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Not signed in.');
+  const uid = request.auth.uid;
 
-    const { eventId, playerId, status, note } = request.data;
+  await checkRateLimit(uid, 'submitRsvp', 20);
 
-    // ── Input validation ──────────────────────────────────────────────────────
-    if (!eventId?.trim()) throw new HttpsError('invalid-argument', 'eventId is required.');
-    if (!playerId?.trim()) throw new HttpsError('invalid-argument', 'playerId is required.');
-    if (!['yes', 'no', 'maybe'].includes(status)) {
-      throw new HttpsError('invalid-argument', 'status must be "yes", "no", or "maybe".');
-    }
-    if (note !== undefined && typeof note !== 'string') {
-      throw new HttpsError('invalid-argument', 'note must be a string.');
-    }
+  const data = request.data as {
+    eventId?: unknown;
+    playerId?: unknown;
+    name?: unknown;
+    response?: unknown;
+  };
 
-    const db = admin.firestore();
+  const eventId = typeof data.eventId === 'string' ? data.eventId.trim() : '';
+  if (!eventId) throw new HttpsError('invalid-argument', 'eventId is required.');
 
-    // ── Ownership check: caller must have a membership entry for this playerId ─
-    const userSnap = await db.doc(`users/${uid}`).get();
-    if (!userSnap.exists) throw new HttpsError('not-found', 'User profile not found.');
+  const name = typeof data.name === 'string' ? data.name.trim() : '';
+  if (!name) throw new HttpsError('invalid-argument', 'name is required.');
 
-    const memberships: Array<Record<string, unknown>> = (userSnap.data()?.memberships ?? []) as Array<Record<string, unknown>>;
-    const ownsPlayer = memberships.some((m) => m.playerId === playerId);
+  const VALID_RESPONSES = new Set(['yes', 'no', 'maybe']);
+  const response = typeof data.response === 'string' ? data.response : '';
+  if (!VALID_RESPONSES.has(response)) {
+    throw new HttpsError('invalid-argument', 'response must be "yes", "no", or "maybe".');
+  }
 
-    if (!ownsPlayer) {
-      console.warn(`submitRsvp: uid=${uid} attempted RSVP for unowned playerId=${playerId}`);
+  const db = admin.firestore();
+
+  // Determine effectivePlayerId — empty/absent means self-RSVP.
+  const rawPlayerId = typeof data.playerId === 'string' ? data.playerId.trim() : '';
+  const effectivePlayerId = rawPlayerId || uid;
+  const isSelf = effectivePlayerId === uid;
+
+  if (!isSelf) {
+    // Validate ownership: caller must have this playerId in their memberships[].
+    const profileSnap = await db.doc(`users/${uid}`).get();
+    if (!profileSnap.exists) throw new HttpsError('not-found', 'User profile not found.');
+    const profile = profileSnap.data()!;
+    const memberships: Array<{ playerId?: string }> = profile.memberships ?? [];
+    if (!memberships.some(m => m.playerId === effectivePlayerId)) {
       throw new HttpsError('permission-denied', 'You do not have permission to RSVP for this player.');
     }
-
-    // ── Write RSVP subcollection doc ──────────────────────────────────────────
-    const docKey = `${uid}_${playerId}`;
-    const rsvpRef = db.doc(`events/${eventId}/rsvps/${docKey}`);
-
-    const entry: Record<string, unknown> = {
-      uid,
-      playerId,
-      status,
-      updatedAt: admin.firestore.Timestamp.now(),
-      submittedBy: uid,
-    };
-    if (note !== undefined && note.trim().length > 0) {
-      entry.note = note.trim();
-    }
-
-    await rsvpRef.set(entry);
-    console.log(`submitRsvp: uid=${uid} set status=${status} for playerId=${playerId} on event=${eventId}`);
-
-    return { success: true };
   }
-);
+
+  // Doc key format matches useRsvpStore: uid for self-RSVP, uid_playerId for proxy.
+  const docKey = isSelf ? uid : `${uid}_${effectivePlayerId}`;
+
+  const entry: Record<string, unknown> = {
+    uid,
+    name,
+    response,
+    updatedAt: new Date().toISOString(),
+  };
+  if (!isSelf) {
+    entry.playerId = effectivePlayerId;
+  }
+
+  try {
+    await db.doc(`events/${eventId}/rsvps/${docKey}`).set(entry);
+    console.log(`submitRsvp: uid=${uid} eventId=${eventId} docKey=${docKey} response=${response}`);
+  } catch (err: unknown) {
+    console.error('submitRsvp: Firestore write failed:', (err as Error)?.message);
+    throw new HttpsError('internal', 'Failed to save RSVP. Please try again.');
+  }
+
+  return { success: true };
+});

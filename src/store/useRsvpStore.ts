@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import {
-  collection, onSnapshot, doc, setDoc,
+  collection, onSnapshot,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '@/lib/firebase';
 
 export interface RsvpEntry {
   uid: string;
@@ -21,10 +22,16 @@ interface RsvpStore {
 export const useRsvpStore = create<RsvpStore>((set) => ({
   rsvps: {},
 
-  submitRsvp: async (eventId: string, uid: string, name: string, response: 'yes' | 'no' | 'maybe', playerId?: string) => {
-    const docKey = playerId ? `${uid}_${playerId}` : uid;
-    const entry: RsvpEntry = { uid, ...(playerId ? { playerId } : {}), name, response, updatedAt: new Date().toISOString() };
-    await setDoc(doc(db, 'events', eventId, 'rsvps', docKey), entry);
+  submitRsvp: async (eventId: string, _uid: string, name: string, response: 'yes' | 'no' | 'maybe', playerId?: string) => {
+    // SEC-99: direct Firestore writes are blocked by `allow write: if false`.
+    // All RSVP writes go through the submitRsvp Cloud Function so the server
+    // can validate playerId ownership before writing.
+    const fn = httpsCallable<
+      { eventId: string; name: string; response: string; playerId?: string },
+      { success: true }
+    >(functions, 'submitRsvp');
+
+    await fn({ eventId, name, response, ...(playerId ? { playerId } : {}) });
   },
 
   subscribeRsvps: (eventId) => {
