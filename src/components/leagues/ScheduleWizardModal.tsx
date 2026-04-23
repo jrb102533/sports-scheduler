@@ -2841,6 +2841,38 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
               </div>
             )}
 
+            {!isPracticeMode && (() => {
+              const teamTally = new Map<string, { name: string; count: number }>();
+              for (const f of result.fixtures) {
+                const h = teamTally.get(f.homeTeamId) ?? { name: f.homeTeamName, count: 0 };
+                h.count += 1;
+                teamTally.set(f.homeTeamId, h);
+                const a = teamTally.get(f.awayTeamId) ?? { name: f.awayTeamName, count: 0 };
+                a.count += 1;
+                teamTally.set(f.awayTeamId, a);
+              }
+              if (teamTally.size === 0) return null;
+              const entries = Array.from(teamTally.values()).sort((a, b) => a.name.localeCompare(b.name));
+              const counts = entries.map(e => e.count);
+              const allEqual = counts.every(c => c === counts[0]);
+              return (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+                  <p className="text-xs font-semibold text-gray-600 mb-1.5">Games per team</p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {entries.map(e => (
+                      <span key={e.name} className="text-xs text-gray-700">
+                        <span className="font-medium">{e.name}</span>
+                        <span className={`ml-1 font-bold ${allEqual ? 'text-green-700' : 'text-amber-700'}`}>{e.count}</span>
+                      </span>
+                    ))}
+                  </div>
+                  {!allEqual && (
+                    <p className="text-xs text-amber-700 mt-1.5">Teams have unequal game counts — season may be too short to balance all teams.</p>
+                  )}
+                </div>
+              );
+            })()}
+
             <div>
               <p className="text-sm font-semibold text-gray-700 mb-2">{isPracticeMode ? 'Sessions' : 'Fixtures'}</p>
 
