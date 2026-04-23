@@ -220,6 +220,7 @@ function seedBaseFixtures() {
     name: 'Hawks',
     coachIds: [COACH_UID],
     isDeleted: true,
+    deletedAt: new Date(Date.now() - 1000).toISOString(),
   });
   // Seed a rateLimits doc so checkRateLimit always opens a fresh window
   // (count=0 means the limit of 5 is never reached during tests).
@@ -324,7 +325,6 @@ describe('hardDeleteTeam', () => {
     await fn(makeRequest({ teamId: TEAM_ID }, ADMIN_UID));
 
     expect(_recursiveDeleteSpy).toHaveBeenCalledOnce();
-    // The first argument to recursiveDelete must be a ref whose path is teams/TEAM_ID
     const refArg = _recursiveDeleteSpy.mock.calls[0][0] as { path: string };
     expect(refArg.path).toBe(`teams/${TEAM_ID}`);
   });
