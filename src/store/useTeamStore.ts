@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import {
-  collection, onSnapshot, doc, setDoc, deleteDoc, query, orderBy, where, updateDoc,
+  collection, onSnapshot, doc, setDoc, query, orderBy, where, updateDoc,
   arrayUnion, arrayRemove,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '@/lib/firebase';
 import { useAuthStore } from '@/store/useAuthStore';
 import type { Team } from '@/types';
 
@@ -95,13 +96,18 @@ export const useTeamStore = create<TeamStore>((set) => ({
     });
   },
 
-  // Admin: permanently remove the document
+  // Admin: permanently remove the document and all subcollections via callable.
+  // Uses the server-side hardDeleteTeam Cloud Function so that the Admin SDK's
+  // recursiveDelete can remove subcollections (messages, availability) that the
+  // client SDK cannot reach.
   hardDeleteTeam: async (id) => {
-    await deleteDoc(doc(db, 'teams', id));
+    const fn = httpsCallable<{ teamId: string }, { success: boolean }>(functions, 'hardDeleteTeam');
+    await fn({ teamId: id });
   },
 
-  // Legacy alias — hard delete
+  // Legacy alias — delegates to hardDeleteTeam callable for subcollection safety.
   deleteTeam: async (id) => {
-    await deleteDoc(doc(db, 'teams', id));
+    const fn = httpsCallable<{ teamId: string }, { success: boolean }>(functions, 'hardDeleteTeam');
+    await fn({ teamId: id });
   },
 }));

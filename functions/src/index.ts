@@ -3230,6 +3230,126 @@ export const autoCloseCollections = onSchedule(
   },
 );
 
+// ─── Scheduled: purge soft-deleted records older than 90 days ────────────────
+//
+// Runs daily at 01:00 UTC.
+//
+// Targets:
+//   • teams:  isDeleted == true  AND deletedAt < now - 90 days
+//             → recursiveDelete(teamRef)  [removes doc + all subcollections]
+//   • leagues: isDeleted == true AND deletedAt < now - 90 days
+//             → recursiveDelete(leagueRef) [removes doc + seasons, divisions,
+//               venues, availabilityCollections, wizardDraft, etc.]
+//   • users/{uid}/venues: deletedAt field set AND deletedAt < now - 90 days
+//             → deleteDoc(venueRef)        [venues have no subcollections]
+//
+// Cost note: this function issues one collectionGroup/collection query per
+// target type, then one recursiveDelete per matched document. On a typical
+// small deployment the cost is negligible (< 100 deletes/day). At scale,
+// consider batching and adding a composite Firestore index on
+// (isDeleted, deletedAt) for teams/leagues.
+//
+// PM decision flagged: 90-day TTL and whether to notify LMs before their
+// soft-deleted league is permanently purged. See comment at bottom of fn.
+
+export const purgeSoftDeletedData = onSchedule(
+  { schedule: '0 1 * * *' }, // 01:00 UTC daily
+  async () => {
+    const db = admin.firestore();
+    const now = new Date();
+    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+
+    let teamsDeleted = 0;
+    let leaguesDeleted = 0;
+    let venuesDeleted = 0;
+
+    // ── 1. Purge soft-deleted teams ──────────────────────────────────────────
+    //
+    // Note: Firestore cannot combine != and < on different fields without a
+    // composite index, so we query on (isDeleted == true, deletedAt < cutoff).
+    // This requires a composite index on teams: (isDeleted ASC, deletedAt ASC).
+    // If the index does not exist yet the query will throw; add it to
+    // firestore.indexes.json: { collectionGroup: "teams",
+    //   fields: [{ fieldPath:"isDeleted", order:"ASCENDING" },
+    //            { fieldPath:"deletedAt", order:"ASCENDING" }] }
+
+    try {
+      const teamsSnap = await db
+        .collection('teams')
+        .where('isDeleted', '==', true)
+        .where('deletedAt', '<', ninetyDaysAgo)
+        .get();
+
+      for (const teamDoc of teamsSnap.docs) {
+        await admin.firestore().recursiveDelete(teamDoc.ref);
+        teamsDeleted++;
+        console.log(`purgeSoftDeletedData: hard-deleted teamId=${teamDoc.id} (deletedAt=${teamDoc.data().deletedAt})`);
+      }
+    } catch (err: unknown) {
+      console.error('purgeSoftDeletedData: teams purge error —', (err as Error)?.message ?? err);
+    }
+
+    // ── 2. Purge soft-deleted leagues ────────────────────────────────────────
+    //
+    // Requires composite index on leagues: (isDeleted ASC, deletedAt ASC).
+    //
+    // PM DECISION NEEDED: should the function send a warning notification to
+    // the league manager X days before permanent deletion, similar to the
+    // autoCloseCollections 60-day warning? If yes, the 90-day window should
+    // also apply here and the warn step should be added to autoCloseCollections
+    // or a new scheduled function.
+
+    try {
+      const leaguesSnap = await db
+        .collection('leagues')
+        .where('isDeleted', '==', true)
+        .where('deletedAt', '<', ninetyDaysAgo)
+        .get();
+
+      for (const leagueDoc of leaguesSnap.docs) {
+        await admin.firestore().recursiveDelete(leagueDoc.ref);
+        leaguesDeleted++;
+        console.log(`purgeSoftDeletedData: hard-deleted leagueId=${leagueDoc.id} (deletedAt=${leagueDoc.data().deletedAt})`);
+      }
+    } catch (err: unknown) {
+      console.error('purgeSoftDeletedData: leagues purge error —', (err as Error)?.message ?? err);
+    }
+
+    // ── 3. Purge soft-deleted venues (users/{uid}/venues subcollection) ───────
+    //
+    // Venues use a deletedAt timestamp field (no isDeleted boolean).
+    // We use collectionGroup to reach all users' venue subcollections in one
+    // query rather than iterating every user document.
+    // Venues have no further subcollections so a simple deleteDoc is sufficient.
+
+    try {
+      const venuesSnap = await db
+        .collectionGroup('venues')
+        .where('deletedAt', '<', ninetyDaysAgo)
+        .get();
+
+      for (const venueDoc of venuesSnap.docs) {
+        // Only target the users/{uid}/venues path; skip any league venues that
+        // may accidentally match (leagues/{id}/venues use a different schema
+        // and are covered by the leagues recursiveDelete above).
+        const pathSegments = venueDoc.ref.path.split('/');
+        if (pathSegments[0] !== 'users' || pathSegments[2] !== 'venues') {
+          continue;
+        }
+        await venueDoc.ref.delete();
+        venuesDeleted++;
+        console.log(`purgeSoftDeletedData: hard-deleted venue path=${venueDoc.ref.path} (deletedAt=${venueDoc.data().deletedAt})`);
+      }
+    } catch (err: unknown) {
+      console.error('purgeSoftDeletedData: venues purge error —', (err as Error)?.message ?? err);
+    }
+
+    console.log(
+      `purgeSoftDeletedData: done — teams=${teamsDeleted}, leagues=${leaguesDeleted}, venues=${venuesDeleted}`,
+    );
+  },
+);
+
 // ─── Callable: deterministic schedule generation ──────────────────────────────
 
 export const generateSchedule = onCall(
@@ -5051,6 +5171,75 @@ export const getCalendarFeedUrl = onCall(
     const feedUrl = `${FUNCTIONS_BASE}/calendarFeed?uid=${encodeURIComponent(uid)}&token=${token}`;
     return { url: feedUrl };
   }
+);
+
+// ─── Hard-delete team (callable) ─────────────────────────────────────────────
+
+interface HardDeleteTeamInput {
+  teamId: string;
+}
+
+/**
+ * Permanently hard-deletes a team document and all its subcollections using
+ * Admin SDK recursiveDelete.
+ *
+ * Auth: caller must be an admin OR a coach of the target team.
+ * Rate-limited to 5 calls/minute per user.
+ *
+ * This callable exists because the client SDK cannot call recursiveDelete —
+ * only the Admin SDK exposes that API. Without it, subcollections (messages,
+ * availability) are left as orphaned documents in Firestore with no way to
+ * query or clean them up.
+ */
+export const hardDeleteTeam = onCall<HardDeleteTeamInput, Promise<{ success: boolean }>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+    const uid = request.auth.uid;
+
+    const { teamId } = request.data;
+    if (!teamId?.trim()) throw new HttpsError('invalid-argument', 'teamId is required.');
+
+    await checkRateLimit(uid, 'hardDeleteTeam', 5);
+
+    const db = admin.firestore();
+
+    // ── Step 1: fetch and validate team ───────────────────────────────────────
+    const teamRef = db.doc(`teams/${teamId}`);
+    const teamSnap = await teamRef.get();
+
+    if (!teamSnap.exists) throw new HttpsError('not-found', 'Team not found.');
+    const teamData = teamSnap.data()!;
+
+    // ── Auth: admin OR coach of this specific team ─────────────────────────────
+    const callerSnap = await db.doc(`users/${uid}`).get();
+    const callerData = callerSnap.data();
+    const legacyRole: string = callerData?.role ?? '';
+    const membershipRoles: string[] = (callerData?.memberships ?? []).map(
+      (m: Record<string, unknown>) => m.role as string,
+    );
+    const isAdmin = [legacyRole, ...membershipRoles].includes('admin');
+    const isCoach = isCoachOfTeamDoc(teamData as Record<string, unknown>, uid);
+
+    if (!isAdmin && !isCoach) {
+      throw new HttpsError('permission-denied', 'Only admins or team coaches may permanently delete a team.');
+    }
+
+    try {
+      // ── Step 2: recursively delete the team doc + all subcollections ────────
+      // recursiveDelete is available in firebase-admin v11+ (installed: v13.x).
+      // It deletes the document at teamRef and every document in every
+      // subcollection beneath it (messages, availability, etc.).
+      await admin.firestore().recursiveDelete(teamRef);
+
+      console.log(`hardDeleteTeam: permanently deleted teamId=${teamId} by uid=${uid}`);
+      return { success: true };
+    } catch (err: unknown) {
+      if (err instanceof HttpsError) throw err;
+      const message = err instanceof Error ? err.message : 'Failed to delete team.';
+      console.error(`hardDeleteTeam: error deleting teamId=${teamId}:`, message);
+      throw new HttpsError('internal', message);
+    }
+  },
 );
 
 // ─── Delete league (callable) ────────────────────────────────────────────────
