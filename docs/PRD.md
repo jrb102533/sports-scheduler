@@ -305,7 +305,27 @@ See [BACKLOG.md](BACKLOG.md) for the full prioritised backlog.
 
 ---
 
-## 9. Open Blockers (PM Action Required)
+## 9. Email Infrastructure
+
+### Sending
+| Field | Value |
+|---|---|
+| Provider | Brevo (SMTP) |
+| From address | `noreply@firstwhistlesports.com` |
+| From name | First Whistle |
+| Transport | Cloud Function SMTP via `emailTemplate.ts` / `buildEmail()` |
+
+All transactional emails (invites, RSVP links, reminders, score broadcasts) route through this address. Brevo free tier: 300 emails/day — upgrade before scaling beyond a few teams.
+
+### Contact / Support
+| Purpose | Address | Notes |
+|---|---|---|
+| User support | `support@firstwhistlesports.com` | GoDaddy forward → personal Gmail; shown in Settings → About |
+| Legal / data deletion | `first.whistle.legal@gmail.com` | GDPR/CCPA deletion requests; shown in Settings → Privacy & Legal; 30-day SLA |
+
+---
+
+## 10. Open Blockers (PM Action Required)
 
 | Item | Action |
 |---|---|
@@ -315,7 +335,7 @@ See [BACKLOG.md](BACKLOG.md) for the full prioritised backlog.
 
 ---
 
-## 10. Security Posture
+## 11. Security Posture
 
 A security audit was conducted on 2026-03-28 covering Cloud Functions and Firestore rules. **Overall rating: HIGH risk** due to three findings in the LLM-based schedule generation function (all resolved when the algorithm replaces the LLM function).
 
@@ -330,7 +350,7 @@ These three HIGH findings are eliminated when the LLM function is removed (algor
 
 ---
 
-## 11. Mobile Strategy
+## 12. Mobile Strategy
 
 Parked. Decision: test responsive web first before investing in native app. See ADR-007 and project memory for full context.
 
