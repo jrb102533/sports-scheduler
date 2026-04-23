@@ -178,15 +178,28 @@ export function SettingsPage() {
           </div>
           <div className="px-5 py-4 space-y-3">
             {buildInfo.isProduction ? (
-              /* Production: version + release date only */
+              /* Production: version + build + release date + support */
               <>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-500">Version</span>
                   <span className="text-sm font-mono font-medium text-gray-900">{buildInfo.version}</span>
                 </div>
                 <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-500">Build</span>
+                  <span className="text-sm font-mono text-gray-900">{buildInfo.shortSha}</span>
+                </div>
+                <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-500">Released</span>
                   <span className="text-sm text-gray-900">{buildInfo.releaseDate}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-500">Support</span>
+                  <a
+                    href="mailto:support@firstwhistlesports.com"
+                    className="text-sm text-blue-600 hover:underline"
+                  >
+                    support@firstwhistlesports.com
+                  </a>
                 </div>
               </>
             ) : (
