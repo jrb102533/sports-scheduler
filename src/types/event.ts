@@ -84,6 +84,8 @@ export interface ScheduledEvent {
   seasonId?: string;
   /** References leagues/{leagueId}/divisions/{divisionId} — set when generated for a division */
   divisionId?: string;
+  /** ISO date string (YYYY-MM-DD) by which RSVPs are requested */
+  rsvpDeadline?: string;
   /** Set to 'open' when coaches submit mismatching scores. Cleared on resolution. */
   disputeStatus?: 'open';
   createdAt: string;

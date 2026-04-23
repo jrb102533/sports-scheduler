@@ -8,20 +8,20 @@ export interface RsvpEntry {
   uid: string;
   playerId?: string;
   name: string;
-  response: 'yes' | 'no';
+  response: 'yes' | 'no' | 'maybe';
   updatedAt: string;
 }
 
 interface RsvpStore {
   rsvps: Record<string, RsvpEntry[]>;
-  submitRsvp: (eventId: string, uid: string, name: string, response: 'yes' | 'no', playerId?: string) => Promise<void>;
+  submitRsvp: (eventId: string, uid: string, name: string, response: 'yes' | 'no' | 'maybe', playerId?: string) => Promise<void>;
   subscribeRsvps: (eventId: string) => () => void;
 }
 
 export const useRsvpStore = create<RsvpStore>((set) => ({
   rsvps: {},
 
-  submitRsvp: async (eventId, uid, name, response, playerId) => {
+  submitRsvp: async (eventId: string, uid: string, name: string, response: 'yes' | 'no' | 'maybe', playerId?: string) => {
     const docKey = playerId ? `${uid}_${playerId}` : uid;
     const entry: RsvpEntry = { uid, ...(playerId ? { playerId } : {}), name, response, updatedAt: new Date().toISOString() };
     await setDoc(doc(db, 'events', eventId, 'rsvps', docKey), entry);

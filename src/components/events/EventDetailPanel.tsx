@@ -306,22 +306,52 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
               />
             )}
 
-            {/* Record Result */}
-            {isGameOrMatch && event.status !== 'cancelled' && event.status !== 'completed' && (
-              <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                  <CheckCircle size={14} className="text-green-500" /> Record Score
+            {/* Record Result — Card 3 style */}
+            {isGameOrMatch && canManage && event.status !== 'cancelled' && event.status !== 'completed' && (
+              <div className="bg-white rounded-2xl shadow-sm p-5 space-y-4">
+                <h3 className="text-sm font-bold uppercase tracking-wide text-gray-900">
+                  Final Score
                 </h3>
-                <div className="grid grid-cols-2 gap-2">
-                  <Input label={homeTeam?.name ?? 'Home'} type="number" min="0" value={homeScore} onChange={e => setHomeScore(e.target.value)} placeholder="0" />
-                  <Input label={awayTeam?.name ?? event.opponentName ?? 'Away'} type="number" min="0" value={awayScore} onChange={e => setAwayScore(e.target.value)} placeholder="0" />
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col items-center gap-1.5 flex-1">
+                    <span className="text-xs font-bold uppercase text-gray-400 truncate max-w-full text-center">
+                      {homeTeam?.name ?? 'Home'}
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={homeScore}
+                      onChange={e => setHomeScore(e.target.value)}
+                      placeholder="0"
+                      aria-label={`${homeTeam?.name ?? 'Home'} score`}
+                      className="w-full min-w-[80px] h-16 text-3xl text-center font-bold text-gray-900 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1B3A6B] focus:border-transparent transition-colors"
+                    />
+                  </div>
+                  <span className="text-gray-300 text-xl font-light pt-5 select-none" aria-hidden="true">···</span>
+                  <div className="flex flex-col items-center gap-1.5 flex-1">
+                    <span className="text-xs font-bold uppercase text-gray-400 truncate max-w-full text-center">
+                      {awayTeam?.name ?? event.opponentName ?? 'Away'}
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={awayScore}
+                      onChange={e => setAwayScore(e.target.value)}
+                      placeholder="0"
+                      aria-label={`${awayTeam?.name ?? event.opponentName ?? 'Away'} score`}
+                      className="w-full min-w-[80px] h-16 text-3xl text-center font-bold text-gray-900 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1B3A6B] focus:border-transparent transition-colors"
+                    />
+                  </div>
                 </div>
-                <Input label="Notes (optional)" value={resultNotes} onChange={e => setResultNotes(e.target.value)} />
-                <Button size="sm" onClick={() => void handleRecordResult()} disabled={!homeScore || !awayScore || scoreSaveState === 'saving'}>
-                  {scoreSaveState === 'saving' ? 'Saving…' : scoreSaveState === 'saved' ? 'Saved!' : scoreSaveState === 'error' ? 'Error — retry' : 'Save Score'}
-                </Button>
+                <button
+                  onClick={() => void handleRecordResult()}
+                  disabled={!homeScore || !awayScore || scoreSaveState === 'saving'}
+                  className="w-full rounded-xl bg-[#1B3A6B] py-3 text-sm font-semibold text-white hover:bg-[#152e58] disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B3A6B] focus-visible:ring-offset-2"
+                >
+                  {scoreSaveState === 'saving' ? 'Saving…' : scoreSaveState === 'saved' ? 'Saved!' : scoreSaveState === 'error' ? 'Error — retry' : 'Save final score'}
+                </button>
                 {scoreSaveState === 'error' && (
-                  <p className="text-xs text-red-600 mt-1">Failed to save score. Check your connection and try again.</p>
+                  <p className="text-xs text-red-600">Failed to save score. Check your connection and try again.</p>
                 )}
               </div>
             )}
