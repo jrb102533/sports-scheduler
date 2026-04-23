@@ -232,7 +232,7 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
             </p>
             <p className="text-xs text-amber-700">
               Parents may request removal of their child&rsquo;s profile at any time by contacting{' '}
-              <a href="mailto:first.whistle.legal@gmail.com" className="underline">first.whistle.legal@gmail.com</a>.
+              <a href="mailto:legal@firstwhistle.com" className="underline">legal@firstwhistle.com</a>.
             </p>
             <label className="flex items-start gap-2.5 cursor-pointer pt-1">
               <input

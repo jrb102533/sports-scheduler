@@ -59,7 +59,7 @@ As a Team Admin, you are responsible for the accuracy of all player information 
 
 ### 4.2 Data Accuracy
 
-If you become aware that player data is inaccurate, you are obligated to correct it promptly within the platform or by contacting first.whistle.legal@gmail.com.
+If you become aware that player data is inaccurate, you are obligated to correct it promptly within the platform or by contacting legal@firstwhistle.com.
 
 ### 4.3 Communications Responsibility
 
@@ -91,7 +91,7 @@ By enabling account access for a player age 13–17, you represent that the play
 
 ### 5.4 Parental Requests
 
-Parents or guardians may contact us at first.whistle.legal@gmail.com to review, correct, or delete their child's player profile. We will process verified parental requests within 30 days.
+Parents or guardians may contact us at legal@firstwhistle.com to review, correct, or delete their child's player profile. We will process verified parental requests within 30 days.
 
 ### 5.5 No Circumvention
 
@@ -179,7 +179,7 @@ You agree to indemnify and hold harmless First Whistle and its officers, directo
 
 ### 13.1 By You
 
-You may terminate your account at any time through account settings or by contacting first.whistle.legal@gmail.com.
+You may terminate your account at any time through account settings or by contacting legal@firstwhistle.com.
 
 ### 13.2 By Us
 
@@ -208,5 +208,5 @@ We may update these Terms from time to time. When we make material changes, we w
 ## 16. Contact Us
 
 **First Whistle**
-Email: first.whistle.legal@gmail.com
+Email: legal@firstwhistle.com
 Virginia, USA

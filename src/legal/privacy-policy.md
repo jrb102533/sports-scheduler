@@ -12,7 +12,7 @@ First Whistle ("we," "us," or "our") is a sports scheduling and team management 
 
 This policy applies to all users of First Whistle, including coaches, league managers, parents, and players. If you are a parent or guardian of a child using this platform, please read this policy carefully, particularly the **Children's Privacy** section.
 
-If you have questions, contact us at first.whistle.legal@gmail.com.
+If you have questions, contact us at legal@firstwhistle.com.
 
 ---
 
@@ -129,7 +129,7 @@ For a child under 13, a player profile may contain:
 
 ### 4.3 Parental Consent
 
-By adding a player under 13 to a team, the coach or administrator represents that they have obtained verifiable parental or guardian consent to create that player's profile and to share the associated parent contact information with First Whistle. Parents who believe their child's profile was created without their consent should contact us immediately at first.whistle.legal@gmail.com.
+By adding a player under 13 to a team, the coach or administrator represents that they have obtained verifiable parental or guardian consent to create that player's profile and to share the associated parent contact information with First Whistle. Parents who believe their child's profile was created without their consent should contact us immediately at legal@firstwhistle.com.
 
 Parents may contact us to:
 
@@ -145,7 +145,7 @@ Players age 13 through 17 may be added to team rosters and given access to a lim
 
 ### 4.5 How to Submit a Parental Request
 
-To exercise any parental right over your child's data, contact us at first.whistle.legal@gmail.com with the subject line "Parental Data Request." Please include your name, your child's name and team, and the action you are requesting. We may ask you to verify your identity before processing the request.
+To exercise any parental right over your child's data, contact us at legal@firstwhistle.com with the subject line "Parental Data Request." Please include your name, your child's name and team, and the action you are requesting. We may ask you to verify your identity before processing the request.
 
 ---
 
@@ -191,7 +191,7 @@ We retain your data for as long as your account is active or as needed to provid
 
 ### 7.2 Account Deletion
 
-You may delete your account at any time through the platform settings or by contacting us at first.whistle.legal@gmail.com. When an account is deleted, your personal account information is removed from active systems within **30 days**. Backup copies may persist for up to **90 days** before being purged.
+You may delete your account at any time through the platform settings or by contacting us at legal@firstwhistle.com. When an account is deleted, your personal account information is removed from active systems within **30 days**. Backup copies may persist for up to **90 days** before being purged.
 
 ### 7.3 Player Profile Deletion
 
@@ -205,7 +205,7 @@ When an organization is closed, all associated team and player data is permanent
 
 ## 8. Data Security
 
-We implement industry-standard security measures including encrypted data transmission (HTTPS/TLS), encrypted password storage via Firebase Authentication, and role-based access controls. No system is completely secure. If you believe your account has been compromised, contact us immediately at first.whistle.legal@gmail.com.
+We implement industry-standard security measures including encrypted data transmission (HTTPS/TLS), encrypted password storage via Firebase Authentication, and role-based access controls. No system is completely secure. If you believe your account has been compromised, contact us immediately at legal@firstwhistle.com.
 
 ---
 
@@ -222,7 +222,7 @@ Depending on your location, you may have the following rights regarding your per
 | **Objection** | Object to certain types of processing |
 | **Withdrawal of Consent** | Where processing is based on consent, withdraw it at any time |
 
-To exercise any of these rights, contact us at first.whistle.legal@gmail.com. We will respond within **30 days**.
+To exercise any of these rights, contact us at legal@firstwhistle.com. We will respond within **30 days**.
 
 **California residents (CCPA):** You have the right to know what data we collect, request deletion, and opt out of sale (we do not sell data).
 
@@ -245,5 +245,5 @@ When we make material changes, we will update the "Last Updated" date and notify
 ## 12. Contact Us
 
 **First Whistle**
-Email: first.whistle.legal@gmail.com
+Email: legal@firstwhistle.com
 Virginia, USA

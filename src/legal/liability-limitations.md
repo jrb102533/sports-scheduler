@@ -124,5 +124,5 @@ This document is governed by the laws of the Commonwealth of Virginia, without r
 If you have questions about this document, contact us at:
 
 **First Whistle**
-Email: first.whistle.legal@gmail.com
+Email: legal@firstwhistle.com
 Virginia, USA

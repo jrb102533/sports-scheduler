@@ -321,7 +321,7 @@ All transactional emails (invites, RSVP links, reminders, score broadcasts) rout
 | Purpose | Address | Notes |
 |---|---|---|
 | User support | `support@firstwhistlesports.com` | GoDaddy forward → personal Gmail; shown in Settings → About |
-| Legal / data deletion | `first.whistle.legal@gmail.com` | GDPR/CCPA deletion requests; shown in Settings → Privacy & Legal; 30-day SLA |
+| Legal / data deletion | `legal@firstwhistle.com` | GDPR/CCPA deletion requests; shown in Settings → Privacy & Legal; 30-day SLA |
 
 ---
 

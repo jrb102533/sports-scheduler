@@ -161,7 +161,7 @@ export function SettingsPage() {
                 To request deletion of your account and associated data, contact our privacy team. We will respond within 30 days.
               </p>
               <a
-                href="mailto:first.whistle.legal@gmail.com?subject=Data%20Deletion%20Request"
+                href="mailto:legal@firstwhistle.com?subject=Data%20Deletion%20Request"
                 className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline font-medium"
               >
                 Request data deletion
