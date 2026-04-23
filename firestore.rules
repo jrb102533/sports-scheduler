@@ -313,13 +313,23 @@ service cloud.firestore {
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['snackSignups', 'updatedAt'])
             && request.resource.data.snackSignups.size() == resource.data.get('snackSignups', []).size() + 1);
 
-      // RSVP subcollection — any authenticated user may read all RSVPs.
-      // Doc key is uid (self) or uid_playerId (parent writing for a child).
-      // Write is allowed when the caller's uid matches the key prefix.
+      // RSVP subcollection.
+      // Doc key is uid (self-RSVP) or uid_playerId (parent RSVPing for a child).
+      // SEC-81 (HIGH — tracked): playerId ownership is not validated server-side;
+      //   a parent can write uid_<anyPlayerId>. Full fix requires a Cloud Function.
       match /rsvps/{docId} {
-        allow read: if request.auth != null;
+        // Coaches, LMs, and admins need to read all RSVPs for their events.
+        // Parents/players may read their own entries only.
+        // SEC-82: restrict to own uid or privileged role to avoid leaking
+        //   parent→child mappings (playerId field) to arbitrary authenticated users.
+        allow read: if request.auth != null
+          && (isAdmin() || isCoach() || isLeagueManager()
+              || resource.data.uid == request.auth.uid);
+        // Write: caller's uid must be the exact doc key or the prefix before '_'.
+        // '_.+' requires at least one character after the separator (SEC-80).
         allow write: if request.auth != null
-          && (request.auth.uid == docId || docId.matches(request.auth.uid + '_.*'));
+          && (request.auth.uid == docId
+              || docId.matches(request.auth.uid + '_.+'));
       }
 
 
