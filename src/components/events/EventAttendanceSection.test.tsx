@@ -28,6 +28,7 @@ vi.mock('firebase/firestore', () => ({
 
 // ── RsvpStore mock ─────────────────────────────────────────────────────────────
 
+import { useRsvpStore } from '@/store/useRsvpStore';
 import type { RsvpEntry } from '@/store/useRsvpStore';
 
 let mockRsvps: RsvpEntry[] = [];
@@ -96,7 +97,7 @@ function makePlayer(id: string, firstName: string, lastName: string, overrides: 
   } as Player;
 }
 
-function makeEntry(uid: string, name: string, response: 'yes' | 'no'): RsvpEntry {
+function makeEntry(uid: string, name: string, response: 'yes' | 'no' | 'maybe'): RsvpEntry {
   return { uid, name, response, updatedAt: '2026-01-01T00:00:00.000Z' };
 }
 
@@ -109,7 +110,8 @@ const DEFAULT_PROPS = {
 function renderSection(
   profile: UserProfile | null,
   currentUserUid: string | null,
-  extraProps: Partial<typeof DEFAULT_PROPS> = {}
+  extraProps: Partial<typeof DEFAULT_PROPS> = {},
+  rsvpDeadline?: string
 ) {
   return render(
     <EventAttendanceSection
@@ -117,6 +119,7 @@ function renderSection(
       {...extraProps}
       profile={profile}
       currentUserUid={currentUserUid}
+      rsvpDeadline={rsvpDeadline}
     />
   );
 }
@@ -174,14 +177,15 @@ describe('EventAttendanceSection — summary row', () => {
     mockRsvps = [makeEntry('uid-a', 'Alice', 'yes')];
     renderSection(makeProfile('admin'), 'uid-1');
     expect(screen.queryByText(/forecast/i)).not.toBeInTheDocument();
-    expect(screen.getByText('Attendance')).toBeInTheDocument();
+    // Card 2 header — case-insensitive since it's uppercase via CSS but text node is mixed
+    expect(screen.getByText(/attendance/i)).toBeInTheDocument();
   });
 });
 
 // ── B. CTA rows ────────────────────────────────────────────────────────────────
 
 describe('EventAttendanceSection — CTA rows', () => {
-  it('shows a segmented control for a player linked to this team', () => {
+  it('shows a three-way segmented control for a player linked to this team', () => {
     mockPlayers = [makePlayer('p1', 'Alice', 'Smith', { linkedUid: 'uid-alice' })];
     renderSection(
       makeProfile('player', { uid: 'uid-alice' }),
@@ -189,7 +193,8 @@ describe('EventAttendanceSection — CTA rows', () => {
     );
     expect(screen.getByRole('radiogroup')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Going' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'Not going' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Maybe' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: "Can't go" })).toBeInTheDocument();
   });
 
   it('shows no CTA when isActive is false (cancelled/completed event)', () => {
@@ -319,5 +324,106 @@ describe('EventAttendanceSection — no "forecast" copy', () => {
     mockRsvps = [makeEntry('uid-a', 'Alice', 'yes')];
     renderSection(makeProfile('admin'), 'uid-1');
     expect(screen.queryByText(/forecast/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── G. Maybe RSVP path ────────────────────────────────────────────────────────
+
+describe('EventAttendanceSection — Maybe RSVP', () => {
+  it('optimistic update stores "maybe" when Maybe button is clicked', async () => {
+    mockPlayers = [makePlayer('p1', 'Alice', 'Smith', { linkedUid: 'uid-alice' })];
+    const user = userEvent.setup();
+    renderSection(
+      makeProfile('player', { uid: 'uid-alice' }),
+      'uid-alice'
+    );
+
+    const maybeBtn = screen.getByRole('radio', { name: 'Maybe' });
+    await user.click(maybeBtn);
+
+    // setState was called with a state updater; extract the optimistic entry
+    const setStateCalls = (useRsvpStore.setState as ReturnType<typeof vi.fn>).mock.calls;
+    expect(setStateCalls.length).toBeGreaterThan(0);
+    // The updater function receives prev state and returns new state
+    const updater = setStateCalls[0][0] as (s: { rsvps: Record<string, RsvpEntry[]> }) => { rsvps: Record<string, RsvpEntry[]> };
+    const result = updater({ rsvps: { 'event-1': [] } });
+    const entry = result.rsvps['event-1'][0];
+    expect(entry.response).toBe('maybe');
+  });
+
+  it('submitRsvp is called with "maybe" when Maybe is selected', async () => {
+    mockPlayers = [makePlayer('p1', 'Alice', 'Smith', { linkedUid: 'uid-alice' })];
+    const user = userEvent.setup();
+    renderSection(
+      makeProfile('player', { uid: 'uid-alice' }),
+      'uid-alice'
+    );
+
+    await user.click(screen.getByRole('radio', { name: 'Maybe' }));
+
+    expect(mockSubmitRsvp).toHaveBeenCalledWith(
+      'event-1',
+      'uid-alice',
+      'Alice Smith',
+      'maybe',
+      'p1'
+    );
+  });
+
+  it('legend shows the maybe count when entries include a maybe response', () => {
+    mockRsvps = [
+      makeEntry('uid-a', 'Alice', 'yes'),
+      makeEntry('uid-b', 'Bob', 'maybe'),
+      makeEntry('uid-c', 'Charlie', 'no'),
+    ];
+    mockPlayers = [
+      makePlayer('p1', 'Alice', 'Smith', { linkedUid: 'uid-a' }),
+      makePlayer('p2', 'Bob', 'Jones', { linkedUid: 'uid-b' }),
+      makePlayer('p3', 'Charlie', 'Brown', { linkedUid: 'uid-c' }),
+    ];
+    renderSection(makeProfile('coach'), 'uid-1');
+    expect(screen.getByText('1 Maybe')).toBeInTheDocument();
+  });
+
+  it('maybe entries appear in expanded Maybe group', async () => {
+    mockRsvps = [
+      makeEntry('uid-a', 'Alice Parent', 'yes'),
+      makeEntry('uid-b', 'Bob Parent', 'maybe'),
+    ];
+    mockPlayers = [
+      makePlayer('p1', 'Alice', 'Smith', { linkedUid: 'uid-a' }),
+      makePlayer('p2', 'Bob', 'Jones', { linkedUid: 'uid-b' }),
+    ];
+    const user = userEvent.setup();
+    renderSection(makeProfile('coach'), 'uid-1');
+    await user.click(screen.getByRole('button', { name: /see responses/i }));
+    expect(screen.getByText('Maybe')).toBeInTheDocument();
+    expect(screen.getByText('Bob Jones')).toBeInTheDocument();
+  });
+
+  it('maybe count does not contribute to confirmed count', () => {
+    mockRsvps = [
+      makeEntry('uid-a', 'Alice', 'yes'),
+      makeEntry('uid-b', 'Bob', 'maybe'),
+    ];
+    mockPlayers = [
+      makePlayer('p1', 'Alice', 'Smith', { linkedUid: 'uid-a' }),
+      makePlayer('p2', 'Bob', 'Jones', { linkedUid: 'uid-b' }),
+    ];
+    renderSection(makeProfile('coach'), 'uid-1');
+    // Confirmed count in summary is 1 (only 'yes'), not 2
+    const bar = screen.getByRole('progressbar');
+    expect(bar).toHaveAttribute('aria-valuenow', '1');
+  });
+
+  it('shows rsvpDeadline as day name in Card 1 when provided', () => {
+    mockPlayers = [makePlayer('p1', 'Alice', 'Smith', { linkedUid: 'uid-alice' })];
+    renderSection(
+      makeProfile('player', { uid: 'uid-alice' }),
+      'uid-alice',
+      {},
+      '2026-04-25' // Saturday
+    );
+    expect(screen.getByText(/required by saturday/i)).toBeInTheDocument();
   });
 });
