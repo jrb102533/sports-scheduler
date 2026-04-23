@@ -234,6 +234,15 @@ If production is down or actively leaking data:
 - Config files (`.env`, `firebase.json`, `vite.config.ts`)
 - Generated code or migrations that run once
 
+## Work Tracking
+
+**Use Jira (project FW) to track all in-progress work.** When starting implementation on any feature, bug, or task:
+1. Find or create the corresponding Jira issue in the FW project (https://jrboyd33dev.atlassian.net)
+2. Transition it to "In Progress" via `transitionJiraIssue`
+3. Transition to "Done" when the PR is merged
+
+Do not use GitHub issues as the primary tracking system — Jira is the source of truth for work status. GitHub issues may still be used for security findings and automated tooling that writes to GitHub.
+
 ## Collaboration Rules
 
 ### Security — never request credentials in chat
