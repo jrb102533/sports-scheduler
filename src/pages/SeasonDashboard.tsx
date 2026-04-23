@@ -501,7 +501,17 @@ export function SeasonDashboard() {
         { leagueId: string; seasonId: string; divisionId?: string },
         { publishedCount: number }
       >(getFunctions(), 'publishSchedule');
-      await publishFn({ leagueId, seasonId, ...(divId ? { divisionId: divId } : {}) });
+      if (divId) {
+        await publishFn({ leagueId, seasonId, divisionId: divId });
+      } else if (draftDivisions.length > 0) {
+        // Division-based season: publish every draft division so scheduleStatus
+        // is updated to 'published' for each — required for hasFullyPublished to flip.
+        await Promise.all(
+          draftDivisions.map(d => publishFn({ leagueId, seasonId, divisionId: d.id }))
+        );
+      } else {
+        await publishFn({ leagueId, seasonId });
+      }
     } catch (err: unknown) {
       const msg = (err as { message?: string }).message ?? 'Publish failed.';
       setPublishError(msg);
