@@ -1407,11 +1407,16 @@ export function runScheduleAlgorithm(
   const hasDivisions = input.divisions && input.divisions.length > 0;
 
   if (!hasDivisions) {
-    // ── Single-pool path (unchanged behavior) ───────────────────────────
+    // ── Single-pool path ─────────────────────────────────────────────────
     const slots = generateSlots(input);
     const rawPairings = generatePairings(input);
+    // Shuffle within each round for variety, then sort by round so same-round
+    // non-conflicting pairs are processed adjacently. This prevents the greedy
+    // "earliest slot" pass from assigning future-round games that lock in later
+    // lastGameDate values, which would then block backfilling into earlier slots.
     const shuffled = shufflePairings(rawPairings, seed);
-    const assignmentResult = assignFixtures(shuffled, slots, input);
+    const byRound = [...shuffled].sort((a, b) => a.round - b.round);
+    const assignmentResult = assignFixtures(byRound, slots, input);
     return buildOutput(assignmentResult, input);
   }
 
@@ -1465,12 +1470,14 @@ export function runScheduleAlgorithm(
     // Generate pairings for this division's teams
     const rawPairings = generateDivisionPairings(division, input);
     const shuffled = shufflePairings(rawPairings, divSeed);
+    // Sort by round so same-round non-conflicting pairs pack onto the same day
+    const byRound = [...shuffled].sort((a, b) => a.round - b.round);
 
     // Filter slots for this division (required surface filter applied inside assignFixtures,
     // but we also need to pass slots that match the division's match duration window —
     // for surface-aware slots the slot endTime may differ from matchDuration, but slots
     // are generated with the top-level matchDurationMinutes; overlap detection handles the rest)
-    const assignmentResult = assignFixtures(shuffled, allSlots, input, divCtx);
+    const assignmentResult = assignFixtures(byRound, allSlots, input, divCtx);
 
     // Stamp fixtures with divisionId
     for (const a of assignmentResult.assigned) {

@@ -1,6 +1,5 @@
 import { CalendarDays, MapPin, Users } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
-import { RsvpButton } from '@/components/events/RsvpButton';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
@@ -43,8 +42,6 @@ function resolveParentTeams(
 
 export function ParentHomePage() {
   const profile = useAuthStore(s => s.profile);
-  const currentUserUid = useAuthStore(s => s.user?.uid ?? '');
-  const currentUserName = useAuthStore(s => s.profile?.displayName ?? '');
   const allTeams = useTeamStore(s => s.teams);
   const teamsLoading = useTeamStore(s => s.loading);
   const allEvents = useEventStore(s => s.events);
@@ -175,14 +172,6 @@ export function ParentHomePage() {
                       )}
                     </div>
 
-                    {/* RSVP */}
-                    <div className="flex-shrink-0">
-                      <RsvpButton
-                        eventId={event.id}
-                        currentUserUid={currentUserUid}
-                        currentUserName={currentUserName}
-                      />
-                    </div>
                   </div>
                 </Card>
               );

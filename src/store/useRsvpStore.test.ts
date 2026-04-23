@@ -5,6 +5,8 @@
  *   - submitRsvp writes to the correct Firestore path with correct data
  *   - submitRsvp writes a current updatedAt timestamp
  *   - submitRsvp propagates Firestore errors
+ *   - submitRsvp uses uid_playerId doc key when playerId provided (multi-child fix)
+ *   - submitRsvp stores playerId on the entry when provided
  *   - subscribeRsvps populates rsvps keyed by eventId from snapshot
  *   - subscribeRsvps returns an unsubscribe function
  *   - subscribeRsvps merges entries from different events without clobbering
@@ -69,6 +71,27 @@ describe('useRsvpStore — submitRsvp', () => {
     await expect(
       useRsvpStore.getState().submitRsvp('event-1', 'uid-1', 'Jane', 'yes')
     ).rejects.toThrow('Permission denied');
+  });
+
+  it('uses uid_playerId as doc key when playerId is provided', async () => {
+    await useRsvpStore.getState().submitRsvp('event-1', 'uid-parent', 'Kid A', 'yes', 'player-123');
+    const docRef = mockDoc.mock.calls[0] as unknown[];
+    expect(docRef[docRef.length - 1]).toBe('uid-parent_player-123');
+  });
+
+  it('stores playerId on the entry when provided', async () => {
+    await useRsvpStore.getState().submitRsvp('event-1', 'uid-parent', 'Kid A', 'yes', 'player-123');
+    const written = mockSetDoc.mock.calls[0][1] as RsvpEntry;
+    expect(written.playerId).toBe('player-123');
+    expect(written.uid).toBe('uid-parent');
+  });
+
+  it('omits playerId from entry and uses uid as doc key when playerId is not provided', async () => {
+    await useRsvpStore.getState().submitRsvp('event-1', 'uid-1', 'Jane', 'yes');
+    const docRef = mockDoc.mock.calls[0] as unknown[];
+    expect(docRef[docRef.length - 1]).toBe('uid-1');
+    const written = mockSetDoc.mock.calls[0][1] as RsvpEntry;
+    expect(written.playerId).toBeUndefined();
   });
 });
 

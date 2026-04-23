@@ -6,6 +6,7 @@ import { db } from '@/lib/firebase';
 
 export interface RsvpEntry {
   uid: string;
+  playerId?: string;
   name: string;
   response: 'yes' | 'no';
   updatedAt: string;
@@ -13,16 +14,17 @@ export interface RsvpEntry {
 
 interface RsvpStore {
   rsvps: Record<string, RsvpEntry[]>;
-  submitRsvp: (eventId: string, uid: string, name: string, response: 'yes' | 'no') => Promise<void>;
+  submitRsvp: (eventId: string, uid: string, name: string, response: 'yes' | 'no', playerId?: string) => Promise<void>;
   subscribeRsvps: (eventId: string) => () => void;
 }
 
 export const useRsvpStore = create<RsvpStore>((set) => ({
   rsvps: {},
 
-  submitRsvp: async (eventId, uid, name, response) => {
-    const entry: RsvpEntry = { uid, name, response, updatedAt: new Date().toISOString() };
-    await setDoc(doc(db, 'events', eventId, 'rsvps', uid), entry);
+  submitRsvp: async (eventId, uid, name, response, playerId) => {
+    const docKey = playerId ? `${uid}_${playerId}` : uid;
+    const entry: RsvpEntry = { uid, ...(playerId ? { playerId } : {}), name, response, updatedAt: new Date().toISOString() };
+    await setDoc(doc(db, 'events', eventId, 'rsvps', docKey), entry);
   },
 
   subscribeRsvps: (eventId) => {

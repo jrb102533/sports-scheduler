@@ -132,6 +132,7 @@ export function LeaguesPage() {
                 id: leagueId,
                 createdAt: now,
                 updatedAt: now,
+                isDeleted: false,
                 ...(managedBy ? { managedBy } : {}),
                 managerIds: profile?.uid ? [profile.uid] : [],
               };
