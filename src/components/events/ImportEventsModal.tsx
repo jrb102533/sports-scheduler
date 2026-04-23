@@ -249,6 +249,10 @@ export function ImportEventsModal({ open, onClose }: ImportEventsModalProps) {
 
   async function handleFile(file: File) {
     setParseError(null);
+    if (file.size > 5 * 1024 * 1024) {
+      setParseError('File too large. Please upload a file under 5 MB.');
+      return;
+    }
     const ext = file.name.split('.').pop()?.toLowerCase();
     if (!['xlsx', 'xls', 'csv'].includes(ext ?? '')) {
       setParseError('Please upload a .xlsx, .xls, or .csv file.');
