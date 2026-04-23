@@ -2842,32 +2842,47 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             )}
 
             {!isPracticeMode && (() => {
-              const teamTally = new Map<string, { name: string; count: number }>();
-              for (const f of result.fixtures) {
-                const h = teamTally.get(f.homeTeamId) ?? { name: f.homeTeamName, count: 0 };
-                h.count += 1;
-                teamTally.set(f.homeTeamId, h);
-                const a = teamTally.get(f.awayTeamId) ?? { name: f.awayTeamName, count: 0 };
-                a.count += 1;
-                teamTally.set(f.awayTeamId, a);
+              function tallyFixtures(fixtures: GeneratedFixture[]) {
+                const m = new Map<string, { name: string; count: number }>();
+                for (const f of fixtures) {
+                  const h = m.get(f.homeTeamId) ?? { name: f.homeTeamName, count: 0 };
+                  h.count += 1; m.set(f.homeTeamId, h);
+                  const a = m.get(f.awayTeamId) ?? { name: f.awayTeamName, count: 0 };
+                  a.count += 1; m.set(f.awayTeamId, a);
+                }
+                return Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name));
               }
-              if (teamTally.size === 0) return null;
-              const entries = Array.from(teamTally.values()).sort((a, b) => a.name.localeCompare(b.name));
-              const counts = entries.map(e => e.count);
-              const allEqual = counts.every(c => c === counts[0]);
+              const hasDivisions = result.divisionResults && result.divisionResults.length > 0;
+              const groups: Array<{ label: string | null; entries: { name: string; count: number }[] }> = hasDivisions
+                ? result.divisionResults!.map(dr => ({ label: dr.divisionName, entries: tallyFixtures(dr.fixtures) }))
+                : [{ label: null, entries: tallyFixtures(result.fixtures) }];
+              if (groups.every(g => g.entries.length === 0)) return null;
+              const allCounts = groups.flatMap(g => g.entries.map(e => e.count));
+              const globalEqual = allCounts.length > 0 && allCounts.every(c => c === allCounts[0]);
               return (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
-                  <p className="text-xs font-semibold text-gray-600 mb-1.5">Games per team</p>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    {entries.map(e => (
-                      <span key={e.name} className="text-xs text-gray-700">
-                        <span className="font-medium">{e.name}</span>
-                        <span className={`ml-1 font-bold ${allEqual ? 'text-green-700' : 'text-amber-700'}`}>{e.count}</span>
-                      </span>
-                    ))}
-                  </div>
-                  {!allEqual && (
-                    <p className="text-xs text-amber-700 mt-1.5">Teams have unequal game counts — season may be too short to balance all teams.</p>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 space-y-2">
+                  <p className="text-xs font-semibold text-gray-600">Games per team</p>
+                  {groups.map((g, gi) => {
+                    const counts = g.entries.map(e => e.count);
+                    const groupEqual = counts.length > 0 && counts.every(c => c === counts[0]);
+                    return (
+                      <div key={gi}>
+                        {g.label && (
+                          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{g.label}</p>
+                        )}
+                        <div className="flex flex-wrap gap-x-4 gap-y-1">
+                          {g.entries.map(e => (
+                            <span key={e.name} className="text-xs text-gray-700">
+                              <span className="font-medium">{e.name}</span>
+                              <span className={`ml-1 font-bold ${groupEqual ? 'text-green-700' : 'text-amber-700'}`}>{e.count}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!globalEqual && (
+                    <p className="text-xs text-amber-700">Teams have unequal game counts — season may be too short to balance all teams.</p>
                   )}
                 </div>
               );
