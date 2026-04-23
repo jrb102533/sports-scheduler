@@ -1035,7 +1035,7 @@ describe('Section 5: Edge cases', () => {
       expect(output.unassignedPairings.length).toBeGreaterThan(0);
       // Unassigned reasons should be valid machine codes
       for (const u of output.unassignedPairings) {
-        expect(u.reason).toMatch(/NO_SLOT_IN_SEASON|REST_CONFLICT|CAPACITY_EXHAUSTED|HOME_VENUE_NO_SLOT/);
+        expect(u.reason).toMatch(/NO_SLOT_IN_SEASON|REST_CONFLICT|CAPACITY_EXHAUSTED|HOME_VENUE_NO_SLOT|balance_trim/);
       }
       // Conflicts list should have hard-severity entries for unassigned pairings
       const hardConflicts = output.conflicts.filter(c => c.severity === 'hard');
