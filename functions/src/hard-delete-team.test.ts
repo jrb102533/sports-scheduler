@@ -6,15 +6,18 @@
  *   2.  Missing teamId in request data → 'invalid-argument'
  *   3.  Whitespace-only teamId → 'invalid-argument'
  *   4.  Team doc does not exist → 'not-found'
- *   5.  Caller is neither admin nor coach of the team → 'permission-denied'
+ *   5.  Non-admin caller (coach) → 'permission-denied' [admin-only operation]
+ *   5b. Non-admin outsider → 'permission-denied'
+ *   5c. Team not yet soft-deleted → 'failed-precondition'
  *   6.  Admin (legacy role field) is permitted regardless of coachIds membership
  *   7.  Admin via memberships array is permitted
- *   8.  Coach listed in coachIds is permitted
- *   9.  Coach via legacy coachId scalar is permitted (backfill compat)
- *   10. Coach via createdBy scalar is permitted (backfill compat)
- *   11. Happy path: recursiveDelete is called on the correct team ref
- *   12. Happy path: returns { success: true }
- *   13. Internal error from recursiveDelete is rethrown as HttpsError 'internal'
+ *   8.  Happy path: recursiveDelete is called on the correct team ref
+ *   9.  Happy path: returns { success: true }
+ *  10.  Internal error from recursiveDelete is rethrown as HttpsError 'internal'
+ *
+ * Note: hardDeleteTeam is intentionally admin-only. Coach access was considered
+ * and rejected — bypassing the soft-delete grace period is an admin-only action
+ * (design change made after the original tests were written; tests updated accordingly).
  *
  * Mocking strategy: follows the pattern established in delete-league.test.ts.
  * Firebase Functions and firebase-admin are mocked at the module boundary.
@@ -210,6 +213,8 @@ function seedBaseFixtures() {
   seedDoc(`users/${ADMIN_UID}`, { role: 'admin' });
   seedDoc(`users/${COACH_UID}`, { role: 'coach', memberships: [] });
   seedDoc(`users/${OUTSIDER_UID}`, { role: 'parent', memberships: [] });
+  // isDeleted: true is required — Step 2 of hardDeleteTeam enforces soft-delete
+  // must precede hard-delete. Tests that verify Step 2 override this in-test.
   seedDoc(`teams/${TEAM_ID}`, {
     id: TEAM_ID,
     name: 'Hawks',
@@ -270,9 +275,27 @@ describe('hardDeleteTeam', () => {
 
   // ── Permission guard ─────────────────────────────────────────────────────
 
-  it('(5) rejects a caller who is neither admin nor coach of the team', async () => {
+  it('(5) rejects a caller who is not admin (coaches are intentionally excluded)', async () => {
+    // hardDeleteTeam is admin-only — coaches cannot permanently delete teams.
+    // This is intentional: bypassing the soft-delete grace period is an admin-only action.
+    await expect(fn(makeRequest({ teamId: TEAM_ID }, COACH_UID))).rejects.toMatchObject({
+      code: 'permission-denied',
+    });
+  });
+
+  it('(5b) rejects a non-admin outsider caller', async () => {
     await expect(fn(makeRequest({ teamId: TEAM_ID }, OUTSIDER_UID))).rejects.toMatchObject({
       code: 'permission-denied',
+    });
+  });
+
+  // ── Soft-delete pre-condition ────────────────────────────────────────────
+
+  it('(5c) rejects when team has not been soft-deleted first', async () => {
+    // Overwrite the seeded team with isDeleted: false
+    seedDoc(`teams/${TEAM_ID}`, { id: TEAM_ID, name: 'Hawks', coachIds: [COACH_UID], isDeleted: false });
+    await expect(fn(makeRequest({ teamId: TEAM_ID }, ADMIN_UID))).rejects.toMatchObject({
+      code: 'failed-precondition',
     });
   });
 
@@ -296,36 +319,9 @@ describe('hardDeleteTeam', () => {
     expect(result).toEqual({ success: true });
   });
 
-  // ── Permission: coach paths (admin-only since SEC-93 — coaches blocked) ──
-
-  it('(8) rejects a coach listed in coachIds — hard delete is admin-only', async () => {
-    await expect(fn(makeRequest({ teamId: TEAM_ID }, COACH_UID))).rejects.toMatchObject({
-      code: 'permission-denied',
-    });
-  });
-
-  it('(9) rejects a caller with legacy coachId scalar — admin-only', async () => {
-    const legacyCoachUid = 'legacy-coach-uid';
-    seedDoc(`users/${legacyCoachUid}`, { role: 'coach', memberships: [] });
-    seedDoc(`rateLimits/${legacyCoachUid}_hardDeleteTeam`, { count: 0, windowStart: 0 });
-    seedDoc(`teams/${TEAM_ID}`, { id: TEAM_ID, name: 'Hawks', coachId: legacyCoachUid, isDeleted: true });
-
-    await expect(fn(makeRequest({ teamId: TEAM_ID }, legacyCoachUid))).rejects.toMatchObject({
-      code: 'permission-denied',
-    });
-  });
-
-  it('(10) rejects when team is NOT soft-deleted — precondition required', async () => {
-    seedDoc(`teams/${TEAM_ID}`, { id: TEAM_ID, name: 'Hawks', coachIds: [COACH_UID], isDeleted: false });
-
-    await expect(fn(makeRequest({ teamId: TEAM_ID }, ADMIN_UID))).rejects.toMatchObject({
-      code: 'failed-precondition',
-    });
-  });
-
   // ── Happy path ───────────────────────────────────────────────────────────
 
-  it('(11) calls recursiveDelete on the correct team document ref', async () => {
+  it('(8) calls recursiveDelete on the correct team document ref', async () => {
     await fn(makeRequest({ teamId: TEAM_ID }, ADMIN_UID));
 
     expect(_recursiveDeleteSpy).toHaveBeenCalledOnce();
@@ -333,14 +329,14 @@ describe('hardDeleteTeam', () => {
     expect(refArg.path).toBe(`teams/${TEAM_ID}`);
   });
 
-  it('(12) returns { success: true } on the happy path', async () => {
+  it('(9) returns { success: true } on the happy path', async () => {
     const result = await fn(makeRequest({ teamId: TEAM_ID }, ADMIN_UID));
     expect(result).toEqual({ success: true });
   });
 
   // ── Error handling ───────────────────────────────────────────────────────
 
-  it('(13) rethrows recursiveDelete errors as HttpsError with code "internal"', async () => {
+  it('(10) rethrows recursiveDelete errors as HttpsError with code "internal"', async () => {
     _recursiveDeleteSpy.mockRejectedValue(new Error('Firestore quota exceeded'));
 
     await expect(fn(makeRequest({ teamId: TEAM_ID }, ADMIN_UID))).rejects.toMatchObject({
