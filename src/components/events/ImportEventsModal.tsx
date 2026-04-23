@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { parseISO, format, parse, isValid } from 'date-fns';
 import { Upload, Download, CheckCircle, XCircle, FileSpreadsheet } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
@@ -119,20 +119,43 @@ function parseEventType(raw: string): EventType {
 }
 
 async function parseFile(file: File): Promise<Record<string, string>[]> {
-  return new Promise((resolve, reject) => {
+  const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const workbook = XLSX.read(e.target!.result, { type: 'binary', cellDates: true });
-        const ws = workbook.Sheets[workbook.SheetNames[0]];
-        resolve(XLSX.utils.sheet_to_json(ws, { defval: '' }) as Record<string, string>[]);
-      } catch (err) {
-        reject(err);
-      }
-    };
+    reader.onload = (e) => resolve(e.target!.result as ArrayBuffer);
     reader.onerror = reject;
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   });
+
+  const workbook = new ExcelJS.Workbook();
+  // exceljs declares `interface Buffer extends ArrayBuffer` — cast through unknown
+  // to satisfy the parameter type without requiring @types/node in the browser build.
+  await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0]);
+  const worksheet = workbook.worksheets[0];
+
+  const rows: Record<string, string>[] = [];
+  const headers: string[] = [];
+
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber === 1) {
+      // Collect header names from the first row (1-based values array)
+      (row.values as ExcelJS.CellValue[]).forEach((cell, idx) => {
+        if (idx === 0) return; // exceljs row.values[0] is always undefined
+        headers[idx] = cell != null ? String(cell) : '';
+      });
+      return;
+    }
+
+    const mapped: Record<string, string> = {};
+    (row.values as ExcelJS.CellValue[]).forEach((cell, idx) => {
+      if (idx === 0) return;
+      const header = headers[idx];
+      if (!header) return;
+      mapped[header] = cell != null ? String(cell) : '';
+    });
+    rows.push(mapped);
+  });
+
+  return rows;
 }
 
 const TEMPLATE_HEADERS = ['Title', 'Type', 'Date', 'Start Time', 'End Time', 'Location', 'Home Team', 'Away Team', 'Notes'];
@@ -226,6 +249,10 @@ export function ImportEventsModal({ open, onClose }: ImportEventsModalProps) {
 
   async function handleFile(file: File) {
     setParseError(null);
+    if (file.size > 5 * 1024 * 1024) {
+      setParseError('File too large. Please upload a file under 5 MB.');
+      return;
+    }
     const ext = file.name.split('.').pop()?.toLowerCase();
     if (!['xlsx', 'xls', 'csv'].includes(ext ?? '')) {
       setParseError('Please upload a .xlsx, .xls, or .csv file.');
