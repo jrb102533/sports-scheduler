@@ -4071,11 +4071,6 @@ export const publishSchedule = onCall<PublishScheduleData, Promise<PublishSchedu
     }
 
     const draftEventsSnap = await query.get();
-    if (draftEventsSnap.empty) {
-      console.log(`publishSchedule: no draft events found for leagueId=${leagueId} seasonId=${seasonId}${divisionId ? ` divisionId=${divisionId}` : ''}`);
-      return { publishedCount: 0 };
-    }
-
     const now = new Date().toISOString();
     const BATCH_SIZE = 490;
     let batch = db.batch();
@@ -4096,7 +4091,9 @@ export const publishSchedule = onCall<PublishScheduleData, Promise<PublishSchedu
       if (ops >= BATCH_SIZE) await flushBatch();
     }
 
-    // Update the division's scheduleStatus to published
+    // Always update the division's scheduleStatus to published when a divisionId is
+    // provided — even if there were no draft events (e.g. already-published events
+    // where only the status field was out of sync).
     if (divisionId) {
       const divRef = db.doc(`leagues/${leagueId}/divisions/${divisionId}`);
       batch.update(divRef, { scheduleStatus: 'published', updatedAt: now });
@@ -4125,7 +4122,11 @@ export const publishSchedule = onCall<PublishScheduleData, Promise<PublishSchedu
       console.log(`publishSchedule: season ${seasonId} status set to active`);
     }
 
-    console.log(`publishSchedule: published ${publishedCount} events for leagueId=${leagueId} seasonId=${seasonId}${divisionId ? ` divisionId=${divisionId}` : ''}`);
+    if (draftEventsSnap.empty) {
+      console.log(`publishSchedule: no draft events found, division status updated for leagueId=${leagueId} seasonId=${seasonId}${divisionId ? ` divisionId=${divisionId}` : ''}`);
+    } else {
+      console.log(`publishSchedule: published ${publishedCount} events for leagueId=${leagueId} seasonId=${seasonId}${divisionId ? ` divisionId=${divisionId}` : ''}`);
+    }
     return { publishedCount };
   }
 );
