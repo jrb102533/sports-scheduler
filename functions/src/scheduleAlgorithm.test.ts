@@ -547,6 +547,53 @@ describe('Section 3: Hard constraint enforcement', () => {
     });
   });
 
+  describe('round-based game packing (4 teams, 1 pitch, wide window)', () => {
+    // Regression: shuffle order used to cause all of one team's games to be
+    // processed first. Because daysBetween(futureLastGameDate, pastSlot) < 0 < minRestDays,
+    // the algorithm would skip earlier available slots, serialising games 1-per-week
+    // instead of packing 2 non-conflicting games per Saturday.
+    it('schedules at least 2 games per match-day when capacity allows', () => {
+      const seed = fnv32a('league-test|2026-04-25');
+      const input: GenerateScheduleInput = {
+        leagueId: 'league-test',
+        leagueName: 'Test League',
+        teams: [
+          { id: 'A', name: 'Team A' },
+          { id: 'B', name: 'Team B' },
+          { id: 'C', name: 'Team C' },
+          { id: 'D', name: 'Team D' },
+        ],
+        venues: [{
+          id: 'venue-1',
+          name: 'Main Venue',
+          concurrentPitches: 1,
+          availabilityWindows: [{ dayOfWeek: 6, startTime: '09:00', endTime: '17:00' }],
+        }],
+        seasonStart: '2026-04-25',
+        seasonEnd: '2026-06-27',
+        format: 'single_round_robin',
+        matchDurationMinutes: 60,
+        bufferMinutes: 15,
+        minRestDays: 6,
+        softConstraintPriority: [],
+        homeAwayMode: 'relaxed',
+      };
+
+      const output = runScheduleAlgorithm(input, seed);
+
+      // Count games per date
+      const gamesPerDate = new Map<string, number>();
+      for (const f of output.fixtures) {
+        gamesPerDate.set(f.date, (gamesPerDate.get(f.date) ?? 0) + 1);
+      }
+
+      // With a wide-enough window (8 hrs / 75-min slots = 6 slots per Sat),
+      // at least one Saturday should have 2 games (the 2 non-conflicting round-mates).
+      const datesWithTwoPlus = Array.from(gamesPerDate.values()).filter(c => c >= 2);
+      expect(datesWithTwoPlus.length).toBeGreaterThan(0);
+    });
+  });
+
   describe('minimum rest days hard floor', () => {
     it('enforces minRestDays = 2 across all teams', () => {
       const input = buildFixture({

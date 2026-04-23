@@ -5,7 +5,6 @@ import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EventStatusBadge } from './EventStatusBadge';
-import { RsvpButton } from './RsvpButton';
 import { formatDate, formatTime } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, EVENT_TYPE_BADGE_CLASSES } from '@/constants';
 import type { ScheduledEvent, Team } from '@/types';
@@ -186,7 +185,6 @@ export function EventCard({ event, teams, onClick }: EventCardProps) {
   const user = useAuthStore(s => s.user);
   const profile = useAuthStore(s => s.profile);
   const cardUserUid = user?.uid ?? null;
-  const cardUserName = profile?.displayName ?? profile?.email ?? '';
   const showInteractive = cardUserUid !== null && event.status !== 'completed' && event.status !== 'cancelled';
 
   return (
@@ -265,10 +263,9 @@ export function EventCard({ event, teams, onClick }: EventCardProps) {
 
           <RsvpIndicator event={event} onOpenDetail={onClick} />
 
-          {/* RSVP + snack status — shown for all authenticated users */}
+          {/* Snack status — shown for all authenticated users */}
           {showInteractive && (
             <div className="mt-3 pt-2.5 border-t border-gray-100 space-y-2" onClick={e => e.stopPropagation()}>
-              <RsvpButton eventId={event.id} currentUserUid={cardUserUid!} currentUserName={cardUserName} />
               {(event.snackSignups?.length ?? 0) > 0 && (
                 <div className="inline-flex items-center gap-1.5 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-3 py-1">
                   <span aria-hidden="true">🍎</span>

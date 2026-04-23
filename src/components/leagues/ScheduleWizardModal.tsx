@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { httpsCallable, getFunctions } from 'firebase/functions';
-import { collection, getDocs, setDoc, updateDoc, doc, query, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, setDoc, updateDoc, doc, query, orderBy, limit, where, deleteDoc } from 'firebase/firestore';
 import {
   Calendar, MapPin, Users, Wand2, CheckCircle2, AlertTriangle,
   AlertCircle, ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
@@ -1293,6 +1293,27 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     // Auto field assignment: round-robin across fields per venue+date+time slot
     const fieldSlotCounter = new Map<string, number>();
     try {
+      // Clear stale draft events for this season/division before saving new ones
+      if (season?.id) {
+        const staleSnap = await getDocs(
+          query(
+            collection(db, 'events'),
+            where('seasonId', '==', season.id),
+            where('status', '==', 'draft'),
+          )
+        );
+        if (!staleSnap.empty) {
+          const divIds = result.divisionResults && result.divisionResults.length > 0
+            ? new Set(result.divisionResults.map(dr => dr.divisionId))
+            : divisionId ? new Set([divisionId]) : null;
+          const toDelete = divIds
+            ? staleSnap.docs.filter(d => divIds.has(d.data().divisionId as string))
+            : staleSnap.docs;
+          if (toDelete.length > 0) {
+            await Promise.all(toDelete.map(d => deleteDoc(d.ref)));
+          }
+        }
+      }
       // SEC-15: Always save events as draft. The transition to 'scheduled' is
       // handled exclusively by the publishSchedule Cloud Function, which
       // enforces server-side league-manager ownership and validation.
