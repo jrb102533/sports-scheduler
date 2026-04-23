@@ -1999,7 +1999,7 @@ export const sendRsvpFollowups = onSchedule(
 
 // ─── Event updated → cancellation notifications + game result broadcast ───────
 
-export const onEventCancelled = onDocumentUpdated(
+export const onEventUpdated = onDocumentUpdated(
   {
     document: 'events/{eventId}',
     secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
@@ -2016,7 +2016,18 @@ export const onEventCancelled = onDocumentUpdated(
       gameTypes.includes(after.type) &&
       (after.result.homeScore !== undefined || after.result.awayScore !== undefined);
 
-    if (!isCancellation && !isResultSet) return;
+    const isRescheduled = before.status !== 'cancelled' &&
+      after.status !== 'cancelled' &&
+      !isCancellation &&
+      (
+        before.date !== after.date ||
+        before.startTime !== after.startTime ||
+        before.endTime !== after.endTime ||
+        before.location !== after.location ||
+        before.venueId !== after.venueId
+      );
+
+    if (!isCancellation && !isResultSet && !isRescheduled) return;
 
     const teamIds: string[] = after.teamIds ?? [];
     if (!teamIds.length) return;
@@ -2028,7 +2039,7 @@ export const onEventCancelled = onDocumentUpdated(
       .get();
 
     if (playersSnap.empty) {
-      console.log(`onEventCancelled/onResultSet: no players found for teams`, teamIds);
+      console.log(`onEventUpdated/onResultSet: no players found for teams`, teamIds);
       return;
     }
 
@@ -2132,9 +2143,9 @@ export const onEventCancelled = onDocumentUpdated(
       }
       await batch.commit();
 
-      console.log(`onEventCancelled: sent ${emails.length} cancellation email(s) and ${notifCount} in-app notification(s) for "${eventTitle}"`);
+      console.log(`onEventUpdated: sent ${emails.length} cancellation email(s) and ${notifCount} in-app notification(s) for "${eventTitle}"`);
       } catch (err) {
-        console.error('onEventCancelled: cancellation block failed', err);
+        console.error('onEventUpdated: cancellation block failed', err);
       }
     }
 
@@ -2186,9 +2197,146 @@ export const onEventCancelled = onDocumentUpdated(
       }
       await batch.commit();
 
-      console.log(`onEventCancelled/onResultSet: sent ${notifCount} result notification(s) for "${eventTitle}" — ${resultSummary}`);
+      console.log(`onEventUpdated/onResultSet: sent ${notifCount} result notification(s) for "${eventTitle}" — ${resultSummary}`);
       } catch (err) {
-        console.error('onEventCancelled: result broadcast block failed', err);
+        console.error('onEventUpdated: result broadcast block failed', err);
+      }
+    }
+
+    // ── Item 3: Reschedule notification ──────────────────────────────────────
+    if (isRescheduled) {
+      try {
+      const eventTitle: string = after.title ?? 'Event';
+      const type: string = after.type ?? 'event';
+
+      const oldDate: string = before.date ?? '';
+      const oldStart: string = before.startTime ?? '';
+      const oldEnd: string = before.endTime ?? '';
+      const oldLocation: string = before.location ?? '';
+
+      const newDate: string = after.date ?? '';
+      const newStart: string = after.startTime ?? '';
+      const newEnd: string = after.endTime ?? '';
+      const newLocation: string = after.location ?? '';
+
+      const teamIds: string[] = after.teamIds ?? [];
+
+      let teamName = '';
+      if (teamIds[0]) {
+        const teamDoc = await admin.firestore().doc(`teams/${teamIds[0]}`).get();
+        teamName = teamDoc.data()?.name ?? '';
+      }
+
+      const recipients: { playerId: string; name: string; address: string }[] = [];
+      for (const p of playersSnap.docs) {
+        const d = p.data();
+        const name: string = `${d.firstName ?? ''} ${d.lastName ?? ''}`.trim() || 'Player';
+        const addrs: string[] = [
+          d.email,
+          d.parentContact?.parentEmail,
+          d.parentContact2?.parentEmail,
+        ].filter((e: any): e is string => typeof e === 'string' && e.trim().length > 0);
+        addrs.forEach(address => recipients.push({ playerId: p.id, name, address }));
+      }
+
+      const changedFields: string[] = [];
+      if (before.date !== after.date) changedFields.push('date');
+      if (before.startTime !== after.startTime || before.endTime !== after.endTime) changedFields.push('time');
+      if (before.location !== after.location || before.venueId !== after.venueId) changedFields.push('location');
+      const changeLabel = changedFields.join(', ');
+
+      const oldDetailsHtml = `
+        <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:8px">
+          ${oldDate ? `<tr><td style="padding:4px 8px 4px 0;width:80px">Was date</td><td style="color:#111827;text-decoration:line-through">${esc(oldDate)}</td></tr>` : ''}
+          ${oldStart ? `<tr><td style="padding:4px 8px 4px 0">Was time</td><td style="color:#111827;text-decoration:line-through">${esc(oldStart)}${oldEnd ? ` – ${esc(oldEnd)}` : ''}</td></tr>` : ''}
+          ${oldLocation ? `<tr><td style="padding:4px 8px 4px 0">Was location</td><td style="color:#111827;text-decoration:line-through">${esc(oldLocation)}</td></tr>` : ''}
+        </table>`;
+
+      const newDetailsHtml = `
+        <p style="font-weight:600;margin:0 0 8px;color:#1B3A6B">New details</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:8px">
+          <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${esc(eventTitle)}</td></tr>
+          ${newDate ? `<tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(newDate)}</td></tr>` : ''}
+          ${newStart ? `<tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(newStart)}${newEnd ? ` – ${esc(newEnd)}` : ''}</td></tr>` : ''}
+          ${newLocation ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${esc(newLocation)}</td></tr>` : ''}
+        </table>`;
+
+      const messageHtml = `
+        <p style="font-weight:600;margin:0 0 16px;color:#1B3A6B">A ${esc(type)} has been rescheduled (${esc(changeLabel)} changed)</p>
+        ${oldDetailsHtml}
+        ${newDetailsHtml}
+        <p style="margin:16px 0 4px;font-size:13px;color:#6b7280">Your previous RSVP may no longer reflect your availability — please update below.</p>`;
+
+      const transporter = createTransporter();
+
+      await Promise.allSettled(recipients.map(({ playerId, name, address }) => {
+        const token = signRsvpToken(eventId, playerId);
+        const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(playerId)}&n=${encodeURIComponent(name)}&t=${token}`;
+        const yesUrl = `${base}&r=yes`;
+        const noUrl = `${base}&r=no`;
+        const maybeUrl = `${base}&r=maybe`;
+
+        return transporter.sendMail({
+          from: emailFrom.value(),
+          to: `${name} <${address}>`,
+          subject: `First Whistle: ${eventTitle} has been rescheduled`,
+          text: [
+            teamName ? `Team: ${teamName}` : '',
+            `Event: ${eventTitle}`,
+            `Change: ${changeLabel}`,
+            '',
+            'Previous details:',
+            oldDate ? `  Was date: ${oldDate}` : '',
+            oldStart ? `  Was time: ${oldStart}${oldEnd ? ` – ${oldEnd}` : ''}` : '',
+            oldLocation ? `  Was location: ${oldLocation}` : '',
+            '',
+            'New details:',
+            newDate ? `  Date: ${newDate}` : '',
+            newStart ? `  Time: ${newStart}${newEnd ? ` – ${newEnd}` : ''}` : '',
+            newLocation ? `  Location: ${newLocation}` : '',
+            '',
+            'Update your RSVP:',
+            `  Yes: ${yesUrl}`,
+            `  No: ${noUrl}`,
+            `  Maybe: ${maybeUrl}`,
+          ].filter(Boolean).join('\n'),
+          html: buildEmail({
+            recipientName: name,
+            preheader: `${eventTitle} has been rescheduled — ${changeLabel} changed`,
+            title: `${type} rescheduled`,
+            message: messageHtml,
+            extraHtml: rsvpButtonsHtml(yesUrl, noUrl, maybeUrl),
+            teamName,
+          }),
+        });
+      }));
+
+      const notifTitle = `${eventTitle} rescheduled`;
+      const notifMessage = `${eventTitle} has been rescheduled (${changeLabel} changed). New date: ${newDate}${newStart ? ` at ${newStart}` : ''}.`;
+      const createdAt = new Date().toISOString();
+
+      const batch = admin.firestore().batch();
+      let notifCount = 0;
+      for (const [, uid] of userUidMap.entries()) {
+        const notifRef = admin.firestore()
+          .collection('users').doc(uid)
+          .collection('notifications').doc();
+        batch.set(notifRef, {
+          id: notifRef.id,
+          type: 'info',
+          title: notifTitle,
+          message: notifMessage,
+          relatedEventId: eventId,
+          isRead: false,
+          createdAt,
+        });
+        notifCount++;
+      }
+      await batch.commit();
+
+      console.log(`onEventUpdated: sent ${recipients.length} reschedule email(s) and ${notifCount} in-app notification(s) for "${eventTitle}"`);
+      } catch (err) {
+        console.error('onEventUpdated: reschedule block failed', err);
       }
     }
   }
@@ -5715,3 +5863,101 @@ export const submitRsvp = onCall(async (request) => {
 
   return { success: true };
 });
+
+// ─── Team schedule ICS export (public HTTP, no auth) ─────────────────────────
+
+/** Fold a single ICS property line at 75 octets per RFC 5545 §3.1. */
+function foldLine(line: string): string {
+  const bytes = Buffer.from(line, 'utf8');
+  if (bytes.length <= 75) return line;
+  const parts: string[] = [];
+  let offset = 0;
+  let first = true;
+  while (offset < bytes.length) {
+    const chunkSize = first ? 75 : 74;
+    first = false;
+    parts.push((parts.length > 0 ? ' ' : '') + bytes.slice(offset, offset + chunkSize).toString('utf8'));
+    offset += chunkSize;
+  }
+  return parts.join('\r\n');
+}
+
+export const exportTeamSchedule = onRequest(
+  { cors: false },
+  async (req, res) => {
+    const teamId = req.query['teamId'] as string | undefined;
+
+    if (!teamId?.trim()) {
+      res.status(400).send('teamId is required.');
+      return;
+    }
+
+    const db = admin.firestore();
+
+    const teamSnap = await db.doc(`teams/${teamId}`).get();
+    if (!teamSnap.exists) {
+      res.status(404).send('Team not found.');
+      return;
+    }
+    const teamName: string = teamSnap.data()?.name ?? 'Team';
+
+    const eventsSnap = await db.collection('events')
+      .where('teamIds', 'array-contains', teamId)
+      .where('status', 'not-in', ['draft'])
+      .get();
+
+    const lines: string[] = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//First Whistle//Sports Scheduler//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      foldLine(`X-WR-CALNAME:${icalEscape(teamName)} Schedule`),
+      'X-WR-TIMEZONE:America/Chicago',
+    ];
+
+    for (const doc of eventsSnap.docs) {
+      const e = doc.data();
+      const startTime: string = e.startTime ?? '09:00';
+      const dtstart = `TZID=America/Chicago:${(e.date as string ?? '').replace(/-/g, '')}T${startTime.replace(':', '')}00`;
+      const endTime: string = e.endTime ?? '';
+      let dtend: string;
+      if (endTime) {
+        dtend = `TZID=America/Chicago:${(e.date as string ?? '').replace(/-/g, '')}T${endTime.replace(':', '')}00`;
+      } else {
+        const d = new Date(`${e.date as string}T${startTime}:00`);
+        d.setMinutes(d.getMinutes() + 90);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        dtend = `TZID=America/Chicago:${(e.date as string ?? '').replace(/-/g, '')}T${hh}${mm}00`;
+      }
+
+      const status = e.status === 'cancelled' ? 'CANCELLED' : 'CONFIRMED';
+
+      const dtstamp = e.updatedAt
+        ? new Date(e.updatedAt as string).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+        : new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+      const description = [e.type ?? 'event', teamName].filter(Boolean).join(' — ');
+
+      lines.push('BEGIN:VEVENT');
+      lines.push(`UID:${doc.id}@firstwhistle.app`);
+      lines.push(`DTSTAMP:${dtstamp}`);
+      lines.push(foldLine(`DTSTART;${dtstart}`));
+      lines.push(foldLine(`DTEND;${dtend}`));
+      lines.push(foldLine(`SUMMARY:${icalEscape(e.title ?? 'Event')}`));
+      lines.push(`STATUS:${status}`);
+      if (e.location) lines.push(foldLine(`LOCATION:${icalEscape(e.location as string)}`));
+      lines.push(foldLine(`DESCRIPTION:${icalEscape(description)}`));
+      if (e.updatedAt) lines.push(`LAST-MODIFIED:${dtstamp}`);
+      lines.push('END:VEVENT');
+    }
+
+    lines.push('END:VCALENDAR');
+
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="schedule.ics"');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(lines.join('\r\n'));
+  }
+);

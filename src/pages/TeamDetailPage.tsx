@@ -357,7 +357,7 @@ export function TeamDetailPage() {
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm text-gray-500">{teamEvents.length} {teamEvents.length === 1 ? 'event' : 'events'}</p>
             <div className="flex items-center gap-2">
-              <SubscribeToCalendarButton />
+              <SubscribeToCalendarButton teamId={teamId} />
               <RoleGuard roles={['admin', 'league_manager', 'coach']}>
                 <Button size="sm" onClick={() => setEventFormOpen(true)}><Plus size={14} /> Add Event</Button>
               </RoleGuard>
