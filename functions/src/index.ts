@@ -5563,6 +5563,7 @@ export const syncUserClaims = onDocumentWritten(
 
     if (!after?.exists) {
       // Document was deleted — clear custom claims so stale role is not retained.
+      // SEC-78: let errors propagate so Eventarc retries (retry: true on this trigger).
       await admin.auth().setCustomUserClaims(uid, {});
       console.log(`syncUserClaims: cleared claims for deleted uid=${uid}`);
       return;
@@ -5577,7 +5578,7 @@ export const syncUserClaims = onDocumentWritten(
       console.log(`syncUserClaims: set role=${role} for uid=${uid}`);
     } catch (err: unknown) {
       console.error(`syncUserClaims: failed to set claims for uid=${uid}`, (err as Error)?.message);
-      return;
+      throw err; // SEC-78: allow Eventarc platform retry
     }
 
     // SEC-77: revoke refresh tokens when role is demoted so the next Auth
@@ -5624,6 +5625,92 @@ export const refreshClaims = onCall(async (request) => {
   } catch (err: unknown) {
     console.error(`refreshClaims: failed to set claims for uid=${uid}:`, (err as Error)?.message);
     throw new HttpsError('internal', 'Failed to refresh claims. Please try again.');
+  }
+
+  return { success: true };
+});
+
+// ─── Submit RSVP (callable) ───────────────────────────────────────────────────
+
+/**
+ * Callable that writes an RSVP entry to events/{eventId}/rsvps/{docKey}.
+ *
+ * SEC-99 / SEC-81: RSVP writes are blocked by `allow write: if false` in
+ * Firestore rules. All RSVP writes must go through this function so that
+ * ownership of the playerId is validated server-side.
+ *
+ * Self-RSVP (coach/player RSVPing for themselves):
+ *   - Omit playerId — the caller's uid is used as both the playerId and the
+ *     doc key, matching the existing uid-only key format in useRsvpStore.
+ *
+ * Parent RSVPing for a child:
+ *   - Provide playerId — validated against the parent's memberships[] array.
+ *   - Doc key is uid_playerId (matches useRsvpStore's existing format).
+ *
+ * Rate-limited to 20 calls per minute per user.
+ */
+export const submitRsvp = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Not signed in.');
+  const uid = request.auth.uid;
+
+  await checkRateLimit(uid, 'submitRsvp', 20);
+
+  const data = request.data as {
+    eventId?: unknown;
+    playerId?: unknown;
+    name?: unknown;
+    response?: unknown;
+  };
+
+  const eventId = typeof data.eventId === 'string' ? data.eventId.trim() : '';
+  if (!eventId) throw new HttpsError('invalid-argument', 'eventId is required.');
+
+  const name = typeof data.name === 'string' ? data.name.trim() : '';
+  if (!name) throw new HttpsError('invalid-argument', 'name is required.');
+
+  const VALID_RESPONSES = new Set(['yes', 'no', 'maybe']);
+  const response = typeof data.response === 'string' ? data.response : '';
+  if (!VALID_RESPONSES.has(response)) {
+    throw new HttpsError('invalid-argument', 'response must be "yes", "no", or "maybe".');
+  }
+
+  const db = admin.firestore();
+
+  // Determine effectivePlayerId — empty/absent means self-RSVP.
+  const rawPlayerId = typeof data.playerId === 'string' ? data.playerId.trim() : '';
+  const effectivePlayerId = rawPlayerId || uid;
+  const isSelf = effectivePlayerId === uid;
+
+  if (!isSelf) {
+    // Validate ownership: caller must have this playerId in their memberships[].
+    const profileSnap = await db.doc(`users/${uid}`).get();
+    if (!profileSnap.exists) throw new HttpsError('not-found', 'User profile not found.');
+    const profile = profileSnap.data()!;
+    const memberships: Array<{ playerId?: string }> = profile.memberships ?? [];
+    if (!memberships.some(m => m.playerId === effectivePlayerId)) {
+      throw new HttpsError('permission-denied', 'You do not have permission to RSVP for this player.');
+    }
+  }
+
+  // Doc key format matches useRsvpStore: uid for self-RSVP, uid_playerId for proxy.
+  const docKey = isSelf ? uid : `${uid}_${effectivePlayerId}`;
+
+  const entry: Record<string, unknown> = {
+    uid,
+    name,
+    response,
+    updatedAt: new Date().toISOString(),
+  };
+  if (!isSelf) {
+    entry.playerId = effectivePlayerId;
+  }
+
+  try {
+    await db.doc(`events/${eventId}/rsvps/${docKey}`).set(entry);
+    console.log(`submitRsvp: uid=${uid} eventId=${eventId} docKey=${docKey} response=${response}`);
+  } catch (err: unknown) {
+    console.error('submitRsvp: Firestore write failed:', (err as Error)?.message);
+    throw new HttpsError('internal', 'Failed to save RSVP. Please try again.');
   }
 
   return { success: true };

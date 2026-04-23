@@ -6,7 +6,7 @@
  *   2.  Document created/updated with role='coach'     → setCustomUserClaims({ role: 'coach' })
  *   3.  Document created/updated with role=undefined   → setCustomUserClaims({ role: null })
  *   4.  Document deleted (after.exists = false)        → setCustomUserClaims({}) — claims cleared
- *   5.  setCustomUserClaims throws                     → logs error, does not rethrow
+ *   5.  setCustomUserClaims throws                     → logs error and re-throws (SEC-78: allow retry)
  *
  * refreshClaims
  *   6.  Unauthenticated caller                         → HttpsError('unauthenticated')
@@ -22,14 +22,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // other code runs. Variables inside vi.hoisted() are also hoisted and can be
 // referenced safely inside vi.mock() factories.
 
-const { claimsStore, firestoreStore, mockSetCustomUserClaims, mockGetUser } = vi.hoisted(() => {
+const { claimsStore, firestoreStore, mockSetCustomUserClaims, mockGetUser, mockRevokeRefreshTokens } = vi.hoisted(() => {
   const claimsStore = new Map<string, Record<string, unknown>>();
   const firestoreStore = new Map<string, Record<string, unknown>>();
   const mockSetCustomUserClaims = vi.fn(async (uid: string, claims: Record<string, unknown>) => {
     claimsStore.set(uid, claims);
   });
   const mockGetUser = vi.fn().mockResolvedValue({ uid: 'test', customClaims: {}, email: 'test@test.com' });
-  return { claimsStore, firestoreStore, mockSetCustomUserClaims, mockGetUser };
+  const mockRevokeRefreshTokens = vi.fn().mockResolvedValue(undefined);
+  return { claimsStore, firestoreStore, mockSetCustomUserClaims, mockGetUser, mockRevokeRefreshTokens };
 });
 
 // ─── Firebase Functions mocks ─────────────────────────────────────────────────
@@ -142,6 +143,7 @@ vi.mock('firebase-admin', () => {
 
   const authInstance = {
     setCustomUserClaims: mockSetCustomUserClaims,
+    revokeRefreshTokens: mockRevokeRefreshTokens,
     getUser: mockGetUser,
     createUser: vi.fn().mockResolvedValue({ uid: 'new-uid' }),
     deleteUser: vi.fn().mockResolvedValue(undefined),
@@ -193,6 +195,7 @@ describe('syncUserClaims', () => {
     claimsStore.clear();
     firestoreStore.clear();
     mockSetCustomUserClaims.mockClear();
+    mockRevokeRefreshTokens.mockClear();
   });
 
   it('sets role=admin when user doc has role=admin', async () => {
@@ -219,13 +222,14 @@ describe('syncUserClaims', () => {
     expect(mockSetCustomUserClaims).toHaveBeenCalledWith('uid-4', {});
   });
 
-  it('logs error and does not rethrow when setCustomUserClaims throws on write', async () => {
-    mockSetCustomUserClaims.mockRejectedValueOnce(new Error('Auth SDK unavailable'));
+  it('logs error and re-throws when setCustomUserClaims throws on write (SEC-78: allow platform retry)', async () => {
+    const authError = new Error('Auth SDK unavailable');
+    mockSetCustomUserClaims.mockRejectedValueOnce(authError);
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const event = makeWriteEvent('uid-5', { role: 'coach' });
     await expect(
       (syncUserClaims as unknown as (e: unknown) => Promise<void>)(event)
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow('Auth SDK unavailable');
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('uid-5'),
       expect.any(String),

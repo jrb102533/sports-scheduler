@@ -2,11 +2,13 @@
  * useRsvpStore — unit tests
  *
  * Behaviors under test:
- *   - submitRsvp writes to the correct Firestore path with correct data
- *   - submitRsvp writes a current updatedAt timestamp
- *   - submitRsvp propagates Firestore errors
- *   - submitRsvp uses uid_playerId doc key when playerId provided (multi-child fix)
- *   - submitRsvp stores playerId on the entry when provided
+ *   - submitRsvp calls the submitRsvp Cloud Function (not setDoc directly)
+ *   - submitRsvp forwards eventId, name, response to the CF
+ *   - submitRsvp forwards playerId when provided (parent→child)
+ *   - submitRsvp omits playerId when not provided (self-RSVP)
+ *   - submitRsvp propagates CF errors
+ *   - self-RSVP (no playerId) calls CF without playerId field
+ *   - self-RSVP (playerId === uid) calls CF without playerId field
  *   - subscribeRsvps populates rsvps keyed by eventId from snapshot
  *   - subscribeRsvps returns an unsubscribe function
  *   - subscribeRsvps merges entries from different events without clobbering
@@ -15,21 +17,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { RsvpEntry } from './useRsvpStore';
 
+// ── Cloud Functions mock ──────────────────────────────────────────────────────
+
+const mockCallableFn = vi.fn().mockResolvedValue({ data: { success: true } });
+const mockHttpsCallable = vi.fn(() => mockCallableFn);
+
+vi.mock('firebase/functions', () => ({
+  httpsCallable: (...args: unknown[]) => mockHttpsCallable(...args),
+}));
+
 // ── Firestore mock ────────────────────────────────────────────────────────────
 
-const mockSetDoc = vi.fn();
 const mockOnSnapshot = vi.fn(() => () => {});
-const mockDoc = vi.fn((...args) => ({ _path: args.slice(1).join('/') }));
 const mockCollection = vi.fn(() => ({}));
 
 vi.mock('firebase/firestore', () => ({
   collection: (...args: unknown[]) => mockCollection(...args),
   onSnapshot: (...args: unknown[]) => mockOnSnapshot(...args),
-  doc: (...args: unknown[]) => mockDoc(...args),
-  setDoc: (...args: unknown[]) => mockSetDoc(...args),
 }));
 
-vi.mock('@/lib/firebase', () => ({ db: {} }));
+vi.mock('@/lib/firebase', () => ({ db: {}, functions: {} }));
 
 // ── Import store after mocks ──────────────────────────────────────────────────
 
@@ -39,59 +46,65 @@ import { useRsvpStore } from './useRsvpStore';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockSetDoc.mockResolvedValue(undefined);
+  mockCallableFn.mockResolvedValue({ data: { success: true } });
   useRsvpStore.setState({ rsvps: {} });
 });
 
 // ── submitRsvp() ──────────────────────────────────────────────────────────────
 
 describe('useRsvpStore — submitRsvp', () => {
-  it('calls setDoc once', async () => {
+  it('calls the submitRsvp Cloud Function via httpsCallable', async () => {
     await useRsvpStore.getState().submitRsvp('event-1', 'uid-1', 'Jane', 'yes');
-    expect(mockSetDoc).toHaveBeenCalledOnce();
+    expect(mockHttpsCallable).toHaveBeenCalledOnce();
+    expect(mockHttpsCallable).toHaveBeenCalledWith({}, 'submitRsvp');
+    expect(mockCallableFn).toHaveBeenCalledOnce();
   });
 
-  it('writes the correct response to Firestore', async () => {
+  it('forwards eventId, name, and response to the CF', async () => {
     await useRsvpStore.getState().submitRsvp('event-1', 'uid-1', 'Jane', 'no');
-    const written = mockSetDoc.mock.calls[0][1] as RsvpEntry;
-    expect(written.response).toBe('no');
-    expect(written.uid).toBe('uid-1');
-    expect(written.name).toBe('Jane');
+    const payload = mockCallableFn.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.eventId).toBe('event-1');
+    expect(payload.name).toBe('Jane');
+    expect(payload.response).toBe('no');
   });
 
-  it('writes a non-empty updatedAt timestamp', async () => {
+  it('forwards playerId to the CF when provided (parent→child RSVP)', async () => {
+    await useRsvpStore.getState().submitRsvp('event-1', 'uid-parent', 'Kid A', 'yes', 'player-123');
+    const payload = mockCallableFn.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.playerId).toBe('player-123');
+  });
+
+  it('omits playerId from CF payload when not provided (self-RSVP)', async () => {
     await useRsvpStore.getState().submitRsvp('event-1', 'uid-1', 'Jane', 'yes');
-    const written = mockSetDoc.mock.calls[0][1] as RsvpEntry;
-    expect(typeof written.updatedAt).toBe('string');
-    expect(written.updatedAt.length).toBeGreaterThan(0);
+    const payload = mockCallableFn.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.playerId).toBeUndefined();
   });
 
-  it('propagates Firestore errors', async () => {
-    mockSetDoc.mockRejectedValue(new Error('Permission denied'));
+  it('propagates CF errors', async () => {
+    mockCallableFn.mockRejectedValue(new Error('permission-denied'));
     await expect(
       useRsvpStore.getState().submitRsvp('event-1', 'uid-1', 'Jane', 'yes')
-    ).rejects.toThrow('Permission denied');
+    ).rejects.toThrow('permission-denied');
   });
 
-  it('uses uid_playerId as doc key when playerId is provided', async () => {
-    await useRsvpStore.getState().submitRsvp('event-1', 'uid-parent', 'Kid A', 'yes', 'player-123');
-    const docRef = mockDoc.mock.calls[0] as unknown[];
-    expect(docRef[docRef.length - 1]).toBe('uid-parent_player-123');
+  // Self-RSVP: no playerId provided — CF handles self-RSVP path without
+  // reading the caller's profile (no ownership check needed).
+  it('self-RSVP (no playerId): calls CF once without a playerId field', async () => {
+    await useRsvpStore.getState().submitRsvp('event-2', 'uid-coach', 'Coach Bob', 'yes');
+    expect(mockCallableFn).toHaveBeenCalledOnce();
+    const payload = mockCallableFn.mock.calls[0][0] as Record<string, unknown>;
+    expect('playerId' in payload).toBe(false);
   });
 
-  it('stores playerId on the entry when provided', async () => {
-    await useRsvpStore.getState().submitRsvp('event-1', 'uid-parent', 'Kid A', 'yes', 'player-123');
-    const written = mockSetDoc.mock.calls[0][1] as RsvpEntry;
-    expect(written.playerId).toBe('player-123');
-    expect(written.uid).toBe('uid-parent');
-  });
-
-  it('omits playerId from entry and uses uid as doc key when playerId is not provided', async () => {
-    await useRsvpStore.getState().submitRsvp('event-1', 'uid-1', 'Jane', 'yes');
-    const docRef = mockDoc.mock.calls[0] as unknown[];
-    expect(docRef[docRef.length - 1]).toBe('uid-1');
-    const written = mockSetDoc.mock.calls[0][1] as RsvpEntry;
-    expect(written.playerId).toBeUndefined();
+  // Self-RSVP: caller supplies their own uid as playerId — treated identically
+  // to the no-playerId case on the store side.
+  it('self-RSVP (playerId === uid): still passes playerId to CF for server deduplication', async () => {
+    // The store is a thin caller — uid-as-playerId is handled by the CF, not the store.
+    // The store only omits playerId when the caller does not pass one.
+    await useRsvpStore.getState().submitRsvp('event-2', 'uid-coach', 'Coach Bob', 'yes', 'uid-coach');
+    const payload = mockCallableFn.mock.calls[0][0] as Record<string, unknown>;
+    // playerId is forwarded — the CF will normalise it to a self-RSVP
+    expect(payload.playerId).toBe('uid-coach');
   });
 });
 
