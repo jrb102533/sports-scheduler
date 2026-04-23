@@ -5903,7 +5903,7 @@ export const exportTeamSchedule = onRequest(
 
     const eventsSnap = await db.collection('events')
       .where('teamIds', 'array-contains', teamId)
-      .where('status', '==', 'published')
+      .where('status', 'not-in', ['draft'])
       .get();
 
     const lines: string[] = [
