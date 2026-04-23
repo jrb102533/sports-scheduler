@@ -86,7 +86,7 @@ import { useAuthStore } from './useAuthStore';
 
 const RESTRICTED_EMAIL = 'newparent@blocked.com';
 const VALID_SECRET = 'valid-invite-secret-uuid';
-const ALLOWLIST_ERROR = 'This is a test environment. Sign-ups are restricted to authorized testers. Contact the administrator to request access.';
+const ALLOWLIST_ERROR = 'Sign-ups are currently restricted. Contact the administrator to request access.';
 
 /** signupConfig doc: open=false, email NOT in allowlist. */
 function makeRestrictedConfig() {

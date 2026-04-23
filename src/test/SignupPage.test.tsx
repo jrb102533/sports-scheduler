@@ -342,7 +342,7 @@ describe('SignupPage — store error display', () => {
     mockSignup.mockImplementation(async () => {
       _state = {
         ..._state,
-        error: 'This is a test environment. Sign-ups are restricted.',
+        error: 'Sign-ups are currently restricted. Contact the administrator to request access.',
       };
       throw new Error('Restricted');
     });
@@ -357,7 +357,7 @@ describe('SignupPage — store error display', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/This is a test environment/i)
+        screen.getByText(/Sign-ups are currently restricted/i)
       ).toBeInTheDocument();
     });
   });
