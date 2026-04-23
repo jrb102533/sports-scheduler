@@ -5563,6 +5563,7 @@ export const syncUserClaims = onDocumentWritten(
 
     if (!after?.exists) {
       // Document was deleted — clear custom claims so stale role is not retained.
+      // SEC-78: let errors propagate so Eventarc retries (retry: true on this trigger).
       await admin.auth().setCustomUserClaims(uid, {});
       console.log(`syncUserClaims: cleared claims for deleted uid=${uid}`);
       return;
@@ -5577,7 +5578,7 @@ export const syncUserClaims = onDocumentWritten(
       console.log(`syncUserClaims: set role=${role} for uid=${uid}`);
     } catch (err: unknown) {
       console.error(`syncUserClaims: failed to set claims for uid=${uid}`, (err as Error)?.message);
-      return;
+      throw err; // SEC-78: allow Eventarc platform retry
     }
 
     // SEC-77: revoke refresh tokens when role is demoted so the next Auth
@@ -5628,3 +5629,78 @@ export const refreshClaims = onCall(async (request) => {
 
   return { success: true };
 });
+
+// ─── RSVP: server-side ownership validation ───────────────────────────────────
+
+interface SubmitRsvpData {
+  eventId: string;
+  playerId: string;
+  status: 'yes' | 'no' | 'maybe';
+  note?: string;
+}
+
+interface SubmitRsvpResult {
+  success: boolean;
+}
+
+/**
+ * SEC-81: Validates that the calling parent owns the playerId before writing
+ * to the /events/{eventId}/rsvps/{uid}_{playerId} subcollection.
+ *
+ * The client-side rule only validates that the doc key starts with the caller's
+ * uid — it cannot verify that the playerId belongs to one of the caller's
+ * children without a cross-doc read. This callable performs that ownership
+ * check server-side using the caller's memberships[] array.
+ */
+export const submitRsvp = onCall<SubmitRsvpData, Promise<SubmitRsvpResult>>(
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required.');
+    const uid = request.auth.uid;
+
+    const { eventId, playerId, status, note } = request.data;
+
+    // ── Input validation ──────────────────────────────────────────────────────
+    if (!eventId?.trim()) throw new HttpsError('invalid-argument', 'eventId is required.');
+    if (!playerId?.trim()) throw new HttpsError('invalid-argument', 'playerId is required.');
+    if (!['yes', 'no', 'maybe'].includes(status)) {
+      throw new HttpsError('invalid-argument', 'status must be "yes", "no", or "maybe".');
+    }
+    if (note !== undefined && typeof note !== 'string') {
+      throw new HttpsError('invalid-argument', 'note must be a string.');
+    }
+
+    const db = admin.firestore();
+
+    // ── Ownership check: caller must have a membership entry for this playerId ─
+    const userSnap = await db.doc(`users/${uid}`).get();
+    if (!userSnap.exists) throw new HttpsError('not-found', 'User profile not found.');
+
+    const memberships: Array<Record<string, unknown>> = (userSnap.data()?.memberships ?? []) as Array<Record<string, unknown>>;
+    const ownsPlayer = memberships.some((m) => m.playerId === playerId);
+
+    if (!ownsPlayer) {
+      console.warn(`submitRsvp: uid=${uid} attempted RSVP for unowned playerId=${playerId}`);
+      throw new HttpsError('permission-denied', 'You do not have permission to RSVP for this player.');
+    }
+
+    // ── Write RSVP subcollection doc ──────────────────────────────────────────
+    const docKey = `${uid}_${playerId}`;
+    const rsvpRef = db.doc(`events/${eventId}/rsvps/${docKey}`);
+
+    const entry: Record<string, unknown> = {
+      uid,
+      playerId,
+      status,
+      updatedAt: admin.firestore.Timestamp.now(),
+      submittedBy: uid,
+    };
+    if (note !== undefined && note.trim().length > 0) {
+      entry.note = note.trim();
+    }
+
+    await rsvpRef.set(entry);
+    console.log(`submitRsvp: uid=${uid} set status=${status} for playerId=${playerId} on event=${eventId}`);
+
+    return { success: true };
+  }
+);
