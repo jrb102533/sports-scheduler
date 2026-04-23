@@ -214,6 +214,8 @@ function seedBaseFixtures() {
     id: TEAM_ID,
     name: 'Hawks',
     coachIds: [COACH_UID],
+    isDeleted: true,
+    deletedAt: new Date(Date.now() - 1000).toISOString(),
   });
   // Seed a rateLimits doc so checkRateLimit always opens a fresh window
   // (count=0 means the limit of 5 is never reached during tests).
@@ -294,48 +296,45 @@ describe('hardDeleteTeam', () => {
     expect(result).toEqual({ success: true });
   });
 
-  // ── Permission: coach paths ──────────────────────────────────────────────
+  // ── Permission: coach paths (admin-only since SEC-93 — coaches blocked) ──
 
-  it('(8) permits a coach listed in the team coachIds array', async () => {
-    const result = await fn(makeRequest({ teamId: TEAM_ID }, COACH_UID));
-    expect(result).toEqual({ success: true });
+  it('(8) rejects a coach listed in coachIds — hard delete is admin-only', async () => {
+    await expect(fn(makeRequest({ teamId: TEAM_ID }, COACH_UID))).rejects.toMatchObject({
+      code: 'permission-denied',
+    });
   });
 
-  it('(9) permits a coach via legacy coachId scalar (backfill compatibility)', async () => {
+  it('(9) rejects a caller with legacy coachId scalar — admin-only', async () => {
     const legacyCoachUid = 'legacy-coach-uid';
     seedDoc(`users/${legacyCoachUid}`, { role: 'coach', memberships: [] });
     seedDoc(`rateLimits/${legacyCoachUid}_hardDeleteTeam`, { count: 0, windowStart: 0 });
-    // Team uses legacy scalar, no coachIds array
-    seedDoc(`teams/${TEAM_ID}`, { id: TEAM_ID, name: 'Hawks', coachId: legacyCoachUid });
+    seedDoc(`teams/${TEAM_ID}`, { id: TEAM_ID, name: 'Hawks', coachId: legacyCoachUid, isDeleted: true });
 
-    const result = await fn(makeRequest({ teamId: TEAM_ID }, legacyCoachUid));
-    expect(result).toEqual({ success: true });
+    await expect(fn(makeRequest({ teamId: TEAM_ID }, legacyCoachUid))).rejects.toMatchObject({
+      code: 'permission-denied',
+    });
   });
 
-  it('(10) permits a coach via createdBy scalar (backfill compatibility)', async () => {
-    const createdByCoachUid = 'createdby-coach-uid';
-    seedDoc(`users/${createdByCoachUid}`, { role: 'coach', memberships: [] });
-    seedDoc(`rateLimits/${createdByCoachUid}_hardDeleteTeam`, { count: 0, windowStart: 0 });
-    // Team uses createdBy but no coachIds array and no coachId scalar
-    seedDoc(`teams/${TEAM_ID}`, { id: TEAM_ID, name: 'Hawks', createdBy: createdByCoachUid });
+  it('(10) rejects when team is NOT soft-deleted — precondition required', async () => {
+    seedDoc(`teams/${TEAM_ID}`, { id: TEAM_ID, name: 'Hawks', coachIds: [COACH_UID], isDeleted: false });
 
-    const result = await fn(makeRequest({ teamId: TEAM_ID }, createdByCoachUid));
-    expect(result).toEqual({ success: true });
+    await expect(fn(makeRequest({ teamId: TEAM_ID }, ADMIN_UID))).rejects.toMatchObject({
+      code: 'failed-precondition',
+    });
   });
 
   // ── Happy path ───────────────────────────────────────────────────────────
 
   it('(11) calls recursiveDelete on the correct team document ref', async () => {
-    await fn(makeRequest({ teamId: TEAM_ID }, COACH_UID));
+    await fn(makeRequest({ teamId: TEAM_ID }, ADMIN_UID));
 
     expect(_recursiveDeleteSpy).toHaveBeenCalledOnce();
-    // The first argument to recursiveDelete must be a ref whose path is teams/TEAM_ID
     const refArg = _recursiveDeleteSpy.mock.calls[0][0] as { path: string };
     expect(refArg.path).toBe(`teams/${TEAM_ID}`);
   });
 
   it('(12) returns { success: true } on the happy path', async () => {
-    const result = await fn(makeRequest({ teamId: TEAM_ID }, COACH_UID));
+    const result = await fn(makeRequest({ teamId: TEAM_ID }, ADMIN_UID));
     expect(result).toEqual({ success: true });
   });
 
@@ -344,7 +343,7 @@ describe('hardDeleteTeam', () => {
   it('(13) rethrows recursiveDelete errors as HttpsError with code "internal"', async () => {
     _recursiveDeleteSpy.mockRejectedValue(new Error('Firestore quota exceeded'));
 
-    await expect(fn(makeRequest({ teamId: TEAM_ID }, COACH_UID))).rejects.toMatchObject({
+    await expect(fn(makeRequest({ teamId: TEAM_ID }, ADMIN_UID))).rejects.toMatchObject({
       code: 'internal',
       message: 'Firestore quota exceeded',
     });
