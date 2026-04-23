@@ -11,7 +11,7 @@
  *   - removeTeamFromLeague() uses arrayRemove and sets _managedLeagueId
  *   - softDeleteTeam() sets isDeleted: true and deletedAt
  *   - restoreTeam() sets isDeleted: false and deletedAt: null
- *   - hardDeleteTeam() calls deleteDoc on the correct path
+ *   - hardDeleteTeam() calls the hardDeleteTeam Cloud Function callable (not deleteDoc)
  *   - Actions throw when Firestore call fails (state unchanged)
  */
 
@@ -46,7 +46,14 @@ vi.mock('firebase/firestore', () => ({
   arrayRemove: (v: unknown) => mockArrayRemove(v),
 }));
 
-vi.mock('@/lib/firebase', () => ({ db: {} }));
+const mockHttpsCallableFn = vi.fn().mockResolvedValue({ data: { success: true } });
+const mockHttpsCallable = vi.fn(() => mockHttpsCallableFn);
+
+vi.mock('firebase/functions', () => ({
+  httpsCallable: (...args: unknown[]) => mockHttpsCallable(...args),
+}));
+
+vi.mock('@/lib/firebase', () => ({ db: {}, functions: {} }));
 
 // ── Auth store mock ───────────────────────────────────────────────────────────
 
@@ -89,6 +96,7 @@ beforeEach(() => {
   mockSetDoc.mockResolvedValue(undefined);
   mockUpdateDoc.mockResolvedValue(undefined);
   mockDeleteDoc.mockResolvedValue(undefined);
+  mockHttpsCallableFn.mockResolvedValue({ data: { success: true } });
   mockOnSnapshot.mockReturnValue(() => {});
   mockGetAuthState.mockReturnValue({ profile: null });
   useTeamStore.setState({ teams: [], deletedTeams: [], loading: true });
@@ -321,15 +329,25 @@ describe('useTeamStore — restoreTeam', () => {
 });
 
 // ── hardDeleteTeam() ──────────────────────────────────────────────────────────
+//
+// The store now delegates to the hardDeleteTeam Cloud Function callable instead
+// of calling deleteDoc directly. The CF uses Admin SDK recursiveDelete so that
+// subcollections (messages, availability) are removed along with the team doc.
 
 describe('useTeamStore — hardDeleteTeam', () => {
-  it('calls deleteDoc once', async () => {
+  it('invokes the hardDeleteTeam callable with the correct teamId', async () => {
     await useTeamStore.getState().hardDeleteTeam('team-42');
-    expect(mockDeleteDoc).toHaveBeenCalledOnce();
+    expect(mockHttpsCallable).toHaveBeenCalledWith({}, 'hardDeleteTeam');
+    expect(mockHttpsCallableFn).toHaveBeenCalledWith({ teamId: 'team-42' });
   });
 
-  it('propagates errors from deleteDoc', async () => {
-    mockDeleteDoc.mockRejectedValue(new Error('Permission denied'));
-    await expect(useTeamStore.getState().hardDeleteTeam('team-42')).rejects.toThrow('Permission denied');
+  it('propagates errors thrown by the callable', async () => {
+    mockHttpsCallableFn.mockRejectedValue(new Error('permission-denied'));
+    await expect(useTeamStore.getState().hardDeleteTeam('team-42')).rejects.toThrow('permission-denied');
+  });
+
+  it('does NOT call deleteDoc (subcollection removal is server-side only)', async () => {
+    await useTeamStore.getState().hardDeleteTeam('team-42');
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
   });
 });

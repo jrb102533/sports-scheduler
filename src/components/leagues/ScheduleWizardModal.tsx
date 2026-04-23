@@ -1293,118 +1293,149 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     // Auto field assignment: round-robin across fields per venue+date+time slot
     const fieldSlotCounter = new Map<string, number>();
     try {
-      // Clear stale draft events for this season/division before saving new ones
+      // Phase 1: Clear stale draft events for this season/division before saving new ones
       if (season?.id) {
-        const staleSnap = await getDocs(
-          query(
-            collection(db, 'events'),
-            where('seasonId', '==', season.id),
-            where('status', '==', 'draft'),
-          )
-        );
-        if (!staleSnap.empty) {
-          const divIds = result.divisionResults && result.divisionResults.length > 0
-            ? new Set(result.divisionResults.map(dr => dr.divisionId))
-            : divisionId ? new Set([divisionId]) : null;
-          const toDelete = divIds
-            ? staleSnap.docs.filter(d => divIds.has(d.data().divisionId as string))
-            : staleSnap.docs;
-          if (toDelete.length > 0) {
-            await Promise.all(toDelete.map(d => deleteDoc(d.ref)));
+        try {
+          const staleSnap = await getDocs(
+            query(
+              collection(db, 'events'),
+              where('seasonId', '==', season.id),
+              where('status', '==', 'draft'),
+            )
+          );
+          if (!staleSnap.empty) {
+            const divIds = result.divisionResults && result.divisionResults.length > 0
+              ? new Set(result.divisionResults.map(dr => dr.divisionId))
+              : divisionId ? new Set([divisionId]) : null;
+            const toDelete = divIds
+              ? staleSnap.docs.filter(d => divIds.has(d.data().divisionId as string))
+              : staleSnap.docs;
+            if (toDelete.length > 0) {
+              await Promise.all(toDelete.map(d => deleteDoc(d.ref)));
+            }
           }
+        } catch (err) {
+          console.error('[saveFixtures] stale event cleanup failed:', err);
+          // Non-fatal: stale events staying around is acceptable; continue with save
         }
       }
+
+      // Phase 2: Write new draft events
       // SEC-15: Always save events as draft. The transition to 'scheduled' is
       // handled exclusively by the publishSchedule Cloud Function, which
       // enforces server-side league-manager ownership and validation.
-      await Promise.all(
-        result.fixtures.map(fixture => {
-          const durationMins = parseInt(matchDuration) || 60;
-          const [h, m] = fixture.startTime.split(':').map(Number);
-          const endMinutes = h * 60 + m + durationMins;
-          const endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`;
-          const fixtureName = fixture.venueName ?? fixture.venue ?? '';
-          const matchedConfig = venueConfigs.find(vc => vc.name === fixtureName);
-          const venueFields = matchedConfig?.selectedVenueId ? (() => {
-            const selectedVenue = resolveVenue(matchedConfig.selectedVenueId);
-            const slotKey = `${matchedConfig.selectedVenueId}|${fixture.date}|${fixture.startTime}`;
-            const slotIdx = fieldSlotCounter.get(slotKey) ?? 0;
-            fieldSlotCounter.set(slotKey, slotIdx + 1);
-            const assignedField = selectedVenue?.fields && selectedVenue.fields.length > 1
-              ? selectedVenue.fields[slotIdx % selectedVenue.fields.length]
-              : undefined;
-            return {
-              venueId: matchedConfig.selectedVenueId,
-              ...(selectedVenue?.lat != null && selectedVenue?.lng != null ? {
-                venueLat: selectedVenue.lat,
-                venueLng: selectedVenue.lng,
-              } : {}),
-              ...(assignedField ? { fieldId: assignedField.id, fieldName: assignedField.name } : {}),
+      try {
+        await Promise.all(
+          result.fixtures.map(fixture => {
+            const durationMins = parseInt(matchDuration) || 60;
+            const [h, m] = fixture.startTime.split(':').map(Number);
+            const endMinutes = h * 60 + m + durationMins;
+            const endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`;
+            const fixtureName = fixture.venueName ?? fixture.venue ?? '';
+            const matchedConfig = venueConfigs.find(vc => vc.name === fixtureName);
+            const venueFields = matchedConfig?.selectedVenueId ? (() => {
+              const selectedVenue = resolveVenue(matchedConfig.selectedVenueId);
+              const slotKey = `${matchedConfig.selectedVenueId}|${fixture.date}|${fixture.startTime}`;
+              const slotIdx = fieldSlotCounter.get(slotKey) ?? 0;
+              fieldSlotCounter.set(slotKey, slotIdx + 1);
+              const assignedField = selectedVenue?.fields && selectedVenue.fields.length > 1
+                ? selectedVenue.fields[slotIdx % selectedVenue.fields.length]
+                : undefined;
+              return {
+                venueId: matchedConfig.selectedVenueId,
+                ...(selectedVenue?.lat != null && selectedVenue?.lng != null ? {
+                  venueLat: selectedVenue.lat,
+                  venueLng: selectedVenue.lng,
+                } : {}),
+                ...(assignedField ? { fieldId: assignedField.id, fieldName: assignedField.name } : {}),
+              };
+            })() : {};
+            const event: ScheduledEvent = {
+              id: crypto.randomUUID(),
+              title: `${fixture.homeTeamName} vs ${fixture.awayTeamName}`,
+              type: 'game',
+              status: 'draft',
+              date: fixture.date,
+              startTime: fixture.startTime,
+              endTime,
+              duration: durationMins,
+              location: fixtureName || undefined,
+              homeTeamId: fixture.homeTeamId,
+              awayTeamId: fixture.awayTeamId,
+              teamIds: [fixture.homeTeamId, fixture.awayTeamId],
+              isRecurring: false,
+              ...(fixture.stage ? { notes: fixture.stage } : {}),
+              createdAt: now,
+              updatedAt: now,
+              ...venueFields,
+              leagueId: league.id,
+              ...(season?.id ? { seasonId: season.id } : {}),
+              ...(fixture.divisionId ? { divisionId: fixture.divisionId } : divisionId ? { divisionId } : {}),
             };
-          })() : {};
-          const event: ScheduledEvent = {
-            id: crypto.randomUUID(),
-            title: `${fixture.homeTeamName} vs ${fixture.awayTeamName}`,
-            type: 'game',
-            status: 'draft',
-            date: fixture.date,
-            startTime: fixture.startTime,
-            endTime,
-            duration: durationMins,
-            location: fixtureName,
-            homeTeamId: fixture.homeTeamId,
-            awayTeamId: fixture.awayTeamId,
-            teamIds: [fixture.homeTeamId, fixture.awayTeamId],
-            isRecurring: false,
-            notes: fixture.stage || undefined,
-            createdAt: now,
-            updatedAt: now,
-            ...venueFields,
-            leagueId: league.id,
-            ...(season?.id ? { seasonId: season.id } : {}),
-            ...(fixture.divisionId ? { divisionId: fixture.divisionId } : divisionId ? { divisionId } : {}),
-          };
-          return addEvent(event);
-        })
-      );
+            return addEvent(event);
+          })
+        );
+      } catch (err) {
+        console.error('[saveFixtures] event write failed:', err);
+        const code = (err as { code?: string }).code ?? '';
+        const msg = err instanceof Error ? err.message : String(err);
+        if (code === 'permission-denied') {
+          setGenError('Permission denied — your account may not have league manager access. Check your role and try again.');
+        } else {
+          setGenError(`Failed to save events: ${msg}`);
+        }
+        return;
+      }
 
+      // Phase 3: Publish or mark draft
       // If "Publish Now" was requested, call the server-side publishSchedule
       // callable to atomically transition draft events to scheduled.
-      if (publishNow && season?.id && league?.id) {
-        if (result.divisionResults && result.divisionResults.length > 0) {
-          await Promise.all(result.divisionResults.map(dr =>
-            publishScheduleFn({ leagueId: league.id, seasonId: season.id, divisionId: dr.divisionId })
-          ));
-        } else {
-          await publishScheduleFn({
-            leagueId: league.id,
-            seasonId: season.id,
-            ...(divisionId ? { divisionId } : {}),
-          });
-        }
-      } else if (!publishNow && season?.id) {
-        // Mark division(s) as having a draft schedule so the dashboard CTA updates.
-        if (result.divisionResults && result.divisionResults.length > 0) {
-          await Promise.all(result.divisionResults.map(dr =>
-            updateDoc(
-              doc(db, 'leagues', league.id, 'divisions', dr.divisionId),
+      try {
+        if (publishNow && season?.id && league?.id) {
+          if (result.divisionResults && result.divisionResults.length > 0) {
+            await Promise.all(result.divisionResults.map(dr =>
+              publishScheduleFn({ leagueId: league.id, seasonId: season.id, divisionId: dr.divisionId })
+            ));
+          } else {
+            await publishScheduleFn({
+              leagueId: league.id,
+              seasonId: season.id,
+              ...(divisionId ? { divisionId } : {}),
+            });
+          }
+        } else if (!publishNow && season?.id) {
+          // Mark division(s) as having a draft schedule so the dashboard CTA updates.
+          if (result.divisionResults && result.divisionResults.length > 0) {
+            await Promise.all(result.divisionResults.map(dr =>
+              updateDoc(
+                doc(db, 'leagues', league.id, 'divisions', dr.divisionId),
+                {
+                  scheduleStatus: 'draft',
+                  unscheduledCount: dr.unassignedCount ?? 0,
+                  updatedAt: now,
+                }
+              )
+            ));
+          } else if (divisionId) {
+            await updateDoc(
+              doc(db, 'leagues', league.id, 'divisions', divisionId),
               {
                 scheduleStatus: 'draft',
-                unscheduledCount: dr.unassignedCount ?? 0,
+                unscheduledCount: result?.stats.unassignedFixtures ?? 0,
                 updatedAt: now,
               }
-            )
-          ));
-        } else if (divisionId) {
-          await updateDoc(
-            doc(db, 'leagues', league.id, 'divisions', divisionId),
-            {
-              scheduleStatus: 'draft',
-              unscheduledCount: result?.stats.unassignedFixtures ?? 0,
-              updatedAt: now,
-            }
-          );
+            );
+          }
         }
+      } catch (err) {
+        console.error('[saveFixtures] publish/status update failed:', err);
+        const msg = err instanceof Error ? err.message : String(err);
+        // Events were saved — surface a specific error so the user knows they can publish from dashboard
+        setGenError(`Events saved as draft but publish failed: ${msg}. You can publish from the Season Dashboard.`);
+        setPublished(true);
+        setPublishedAsDraft(true);
+        saveScheduleConfig();
+        return;
       }
 
       setPublished(true);
@@ -1413,8 +1444,9 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       // Clear league-level wizardDraft — draft games are now persisted in Firestore
       clearWizardDraft(league.id).catch(err => console.error('[saveFixtures] clearWizardDraft failed:', err));
     } catch (err) {
-      console.error('saveFixtures failed:', err);
-      setGenError('Failed to save some events. Please check the schedule and try again.');
+      console.error('[saveFixtures] unexpected error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setGenError(`Unexpected error: ${msg}`);
     } finally {
       setPublishing(false);
     }
@@ -2840,6 +2872,53 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                 </div>
               </div>
             )}
+
+            {!isPracticeMode && (() => {
+              function tallyFixtures(fixtures: GeneratedFixture[]) {
+                const m = new Map<string, { name: string; count: number }>();
+                for (const f of fixtures) {
+                  const h = m.get(f.homeTeamId) ?? { name: f.homeTeamName, count: 0 };
+                  h.count += 1; m.set(f.homeTeamId, h);
+                  const a = m.get(f.awayTeamId) ?? { name: f.awayTeamName, count: 0 };
+                  a.count += 1; m.set(f.awayTeamId, a);
+                }
+                return Array.from(m.values()).sort((a, b) => a.name.localeCompare(b.name));
+              }
+              const hasDivisions = result.divisionResults && result.divisionResults.length > 0;
+              const groups: Array<{ label: string | null; entries: { name: string; count: number }[] }> = hasDivisions
+                ? result.divisionResults!.map(dr => ({ label: dr.divisionName, entries: tallyFixtures(dr.fixtures) }))
+                : [{ label: null, entries: tallyFixtures(result.fixtures) }];
+              if (groups.every(g => g.entries.length === 0)) return null;
+              const allCounts = groups.flatMap(g => g.entries.map(e => e.count));
+              const globalEqual = allCounts.length > 0 && allCounts.every(c => c === allCounts[0]);
+              return (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 space-y-2">
+                  <p className="text-xs font-semibold text-gray-600">Games per team</p>
+                  {groups.map((g, gi) => {
+                    const counts = g.entries.map(e => e.count);
+                    const groupEqual = counts.length > 0 && counts.every(c => c === counts[0]);
+                    return (
+                      <div key={gi}>
+                        {g.label && (
+                          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{g.label}</p>
+                        )}
+                        <div className="flex flex-wrap gap-x-4 gap-y-1">
+                          {g.entries.map(e => (
+                            <span key={e.name} className="text-xs text-gray-700">
+                              <span className="font-medium">{e.name}</span>
+                              <span className={`ml-1 font-bold ${groupEqual ? 'text-green-700' : 'text-amber-700'}`}>{e.count}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!globalEqual && (
+                    <p className="text-xs text-amber-700">Teams have unequal game counts — season may be too short to balance all teams.</p>
+                  )}
+                </div>
+              );
+            })()}
 
             <div>
               <p className="text-sm font-semibold text-gray-700 mb-2">{isPracticeMode ? 'Sessions' : 'Fixtures'}</p>

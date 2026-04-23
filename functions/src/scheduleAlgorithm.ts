@@ -1567,38 +1567,42 @@ export function buildOutput(
   // If some pairings are unassigned the result may be skewed: one team appears more
   // often in early rounds than others. Drop the latest-round game(s) from
   // over-represented teams until all teams have equal game counts.
+  // Balance game counts: iterate in reverse (latest rounds first) and drop a
+  // game only when doing so strictly reduces the spread (max - min). This
+  // handles even-N short seasons where a symmetric drop equalises counts, but
+  // correctly leaves odd-N (3-team) distributions alone — for 3 teams any
+  // single drop also reduces the opponent's count, worsening balance.
   const balanceTrimmed: GeneratedFixture[] = [];
   if (fixtures.length > 0) {
-    const teamGameCount = new Map<string, number>();
+    const liveCounts = new Map<string, number>();
     for (const f of fixtures) {
-      teamGameCount.set(f.homeTeamId, (teamGameCount.get(f.homeTeamId) ?? 0) + 1);
-      teamGameCount.set(f.awayTeamId, (teamGameCount.get(f.awayTeamId) ?? 0) + 1);
+      liveCounts.set(f.homeTeamId, (liveCounts.get(f.homeTeamId) ?? 0) + 1);
+      liveCounts.set(f.awayTeamId, (liveCounts.get(f.awayTeamId) ?? 0) + 1);
     }
-    const counts = Array.from(teamGameCount.values());
-    const minCount = Math.min(...counts);
-    const maxCount = Math.max(...counts);
-    if (maxCount > minCount) {
-      // Iterate fixtures in reverse (latest rounds first) and drop games that
-      // would leave an over-represented team with more than minCount.
-      const balanced: GeneratedFixture[] = [];
-      const dropCount = new Map<string, number>();
-      for (const [tid, cnt] of teamGameCount) {
-        if (cnt > minCount) dropCount.set(tid, cnt - minCount);
+    const spread = () => {
+      const vals = Array.from(liveCounts.values());
+      return Math.max(...vals) - Math.min(...vals);
+    };
+    const balanced: GeneratedFixture[] = [];
+    for (let i = fixtures.length - 1; i >= 0; i--) {
+      const f = fixtures[i];
+      const hCnt = liveCounts.get(f.homeTeamId) ?? 0;
+      const aCnt = liveCounts.get(f.awayTeamId) ?? 0;
+      const before = spread();
+      if (before === 0) { balanced.unshift(f); continue; }
+      // Simulate drop
+      liveCounts.set(f.homeTeamId, hCnt - 1);
+      liveCounts.set(f.awayTeamId, aCnt - 1);
+      if (spread() < before) {
+        balanceTrimmed.push(f);
+      } else {
+        // Drop doesn't help — restore counts and keep fixture
+        liveCounts.set(f.homeTeamId, hCnt);
+        liveCounts.set(f.awayTeamId, aCnt);
+        balanced.unshift(f);
       }
-      for (let i = fixtures.length - 1; i >= 0; i--) {
-        const f = fixtures[i];
-        const dropH = dropCount.get(f.homeTeamId) ?? 0;
-        const dropA = dropCount.get(f.awayTeamId) ?? 0;
-        if (dropH > 0 || dropA > 0) {
-          balanceTrimmed.push(f);
-          if (dropH > 0) dropCount.set(f.homeTeamId, dropH - 1);
-          if (dropA > 0) dropCount.set(f.awayTeamId, dropA - 1);
-        } else {
-          balanced.unshift(f);
-        }
-      }
-      fixtures = balanced;
     }
+    fixtures = balanced;
   }
 
   // Build conflicts
@@ -1716,6 +1720,24 @@ export function buildOutput(
     });
   }
 
+  // Warn when teams end up with unequal game counts (short season, odd-N, etc.)
+  if (fixtures.length > 0) {
+    const finalCounts = new Map<string, number>();
+    for (const f of fixtures) {
+      finalCounts.set(f.homeTeamId, (finalCounts.get(f.homeTeamId) ?? 0) + 1);
+      finalCounts.set(f.awayTeamId, (finalCounts.get(f.awayTeamId) ?? 0) + 1);
+    }
+    const vals = Array.from(finalCounts.values());
+    const finalMax = Math.max(...vals);
+    const finalMin = Math.min(...vals);
+    if (finalMax > finalMin) {
+      warnings.push({
+        code:    'UNEQUAL_GAME_COUNTS',
+        message: `Season has insufficient slots to give all teams equal games. Teams have between ${finalMin} and ${finalMax} games scheduled.`,
+      });
+    }
+  }
+
   // Fallback slots used
   const fallbackSlotsUsed = fixtures.filter(f => f.isFallbackSlot).length;
 
@@ -1773,9 +1795,9 @@ export function buildOutput(
     stats: {
       totalFixturesRequired: totalRequired,
       assignedFixtures:      fixtures.length,
-      unassignedFixtures:    unassigned.length,
+      unassignedFixtures:    unassigned.length + balanceTrimmed.length,
       fallbackSlotsUsed,
-      feasible:              unassigned.length === 0,
+      feasible:              unassigned.length === 0 && balanceTrimmed.length === 0,
     },
     summary,
     warnings,
