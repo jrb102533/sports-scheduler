@@ -2,18 +2,17 @@ import { useState, useEffect } from 'react';
 import { httpsCallable, getFunctions } from 'firebase/functions';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send, Copy, AlertTriangle, Bell, UserX, Loader2, ShieldAlert } from 'lucide-react';
+import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send, Copy, Loader2, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { EventStatusBadge } from './EventStatusBadge';
 import { EventForm } from './EventForm';
 import { SnackVolunteerForm } from './SnackVolunteerForm';
-import { RsvpButton } from './RsvpButton';
+import { EventAttendanceSection } from './EventAttendanceSection';
 import { RsvpInviteModal } from './RsvpInviteModal';
 import { PostGameBroadcastModal } from './PostGameBroadcastModal';
 import { AttendanceTracker } from '@/components/attendance/AttendanceTracker';
-import { PlayerStatusBadge } from '@/components/roster/PlayerStatusBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { useEventStore } from '@/store/useEventStore';
@@ -23,7 +22,7 @@ import { useTeamStore } from '@/store/useTeamStore';
 import { useAuthStore, getMemberships } from '@/store/useAuthStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { formatDate, formatTime } from '@/lib/dateUtils';
-import { EVENT_TYPE_LABELS, EVENT_TYPE_BADGE_CLASSES, getAttendanceThreshold, isAttendanceWarningEnabled } from '@/constants';
+import { EVENT_TYPE_LABELS, EVENT_TYPE_BADGE_CLASSES } from '@/constants';
 import type { ScheduledEvent } from '@/types';
 
 interface EventDetailPanelProps {
@@ -42,7 +41,6 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
   const authUser = useAuthStore(s => s.user);
   const profile = useAuthStore(s => s.profile);
   const [editOpen, setEditOpen] = useState(false);
-  const [nudgeToast, setNudgeToast] = useState<string | null>(null);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -54,7 +52,7 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
   const [awayScore, setAwayScore] = useState('');
   const [resultNotes, setResultNotes] = useState('');
   const [placement, setPlacement] = useState('');
-  const [scoreSaveState, setScoreSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [scoreSaveState, setScoreSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [broadcastOpen, setBroadcastOpen] = useState(false);
 
   // Submit Result (coach flow)
@@ -129,7 +127,6 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
   useEffect(() => {
     if (!leagueId) return;
     return useLeagueVenueStore.getState().subscribe(leagueId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId]);
 
   const canManage = profile?.role === 'admin' || profile?.role === 'league_manager' || profile?.role === 'coach';
@@ -146,35 +143,35 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
     : null;
   const homeTeam = teams.find(t => t.id === currentEvent.homeTeamId);
   const awayTeam = teams.find(t => t.id === currentEvent.awayTeamId);
-  const primaryTeam = homeTeam ?? awayTeam;
-  const threshold = getAttendanceThreshold(primaryTeam);
-  const warningsEnabled = isAttendanceWarningEnabled(primaryTeam);
   const isGameOrMatch = event.type === 'game' || event.type === 'match';
   const isTournament = event.type === 'tournament';
   const isRecurringEvent = event.isRecurring && !!event.recurringGroupId;
 
-  function handleRecordResult() {
+  async function handleRecordResult() {
     const h = parseInt(homeScore);
     const a = parseInt(awayScore);
-    if (isNaN(h) || isNaN(a)) return;
+    if (isNaN(h) || isNaN(a) || scoreSaveState === 'saving') return;
+    setScoreSaveState('saving');
     try {
-      recordResult(currentEvent.id, { homeScore: h, awayScore: a, notes: resultNotes || undefined });
+      await recordResult(currentEvent.id, { homeScore: h, awayScore: a, notes: resultNotes || undefined });
       setHomeScore('');
       setAwayScore('');
       setResultNotes('');
       setScoreSaveState('saved');
       setTimeout(() => setScoreSaveState('idle'), 2000);
       if (canManage) setBroadcastOpen(true);
-    } catch {
+    } catch (err) {
+      console.error('[EventDetailPanel] recordResult failed:', err);
       setScoreSaveState('error');
       setTimeout(() => setScoreSaveState('idle'), 3000);
     }
   }
 
-  function handleRecordPlacement() {
-    if (!placement.trim()) return;
+  async function handleRecordPlacement() {
+    if (!placement.trim() || scoreSaveState === 'saving') return;
+    setScoreSaveState('saving');
     try {
-      recordResult(currentEvent.id, {
+      await recordResult(currentEvent.id, {
         homeScore: 0,
         awayScore: 0,
         placement: placement.trim(),
@@ -185,7 +182,8 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
       setScoreSaveState('saved');
       setTimeout(() => setScoreSaveState('idle'), 2000);
       if (canManage) setBroadcastOpen(true);
-    } catch {
+    } catch (err) {
+      console.error('[EventDetailPanel] recordPlacement failed:', err);
       setScoreSaveState('error');
       setTimeout(() => setScoreSaveState('idle'), 3000);
     }
@@ -297,16 +295,15 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
               <SnackVolunteerForm event={currentEvent} />
             )}
 
-            {/* Subcollection-backed RSVP */}
-            {event.status !== 'cancelled' && event.status !== 'completed' && authUser && (
-              <div className="border border-gray-200 rounded-xl p-4 space-y-4">
-                <h3 className="text-sm font-semibold text-gray-800">RSVP</h3>
-                <RsvpButton
-                  eventId={event.id}
-                  currentUserUid={authUser.uid}
-                  currentUserName={profile?.displayName ?? authUser.email ?? ''}
-                />
-              </div>
+            {/* Unified Attendance section (RSVP + forecast combined) */}
+            {authUser && (
+              <EventAttendanceSection
+                eventId={event.id}
+                teamIds={event.teamIds}
+                profile={profile}
+                currentUserUid={authUser.uid}
+                isActive={event.status !== 'cancelled' && event.status !== 'completed'}
+              />
             )}
 
             {/* Record Result */}
@@ -320,11 +317,11 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
                   <Input label={awayTeam?.name ?? event.opponentName ?? 'Away'} type="number" min="0" value={awayScore} onChange={e => setAwayScore(e.target.value)} placeholder="0" />
                 </div>
                 <Input label="Notes (optional)" value={resultNotes} onChange={e => setResultNotes(e.target.value)} />
-                <Button size="sm" onClick={handleRecordResult} disabled={!homeScore || !awayScore}>
-                  {scoreSaveState === 'saved' ? 'Saved!' : scoreSaveState === 'error' ? 'Error saving' : 'Save Score'}
+                <Button size="sm" onClick={() => void handleRecordResult()} disabled={!homeScore || !awayScore || scoreSaveState === 'saving'}>
+                  {scoreSaveState === 'saving' ? 'Saving…' : scoreSaveState === 'saved' ? 'Saved!' : scoreSaveState === 'error' ? 'Error — retry' : 'Save Score'}
                 </Button>
                 {scoreSaveState === 'error' && (
-                  <p className="text-xs text-red-600 mt-1">Failed to save score. Please try again.</p>
+                  <p className="text-xs text-red-600 mt-1">Failed to save score. Check your connection and try again.</p>
                 )}
               </div>
             )}
@@ -477,113 +474,15 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
                   placeholder="e.g. 1st place, Runner up, 3rd"
                 />
                 <Input label="Notes (optional)" value={resultNotes} onChange={e => setResultNotes(e.target.value)} />
-                <Button size="sm" onClick={handleRecordPlacement} disabled={!placement.trim()}>
-                  {scoreSaveState === 'saved' ? 'Saved!' : scoreSaveState === 'error' ? 'Error saving' : 'Save Placement'}
+                <Button size="sm" onClick={() => void handleRecordPlacement()} disabled={!placement.trim() || scoreSaveState === 'saving'}>
+                  {scoreSaveState === 'saving' ? 'Saving…' : scoreSaveState === 'saved' ? 'Saved!' : scoreSaveState === 'error' ? 'Error — retry' : 'Save Placement'}
                 </Button>
                 {scoreSaveState === 'error' && (
-                  <p className="text-xs text-red-600 mt-1">Failed to save placement. Please try again.</p>
+                  <p className="text-xs text-red-600 mt-1">Failed to save placement. Check your connection and try again.</p>
                 )}
               </div>
             )}
 
-            {/* Attendance Forecast */}
-            {canManage && (() => {
-              const rsvps = event.rsvps ?? [];
-              const confirmed = rsvps.filter(r => r.response === 'yes').length;
-              const declined = rsvps.filter(r => r.response === 'no').length;
-              const maybe = rsvps.filter(r => r.response === 'maybe').length;
-              const respondedCount = rsvps.length;
-
-              const teamPlayers = event.teamIds.length > 0
-                ? allPlayers.filter(p => event.teamIds.includes(p.teamId))
-                : [];
-              const rosterSize = teamPlayers.length;
-              const noResponse = rosterSize > 0 ? Math.max(0, rosterSize - respondedCount) : null;
-
-              const unavailablePlayers = teamPlayers.filter(
-                p => p.status === 'injured' || p.status === 'suspended'
-              );
-              const unavailableCount = unavailablePlayers.length;
-
-              const isBelowThreshold = warningsEnabled && confirmed < threshold;
-              const hasNonResponders = noResponse !== null ? noResponse > 0 : false;
-
-              if (respondedCount === 0 && rosterSize === 0) return null;
-
-              async function handleNudge() {
-                const count = noResponse ?? (rosterSize - respondedCount);
-                // TODO: wire to sendEventReminder CF when available — sendAvailabilityReminder
-                // requires { leagueId, collectionId } but ScheduledEvent carries neither field.
-                console.warn('nudge: no per-event CF wired for event', event?.id);
-                setNudgeToast(`Reminder sent to ${count} player${count !== 1 ? 's' : ''}`);
-                setTimeout(() => setNudgeToast(null), 3500);
-              }
-
-              return (
-                <div className={`border rounded-xl p-4 space-y-3 ${isBelowThreshold ? 'border-amber-200 bg-amber-50/40' : 'border-gray-200'}`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
-                      {isBelowThreshold && <AlertTriangle size={14} className="text-amber-500 shrink-0" />}
-                      Attendance Forecast
-                    </h3>
-                    {isBelowThreshold && (
-                      <Badge className="bg-amber-100 text-amber-700 text-xs">Below minimum</Badge>
-                    )}
-                  </div>
-
-                  <div className="flex gap-4 text-xs font-medium">
-                    <span className="text-green-600">{confirmed} Confirmed</span>
-                    <span className="text-red-500">{declined} Declined</span>
-                    <span className="text-yellow-600">{maybe} Maybe</span>
-                    {noResponse !== null && (
-                      <span className="text-gray-400">{noResponse} No response</span>
-                    )}
-                  </div>
-
-                  {unavailableCount > 0 && (
-                    <div className="flex items-center gap-1.5 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
-                      <UserX size={13} className="shrink-0" />
-                      <span>
-                        {unavailableCount} player{unavailableCount !== 1 ? 's' : ''} unavailable (injured/suspended)
-                      </span>
-                    </div>
-                  )}
-
-                  {rsvps.length > 0 && (
-                    <ul className="space-y-0.5 text-xs text-gray-600 max-h-28 overflow-y-auto">
-                      {rsvps.map(r => {
-                        const rsvpPlayer = teamPlayers.find(p => p.id === r.playerId);
-                        return (
-                          <li key={r.playerId} className="flex justify-between items-center gap-2">
-                            <span className="flex items-center gap-1.5 truncate min-w-0">
-                              <span className="truncate">{r.name}</span>
-                              {rsvpPlayer && (
-                                <PlayerStatusBadge player={rsvpPlayer} />
-                              )}
-                            </span>
-                            <span className={`shrink-0 ${r.response === 'yes' ? 'text-green-600' : r.response === 'no' ? 'text-red-500' : 'text-yellow-600'}`}>
-                              {r.response === 'yes' ? 'Yes' : r.response === 'no' ? 'No' : 'Maybe'}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-
-                  {hasNonResponders && (
-                    <Button variant="secondary" size="sm" onClick={handleNudge}>
-                      <Bell size={13} /> Nudge non-responders
-                    </Button>
-                  )}
-
-                  {nudgeToast && (
-                    <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-                      {nudgeToast}
-                    </p>
-                  )}
-                </div>
-              );
-            })()}
 
             {/* Attendance */}
             {event.status !== 'cancelled' && (
