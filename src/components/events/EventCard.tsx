@@ -183,7 +183,6 @@ export function EventCard({ event, teams, onClick }: EventCardProps) {
   const awayTeam = teams.find(t => t.id === event.awayTeamId);
   const accentColor = EVENT_TYPE_COLORS[event.type] ?? '#6b7280';
   const user = useAuthStore(s => s.user);
-  const profile = useAuthStore(s => s.profile);
   const cardUserUid = user?.uid ?? null;
   const showInteractive = cardUserUid !== null && event.status !== 'completed' && event.status !== 'cancelled';
 
