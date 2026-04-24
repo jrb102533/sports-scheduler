@@ -69,6 +69,7 @@ export function TeamDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [addPlayerOpen, setAddPlayerOpen] = useState(false);
   const [eventFormOpen, setEventFormOpen] = useState(false);
+  const [initialEventType, setInitialEventType] = useState<'game' | 'practice'>('game');
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmHardDelete, setConfirmHardDelete] = useState(false);
@@ -358,8 +359,17 @@ export function TeamDetailPage() {
             <p className="text-sm text-gray-500">{teamEvents.length} {teamEvents.length === 1 ? 'event' : 'events'}</p>
             <div className="flex items-center gap-2">
               <SubscribeToCalendarButton teamId={teamId} />
+              {isCoachOfTeam(profile, teamId) && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => { setInitialEventType('practice'); setEventFormOpen(true); }}
+                >
+                  <Plus size={14} /> Schedule Practice
+                </Button>
+              )}
               <RoleGuard roles={['admin', 'league_manager', 'coach']}>
-                <Button size="sm" onClick={() => setEventFormOpen(true)}><Plus size={14} /> Add Event</Button>
+                <Button size="sm" onClick={() => { setInitialEventType('game'); setEventFormOpen(true); }}><Plus size={14} /> Add Event</Button>
               </RoleGuard>
             </div>
           </div>
@@ -608,7 +618,7 @@ export function TeamDetailPage() {
       <EventForm
         open={eventFormOpen}
         onClose={() => setEventFormOpen(false)}
-        initial={{ homeTeamId: teamId, teamIds: [teamId] }}
+        initial={{ homeTeamId: teamId, teamIds: [teamId], type: initialEventType }}
       />
       <EventDetailPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} />
       {/* Owner soft-delete */}
