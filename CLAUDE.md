@@ -94,6 +94,31 @@ All emails use `buildEmail()` from `functions/src/emailTemplate.ts` with the bra
 - Admin can do anything; coaches manage their teams; parents/players read-only on team data
 - Sensitive player data (PII) in restricted subcollections
 
+## TypeScript Import Discipline
+
+### Type-only imports are mandatory for types (`verbatimModuleSyntax`)
+
+The production CI build uses `verbatimModuleSyntax: true` in `tsconfig`. Local `tsc --noEmit` may pass even without `type` qualifiers, but the production Vite build will fail with:
+
+```
+'X' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
+```
+
+**Always** import types with the `type` keyword:
+
+```typescript
+// BAD — fails production build
+import { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
+
+// GOOD — use inline type qualifier
+import { type QueryDocumentSnapshot, type DocumentData } from 'firebase/firestore';
+
+// GOOD — or a separate type import
+import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
+```
+
+This applies to all type-only symbols: Firestore types, custom interfaces/types from `@/types`, third-party SDK types, etc. When adding new imports, check whether the symbol is a runtime value (class, function, constant) or a pure type. Pure types always need `type`.
+
 ## 12-factor config
 
 Follow 12-factor app methodology for all development:
