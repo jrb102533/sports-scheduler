@@ -6,6 +6,7 @@ import { usePlayerStore } from '@/store/usePlayerStore';
 import { useAuthStore, getMemberships } from '@/store/useAuthStore';
 import { isUpcoming, formatDate, formatTime, todayISO } from '@/lib/dateUtils';
 import { SPORT_TYPE_LABELS } from '@/constants';
+import { FamilyScheduleSection } from '@/components/parent/FamilyScheduleSection';
 import type { Player, Team } from '@/types';
 
 function resolveParentTeams(
@@ -113,6 +114,9 @@ export function ParentHomePage() {
           </p>
         </Card>
       )}
+
+      {/* Family schedule — only renders for parents with 2+ children */}
+      <FamilyScheduleSection />
 
       {/* Upcoming games section */}
       <div>
