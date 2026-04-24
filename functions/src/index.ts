@@ -1116,9 +1116,10 @@ export const verifyInvitedUser = onCall<VerifyInvitedUserData, Promise<VerifyInv
 // ─── Check invite auto-verify (login path) ────────────────────────────────────
 // Called after signInWithEmailAndPassword when emailVerified is false.
 // Unlike verifyInvitedUser (which requires an invite secret and consumes the invite),
-// this function only checks whether the authenticated user has a pending autoVerify invite
-// and, if so, marks their Firebase Auth email as verified.  The invite is not consumed here —
-// that happens when the user goes through the invite link flow during signup.
+// Checks whether the authenticated user has a pending autoVerify invite and, if so,
+// marks their Firebase Auth email as verified and consumes the invite (status → 'used').
+// The full invite-link flow (verifyInvitedUser) can still process a 'used' invite — it
+// queries by inviteSecret with no status filter and deletes the doc in a transaction.
 
 interface CheckInviteAutoVerifyResult {
   verified: boolean;
@@ -1179,13 +1180,12 @@ export const checkInviteAutoVerify = onCall<Record<string, never>, Promise<Check
       return { verified: false };
     }
 
-    // An invite exists — mark the Firebase Auth account as verified.
-    await admin.auth().updateUser(uid, { emailVerified: true });
-
-    // Consume the invite atomically: stamp it so no second account can replay this path.
-    // We do NOT delete it — verifyInvitedUser (invite-link flow) still needs to find and
-    // process it for the full signup.  Changing status to 'used' removes it from the
-    // `status == 'pending'` query above on any subsequent call.
+    // Consume the invite FIRST: stamp it so no second account can replay this path.
+    // Firestore write before Auth update — if the Auth update fails, the idempotent
+    // priorClaimQuery path handles the retry correctly.  If the Firestore write fails,
+    // we never verify — safer than the reverse order which leaves the invite replayable.
+    // We do NOT delete — verifyInvitedUser still needs the doc (queries by inviteSecret,
+    // no status filter) and deletes it inside its own transaction.
     try {
       await inviteDoc.ref.update({
         status: 'used',
@@ -1193,12 +1193,12 @@ export const checkInviteAutoVerify = onCall<Record<string, never>, Promise<Check
         claimedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     } catch (err) {
-      // Log and surface — the Auth update already succeeded, but a failure to consume
-      // the invite leaves the replay window open.  Treat as a function error so the
-      // caller retries rather than silently succeeding with an unconsumed invite.
       console.error(`checkInviteAutoVerify: failed to consume invite for uid=${uid} email=${email}`, err);
       throw new HttpsError('internal', 'Failed to record invite claim. Please try again.');
     }
+
+    // Invite consumed — now mark the Firebase Auth account as verified.
+    await admin.auth().updateUser(uid, { emailVerified: true });
 
     console.log(`checkInviteAutoVerify: auto-verified uid=${uid} email=${email} via pending invite`);
 
