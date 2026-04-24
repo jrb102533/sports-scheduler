@@ -494,6 +494,14 @@ export function validateInput(input: GenerateScheduleInput): void {
       }
       if (div.enforcement !== undefined && div.enforcement !== 'soft' && div.enforcement !== 'hard')
         err(`division ${div.id} has invalid enforcement value: ${div.enforcement}`);
+      if (div.gamesPerTeam !== undefined) {
+        if (div.gamesPerTeam < 1)
+          err(`division ${div.id} gamesPerTeam must be at least 1`);
+        if (div.gamesPerTeam > 100)
+          err(`division ${div.id} gamesPerTeam must be at most 100`);
+      }
+      if (div.format !== undefined && div.format !== 'single_round_robin' && div.format !== 'double_round_robin')
+        err(`division ${div.id} has unsupported format: ${div.format}`);
     }
   }
 }
@@ -503,11 +511,34 @@ export function validateInput(input: GenerateScheduleInput): void {
 export function feasibilityPreCheck(input: GenerateScheduleInput): void {
   let N = input.teams.length;
   if (N % 2 === 1) N += 1;
-  const requiredFixtures = input.gamesPerTeam !== undefined
-    ? Math.ceil((input.gamesPerTeam * input.teams.length) / 2)
-    : input.format === 'single_round_robin'
-      ? (N * (N - 1)) / 2
-      : N * (N - 1);
+
+  // BUG-12 / FW-45: For multi-division leagues, required fixtures must be summed
+  // per-division using each division's own gamesPerTeam and team count. Using the
+  // top-level gamesPerTeam against the full team pool inflates the requirement by
+  // the division count and triggers spurious infeasibility errors.
+  let requiredFixtures: number;
+  if (input.divisions && input.divisions.length > 0) {
+    requiredFixtures = 0;
+    for (const div of input.divisions) {
+      const divGpt = div.gamesPerTeam ?? input.gamesPerTeam;
+      const divTeamCount = div.teamIds.length;
+      if (divGpt !== undefined) {
+        requiredFixtures += Math.ceil((divGpt * divTeamCount) / 2);
+      } else {
+        let dN = divTeamCount;
+        if (dN % 2 === 1) dN += 1;
+        requiredFixtures += input.format === 'single_round_robin'
+          ? (dN * (dN - 1)) / 2
+          : dN * (dN - 1);
+      }
+    }
+  } else {
+    requiredFixtures = input.gamesPerTeam !== undefined
+      ? Math.ceil((input.gamesPerTeam * input.teams.length) / 2)
+      : input.format === 'single_round_robin'
+        ? (N * (N - 1)) / 2
+        : N * (N - 1);
+  }
 
   const seasonBlackouts = new Set(input.blackoutDates ?? []);
   let totalAvailableSlots = 0;
@@ -1525,13 +1556,15 @@ export function runScheduleAlgorithm(
     unassigned: allUnassigned,
   };
 
-  // Build output using all teams combined
-  const output = buildOutput(mergedAssignmentResult, input);
+  // Build a teamId → divisionId map so buildOutput can partition balance trim
+  // and the UNEQUAL_GAME_COUNTS warning per division (BUG-14 / FW-46), and stamp
+  // divisionId onto each fixture at construction time (safe across balance trim).
+  const teamDivisionMap = new Map<string, string>();
+  for (const div of divisions) {
+    for (const tid of div.teamIds) teamDivisionMap.set(tid, div.id);
+  }
 
-  // Stamp divisionId onto each merged fixture
-  output.fixtures.forEach((f, i) => {
-    f.divisionId = allAssigned[i]?.divisionId;
-  });
+  const output = buildOutput(mergedAssignmentResult, input, teamDivisionMap);
 
   output.divisionResults = divisionResults;
 
@@ -1543,6 +1576,13 @@ export function runScheduleAlgorithm(
 export function buildOutput(
   assignmentResult: AssignmentResult,
   input: GenerateScheduleInput,
+  /**
+   * BUG-14 / FW-46: Optional map from teamId → divisionId. When present, balance
+   * trim and the UNEQUAL_GAME_COUNTS warning operate per-division instead of
+   * across the merged team pool. Required for multi-division seasons where
+   * divisions may have different gamesPerTeam values.
+   */
+  teamDivisionMap?: Map<string, string>,
 ): ScheduleAlgorithmOutput {
   const { assigned, unassigned } = assignmentResult;
 
@@ -1561,6 +1601,7 @@ export function buildOutput(
     ...(slot.surfaceId ? { fieldId: slot.surfaceId, fieldName: slot.surfaceName } : {}),
     isDoubleheader:  false,
     isFallbackSlot:  slot.isFallback,
+    ...(teamDivisionMap ? { divisionId: teamDivisionMap.get(pairing.homeTeamId) } : {}),
   }));
 
   // Balance game counts across teams (relevant for odd N with BYE, or short seasons).
@@ -1574,35 +1615,64 @@ export function buildOutput(
   // single drop also reduces the opponent's count, worsening balance.
   const balanceTrimmed: GeneratedFixture[] = [];
   if (fixtures.length > 0) {
-    const liveCounts = new Map<string, number>();
-    for (const f of fixtures) {
-      liveCounts.set(f.homeTeamId, (liveCounts.get(f.homeTeamId) ?? 0) + 1);
-      liveCounts.set(f.awayTeamId, (liveCounts.get(f.awayTeamId) ?? 0) + 1);
-    }
-    const spread = () => {
-      const vals = Array.from(liveCounts.values());
-      return Math.max(...vals) - Math.min(...vals);
-    };
-    const balanced: GeneratedFixture[] = [];
-    for (let i = fixtures.length - 1; i >= 0; i--) {
-      const f = fixtures[i];
-      const hCnt = liveCounts.get(f.homeTeamId) ?? 0;
-      const aCnt = liveCounts.get(f.awayTeamId) ?? 0;
-      const before = spread();
-      if (before === 0) { balanced.unshift(f); continue; }
-      // Simulate drop
-      liveCounts.set(f.homeTeamId, hCnt - 1);
-      liveCounts.set(f.awayTeamId, aCnt - 1);
-      if (spread() < before) {
-        balanceTrimmed.push(f);
-      } else {
-        // Drop doesn't help — restore counts and keep fixture
-        liveCounts.set(f.homeTeamId, hCnt);
-        liveCounts.set(f.awayTeamId, aCnt);
-        balanced.unshift(f);
+    // Runs the balance trim over a specific pool of teams and fixtures.
+    // Returns { kept, trimmed } where kept preserves original order within the pool.
+    const runBalanceTrim = (poolFixtures: GeneratedFixture[], poolTeamIds: Set<string>):
+      { kept: GeneratedFixture[]; trimmed: GeneratedFixture[] } => {
+      const liveCounts = new Map<string, number>();
+      for (const tid of poolTeamIds) liveCounts.set(tid, 0);
+      for (const f of poolFixtures) {
+        liveCounts.set(f.homeTeamId, (liveCounts.get(f.homeTeamId) ?? 0) + 1);
+        liveCounts.set(f.awayTeamId, (liveCounts.get(f.awayTeamId) ?? 0) + 1);
       }
+      const spread = () => {
+        const vals = Array.from(liveCounts.values());
+        if (vals.length === 0) return 0;
+        return Math.max(...vals) - Math.min(...vals);
+      };
+      const kept: GeneratedFixture[] = [];
+      const trimmed: GeneratedFixture[] = [];
+      for (let i = poolFixtures.length - 1; i >= 0; i--) {
+        const f = poolFixtures[i];
+        const hCnt = liveCounts.get(f.homeTeamId) ?? 0;
+        const aCnt = liveCounts.get(f.awayTeamId) ?? 0;
+        const before = spread();
+        if (before === 0) { kept.unshift(f); continue; }
+        liveCounts.set(f.homeTeamId, hCnt - 1);
+        liveCounts.set(f.awayTeamId, aCnt - 1);
+        if (spread() < before) {
+          trimmed.push(f);
+        } else {
+          liveCounts.set(f.homeTeamId, hCnt);
+          liveCounts.set(f.awayTeamId, aCnt);
+          kept.unshift(f);
+        }
+      }
+      return { kept, trimmed };
+    };
+
+    if (teamDivisionMap && input.divisions && input.divisions.length > 0) {
+      // Per-division balance trim — never drop a fixture from division A just to
+      // equalise with division B which has a different gamesPerTeam.
+      const trimmedSet = new Set<GeneratedFixture>();
+      for (const div of input.divisions) {
+        const poolTeamIds = new Set(div.teamIds);
+        const poolFixtures = fixtures.filter(
+          f => poolTeamIds.has(f.homeTeamId) && poolTeamIds.has(f.awayTeamId)
+        );
+        const { trimmed } = runBalanceTrim(poolFixtures, poolTeamIds);
+        for (const t of trimmed) {
+          trimmedSet.add(t);
+          balanceTrimmed.push(t);
+        }
+      }
+      fixtures = fixtures.filter(f => !trimmedSet.has(f));
+    } else {
+      const allTeamIds = new Set(input.teams.map(t => t.id));
+      const { kept, trimmed } = runBalanceTrim(fixtures, allTeamIds);
+      fixtures = kept;
+      for (const t of trimmed) balanceTrimmed.push(t);
     }
-    fixtures = balanced;
   }
 
   // Build conflicts
@@ -1720,21 +1790,55 @@ export function buildOutput(
     });
   }
 
-  // Warn when teams end up with unequal game counts (short season, odd-N, etc.)
+  // Warn when teams end up with unequal game counts (short season, odd-N, etc.).
+  // BUG-14 / FW-46: for multi-division seasons, evaluate equality per-division so
+  // divisions with different gamesPerTeam don't trigger a false warning.
   if (fixtures.length > 0) {
-    const finalCounts = new Map<string, number>();
-    for (const f of fixtures) {
-      finalCounts.set(f.homeTeamId, (finalCounts.get(f.homeTeamId) ?? 0) + 1);
-      finalCounts.set(f.awayTeamId, (finalCounts.get(f.awayTeamId) ?? 0) + 1);
-    }
-    const vals = Array.from(finalCounts.values());
-    const finalMax = Math.max(...vals);
-    const finalMin = Math.min(...vals);
-    if (finalMax > finalMin) {
-      warnings.push({
-        code:    'UNEQUAL_GAME_COUNTS',
-        message: `Season has insufficient slots to give all teams equal games. Teams have between ${finalMin} and ${finalMax} games scheduled.`,
-      });
+    const evaluatePool = (poolFixtures: GeneratedFixture[], poolTeamIds: Set<string>):
+      { min: number; max: number } | null => {
+      if (poolTeamIds.size === 0) return null;
+      const counts = new Map<string, number>();
+      for (const tid of poolTeamIds) counts.set(tid, 0);
+      for (const f of poolFixtures) {
+        if (poolTeamIds.has(f.homeTeamId)) counts.set(f.homeTeamId, (counts.get(f.homeTeamId) ?? 0) + 1);
+        if (poolTeamIds.has(f.awayTeamId)) counts.set(f.awayTeamId, (counts.get(f.awayTeamId) ?? 0) + 1);
+      }
+      const vals = Array.from(counts.values());
+      return { min: Math.min(...vals), max: Math.max(...vals) };
+    };
+
+    if (teamDivisionMap && input.divisions && input.divisions.length > 0) {
+      let worstMin = Infinity;
+      let worstMax = -Infinity;
+      let unequal = false;
+      for (const div of input.divisions) {
+        const poolTeamIds = new Set(div.teamIds);
+        const poolFixtures = fixtures.filter(
+          f => poolTeamIds.has(f.homeTeamId) && poolTeamIds.has(f.awayTeamId)
+        );
+        const result = evaluatePool(poolFixtures, poolTeamIds);
+        if (!result) continue;
+        if (result.max > result.min) {
+          unequal = true;
+          if (result.min < worstMin) worstMin = result.min;
+          if (result.max > worstMax) worstMax = result.max;
+        }
+      }
+      if (unequal) {
+        warnings.push({
+          code:    'UNEQUAL_GAME_COUNTS',
+          message: `Season has insufficient slots to give all teams equal games. Teams have between ${worstMin} and ${worstMax} games scheduled.`,
+        });
+      }
+    } else {
+      const allTeamIds = new Set(input.teams.map(t => t.id));
+      const result = evaluatePool(fixtures, allTeamIds);
+      if (result && result.max > result.min) {
+        warnings.push({
+          code:    'UNEQUAL_GAME_COUNTS',
+          message: `Season has insufficient slots to give all teams equal games. Teams have between ${result.min} and ${result.max} games scheduled.`,
+        });
+      }
     }
   }
 
@@ -1742,6 +1846,23 @@ export function buildOutput(
   const fallbackSlotsUsed = fixtures.filter(f => f.isFallbackSlot).length;
 
   const totalRequired = (() => {
+    // BUG-12 / FW-45: when divisions are present, sum per-division requirements.
+    if (input.divisions && input.divisions.length > 0) {
+      let total = 0;
+      for (const div of input.divisions) {
+        const divGpt = div.gamesPerTeam ?? input.gamesPerTeam;
+        if (divGpt !== undefined) {
+          total += Math.ceil((divGpt * div.teamIds.length) / 2);
+        } else {
+          let dN = div.teamIds.length;
+          if (dN % 2 === 1) dN += 1;
+          total += (div.format === 'single_round_robin' || input.format === 'single_round_robin')
+            ? (dN * (dN - 1)) / 2
+            : dN * (dN - 1);
+        }
+      }
+      return total;
+    }
     let Nf = input.teams.length;
     if (Nf % 2 === 1) Nf += 1;
     const base = input.format === 'single_round_robin'
