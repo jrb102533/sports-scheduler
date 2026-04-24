@@ -23,6 +23,7 @@ import { useTeamStore } from '@/store/useTeamStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useVenueStore } from '@/store/useVenueStore';
 import { useAuthStore, isManagerOfLeague } from '@/store/useAuthStore';
+import { useCollectionStore } from '@/store/useCollectionStore';
 import type { Division, Season, Team, ScheduledEvent, WizardMode } from '@/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -446,6 +447,12 @@ export function SeasonDashboard() {
   useEffect(() => {
     return useVenueStore.getState().subscribe();
   }, []);
+
+  useEffect(() => {
+    if (!leagueId || !seasonId) return;
+    return useCollectionStore.getState().loadWizardDraft(leagueId, seasonId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leagueId, seasonId]);
 
   const isAdmin = profile?.role === 'admin';
   // CVR-2026-008: use membership-aware helper so co-managers added via

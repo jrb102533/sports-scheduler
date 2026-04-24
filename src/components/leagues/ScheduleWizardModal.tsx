@@ -856,7 +856,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
     saveScheduleConfig(nextStep);
     // Also persist to league-level wizardDraft so resume works when no season exists
     if (mode) {
-      void saveWizardDraft(league.id, {
+      void saveWizardDraft(league.id, season?.id ?? '', {
         mode,
         currentStep: nextStep,
         ...(collectionId ? { collectionId } : {}),
@@ -914,7 +914,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       const requestAvailabilityFn = httpsCallable(getFunctions(), 'requestAvailability');
       await requestAvailabilityFn({ leagueId: league.id, collectionId: newCollectionId });
 
-      await saveWizardDraft(league.id, {
+      await saveWizardDraft(league.id, season?.id ?? '', {
         mode,
         currentStep: 'availability',
         collectionId: newCollectionId,
@@ -1461,7 +1461,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
       setPublishedAsDraft(!publishNow);
       saveScheduleConfig();
       // Clear league-level wizardDraft — draft games are now persisted in Firestore
-      clearWizardDraft(league.id).catch(err => console.error('[saveFixtures] clearWizardDraft failed:', err));
+      clearWizardDraft(league.id, season?.id ?? '').catch(err => console.error('[saveFixtures] clearWizardDraft failed:', err));
     } catch (err) {
       console.error('[saveFixtures] unexpected error:', err);
       const msg = err instanceof Error ? err.message : String(err);
@@ -1675,7 +1675,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                     <Button
                       variant="secondary"
                       onClick={() => {
-                        void clearWizardDraft(league.id);
+                        void clearWizardDraft(league.id, season?.id ?? '');
                         resetWizard();
                       }}
                     >
