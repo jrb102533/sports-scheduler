@@ -75,6 +75,24 @@
       ]
     },
     {
+      "collectionGroup": "invites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "email", "order": "ASCENDING" },
+        { "fieldPath": "autoVerify", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "invites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "email", "order": "ASCENDING" },
+        { "fieldPath": "autoVerify", "order": "ASCENDING" },
+        { "fieldPath": "claimedByUid", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "seasons",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
