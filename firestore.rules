@@ -63,7 +63,12 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read: if request.auth != null;
+      // SEC-102 — manual staging verification required:
+      // 1. Non-admin getDocs(collection('users')) → permission-denied
+      // 2. Non-admin getDoc(doc('users', otherUid)) → allowed (cross-role profile lookup)
+      // 3. Admin getDocs(collection('users')) → allowed
+      allow get: if request.auth != null;
+      allow list: if isAdmin();
       allow create: if request.auth.uid == uid || isAdmin();
       // Self-update: users may update their own profile fields but must not
       // touch uid or memberships (admin-only), and must not escalate their
