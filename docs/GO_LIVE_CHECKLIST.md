@@ -24,7 +24,7 @@ These must be run manually against production — unit tests use mocks and canno
 - [ ] Session idle for 30 minutes → warning modal appears with 60-second countdown
 - [ ] Clicking "Stay Signed In" dismisses modal and resets timer
 - [ ] Countdown reaching zero logs user out
-- [ ] Email verification enforced for non-invited signups (deferred — requires Option B auto-verify implementation; see "Email Verification" section below)
+- [ ] Email verification enforced for non-invited signups (Option B implemented — verify end-to-end in smoke test)
 
 ### Admin
 - [ ] Admin can create/edit/delete teams
@@ -53,8 +53,8 @@ These must be run manually against production — unit tests use mocks and canno
 
 Email verification was removed (Option A) to reduce signup friction for invited users. Before go-live, implement Option B: auto-verify invited users via the Admin SDK so that email verification is still enforced for non-invited signups.
 
-- [ ] **Implement auto-verify in `sendInvite`** — After writing the invite document, call `admin.auth().updateUser(uid, { emailVerified: true })` for the invited email. If the user does not yet have a Firebase Auth account, store a flag on the invite document (`autoVerify: true`) and verify on first sign-in in `onAuthStateChanged` / a sign-in trigger.
-- [ ] **Re-enable `emailVerified` check in login** — Restore the `if (!user.emailVerified)` gate in `useAuthStore.login` once auto-verify is in place.
+- [x] **Implement auto-verify in `sendInvite`** — After writing the invite document, call `admin.auth().updateUser(uid, { emailVerified: true })` for the invited email. If the user does not yet have a Firebase Auth account, store a flag on the invite document (`autoVerify: true`) and verify on first sign-in in `onAuthStateChanged` / a sign-in trigger.
+- [x] **Re-enable `emailVerified` check in login** — Restore the `if (!user.emailVerified)` gate in `useAuthStore.login` once auto-verify is in place.
 - [ ] **Test end-to-end**: invited parent signs up → no verification email → lands directly on parent home page. Non-invited signup → blocked by allowlist OR must verify email.
 
 ## Email
