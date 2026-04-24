@@ -30,10 +30,10 @@ interface CollectionStore {
   wizardDraft: WizardDraft | null;
 
   loadCollection: (leagueId: string) => () => void;
-  loadWizardDraft: (leagueId: string) => () => void;
+  loadWizardDraft: (leagueId: string, seasonId: string) => () => void;
 
-  saveWizardDraft: (leagueId: string, draft: Omit<WizardDraft, 'updatedAt'>) => Promise<void>;
-  clearWizardDraft: (leagueId: string) => Promise<void>;
+  saveWizardDraft: (leagueId: string, seasonId: string, draft: Omit<WizardDraft, 'updatedAt'>) => Promise<void>;
+  clearWizardDraft: (leagueId: string, seasonId: string) => Promise<void>;
 
   createCollection: (leagueId: string, dueDate: string, createdBy: string) => Promise<string>;
   closeCollection: (leagueId: string, collectionId: string) => Promise<void>;
@@ -82,9 +82,9 @@ export const useCollectionStore = create<CollectionStore>((set) => ({
     return unsub;
   },
 
-  loadWizardDraft: (leagueId) => {
+  loadWizardDraft: (leagueId, seasonId) => {
     const unsub = onSnapshot(
-      doc(db, 'leagues', leagueId, 'wizardDraft', 'draft'),
+      doc(db, 'leagues', leagueId, 'seasons', seasonId, 'wizardDraft', 'draft'),
       (snap) => {
         if (snap.exists()) {
           set({ wizardDraft: snap.data() as WizardDraft });
@@ -92,20 +92,20 @@ export const useCollectionStore = create<CollectionStore>((set) => ({
           set({ wizardDraft: null });
         }
       },
-      () => set({ wizardDraft: null })
+      (err) => { console.error('[loadWizardDraft] snapshot error:', err); set({ wizardDraft: null }); }
     );
     return unsub;
   },
 
-  saveWizardDraft: async (leagueId, draft) => {
+  saveWizardDraft: async (leagueId, seasonId, draft) => {
     const now = new Date().toISOString();
     const full: WizardDraft = { ...draft, updatedAt: now };
-    await setDoc(doc(db, 'leagues', leagueId, 'wizardDraft', 'draft'), full);
+    await setDoc(doc(db, 'leagues', leagueId, 'seasons', seasonId, 'wizardDraft', 'draft'), full);
     set({ wizardDraft: full });
   },
 
-  clearWizardDraft: async (leagueId) => {
-    await deleteDoc(doc(db, 'leagues', leagueId, 'wizardDraft', 'draft'));
+  clearWizardDraft: async (leagueId, seasonId) => {
+    await deleteDoc(doc(db, 'leagues', leagueId, 'seasons', seasonId, 'wizardDraft', 'draft'));
     set({ wizardDraft: null });
   },
 

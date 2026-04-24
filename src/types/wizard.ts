@@ -89,6 +89,7 @@ export interface WizardDraft {
   stepData: Record<string, unknown>;
   updatedAt: string;
   createdBy: string;
+  seasonId?: string;
 }
 
 export const DEFAULT_CONSTRAINTS: ScheduleConstraint[] = [

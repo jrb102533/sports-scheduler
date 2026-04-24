@@ -374,13 +374,6 @@ service cloud.firestore {
         );
       allow delete: if isAdmin();
 
-      // Wizard draft — one per league, owned by the LM who created it.
-      // Coaches and players have no access.
-      match /wizardDraft/draft {
-        allow read, write: if isAdmin()
-          || (isManagerOfLeagueById(leagueId) && get(/databases/$(database)/documents/leagues/$(leagueId)).data.isDeleted != true);
-      }
-
       // Availability collections — created/managed by LM; coaches read their own response only.
       match /availabilityCollections/{collectionId} {
         allow read: if isAdmin()
@@ -428,6 +421,12 @@ service cloud.firestore {
         );
         allow write: if isAdmin()
           || isManagerOfLeagueById(leagueId);
+
+        // Wizard draft — season-scoped (FW-54). Coaches and players have no access.
+        match /wizardDraft/{doc} {
+          allow read, write: if isAdmin()
+            || (isManagerOfLeagueById(leagueId) && get(/databases/$(database)/documents/leagues/$(leagueId)).data.isDeleted != true);
+        }
 
         // Standings subcollection — same access as the parent season.
         match /standings/{standingId} {
