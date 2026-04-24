@@ -129,6 +129,14 @@ export interface GenerateScheduleInput {
   maxConsecutiveAway?: number;
   gamesPerTeam?: number;
   divisions?: DivisionInput[];
+  /**
+   * FW-32 — Family conflict groups.
+   * Each inner array is a set of teamIds whose players share a family.
+   * No two teams within the same group may be scheduled simultaneously
+   * (same date + startTime). Populated by the generateSchedule CF from
+   * parent membership data; ignored when absent or empty.
+   */
+  familyConflictGroups?: string[][];
 }
 
 // ─── §2 Output Schema ────────────────────────────────────────────────────────
@@ -237,6 +245,8 @@ export interface AssignmentResult {
     slot: Slot;
     penalty: number;
     practiceConflicts: Array<{ teamId: string; teamName: string }>;
+    /** FW-32: true when this fixture was assigned to a family-conflicting slot as a last resort. */
+    hasFamilyConflict?: boolean;
   }>;
   unassigned: Array<{
     pairing: Pairing;
@@ -1191,6 +1201,70 @@ function recordSurfaceWindow(
   surfaceTimeWindows.get(mapKey)!.push({ start, end: start + matchDurationMinutes });
 }
 
+// ─── §3 Step 2b — Family conflict group helpers ──────────────────────────
+
+/**
+ * FW-32 — Pure helper: extract family conflict groups from parent user records.
+ *
+ * @param parentUsers  Array of parent user records (uid + memberships array).
+ *                     Shape mirrors the Firestore `users/{uid}` document.
+ * @param leagueTeamIds  Set of teamIds that belong to the league being scheduled.
+ *                       Used to filter out cross-league memberships.
+ * @returns  Deduplicated array of conflict groups. Each group is a string[] of
+ *           teamIds that must never be scheduled simultaneously. Groups with
+ *           fewer than 2 teamIds are omitted (no conflict possible).
+ */
+export function extractFamilyConflictGroups(
+  parentUsers: Array<{
+    uid: string;
+    memberships: Array<{ role: string; teamId: string; playerId?: string }>;
+  }>,
+  leagueTeamIds: Set<string>,
+): string[][] {
+  const seenGroupKeys = new Set<string>();
+  const groups: string[][] = [];
+
+  for (const user of parentUsers) {
+    // Collect teamIds where this user has a parent role, filtered to this league
+    const teamIds = user.memberships
+      .filter(m => m.role === 'parent' && leagueTeamIds.has(m.teamId))
+      .map(m => m.teamId);
+
+    if (teamIds.length < 2) continue;
+
+    // Sort to produce a canonical key for deduplication
+    const sorted = [...teamIds].sort();
+    const key = sorted.join('|');
+    if (seenGroupKeys.has(key)) continue;
+
+    seenGroupKeys.add(key);
+    groups.push(sorted);
+  }
+
+  return groups;
+}
+
+/**
+ * FW-32 — Build a Map<teamId, Set<siblingTeamId>> for O(1) conflict lookups.
+ * Only groups with 2+ members produce entries; single-member groups are ignored.
+ */
+function buildFamilyGroupMap(familyConflictGroups: string[][] | undefined): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  if (!familyConflictGroups || familyConflictGroups.length === 0) return map;
+
+  for (const group of familyConflictGroups) {
+    if (group.length < 2) continue;
+    for (const teamId of group) {
+      if (!map.has(teamId)) map.set(teamId, new Set());
+      for (const sibling of group) {
+        if (sibling !== teamId) map.get(teamId)!.add(sibling);
+      }
+    }
+  }
+
+  return map;
+}
+
 // ─── §3 Step 3 — Assignment Loop ─────────────────────────────────────────
 
 /**
@@ -1208,6 +1282,11 @@ interface DivisionAssignmentContext {
   sharedSlotUsage: Map<string, number>;
   /** Shared across all divisions — must not be reset between divisions. */
   sharedSurfaceTimeWindows: SurfaceTimeWindowsMap;
+  /**
+   * FW-32 — Shared across all divisions — tracks which teamIds are playing each
+   * "date|startTime" slot so family conflict detection works cross-division.
+   */
+  sharedSlotTeams: Map<string, Set<string>>;
   /**
    * Per-division coach availability enforcement mode.
    * 'hard' → isCoachUnavailable() slots are skipped entirely (hard blackout).
@@ -1267,6 +1346,14 @@ export function assignFixtures(
   // Match duration for this assignment pass
   const matchDuration = divisionCtx?.matchDurationMinutes ?? input.matchDurationMinutes;
 
+  // FW-32 — Family conflict maps
+  // familyGroupMap: teamId → Set<siblingTeamId> for O(1) sibling lookup
+  const familyGroupMap = buildFamilyGroupMap(input.familyConflictGroups);
+  // slotTeams: "date|startTime" → Set<teamId> tracking which teams are playing each slot.
+  // Use the shared map when running inside division orchestration so conflicts are
+  // detected across divisions (not just within a single division's assignment pass).
+  const slotTeams: Map<string, Set<string>> = divisionCtx?.sharedSlotTeams ?? new Map();
+
   // Build required/preferred surface sets for fast lookup
   const requiredSet = divisionCtx?.requiredSurfaces
     ? new Set(divisionCtx.requiredSurfaces.map(s => `${s.venueId}|${s.surfaceId}`))
@@ -1282,6 +1369,11 @@ export function assignFixtures(
 
     let bestSlot: Slot | null = null;
     let bestPenalty = Infinity;
+    // FW-32 — fallback slot for when all non-family-blocked slots have been exhausted.
+    // If bestSlot remains null but bestFamilyFallback is non-null, we assign the
+    // fallback and record a FAMILY_SLOT_CONFLICT soft conflict.
+    let bestFamilyFallback: Slot | null = null;
+    let bestFamilyFallbackPenalty = Infinity;
 
     for (const slot of slots) {
       // ── Division surface preference filter ──────────────────────────────
@@ -1324,6 +1416,37 @@ export function assignFixtures(
         if (isCoachUnavailable(slot, pairing, input.coachAvailability)) continue;
       }
 
+      // 7. Family conflict: no two teams from the same family group may play simultaneously
+      if (familyGroupMap.size > 0) {
+        const timeKey = `${slot.date}|${slot.startTime}`;
+        const occupants = slotTeams.get(timeKey);
+        if (occupants !== undefined && occupants.size > 0) {
+          const homeSiblings = familyGroupMap.get(pairing.homeTeamId);
+          const awaySiblings = familyGroupMap.get(pairing.awayTeamId);
+          let blocked = false;
+          if (homeSiblings) {
+            for (const occ of occupants) {
+              if (homeSiblings.has(occ)) { blocked = true; break; }
+            }
+          }
+          if (!blocked && awaySiblings) {
+            for (const occ of occupants) {
+              if (awaySiblings.has(occ)) { blocked = true; break; }
+            }
+          }
+          if (blocked) {
+            // Track as a potential fallback slot (all other hard constraints passed)
+            // so we can assign it with a soft conflict if no clean slot exists.
+            const familyPenalty = scorePenalty(slot, pairing, home, away, input, homeTeam);
+            if (familyPenalty < bestFamilyFallbackPenalty) {
+              bestFamilyFallbackPenalty = familyPenalty;
+              bestFamilyFallback = slot;
+            }
+            continue;
+          }
+        }
+      }
+
       // ── Soft constraint scoring ─────────────────────────────────────────
       let penalty = scorePenalty(slot, pairing, home, away, input, homeTeam);
 
@@ -1361,6 +1484,14 @@ export function assignFixtures(
       // Record surface time window after assignment (duration-aware)
       recordSurfaceWindow(bestSlot, matchDuration, surfaceTimeWindows);
 
+      // FW-32 — update slotTeams so subsequent pairings can check family conflicts
+      if (familyGroupMap.size > 0) {
+        const timeKey = `${bestSlot.date}|${bestSlot.startTime}`;
+        if (!slotTeams.has(timeKey)) slotTeams.set(timeKey, new Set());
+        slotTeams.get(timeKey)!.add(pairing.homeTeamId);
+        slotTeams.get(timeKey)!.add(pairing.awayTeamId);
+      }
+
       // Update home team state
       home.lastGameDate = bestSlot.date;
       home.homeCount++;
@@ -1374,6 +1505,52 @@ export function assignFixtures(
       away.awayCount++;
       away.gamesByDate.add(bestSlot.date);
       away.gameDates.push(bestSlot.date);
+    } else if (bestFamilyFallback !== null) {
+      // FW-32 — all non-family-conflicting slots were exhausted; assign the family-conflicting
+      // fallback slot as a last resort and emit a FAMILY_SLOT_CONFLICT soft conflict.
+      const fallback = bestFamilyFallback;
+      const practiceConflicts: Array<{ teamId: string; teamName: string }> = [];
+      for (const pe of (input.practiceEvents ?? [])) {
+        if (pe.teamId !== pairing.homeTeamId && pe.teamId !== pairing.awayTeamId) continue;
+        if (fallback.date !== pe.date) continue;
+        if (timesOverlap(fallback.startTime, fallback.endTime, pe.startTime, pe.endTime)) {
+          if (pe.reschedulable) {
+            const team = input.teams.find(t => t.id === pe.teamId);
+            if (team) practiceConflicts.push({ teamId: team.id, teamName: team.name });
+          }
+        }
+      }
+
+      assigned.push({
+        pairing,
+        slot:              fallback,
+        penalty:           bestFamilyFallbackPenalty,
+        practiceConflicts,
+        hasFamilyConflict: true,
+      });
+      slotUsage.set(fallback.key, (slotUsage.get(fallback.key) ?? 0) + 1);
+      recordSurfaceWindow(fallback, matchDuration, surfaceTimeWindows);
+
+      // Update slotTeams for subsequent pairings
+      if (familyGroupMap.size > 0) {
+        const timeKey = `${fallback.date}|${fallback.startTime}`;
+        if (!slotTeams.has(timeKey)) slotTeams.set(timeKey, new Set());
+        slotTeams.get(timeKey)!.add(pairing.homeTeamId);
+        slotTeams.get(timeKey)!.add(pairing.awayTeamId);
+      }
+
+      // Update team state
+      home.lastGameDate = fallback.date;
+      home.homeCount++;
+      home.consecutiveAway = 0;
+      home.gamesByDate.add(fallback.date);
+      home.gameDates.push(fallback.date);
+
+      away.lastGameDate = fallback.date;
+      away.consecutiveAway++;
+      away.awayCount++;
+      away.gamesByDate.add(fallback.date);
+      away.gameDates.push(fallback.date);
     } else {
       // Diagnose reason
       const reason = explainNoSlot(pairing, slots, teamState, input, homeTeam);
@@ -1467,8 +1644,10 @@ export function runScheduleAlgorithm(
     if (!sharedSlotUsage.has(s.key)) sharedSlotUsage.set(s.key, 0);
   }
   const sharedSurfaceTimeWindows: SurfaceTimeWindowsMap = new Map();
+  // FW-32 — shared slot-teams map so family conflict detection spans all divisions
+  const sharedSlotTeams = new Map<string, Set<string>>();
 
-  const allAssigned: Array<{ pairing: Pairing; slot: Slot; penalty: number; practiceConflicts: Array<{ teamId: string; teamName: string }>; divisionId: string }> = [];
+  const allAssigned: Array<{ pairing: Pairing; slot: Slot; penalty: number; practiceConflicts: Array<{ teamId: string; teamName: string }>; hasFamilyConflict?: boolean; divisionId: string }> = [];
   const allUnassigned: Array<{ pairing: Pairing; reason: string }> = [];
   const divisionResults: DivisionScheduleResult[] = [];
 
@@ -1499,6 +1678,7 @@ export function runScheduleAlgorithm(
       preferredSurfaces,
       sharedSlotUsage,
       sharedSurfaceTimeWindows,
+      sharedSlotTeams,
       coachEnforcement: division.enforcement ?? 'soft',
     };
 
@@ -1550,8 +1730,8 @@ export function runScheduleAlgorithm(
 
   // Build merged output from all divisions
   const mergedAssignmentResult: AssignmentResult = {
-    assigned: allAssigned.map(({ pairing, slot, penalty, practiceConflicts }) => ({
-      pairing, slot, penalty, practiceConflicts,
+    assigned: allAssigned.map(({ pairing, slot, penalty, practiceConflicts, hasFamilyConflict }) => ({
+      pairing, slot, penalty, practiceConflicts, hasFamilyConflict,
     })),
     unassigned: allUnassigned,
   };
@@ -1710,6 +1890,17 @@ export function buildOutput(
         description:  `Team ${teamObj?.name ?? pc.teamId} has a practice on this date — practice will need rescheduling`,
         fixtureIndex: i,
         teamId:       pc.teamId,
+      });
+    }
+    // FW-32 — Family slot conflict (soft): game was assigned to a family-conflicting slot
+    // because no clean slot existed. Parents with children on both teams will have a
+    // scheduling conflict on this date.
+    if (assigned[i].hasFamilyConflict) {
+      conflicts.push({
+        severity:     'soft',
+        constraintId: 'FAMILY_SLOT_CONFLICT',
+        description:  `${pairing.homeTeamName} vs ${pairing.awayTeamName} scheduled at the same time as a sibling team — a family member may not be able to attend both games`,
+        fixtureIndex: i,
       });
     }
   }

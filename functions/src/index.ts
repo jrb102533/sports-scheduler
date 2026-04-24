@@ -11,6 +11,7 @@ import {
   feasibilityPreCheck,
   fnv32a,
   runScheduleAlgorithm,
+  extractFamilyConflictGroups,
   type GenerateScheduleInput,
   type ScheduleAlgorithmOutput,
 } from './scheduleAlgorithm';
@@ -3700,6 +3701,47 @@ export const generateSchedule = onCall(
 
       // 7. Capacity feasibility pre-check
       feasibilityPreCheck(input);
+
+      // 7b. Family conflict precomputation (FW-32)
+      // Query parent users and derive conflict groups so the algorithm can prevent
+      // two children from the same family being scheduled simultaneously.
+      // Only runs for multi-team leagues; a single team has no possible conflict.
+      if (input.teams.length > 1) {
+        try {
+          const leagueTeamIds = new Set(input.teams.map((t: { id: string }) => t.id));
+
+          // Query users with role === 'parent'. The `role` field is a top-level indexed
+          // field, so this is a single-field equality query — no composite index needed.
+          const parentSnap = await admin
+            .firestore()
+            .collection('users')
+            .where('role', '==', 'parent')
+            .limit(500)
+            .get();
+
+          const parentUsers = parentSnap.docs.map(doc => {
+            const data = doc.data();
+            const memberships: Array<{ role: string; teamId: string; playerId?: string }> =
+              Array.isArray(data.memberships) ? data.memberships : [];
+            return { uid: doc.id, memberships };
+          });
+
+          input.familyConflictGroups = extractFamilyConflictGroups(parentUsers, leagueTeamIds);
+
+          if (input.familyConflictGroups.length > 0) {
+            console.log(
+              `generateSchedule: family conflict groups detected`,
+              { groupCount: input.familyConflictGroups.length, leagueId: input.leagueId },
+            );
+          }
+        } catch (familyErr: unknown) {
+          // Non-fatal: if the family query fails, log and continue without conflict groups.
+          // Scheduling still proceeds; family conflicts will just not be enforced this run.
+          const raw = familyErr instanceof Error ? familyErr.message : String(familyErr);
+          console.error('generateSchedule: family conflict query failed — proceeding without groups', { raw });
+          input.familyConflictGroups = [];
+        }
+      }
 
       // 8. Run algorithm — inner catch preserves algorithm-specific error context
       try {
