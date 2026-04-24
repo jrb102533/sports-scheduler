@@ -59,7 +59,7 @@ Email verification was removed (Option A) to reduce signup friction for invited 
 
 ## Email
 
-- [ ] **Brevo sending limits** — Verify Brevo free tier (300 emails/day) is sufficient or upgrade to a paid plan before launch.
+- [x] **Brevo sending limits** — Real-time quota tracking via Firestore counter in sendEmail CF. Warns at 240/day (console.error), blocks at 285/day. Weekly cleanup of old quota docs. See `cleanupEmailQuota` CF.
 - [ ] **Monitor bounce/spam rates** in Brevo dashboard after go-live.
 
 ## Security

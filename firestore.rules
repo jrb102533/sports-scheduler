@@ -497,8 +497,12 @@ service cloud.firestore {
 
     // System config — read by unauthenticated clients (e.g. pre-signup allowlist check),
     // written exclusively via Admin SDK (Cloud Functions / console).
+    //
+    // Email quota docs (emailQuota_{YYYY-MM-DD}) are admin-read-only — they
+    // contain operational counters that should not be publicly visible.
+    // All other system docs (e.g. allowlist) remain publicly readable.
     match /system/{doc} {
-      allow read: if true;
+      allow read: if !doc.matches('emailQuota_.*') || isAdmin();
       allow write: if false;
     }
 

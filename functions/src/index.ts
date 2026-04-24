@@ -200,6 +200,78 @@ async function checkRateLimit(uid: string, action: string, maxCalls: number, win
   });
 }
 
+// ─── Brevo daily email quota guard ───────────────────────────────────────────
+//
+// Brevo free tier: 300 emails/day (hard limit — Brevo rejects beyond this).
+// Warn at 80% (240), block at 95% (285) to preserve capacity for critical
+// transactional emails (invites, reminders) when broadcast usage is high.
+//
+// Documents live at system/emailQuota_{YYYY-MM-DD} (flat under `system`).
+// Admin SDK writes only — clients have no write access (firestore.rules: allow write: if false).
+// Weekly cleanup via `cleanupEmailQuota` scheduled function.
+
+const EMAIL_DAILY_LIMIT = 300;
+const EMAIL_WARN_THRESHOLD = Math.floor(EMAIL_DAILY_LIMIT * 0.80);  // 240
+const EMAIL_BLOCK_THRESHOLD = Math.floor(EMAIL_DAILY_LIMIT * 0.95); // 285
+
+/**
+ * Atomically reserve `count` email slots in the daily Brevo quota counter.
+ *
+ * - Throws `resource-exhausted` if the post-increment total would exceed the
+ *   block threshold (285/day), and rolls back the increment.
+ * - Logs console.error at the 80% boundary (240) so Firebase log-based alerts
+ *   can fire — the email itself is still sent.
+ *
+ * @param count Number of email sends to reserve (default 1).
+ */
+async function checkEmailQuota(count = 1): Promise<void> {
+  const db = admin.firestore();
+  const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+  const quotaRef = db.doc(`system/emailQuota_${today}`);
+
+  let newCount: number;
+  try {
+    newCount = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(quotaRef);
+      const current: number = snap.exists ? ((snap.data()?.count as number) ?? 0) : 0;
+      const next = current + count;
+      tx.set(
+        quotaRef,
+        { count: next, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+        { merge: true },
+      );
+      return next;
+    });
+  } catch (err: unknown) {
+    // Transaction failure: log and allow the send rather than hard-blocking on
+    // a Firestore connectivity issue. Quota enforcement is best-effort when
+    // Firestore itself is unavailable.
+    console.error('[emailQuota] Transaction failed — quota check skipped:', (err as Error)?.message);
+    return;
+  }
+
+  if (newCount >= EMAIL_BLOCK_THRESHOLD) {
+    // Roll back the increment we just applied so the counter stays accurate.
+    try {
+      await quotaRef.update({ count: admin.firestore.FieldValue.increment(-count) });
+    } catch (rollbackErr: unknown) {
+      console.error('[emailQuota] Rollback failed after block:', (rollbackErr as Error)?.message);
+    }
+    throw new HttpsError(
+      'resource-exhausted',
+      `Daily email quota nearly exhausted (${newCount}/${EMAIL_DAILY_LIMIT}). Email not sent.`,
+    );
+  }
+
+  // Soft warning: log at console.error so Firebase log-based alerting picks it up.
+  // The email is still delivered — this is a heads-up, not a block.
+  if (newCount >= EMAIL_WARN_THRESHOLD && (newCount - count) < EMAIL_WARN_THRESHOLD) {
+    console.error(
+      `[emailQuota] WARNING: ${newCount}/${EMAIL_DAILY_LIMIT} emails sent today (80% threshold reached)`,
+    );
+  }
+}
+
 // ─── Admin: create user with temporary password ───────────────────────────────
 
 interface CreateUserByAdminData {
@@ -796,6 +868,10 @@ export const sendEmail = onCall<SendEmailData, Promise<SendEmailResult>>(
     if (!subject?.trim()) throw new HttpsError('invalid-argument', 'Subject cannot be empty.');
     if (!message?.trim()) throw new HttpsError('invalid-argument', 'Message cannot be empty.');
     if (to.length > 100) throw new HttpsError('invalid-argument', 'Maximum 100 recipients.');
+
+    // Reserve quota slots before opening the SMTP connection.
+    // Reserves one slot per recipient so the counter matches actual Brevo sends.
+    await checkEmailQuota(to.length);
 
     const fullSubject = `First Whistle Message: ${subject.trim()}`;
     const escapedMessage = message.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -5296,6 +5372,40 @@ export const sendSnackReminders = onSchedule(
     console.log(`sendSnackReminders: sent ${totalSent} snack reminder(s) for ${eventsSnap.size} event(s) on ${inTwoDaysStr}`);
   }
 );
+
+// ─── Scheduled: email quota log cleanup (weekly, Sunday midnight UTC) ─────────
+// Deletes system/emailQuota_{YYYY-MM-DD} documents older than 30 days.
+// Prevents unbounded growth of the system collection while retaining a
+// rolling 30-day history for any manual audit.
+
+export const cleanupEmailQuota = onSchedule('0 0 * * 0', async () => {
+  const db = admin.firestore();
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 30);
+  const cutoffStr = cutoff.toISOString().slice(0, 10); // 'YYYY-MM-DD'
+
+  // Quota docs are stored as system/emailQuota_{YYYY-MM-DD}.
+  // We fetch all documents in the `system` collection that match the prefix
+  // and have a date key portion less than the cutoff string (lexicographic
+  // YYYY-MM-DD comparison is equivalent to chronological order).
+  const systemSnap = await db.collection('system').get();
+  const toDelete = systemSnap.docs.filter((d) => {
+    const id = d.id;
+    if (!id.startsWith('emailQuota_')) return false;
+    const datePart = id.slice('emailQuota_'.length); // 'YYYY-MM-DD'
+    return datePart < cutoffStr;
+  });
+
+  if (!toDelete.length) {
+    console.log(`cleanupEmailQuota: no quota docs older than ${cutoffStr}`);
+    return;
+  }
+
+  const batch = db.batch();
+  toDelete.forEach((d) => batch.delete(d.ref));
+  await batch.commit();
+  console.log(`cleanupEmailQuota: deleted ${toDelete.length} quota doc(s) older than ${cutoffStr}`);
+});
 
 // ─── Scoped Role Assignment ────────────────────────────────────────────────────
 
