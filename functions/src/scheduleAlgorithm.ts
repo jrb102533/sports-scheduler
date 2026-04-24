@@ -494,6 +494,14 @@ export function validateInput(input: GenerateScheduleInput): void {
       }
       if (div.enforcement !== undefined && div.enforcement !== 'soft' && div.enforcement !== 'hard')
         err(`division ${div.id} has invalid enforcement value: ${div.enforcement}`);
+      if (div.gamesPerTeam !== undefined) {
+        if (div.gamesPerTeam < 1)
+          err(`division ${div.id} gamesPerTeam must be at least 1`);
+        if (div.gamesPerTeam > 100)
+          err(`division ${div.id} gamesPerTeam must be at most 100`);
+      }
+      if (div.format !== undefined && div.format !== 'single_round_robin' && div.format !== 'double_round_robin')
+        err(`division ${div.id} has unsupported format: ${div.format}`);
     }
   }
 }
