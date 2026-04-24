@@ -1208,19 +1208,28 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
           const matchedConfig = venueConfigs.find(vc => vc.name === fixtureName);
           const venueFields = matchedConfig?.selectedVenueId ? (() => {
             const selectedVenue = resolveVenue(matchedConfig.selectedVenueId);
-            const slotKey = `${matchedConfig.selectedVenueId}|${fixture.date}|${fixture.startTime}`;
-            const slotIdx = fieldSlotCounter.get(slotKey) ?? 0;
-            fieldSlotCounter.set(slotKey, slotIdx + 1);
-            const assignedField = selectedVenue?.fields && selectedVenue.fields.length > 1
-              ? selectedVenue.fields[slotIdx % selectedVenue.fields.length]
+            // BUG-3 (FW-47): Trust server-assigned surface (fieldId) when present.
+            const serverAssigned = fixture.fieldId
+              ? { fieldId: fixture.fieldId, ...(fixture.fieldName ? { fieldName: fixture.fieldName } : {}) }
               : undefined;
+            let assignedField: { id: string; name: string } | undefined;
+            if (!serverAssigned) {
+              const slotKey = `${matchedConfig.selectedVenueId}|${fixture.date}|${fixture.startTime}`;
+              const slotIdx = fieldSlotCounter.get(slotKey) ?? 0;
+              fieldSlotCounter.set(slotKey, slotIdx + 1);
+              assignedField = selectedVenue?.fields && selectedVenue.fields.length > 1
+                ? selectedVenue.fields[slotIdx % selectedVenue.fields.length]
+                : undefined;
+            }
             return {
               venueId: matchedConfig.selectedVenueId,
               ...(selectedVenue?.lat != null && selectedVenue?.lng != null ? {
                 venueLat: selectedVenue.lat,
                 venueLng: selectedVenue.lng,
               } : {}),
-              ...(assignedField ? { fieldId: assignedField.id, fieldName: assignedField.name } : {}),
+              ...(serverAssigned
+                ? serverAssigned
+                : assignedField ? { fieldId: assignedField.id, fieldName: assignedField.name } : {}),
             };
           })() : {};
 
@@ -1309,7 +1318,7 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
               : divisionId ? new Set([divisionId]) : null;
             const toDelete = divIds
               ? staleSnap.docs.filter(d => divIds.has(d.data().divisionId as string))
-              : staleSnap.docs;
+              : staleSnap.docs.filter(d => !d.data().divisionId);
             if (toDelete.length > 0) {
               await Promise.all(toDelete.map(d => deleteDoc(d.ref)));
             }
@@ -1335,19 +1344,29 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
             const matchedConfig = venueConfigs.find(vc => vc.name === fixtureName);
             const venueFields = matchedConfig?.selectedVenueId ? (() => {
               const selectedVenue = resolveVenue(matchedConfig.selectedVenueId);
-              const slotKey = `${matchedConfig.selectedVenueId}|${fixture.date}|${fixture.startTime}`;
-              const slotIdx = fieldSlotCounter.get(slotKey) ?? 0;
-              fieldSlotCounter.set(slotKey, slotIdx + 1);
-              const assignedField = selectedVenue?.fields && selectedVenue.fields.length > 1
-                ? selectedVenue.fields[slotIdx % selectedVenue.fields.length]
+              // BUG-3 (FW-47): If the server already assigned a surface (fieldId present),
+              // trust it — do NOT overwrite with a client-side round-robin that ignores duration.
+              const serverAssigned = fixture.fieldId
+                ? { fieldId: fixture.fieldId, ...(fixture.fieldName ? { fieldName: fixture.fieldName } : {}) }
                 : undefined;
+              let assignedField: { id: string; name: string } | undefined;
+              if (!serverAssigned) {
+                const slotKey = `${matchedConfig.selectedVenueId}|${fixture.date}|${fixture.startTime}`;
+                const slotIdx = fieldSlotCounter.get(slotKey) ?? 0;
+                fieldSlotCounter.set(slotKey, slotIdx + 1);
+                assignedField = selectedVenue?.fields && selectedVenue.fields.length > 1
+                  ? selectedVenue.fields[slotIdx % selectedVenue.fields.length]
+                  : undefined;
+              }
               return {
                 venueId: matchedConfig.selectedVenueId,
                 ...(selectedVenue?.lat != null && selectedVenue?.lng != null ? {
                   venueLat: selectedVenue.lat,
                   venueLng: selectedVenue.lng,
                 } : {}),
-                ...(assignedField ? { fieldId: assignedField.id, fieldName: assignedField.name } : {}),
+                ...(serverAssigned
+                  ? serverAssigned
+                  : assignedField ? { fieldId: assignedField.id, fieldName: assignedField.name } : {}),
               };
             })() : {};
             const event: ScheduledEvent = {
@@ -1815,7 +1834,6 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
                                 >
                                   <option value="single_round_robin">Round Robin</option>
                                   <option value="double_round_robin">Double Round Robin</option>
-                                  <option value="playoff">Playoff</option>
                                 </select>
                               </td>
                               <td className="px-3 py-2">
@@ -2958,24 +2976,39 @@ export function ScheduleWizardModal({ open, onClose, league, leagueTeams, season
               )}
 
               {(() => {
-                const rawFixtures = result.divisionResults && result.divisionResults.length > 0 && activeDivisionTab !== null
-                  ? (result.divisionResults.find(dr => dr.divisionId === activeDivisionTab)?.fixtures ?? [])
-                  : result.fixtures;
-
-                // Compute field assignments using the same round-robin logic as saveFixtures
-                // so the preview accurately reflects which field each game will land on.
+                // BUG-23 (FW-49) + BUG-3 (FW-47): Compute field assignments across ALL fixtures
+                // in the same iteration order as saveFixtures, so the preview matches what's saved
+                // regardless of which division tab is active. Respect server-assigned fieldId.
+                // Keyed by composite identity (date|time|home|away|division) since fixtures in
+                // divisionResults are separate object references from result.fixtures.
+                const fixtureKey = (f: { date: string; startTime: string; homeTeamId: string; awayTeamId: string; divisionId?: string }) =>
+                  `${f.date}|${f.startTime}|${f.homeTeamId}|${f.awayTeamId}|${f.divisionId ?? ''}`;
                 const fieldSlotCounterPreview = new Map<string, number>();
-                const displayFixtures = rawFixtures.map(f => {
+                const fieldNameByKey = new Map<string, string>();
+                for (const f of result.fixtures) {
+                  if (f.fieldId) {
+                    if (f.fieldName) fieldNameByKey.set(fixtureKey(f), f.fieldName);
+                    continue;
+                  }
                   const fixtureName = f.venueName ?? f.venue ?? '';
                   const matchedConfig = venueConfigs.find(vc => vc.name === fixtureName);
-                  if (!matchedConfig?.selectedVenueId) return f;
+                  if (!matchedConfig?.selectedVenueId) continue;
                   const selectedVenue = resolveVenue(matchedConfig.selectedVenueId);
-                  if (!selectedVenue?.fields || selectedVenue.fields.length <= 1) return f;
+                  if (!selectedVenue?.fields || selectedVenue.fields.length <= 1) continue;
                   const slotKey = `${matchedConfig.selectedVenueId}|${f.date}|${f.startTime}`;
                   const slotIdx = fieldSlotCounterPreview.get(slotKey) ?? 0;
                   fieldSlotCounterPreview.set(slotKey, slotIdx + 1);
                   const assignedField = selectedVenue.fields[slotIdx % selectedVenue.fields.length];
-                  return { ...f, fieldName: assignedField.name };
+                  fieldNameByKey.set(fixtureKey(f), assignedField.name);
+                }
+
+                const rawFixtures = result.divisionResults && result.divisionResults.length > 0 && activeDivisionTab !== null
+                  ? (result.divisionResults.find(dr => dr.divisionId === activeDivisionTab)?.fixtures ?? [])
+                  : result.fixtures;
+
+                const displayFixtures = rawFixtures.map(f => {
+                  const fieldName = fieldNameByKey.get(fixtureKey(f));
+                  return fieldName ? { ...f, fieldName } : f;
                 });
 
                 return (
