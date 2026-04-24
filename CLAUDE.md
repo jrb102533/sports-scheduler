@@ -263,6 +263,10 @@ If production is down or actively leaking data:
 - Config files (`.env`, `firebase.json`, `vite.config.ts`)
 - Generated code or migrations that run once
 
+## Support Edge Cases
+
+Operational edge cases that require admin action (no in-app UI) are documented in `docs/SUPPORT_NOTES.md`. When a new edge case is identified during design or implementation, add it there immediately — don't defer.
+
 ## Work Tracking
 
 **Use Jira (project FW) to track all in-progress work.** When starting implementation on any feature, bug, or task:
