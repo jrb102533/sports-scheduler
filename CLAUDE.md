@@ -139,10 +139,14 @@ Authorized domains are managed in one place only: **Firebase Console → Authent
 
 To deploy to production:
 1. Merge the PR to `main`
-2. Go to GitHub → Actions → "Release" workflow → Run workflow
-3. Wait for the approval notification and approve it
+2. **Deploy to staging first** — `npm run build:staging && firebase deploy --project staging`
+3. Wait for the "E2E Smoke — Staging" workflow to complete and pass (triggers automatically after staging deploy)
+4. Go to GitHub → Actions → "Release" workflow → Run workflow
+5. Wait for the approval notification and approve it
 
-Staging deploys (`firebase deploy --project staging`) from the CLI are fine.
+The release pipeline verifies a passing smoke run exists for the exact SHA being deployed. If you skip staging or commit directly to main without a staging deploy, the release will fail at "Verify Staging Smoke Passed" with `ERROR: No E2E Smoke — Staging run found for SHA <sha>`. Always deploy staging before triggering release.
+
+Staging deploys (`firebase deploy --project staging`) from the CLI are fine and required before every production release.
 
 ### Hard rule: merge before deploy
 
