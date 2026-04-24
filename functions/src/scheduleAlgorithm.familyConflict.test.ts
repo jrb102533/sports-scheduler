@@ -18,9 +18,12 @@ import {
   feasibilityPreCheck,
   fnv32a,
   extractFamilyConflictGroups,
+  type AssignmentResult,
   type GenerateScheduleInput,
+  type Pairing,
   type ScheduleVenueInput,
   type ScheduleTeamInput,
+  type Slot,
 } from './scheduleAlgorithm';
 
 // ─── Shared test fixture builder ──────────────────────────────────────────────
@@ -125,53 +128,44 @@ describe('FW-32 family conflict — siblings', () => {
     }
   });
 
-  it('records a FAMILY_SLOT_CONFLICT soft conflict when all clean slots are blocked', () => {
-    // Create a scenario where only one time slot exists in the entire season,
-    // and two sibling teams are forced into a family-conflicting slot.
-    //
-    // 4 teams: sharks, tigers, eagles, bears
-    // Conflict group: [sharks, tigers]
-    // Tight venue: 2 concurrent pitches, only one 90-min window per day.
-    // In a single_round_robin, 3 rounds × 2 games = 6 fixtures.
-    // With only 4 slot-pitch combinations for 6 pairings, at least 2 will land
-    // in family-conflicting slots if sharks and tigers both need to play
-    // at the same time as each other's sibling-paired teams.
-    const tightVenue: ScheduleVenueInput = {
-      id: 'venue-tight',
-      name: 'Tight Venue',
-      concurrentPitches: 2,
-      availabilityWindows: [
-        // Two days available (Sat Oct 3 + Sun Oct 4 2026), one 90-min window each
-        { dayOfWeek: 6, startTime: '09:00', endTime: '10:31' },
-        { dayOfWeek: 0, startTime: '09:00', endTime: '10:31' },
-      ],
+  it('records a FAMILY_SLOT_CONFLICT soft conflict when the fallback path is taken', () => {
+    // Directly exercise buildOutput with a fabricated AssignmentResult where
+    // hasFamilyConflict=true. This tests the soft-conflict emission code path
+    // without depending on exact slot ordering or schedule geometry.
+    const input = buildInput({ familyConflictGroups: [['sharks', 'tigers']] });
+
+    const slot: Slot = {
+      date: '2026-09-05',
+      venueId: 'venue-1',
+      venueName: 'Main Venue',
+      startTime: '09:00',
+      endTime: '10:30',
+      concurrentCapacity: 4,
+      isFallback: false,
+      key: '2026-09-05|venue-1|09:00',
     };
 
-    const input = buildInput({
-      venues: [tightVenue],
-      seasonStart: '2026-10-03', // Saturday
-      seasonEnd:   '2026-10-04', // Sunday (span >= 1 day required)
-      format:      'single_round_robin',
-      matchDurationMinutes: 90,
-      bufferMinutes: 0,
-      minRestDays: 0,
-      familyConflictGroups: [['sharks', 'tigers']],
-    });
+    const pairing: Pairing = {
+      homeTeamId:   'sharks',
+      homeTeamName: 'Sharks',
+      awayTeamId:   'eagles',
+      awayTeamName: 'Eagles',
+      round:        1,
+      pairingIndex: 0,
+    };
 
-    validateInput(input);
-    feasibilityPreCheck(input);
-    const slots    = generateSlots(input);
-    const pairings = generatePairings(input);
-    const result   = assignFixtures(pairings, slots, input);
-    const output   = buildOutput(result, input);
+    const assignmentResult: AssignmentResult = {
+      assigned: [{ pairing, slot, penalty: 0, practiceConflicts: [], hasFamilyConflict: true }],
+      unassigned: [],
+    };
 
-    // At least some fixtures should be assigned
-    expect(output.fixtures.length).toBeGreaterThan(0);
+    const output = buildOutput(assignmentResult, input);
 
-    // Every FAMILY_SLOT_CONFLICT conflict must have severity 'soft'
     const familyConflicts = output.conflicts.filter(
-      c => c.constraintId === 'FAMILY_SLOT_CONFLICT'
+      c => c.constraintId === 'FAMILY_SLOT_CONFLICT',
     );
+    expect(familyConflicts.length).toBeGreaterThan(0);
+
     for (const fc of familyConflicts) {
       expect(fc.severity).toBe('soft');
     }
