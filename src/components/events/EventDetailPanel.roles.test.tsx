@@ -105,7 +105,7 @@ vi.mock('@/store/useLeagueVenueStore', () => {
 // ── Sub-component stubs ────────────────────────────────────────────────────────
 
 vi.mock('@/components/attendance/AttendanceTracker', () => ({
-  AttendanceTracker: () => null,
+  AttendanceTracker: () => <div data-testid="attendance-tracker" />,
 }));
 vi.mock('@/components/events/SnackVolunteerForm', () => ({
   SnackVolunteerForm: () => null,
@@ -295,5 +295,24 @@ describe('EventDetailPanel — null event', () => {
     currentUser = { uid: 'admin-1' };
     const { container } = render(<EventDetailPanel event={null} onClose={() => {}} />);
     expect(container.firstChild).toBeNull();
+  });
+});
+
+// ── F. AttendanceTracker visibility by role ───────────────────────────────────
+
+describe('EventDetailPanel — AttendanceTracker visibility', () => {
+  it('renders AttendanceTracker for coach on a non-cancelled event', () => {
+    renderPanel(makeEvent({ status: 'scheduled' }), makeProfile('coach'), 'coach-1');
+    expect(screen.getByTestId('attendance-tracker')).toBeInTheDocument();
+  });
+
+  it('does not render AttendanceTracker for parent', () => {
+    renderPanel(makeEvent({ status: 'scheduled' }), makeProfile('parent'), 'parent-1');
+    expect(screen.queryByTestId('attendance-tracker')).not.toBeInTheDocument();
+  });
+
+  it('does not render AttendanceTracker even for coach when event is cancelled', () => {
+    renderPanel(makeEvent({ status: 'cancelled' }), makeProfile('coach'), 'coach-1');
+    expect(screen.queryByTestId('attendance-tracker')).not.toBeInTheDocument();
   });
 });

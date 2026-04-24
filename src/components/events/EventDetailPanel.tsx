@@ -515,7 +515,7 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
 
 
             {/* Attendance */}
-            {event.status !== 'cancelled' && (
+            {canManage && event.status !== 'cancelled' && (
               <AttendanceTracker event={currentEvent} />
             )}
           </div>
