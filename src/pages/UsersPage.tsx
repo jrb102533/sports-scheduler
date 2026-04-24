@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { collection, getDocs, query, where, doc, updateDoc, arrayUnion, arrayRemove, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, updateDoc, arrayUnion, arrayRemove, writeBatch, orderBy, limit, startAfter, QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@/lib/firebase';
 import {
@@ -502,8 +502,13 @@ function EditPanel({
 // ── UsersPage ─────────────────────────────────────────────────────────────────
 
 export function UsersPage() {
+  const PAGE_SIZE = 100;
+
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const lastDocRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all');
   const [addOpen, setAddOpen] = useState(false);
@@ -518,11 +523,33 @@ export function UsersPage() {
   const currentUid = useAuthStore(s => s.user?.uid);
 
   useEffect(() => {
-    getDocs(collection(db, 'users')).then(snap => {
+    const q = query(collection(db, 'users'), orderBy('displayName'), limit(PAGE_SIZE));
+    getDocs(q).then(snap => {
+      lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
+      setHasMore(snap.docs.length === PAGE_SIZE);
       setUsers(snap.docs.map(d => d.data() as UserProfile));
       setLoading(false);
     });
   }, []);
+
+  async function loadMore() {
+    if (!lastDocRef.current || loadingMore) return;
+    setLoadingMore(true);
+    const q = query(
+      collection(db, 'users'),
+      orderBy('displayName'),
+      limit(PAGE_SIZE),
+      startAfter(lastDocRef.current),
+    );
+    try {
+      const snap = await getDocs(q);
+      lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
+      setHasMore(snap.docs.length === PAGE_SIZE);
+      setUsers(prev => [...prev, ...snap.docs.map(d => d.data() as UserProfile)]);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
@@ -709,6 +736,18 @@ export function UsersPage() {
               onClick={() => setSelectedUser(user)}
             />
           ))}
+        </div>
+      )}
+
+      {hasMore && !search && roleFilter === 'all' && (
+        <div className="mt-4 flex justify-center">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="px-4 py-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loadingMore ? 'Loading…' : 'Load more'}
+          </button>
         </div>
       )}
 

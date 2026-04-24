@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Phone, Users, AlertCircle, Mail, CheckCircle, XCircle, Shield, MessageCircle, ChevronLeft } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
@@ -84,6 +84,10 @@ function DmPanel({ myUid, myName }: { myUid: string; myName: string }) {
   const [activeThread, setActiveThread] = useState<DmThread | null>(null);
   const [teamMembers, setTeamMembers] = useState<UserProfile[]>([]);
   const [showNewDm, setShowNewDm] = useState(false);
+  const profileCache = useRef<Map<string, UserProfile>>(new Map());
+
+  // Clear cache on user switch — shared-device sessions must not serve stale profiles
+  useEffect(() => { profileCache.current.clear(); }, [myUid]);
 
   // Subscribe to thread list
   useEffect(() => {
@@ -91,51 +95,63 @@ function DmPanel({ myUid, myName }: { myUid: string; myName: string }) {
     return useDmStore.getState().subscribeThreads(myUid);
   }, [myUid]);
 
+  // Stable membership signature: sorted team IDs the current user belongs to.
+  // Recomputing on raw store lengths caused 100+ getDoc calls per store refresh;
+  // this fires only when the actual set of accessible teams changes.
+  const membershipKey = profile
+    ? allTeams
+        .filter(t => isMemberOfTeam(profile, t.id) || profile.role === 'admin')
+        .map(t => t.id)
+        .sort()
+        .join(',')
+    : '';
+
   // Load team members for the DM picker.
   // Uses player.linkedUid (always set) + team coachIds to find all user accounts
   // on the same team — avoids relying on the legacy profile.teamId scalar which
   // is absent for multi-membership users added via the invite flow.
   useEffect(() => {
-    if (!profile || allTeams.length === 0) return;
+    if (!profile || !membershipKey) return;
 
-    const myTeamIds = new Set(
-      allTeams
-        .filter(t => isMemberOfTeam(profile, t.id) || profile.role === 'admin')
-        .map(t => t.id)
-    );
-    if (myTeamIds.size === 0) return;
+    const myTeamIds = new Set(membershipKey.split(','));
 
-    // Collect all UIDs reachable from these teams:
-    // 1. Players with a linked user account
     const linkedUids = new Set<string>(
       players
         .filter(p => myTeamIds.has(p.teamId) && p.linkedUid)
         .map(p => p.linkedUid!)
     );
-    // 2. Coaches from the team documents
     allTeams
       .filter(t => myTeamIds.has(t.id))
       .forEach(t => {
         if (t.coachId) linkedUids.add(t.coachId);
         t.coachIds?.forEach(id => linkedUids.add(id));
       });
-    // Exclude self
     linkedUids.delete(myUid);
 
     if (linkedUids.size === 0) return;
 
-    // Batch-load user profiles directly by document ID (uid === docId in /users)
-    Promise.all([...linkedUids].map(uid => getDoc(doc(db, 'users', uid))))
+    const uncached = [...linkedUids].filter(uid => !profileCache.current.has(uid));
+    if (uncached.length === 0) {
+      setTeamMembers([...profileCache.current.values()].filter(u => linkedUids.has(u.uid)));
+      return;
+    }
+
+    Promise.all(uncached.map(uid => getDoc(doc(db, 'users', uid))))
       .then(snaps => {
-        const members: UserProfile[] = snaps
-          .filter(d => d.exists())
-          .map(d => d.data() as UserProfile)
-          .filter(u => u.uid && u.displayName);
-        setTeamMembers(members);
+        snaps.forEach(d => {
+          if (d.exists()) {
+            const u = d.data() as UserProfile;
+            if (u.uid) profileCache.current.set(u.uid, u);
+          }
+        });
+        setTeamMembers(
+          [...profileCache.current.values()]
+            .filter(u => linkedUids.has(u.uid) && u.displayName)
+        );
       })
       .catch(err => console.error('[DmPanel] load members:', err));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myUid, allTeams.length, players.length]);
+  }, [myUid, membershipKey]);
 
   function openThread(thread: DmThread) {
     setActiveThread(thread);
