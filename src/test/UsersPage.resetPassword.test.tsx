@@ -34,6 +34,9 @@ vi.mock('firebase/firestore', () => ({
   arrayRemove: vi.fn((v: unknown) => v),
   query: vi.fn(),
   where: vi.fn(),
+  orderBy: vi.fn(),
+  limit: vi.fn(),
+  startAfter: vi.fn(),
   deleteField: vi.fn(() => ({ __type: 'deleteField' })),
   deleteDoc: vi.fn(),
 }));
