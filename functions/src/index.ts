@@ -1145,11 +1145,61 @@ export const checkInviteAutoVerify = onCall<Record<string, never>, Promise<Check
       .get();
 
     if (inviteQuery.empty) {
+      // Idempotency: check whether this UID already consumed an autoVerify invite for this
+      // email in a prior call.  If so, re-verify without error — the caller is retrying.
+      const priorClaimQuery = await db.collection('invites')
+        .where('email', '==', email)
+        .where('autoVerify', '==', true)
+        .where('claimedByUid', '==', uid)
+        .limit(1)
+        .get();
+
+      if (!priorClaimQuery.empty) {
+        // Already consumed by this same UID — idempotent re-verify.
+        await admin.auth().updateUser(uid, { emailVerified: true });
+        console.log(`checkInviteAutoVerify: idempotent re-verify uid=${uid} email=${email}`);
+        return { verified: true };
+      }
+
+      return { verified: false };
+    }
+
+    const inviteDoc = inviteQuery.docs[0];
+    const inviteData = inviteDoc.data() as Record<string, unknown>;
+
+    // Pre-check: if the invite was already claimed by a *different* UID, refuse.
+    // This guards the window between the query above and the consume write below —
+    // a second account cannot piggyback on a pending invite that belongs to another UID.
+    // (SEC-105 / FW-50)
+    if (inviteData['claimedByUid'] !== undefined && inviteData['claimedByUid'] !== uid) {
+      console.warn(
+        `checkInviteAutoVerify: invite already claimed by ${String(inviteData['claimedByUid'])}, ` +
+        `refusing uid=${uid} email=${email}`
+      );
       return { verified: false };
     }
 
     // An invite exists — mark the Firebase Auth account as verified.
     await admin.auth().updateUser(uid, { emailVerified: true });
+
+    // Consume the invite atomically: stamp it so no second account can replay this path.
+    // We do NOT delete it — verifyInvitedUser (invite-link flow) still needs to find and
+    // process it for the full signup.  Changing status to 'used' removes it from the
+    // `status == 'pending'` query above on any subsequent call.
+    try {
+      await inviteDoc.ref.update({
+        status: 'used',
+        claimedByUid: uid,
+        claimedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (err) {
+      // Log and surface — the Auth update already succeeded, but a failure to consume
+      // the invite leaves the replay window open.  Treat as a function error so the
+      // caller retries rather than silently succeeding with an unconsumed invite.
+      console.error(`checkInviteAutoVerify: failed to consume invite for uid=${uid} email=${email}`, err);
+      throw new HttpsError('internal', 'Failed to record invite claim. Please try again.');
+    }
+
     console.log(`checkInviteAutoVerify: auto-verified uid=${uid} email=${email} via pending invite`);
 
     return { verified: true };

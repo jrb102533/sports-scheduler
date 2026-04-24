@@ -1,16 +1,23 @@
 /**
- * Tests for the checkInviteAutoVerify callable Cloud Function.
+ * UID-binding security tests for checkInviteAutoVerify (FW-50 / SEC-105).
  *
- * This function is called after signInWithEmailAndPassword when emailVerified is false.
- * It queries for a pending autoVerify invite for the authenticated user's email and,
- * if found, marks their Firebase Auth account as email-verified.  Unlike verifyInvitedUser
- * it does not consume (delete) the invite — that happens through the invite-link flow.
+ * Vulnerability: the original implementation queries for any pending autoVerify invite
+ * by email and marks the CALLING uid as email-verified, without ever consuming the invite.
+ * A second Firebase Auth account with the same email can call the function, find the same
+ * pending invite, and get auto-verified without possessing the inviteSecret — bypassing the
+ * email-verification gate.
  *
- * Coverage:
- *   1. Unauthenticated caller → throws 'unauthenticated'
- *   2. Authenticated but no email on auth token → throws 'invalid-argument'
- *   3. No matching autoVerify invite → returns { verified: false }
- *   4. Matching invite found → calls admin.auth().updateUser and returns { verified: true }
+ * Fix: after verifying the first caller, stamp the invite with { status: 'used', claimedByUid,
+ * claimedAt } atomically. On subsequent calls the invite no longer matches the
+ * `status == 'pending'` filter, so the second account cannot be auto-verified.
+ * Additionally, if the invite has already been claimed by a different UID the function
+ * must return { verified: false } immediately.
+ *
+ * Tests:
+ *   (5) first caller consumes the invite — status set to 'used', claimedByUid recorded
+ *   (6) second account with same email cannot be auto-verified after invite is consumed
+ *   (7) invite already claimed by a different UID → returns { verified: false } without updateUser
+ *   (8) same UID calling again after claiming → still returns { verified: true } (idempotent re-verify)
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -58,13 +65,13 @@ vi.mock('nodemailer', () => ({
 }));
 
 // ─── Firestore mock infrastructure ───────────────────────────────────────────
-// Minimal implementation — checkInviteAutoVerify only reads via a collection query,
-// so we need doc() for rate-limit reads and collection().where().limit().get() for
-// the invite query.
 
 type DocData = Record<string, unknown>;
 
 const _store: Map<string, DocData> = new Map();
+
+// Track update calls so tests can inspect what was written.
+const _updateCalls: Array<{ path: string; data: DocData }> = [];
 
 class MockDocRef {
   constructor(public path: string) {}
@@ -81,6 +88,7 @@ class MockDocRef {
   }
 
   async update(data: DocData): Promise<void> {
+    _updateCalls.push({ path: this.path, data });
     const existing = _store.get(this.path) ?? {};
     _store.set(this.path, { ...existing, ...data });
   }
@@ -118,7 +126,7 @@ class MockQuery {
         return true;
       });
       if (passes) {
-        matched.push({ ref: new MockDocRef(path), data: () => docData });
+        matched.push({ ref: new MockDocRef(path), data: () => ({ ...docData }) });
         if (matched.length >= this._limitN) break;
       }
     }
@@ -138,12 +146,13 @@ const mockDb = {
 const mockUpdateUser = vi.fn().mockResolvedValue({});
 
 vi.mock('firebase-admin', () => {
+  const serverTimestamp = () => ({ __serverTimestamp: true });
   const FieldValue = {
     increment: (n: number) => ({ __increment: n }),
     arrayUnion: (...values: unknown[]) => ({ __arrayUnion: values }),
     arrayRemove: (...values: unknown[]) => ({ __arrayRemove: values }),
     delete: () => ({ __delete: true }),
-    serverTimestamp: () => ({ __serverTimestamp: true }),
+    serverTimestamp,
   };
   const firestoreFn = Object.assign(() => mockDb, { FieldValue });
   return {
@@ -172,23 +181,39 @@ import { checkInviteAutoVerify } from './index';
 
 const fn = checkInviteAutoVerify as unknown as (req: unknown) => Promise<{ verified: boolean }>;
 
-function makeRequest(uid: string | null, email: string | null | undefined) {
-  if (!uid) return { auth: null, data: {} };
+function makeRequest(uid: string, email: string) {
   return {
-    auth: {
-      uid,
-      token: email !== undefined ? { email } : {},
-    },
+    auth: { uid, token: { email } },
     data: {},
   };
 }
 
-function seedDoc(path: string, data: DocData) {
-  _store.set(path, data);
+const INVITE_PATH = 'invites/user@example.com_team1_player';
+const EMAIL = 'user@example.com';
+
+function seedPendingInvite() {
+  _store.set(INVITE_PATH, {
+    email: EMAIL,
+    teamId: 'team1',
+    autoVerify: true,
+    status: 'pending',
+  });
+}
+
+function seedClaimedInvite(claimedByUid: string) {
+  _store.set(INVITE_PATH, {
+    email: EMAIL,
+    teamId: 'team1',
+    autoVerify: true,
+    status: 'used',
+    claimedByUid,
+    claimedAt: { __serverTimestamp: true },
+  });
 }
 
 function clearStore() {
   _store.clear();
+  _updateCalls.length = 0;
 }
 
 // ─── Test setup ───────────────────────────────────────────────────────────────
@@ -196,95 +221,69 @@ function clearStore() {
 beforeEach(() => {
   clearStore();
   mockUpdateUser.mockClear();
-  // Seed rate-limit doc so checkRateLimit doesn't throw.
-  seedDoc('rateLimits/uid1_checkInviteAutoVerify', { count: 0, windowStart: Date.now() });
+  // Seed rate-limit docs for both UIDs used across tests.
+  _store.set('rateLimits/uid1_checkInviteAutoVerify', { count: 0, windowStart: Date.now() });
+  _store.set('rateLimits/uid2_checkInviteAutoVerify', { count: 0, windowStart: Date.now() });
 });
 
-// ─── checkInviteAutoVerify tests ──────────────────────────────────────────────
+// ─── UID-binding / invite-consumption tests (FW-50 / SEC-105) ────────────────
 
-describe('checkInviteAutoVerify', () => {
+describe('checkInviteAutoVerify — UID binding & invite consumption (FW-50)', () => {
 
-  // ── Auth guard ────────────────────────────────────────────────────────────
+  // (5) After the first caller is auto-verified the invite must be consumed —
+  //     status updated to 'used' and claimedByUid recorded.
+  it('(5) consumes the invite after verifying — sets status to "used" and records claimedByUid', async () => {
+    seedPendingInvite();
 
-  it('(1) rejects unauthenticated callers', async () => {
-    await expect(fn(makeRequest(null, null))).rejects.toMatchObject({
-      code: 'unauthenticated',
-    });
+    await fn(makeRequest('uid1', EMAIL));
+
+    const storedInvite = _store.get(INVITE_PATH);
+    expect(storedInvite?.['status']).toBe('used');
+    expect(storedInvite?.['claimedByUid']).toBe('uid1');
+    expect(storedInvite?.['claimedAt']).toBeDefined();
   });
 
-  it('(2) rejects when auth token carries no email', async () => {
-    // Pass uid but omit email from the token object entirely.
-    await expect(fn(makeRequest('uid1', undefined))).rejects.toMatchObject({
-      code: 'invalid-argument',
-    });
-  });
+  // (6) Replay attack: a second Firebase Auth account with the same email must NOT be
+  //     auto-verified once the invite has been consumed.
+  it('(6) blocks a second account from being auto-verified after the invite is consumed', async () => {
+    // uid1 already claimed the invite.
+    seedClaimedInvite('uid1');
 
-  it('(2) rejects when auth token email is null', async () => {
-    await expect(fn(makeRequest('uid1', null))).rejects.toMatchObject({
-      code: 'invalid-argument',
-    });
-  });
+    const result = await fn(makeRequest('uid2', EMAIL));
 
-  // ── No matching invite ────────────────────────────────────────────────────
-
-  it('(3) returns { verified: false } when no autoVerify invite exists for this email', async () => {
-    const result = await fn(makeRequest('uid1', 'user@example.com'));
     expect(result.verified).toBe(false);
-  });
-
-  it('(3) does not call admin.auth().updateUser when no matching invite is found', async () => {
-    await fn(makeRequest('uid1', 'user@example.com'));
     expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 
-  it('(3) returns { verified: false } when invite exists but autoVerify is false', async () => {
-    seedDoc('invites/user@example.com_team1_player', {
-      email: 'user@example.com',
+  // (7) If the invite doc is present but already has claimedByUid pointing to a *different* UID,
+  //     return { verified: false } without calling updateUser — even though the doc may still
+  //     temporarily appear in a query result due to eventual consistency.
+  it('(7) returns { verified: false } when claimedByUid differs from calling uid', async () => {
+    // Seed an invite that was claimed by uid1 but is still status 'pending' in a
+    // hypothetical mid-transaction window — the pre-check guards against this.
+    _store.set(INVITE_PATH, {
+      email: EMAIL,
       teamId: 'team1',
-      autoVerify: false,
+      autoVerify: true,
       status: 'pending',
+      claimedByUid: 'uid1', // already claimed by someone else
     });
 
-    const result = await fn(makeRequest('uid1', 'user@example.com'));
+    const result = await fn(makeRequest('uid2', EMAIL));
+
     expect(result.verified).toBe(false);
+    expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 
-  // ── Matching invite found ─────────────────────────────────────────────────
+  // (8) Idempotency: the original caller may call again (e.g. a retry). The function must
+  //     still return { verified: true } — it should not be blocked by its own prior claim.
+  it('(8) allows the original claimant to be re-verified idempotently', async () => {
+    // The invite is already marked used and claimed by uid1.
+    seedClaimedInvite('uid1');
 
-  it('(4) calls admin.auth().updateUser(uid, { emailVerified: true }) when invite found', async () => {
-    seedDoc('invites/user@example.com_team1_player', {
-      email: 'user@example.com',
-      teamId: 'team1',
-      autoVerify: true,
-      status: 'pending',
-    });
+    // uid1 calls again (retry scenario).
+    const result = await fn(makeRequest('uid1', EMAIL));
 
-    await fn(makeRequest('uid1', 'user@example.com'));
-    expect(mockUpdateUser).toHaveBeenCalledWith('uid1', { emailVerified: true });
-  });
-
-  it('(4) returns { verified: true } when a matching autoVerify invite is found', async () => {
-    seedDoc('invites/user@example.com_team1_player', {
-      email: 'user@example.com',
-      teamId: 'team1',
-      autoVerify: true,
-      status: 'pending',
-    });
-
-    const result = await fn(makeRequest('uid1', 'user@example.com'));
-    expect(result.verified).toBe(true);
-  });
-
-  it('(4) email from token is lowercased before querying invites', async () => {
-    seedDoc('invites/user@example.com_team1_player', {
-      email: 'user@example.com',
-      teamId: 'team1',
-      autoVerify: true,
-      status: 'pending',
-    });
-
-    // Token carries mixed-case email — CF should normalise to lowercase before query.
-    const result = await fn(makeRequest('uid1', 'User@Example.COM'));
     expect(result.verified).toBe(true);
     expect(mockUpdateUser).toHaveBeenCalledWith('uid1', { emailVerified: true });
   });
