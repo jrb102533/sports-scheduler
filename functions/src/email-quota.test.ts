@@ -220,7 +220,8 @@ vi.mock('firebase-admin', () => {
 });
 
 // Import AFTER mocks are registered.
-import { sendEmail } from './index';
+import { sendEmail as _sendEmail } from './index';
+const sendEmail = _sendEmail as unknown as (req: unknown) => Promise<unknown>;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -272,8 +273,8 @@ describe('email quota guard', () => {
 
     expect(quotaCount()).toBe(239);
     const errorCalls = (console.error as ReturnType<typeof vi.spyOn>).mock.calls;
-    const quotaWarning = errorCalls.find(args =>
-      typeof args[0] === 'string' && args[0].includes('[emailQuota] WARNING')
+    const quotaWarning = errorCalls.find((args: unknown[]) =>
+      typeof args[0] === 'string' && (args[0] as string).includes('[emailQuota] WARNING')
     );
     expect(quotaWarning).toBeUndefined();
   });
@@ -289,8 +290,8 @@ describe('email quota guard', () => {
 
     expect(quotaCount()).toBe(240);
     const errorCalls = (console.error as ReturnType<typeof vi.spyOn>).mock.calls;
-    const quotaWarning = errorCalls.find(args =>
-      typeof args[0] === 'string' && args[0].includes('[emailQuota] WARNING')
+    const quotaWarning = errorCalls.find((args: unknown[]) =>
+      typeof args[0] === 'string' && (args[0] as string).includes('[emailQuota] WARNING')
     );
     expect(quotaWarning).toBeDefined();
     expect(quotaWarning![0]).toContain('240/300');
