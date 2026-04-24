@@ -19,22 +19,25 @@ import type { AvailabilityCollection, CoachAvailabilityResponse, WizardDraft } f
 
 // ── Firestore mock ────────────────────────────────────────────────────────────
 
-const mockSetDoc = vi.fn();
-const mockUpdateDoc = vi.fn();
-const mockDeleteDoc = vi.fn();
-const mockGetDocs = vi.fn();
-const mockOnSnapshot = vi.fn(() => () => {});
-const mockDoc = vi.fn(() => ({}));
-const mockCollection = vi.fn(() => ({}));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyFn = (...args: any[]) => any;
+
+const mockSetDoc = vi.fn<AnyFn>();
+const mockUpdateDoc = vi.fn<AnyFn>();
+const mockDeleteDoc = vi.fn<AnyFn>();
+const mockGetDocs = vi.fn<AnyFn>();
+const mockOnSnapshot = vi.fn<AnyFn>(() => () => {});
+const mockDoc = vi.fn<AnyFn>(() => ({}));
+const mockCollection = vi.fn<AnyFn>(() => ({}));
 
 vi.mock('firebase/firestore', () => ({
-  collection: (...args: unknown[]) => mockCollection(...args),
-  onSnapshot: (...args: unknown[]) => mockOnSnapshot(...args),
-  doc: (...args: unknown[]) => mockDoc(...args),
-  setDoc: (...args: unknown[]) => mockSetDoc(...args),
-  updateDoc: (...args: unknown[]) => mockUpdateDoc(...args),
-  deleteDoc: (...args: unknown[]) => mockDeleteDoc(...args),
-  getDocs: (...args: unknown[]) => mockGetDocs(...args),
+  collection: (...args: any[]) => mockCollection(...args),
+  onSnapshot: (...args: any[]) => mockOnSnapshot(...args),
+  doc: (...args: any[]) => mockDoc(...args),
+  setDoc: (...args: any[]) => mockSetDoc(...args),
+  updateDoc: (...args: any[]) => mockUpdateDoc(...args),
+  deleteDoc: (...args: any[]) => mockDeleteDoc(...args),
+  getDocs: (...args: any[]) => mockGetDocs(...args),
 }));
 
 vi.mock('@/lib/firebase', () => ({ db: {} }));
@@ -163,63 +166,111 @@ describe('useCollectionStore — loadCollection', () => {
 });
 
 // ── loadWizardDraft() ─────────────────────────────────────────────────────────
+// FW-54: path moved to leagues/{leagueId}/seasons/{seasonId}/wizardDraft/draft.
+// Tests verify both the correct seasonId parameter and the season-scoped path.
 
 describe('useCollectionStore — loadWizardDraft', () => {
-  it('sets wizardDraft when the doc exists', () => {
-    const draft: WizardDraft = { leagueId: 'league-1', step: 1, updatedAt: '2026-01-01T00:00:00.000Z' } as WizardDraft;
-    mockOnSnapshot.mockImplementation((_ref, cb) => {
-      cb({ exists: () => true, data: () => draft });
-      return () => {};
-    });
-
-    useCollectionStore.getState().loadWizardDraft('league-1');
-    expect(useCollectionStore.getState().wizardDraft).not.toBeNull();
-  });
-
-  it('sets wizardDraft to null when the doc does not exist', () => {
-    useCollectionStore.setState({ wizardDraft: { leagueId: 'x', step: 1, updatedAt: '' } as WizardDraft });
+  it('subscribes to the season-scoped Firestore path', () => {
     mockOnSnapshot.mockImplementation((_ref, cb) => {
       cb({ exists: () => false });
       return () => {};
     });
 
-    useCollectionStore.getState().loadWizardDraft('league-1');
+    useCollectionStore.getState().loadWizardDraft('league-1', 'season-1');
+
+    // doc() must be called with the season-scoped path segments
+    expect(mockDoc).toHaveBeenCalledWith(
+      expect.anything(), // db
+      'leagues', 'league-1', 'seasons', 'season-1', 'wizardDraft', 'draft'
+    );
+  });
+
+  it('sets wizardDraft when the doc exists', () => {
+    const draft: WizardDraft = {
+      mode: 'season', currentStep: 'step1', stepData: {}, updatedAt: '2026-01-01T00:00:00.000Z', createdBy: 'lm-uid',
+    };
+    mockOnSnapshot.mockImplementation((_ref, cb) => {
+      cb({ exists: () => true, data: () => draft });
+      return () => {};
+    });
+
+    useCollectionStore.getState().loadWizardDraft('league-1', 'season-1');
+    expect(useCollectionStore.getState().wizardDraft).not.toBeNull();
+  });
+
+  it('sets wizardDraft to null when the doc does not exist', () => {
+    useCollectionStore.setState({ wizardDraft: { mode: 'season', currentStep: 'x', stepData: {}, updatedAt: '', createdBy: '' } });
+    mockOnSnapshot.mockImplementation((_ref, cb) => {
+      cb({ exists: () => false });
+      return () => {};
+    });
+
+    useCollectionStore.getState().loadWizardDraft('league-1', 'season-1');
     expect(useCollectionStore.getState().wizardDraft).toBeNull();
+  });
+
+  it('returns an unsubscribe function', () => {
+    const unsub = vi.fn();
+    mockOnSnapshot.mockReturnValue(unsub);
+    const result = useCollectionStore.getState().loadWizardDraft('league-1', 'season-1');
+    expect(typeof result).toBe('function');
   });
 });
 
 // ── saveWizardDraft() ─────────────────────────────────────────────────────────
+// FW-54: now requires seasonId as second arg; writes to season-scoped path.
 
 describe('useCollectionStore — saveWizardDraft', () => {
-  it('calls setDoc once', async () => {
-    await useCollectionStore.getState().saveWizardDraft('league-1', {
-      leagueId: 'league-1', step: 2,
-    } as Omit<WizardDraft, 'updatedAt'>);
+  const draftInput: Omit<WizardDraft, 'updatedAt'> = {
+    mode: 'season', currentStep: 'step2', stepData: {}, createdBy: 'lm-uid',
+  };
+
+  it('writes to the season-scoped Firestore path', async () => {
+    await useCollectionStore.getState().saveWizardDraft('league-1', 'season-1', draftInput);
+
+    expect(mockDoc).toHaveBeenCalledWith(
+      expect.anything(), // db
+      'leagues', 'league-1', 'seasons', 'season-1', 'wizardDraft', 'draft'
+    );
     expect(mockSetDoc).toHaveBeenCalledOnce();
   });
 
   it('sets wizardDraft in local state with updatedAt', async () => {
-    await useCollectionStore.getState().saveWizardDraft('league-1', {
-      leagueId: 'league-1', step: 2,
-    } as Omit<WizardDraft, 'updatedAt'>);
+    await useCollectionStore.getState().saveWizardDraft('league-1', 'season-1', draftInput);
     const draft = useCollectionStore.getState().wizardDraft;
     expect(draft).not.toBeNull();
     expect(typeof draft?.updatedAt).toBe('string');
   });
+
+  it('does not call deleteDoc on save', async () => {
+    await useCollectionStore.getState().saveWizardDraft('league-1', 'season-1', draftInput);
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
+  });
 });
 
 // ── clearWizardDraft() ────────────────────────────────────────────────────────
+// FW-54: now requires seasonId as second arg; deletes from season-scoped path.
 
 describe('useCollectionStore — clearWizardDraft', () => {
-  it('calls deleteDoc (not setDoc)', async () => {
-    await useCollectionStore.getState().clearWizardDraft('league-1');
+  it('deletes from the season-scoped Firestore path', async () => {
+    await useCollectionStore.getState().clearWizardDraft('league-1', 'season-1');
+
+    expect(mockDoc).toHaveBeenCalledWith(
+      expect.anything(), // db
+      'leagues', 'league-1', 'seasons', 'season-1', 'wizardDraft', 'draft'
+    );
+    expect(mockDeleteDoc).toHaveBeenCalledOnce();
+  });
+
+  it('calls deleteDoc, not setDoc', async () => {
+    await useCollectionStore.getState().clearWizardDraft('league-1', 'season-1');
     expect(mockDeleteDoc).toHaveBeenCalledOnce();
     expect(mockSetDoc).not.toHaveBeenCalled();
   });
 
   it('sets wizardDraft to null in local state', async () => {
-    useCollectionStore.setState({ wizardDraft: { leagueId: 'x', step: 1, updatedAt: '' } as WizardDraft });
-    await useCollectionStore.getState().clearWizardDraft('league-1');
+    useCollectionStore.setState({ wizardDraft: { mode: 'season', currentStep: 'x', stepData: {}, updatedAt: '', createdBy: '' } });
+    await useCollectionStore.getState().clearWizardDraft('league-1', 'season-1');
     expect(useCollectionStore.getState().wizardDraft).toBeNull();
   });
 });

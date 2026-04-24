@@ -83,6 +83,10 @@ export const useCollectionStore = create<CollectionStore>((set) => ({
   },
 
   loadWizardDraft: (leagueId, seasonId) => {
+    if (!seasonId) {
+      console.error('[loadWizardDraft] seasonId is required — skipping subscription');
+      return () => {};
+    }
     const unsub = onSnapshot(
       doc(db, 'leagues', leagueId, 'seasons', seasonId, 'wizardDraft', 'draft'),
       (snap) => {
@@ -98,6 +102,10 @@ export const useCollectionStore = create<CollectionStore>((set) => ({
   },
 
   saveWizardDraft: async (leagueId, seasonId, draft) => {
+    if (!seasonId) {
+      console.error('[saveWizardDraft] seasonId is required — draft not saved');
+      return;
+    }
     const now = new Date().toISOString();
     const full: WizardDraft = { ...draft, updatedAt: now };
     await setDoc(doc(db, 'leagues', leagueId, 'seasons', seasonId, 'wizardDraft', 'draft'), full);
@@ -105,6 +113,10 @@ export const useCollectionStore = create<CollectionStore>((set) => ({
   },
 
   clearWizardDraft: async (leagueId, seasonId) => {
+    if (!seasonId) {
+      console.error('[clearWizardDraft] seasonId is required — draft not cleared');
+      return;
+    }
     await deleteDoc(doc(db, 'leagues', leagueId, 'seasons', seasonId, 'wizardDraft', 'draft'));
     set({ wizardDraft: null });
   },
