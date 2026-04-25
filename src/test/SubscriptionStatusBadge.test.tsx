@@ -8,8 +8,10 @@
  *   - Trialing: shows "Trial · Nd" pill with correct day count
  *   - Trialing: 0 days left still shows "Trial · 0d"
  *   - Past due: shows "Past due" pill
- *   - Canceled status: renders nothing
+ *   - Canceled status (no expiresAt): renders nothing
  *   - Incomplete status: renders nothing
+ *   - Canceled + expiresAt in the future: shows "Pro · Ends <date>" pill
+ *   - Canceled + expiresAt in the past: renders nothing
  *   - Click on Pro badge navigates to /account/subscription
  *   - Click on Trial badge navigates to /account/subscription
  *   - Click on Past due badge navigates to /account/subscription
@@ -88,7 +90,7 @@ describe('SubscriptionStatusBadge — visibility', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders nothing for a canceled subscription', () => {
+  it('renders nothing for a canceled subscription with no expiresAt', () => {
     currentProfile = makeProfile({
       subscriptionTier: 'league_manager_pro',
       subscriptionStatus: 'canceled',
@@ -132,6 +134,34 @@ describe('SubscriptionStatusBadge — visibility', () => {
     });
     renderBadge();
     expect(screen.getByText('Past due')).toBeInTheDocument();
+  });
+
+  it('shows "Pro · Ends <date>" pill when canceled but expiresAt is in the future', () => {
+    // Use a fixed future date so we can assert the exact formatted label.
+    // Pick a date well into the future to ensure it's always "in the future"
+    // relative to when the test runs, but use a year we can reason about.
+    const futureIso = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    currentProfile = makeProfile({
+      // Tier may already be downgraded to 'free' after Stripe cancel sync
+      subscriptionTier: 'free',
+      subscriptionStatus: 'canceled',
+      subscriptionExpiresAt: futureIso,
+    });
+    renderBadge();
+    // The badge text starts with "Pro · Ends " followed by a short date
+    const badge = screen.getByRole('button', { name: /pro access ends/i });
+    expect(badge).toBeInTheDocument();
+    expect(badge.textContent).toMatch(/^Pro · Ends /);
+  });
+
+  it('renders nothing when canceled and expiresAt is in the past', () => {
+    currentProfile = makeProfile({
+      subscriptionTier: 'free',
+      subscriptionStatus: 'canceled',
+      subscriptionExpiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    });
+    const { container } = renderBadge();
+    expect(container.firstChild).toBeNull();
   });
 });
 

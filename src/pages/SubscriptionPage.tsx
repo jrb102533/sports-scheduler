@@ -98,13 +98,20 @@ export function SubscriptionPage() {
 
   const checkoutSuccess = searchParams.get('checkout') === 'success';
 
-  // Redirect free-tier users to the upgrade page
+  // Redirect free-tier users to the upgrade page.
+  // Exception: canceled users whose access period has not yet expired are
+  // allowed through so they can resubscribe before losing access.
   useEffect(() => {
     if (!profile) return;
+    const isCanceledActive =
+      profile.subscriptionStatus === 'canceled' &&
+      profile.subscriptionExpiresAt != null &&
+      new Date(profile.subscriptionExpiresAt).getTime() > Date.now();
     const isProOrTrialing =
       profile.subscriptionTier === 'league_manager_pro' ||
       profile.subscriptionStatus === 'trialing' ||
-      profile.adminGrantedLM === true;
+      profile.adminGrantedLM === true ||
+      isCanceledActive;
     if (!isProOrTrialing) {
       navigate('/upgrade', { replace: true });
     }
