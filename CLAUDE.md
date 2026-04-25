@@ -94,6 +94,33 @@ All emails use `buildEmail()` from `functions/src/emailTemplate.ts` with the bra
 - Admin can do anything; coaches manage their teams; parents/players read-only on team data
 - Sensitive player data (PII) in restricted subcollections
 
+### Firestore Read Discipline (PREVENTS quota overages)
+
+Every Firestore read has a cost. The free quota is 50K reads/day — an unscoped global subscription exhausts it in hours. Apply these rules in all solution design and implementation:
+
+**Never subscribe globally without a user-scoped filter.**
+```typescript
+// BAD — reads every event in the database for every user
+onSnapshot(collection(db, 'events'), ...)
+
+// GOOD — scoped to the teams the user belongs to
+onSnapshot(query(collection(db, 'events'), where('teamId', 'in', userTeamIds)), ...)
+```
+
+**Lazy beats eager.** Prefer `getDocs` on navigation over a persistent `onSnapshot` for data not rendered on every screen.
+
+**No N+1 queries.** Never `getDoc` inside a loop or `.map()`. Batch with `where('id', 'in', [...ids])` or denormalize.
+
+**Cloud Functions: bound your reads.** Nested team → players → users reads are O(teams × players). Cache email lists, denormalize recipient arrays onto the doc, or use a notifications collection.
+
+**Admins are not exceptions.** An admin `onSnapshot` on an unfiltered collection still costs one read per doc per change. Paginate or scope admin queries.
+
+**Checklist before any new Firestore read:**
+- Scoped to the current user's teams/leagues/role?
+- Lazy (triggered by navigation) rather than eager (on app load)?
+- Avoids re-reading data already in a Zustand store?
+- For CFs: read count bounded independently of dataset growth?
+
 ## TypeScript Import Discipline
 
 ### Type-only imports are mandatory for types (`verbatimModuleSyntax`)
