@@ -77,6 +77,30 @@ async function assertAdmin(uid: string): Promise<void> {
   }
 }
 
+/**
+ * SEC-91 (FW-64) — Server-side paywall enforcement for callable Cloud Functions
+ * that bypass Firestore rules via the Admin SDK.
+ *
+ * Throws permission-denied if the caller is a non-admin league_manager without
+ * a subscription. Admins always pass. The Firestore rules layer enforces the
+ * same gate for direct client writes; this function closes the CF gap.
+ */
+async function assertSubscribedOrAdmin(uid: string): Promise<void> {
+  const userDoc = await admin.firestore().doc(`users/${uid}`).get();
+  const data = userDoc.data();
+  const legacyRole: string = data?.role ?? '';
+  const membershipRoles: string[] = (data?.memberships ?? []).map((m: Record<string, unknown>) => m.role as string);
+  if ([legacyRole, ...membershipRoles].includes('admin')) return; // admin override
+  const tier: string = data?.subscriptionTier ?? 'free';
+  const adminGranted = data?.adminGrantedLM === true;
+  if (tier !== 'league_manager_pro' && !adminGranted) {
+    throw new HttpsError(
+      'permission-denied',
+      'This feature requires a League Manager Pro subscription.',
+    );
+  }
+}
+
 async function assertAdminOrCoach(uid: string): Promise<string> {
   const userDoc = await admin.firestore().doc(`users/${uid}`).get();
   const data = userDoc.data();
@@ -3706,6 +3730,9 @@ export const generateSchedule = onCall(
         );
       }
 
+      // SEC-91 (FW-64): paywall enforcement
+      await assertSubscribedOrAdmin(request.auth.uid);
+
       // 3. Rate limit
       await checkRateLimit(request.auth.uid, 'generateSchedule', 5, 60_000);
 
@@ -4353,6 +4380,9 @@ export const publishSchedule = onCall<PublishScheduleData, Promise<PublishSchedu
       throw new HttpsError('permission-denied', 'Only league managers and admins can publish schedules.');
     }
 
+    // SEC-91 (FW-64): paywall enforcement
+    await assertSubscribedOrAdmin(request.auth.uid);
+
     const { leagueId, seasonId, divisionId } = request.data;
     if (!leagueId?.trim()) throw new HttpsError('invalid-argument', 'leagueId is required.');
     if (!seasonId?.trim()) throw new HttpsError('invalid-argument', 'seasonId is required.');
@@ -4468,6 +4498,9 @@ export const resolveDispute = onCall<ResolveDisputeData, Promise<ResolveDisputeO
       throw new HttpsError('permission-denied', 'Only league managers and admins can resolve disputes.');
     }
 
+    // SEC-91 (FW-64): paywall enforcement
+    await assertSubscribedOrAdmin(request.auth.uid);
+
     const { eventId, leagueId, chosenSubmission } = request.data;
     if (!eventId?.trim()) throw new HttpsError('invalid-argument', 'eventId is required.');
     if (!leagueId?.trim()) throw new HttpsError('invalid-argument', 'leagueId is required.');
@@ -4566,6 +4599,9 @@ export const overrideStandingRank = onCall<OverrideStandingRankData, Promise<Ove
     if (role !== 'admin' && role !== 'league_manager') {
       throw new HttpsError('permission-denied', 'Only league managers and admins can override standing ranks.');
     }
+
+    // SEC-91 (FW-64): paywall enforcement
+    await assertSubscribedOrAdmin(request.auth.uid);
 
     const { leagueId, seasonId, teamId, override } = request.data;
     if (!leagueId?.trim()) throw new HttpsError('invalid-argument', 'leagueId is required.');
@@ -5705,6 +5741,9 @@ export const deleteLeague = onCall<DeleteLeagueInput, Promise<{ success: boolean
     if (!isAdmin && !isLeagueManager) {
       throw new HttpsError('permission-denied', 'Only admins or league managers may delete a league.');
     }
+
+    // SEC-91 (FW-64): paywall enforcement
+    await assertSubscribedOrAdmin(uid);
 
     try {
       const BATCH_SIZE = 490;
