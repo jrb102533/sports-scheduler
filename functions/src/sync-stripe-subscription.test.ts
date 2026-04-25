@@ -198,6 +198,38 @@ describe('syncStripeSubscriptionToUser (FW-63)', () => {
     });
   });
 
+  it('mirrors plan term, price amount, and currency from items[0].plan', async () => {
+    subscriptionsStore.set('customers/uid-plan/subscriptions', [
+      {
+        status: 'active',
+        current_period_end: fakeTimestamp('2026-12-01T00:00:00.000Z'),
+        items: [{ plan: { interval: 'month', amount: 999, currency: 'usd' } }],
+      },
+    ]);
+    await (syncStripeSubscriptionToUser as unknown as (e: unknown) => Promise<void>)(
+      makeStripeWriteEvent('uid-plan', 'sub_abc'),
+    );
+    expect(firestoreStore.get('users/uid-plan')).toMatchObject({
+      subscriptionInterval: 'month',
+      subscriptionPriceAmount: 999,
+      subscriptionCurrency: 'usd',
+    });
+  });
+
+  it('falls back to null plan fields when sub has no items', async () => {
+    subscriptionsStore.set('customers/uid-noitems/subscriptions', [
+      { status: 'active', current_period_end: fakeTimestamp('2026-12-01T00:00:00.000Z') },
+    ]);
+    await (syncStripeSubscriptionToUser as unknown as (e: unknown) => Promise<void>)(
+      makeStripeWriteEvent('uid-noitems', 'sub_abc'),
+    );
+    expect(firestoreStore.get('users/uid-noitems')).toMatchObject({
+      subscriptionInterval: null,
+      subscriptionPriceAmount: null,
+      subscriptionCurrency: null,
+    });
+  });
+
   it('writes tier=league_manager_pro for a trialing subscription', async () => {
     subscriptionsStore.set('customers/uid-2/subscriptions', [
       { status: 'trialing', current_period_end: fakeTimestamp('2026-05-09T00:00:00.000Z') },

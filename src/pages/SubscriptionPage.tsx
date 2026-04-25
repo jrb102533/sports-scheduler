@@ -86,6 +86,13 @@ function daysRemaining(iso: string): number {
   return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
 }
 
+function formatPrice(amountInSmallestUnit: number, currency?: string): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: (currency ?? 'usd').toUpperCase(),
+  }).format(amountInSmallestUnit / 100);
+}
+
 export function SubscriptionPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -201,6 +208,16 @@ export function SubscriptionPage() {
                 </Badge>
               ) : null}
             </div>
+
+            {/* Plan term + price */}
+            {!isAdminGranted && profile.subscriptionInterval && profile.subscriptionPriceAmount != null && (
+              <p className="text-sm text-gray-700 mt-1 font-medium">
+                {profile.subscriptionInterval === 'month' ? 'Monthly plan' : 'Annual plan'}
+                {' · '}
+                {formatPrice(profile.subscriptionPriceAmount, profile.subscriptionCurrency)}
+                /{profile.subscriptionInterval === 'month' ? 'mo' : 'yr'}
+              </p>
+            )}
 
             {statusConfig && (
               <p className="text-sm text-gray-500 mt-1">{statusConfig.description}</p>
