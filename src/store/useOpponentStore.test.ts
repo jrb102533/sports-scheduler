@@ -2,9 +2,8 @@
  * useOpponentStore — unit tests
  *
  * Behaviors under test:
- *   - subscribe() scopes to teamId "in" filter for non-admin users
- *   - subscribe() uses unscoped query for admin users
- *   - subscribe() returns immediately (no listener) when non-admin has no teams
+ *   - subscribe() scopes to teamId "in" filter for all roles (no admin bypass)
+ *   - subscribe() returns immediately (no listener) when userTeamIds is empty (all roles)
  *   - subscribe() populates opponents from snapshot, sets loading: false
  *   - subscribe() sets loading: false on error
  *   - fetchForTeams() performs a one-shot getDocs scoped to teamIds
@@ -43,14 +42,6 @@ vi.mock('firebase/firestore', () => ({
 
 vi.mock('@/lib/firebase', () => ({ db: {} }));
 
-// ── Auth store mock ───────────────────────────────────────────────────────────
-
-const mockGetAuthState = vi.fn(() => ({ profile: { role: 'admin' } }));
-
-vi.mock('@/store/useAuthStore', () => ({
-  useAuthStore: { getState: (...args: unknown[]) => mockGetAuthState(...args) },
-}));
-
 // ── Import store after mocks ──────────────────────────────────────────────────
 
 import { useOpponentStore } from './useOpponentStore';
@@ -76,18 +67,23 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockSetDoc.mockResolvedValue(undefined);
   mockDeleteDoc.mockResolvedValue(undefined);
-  mockGetAuthState.mockReturnValue({ profile: { role: 'admin' } });
   useOpponentStore.setState({ opponents: [], loading: true });
 });
 
-// ── subscribe() — admin ───────────────────────────────────────────────────────
+// ── subscribe() — all roles use scoped query ──────────────────────────────────
 
-describe('useOpponentStore — subscribe (admin)', () => {
-  it('does NOT add a teamId filter for admin users', () => {
+describe('useOpponentStore — subscribe (scoped for all roles)', () => {
+  it('always adds a teamId "in" filter (no admin/LM bypass)', () => {
     mockOnSnapshot.mockReturnValue(() => {});
-    useOpponentStore.getState().subscribe([]);
-    const whereArgs = mockWhere.mock.calls.map(c => c[0] as string);
-    expect(whereArgs).not.toContain('teamId');
+    useOpponentStore.getState().subscribe(['team-1']);
+    expect(mockWhere).toHaveBeenCalledWith('teamId', 'in', ['team-1']);
+  });
+
+  it('returns a no-op and sets loading: false when userTeamIds is empty (all roles)', () => {
+    const unsub = useOpponentStore.getState().subscribe([]);
+    expect(mockOnSnapshot).not.toHaveBeenCalled();
+    expect(useOpponentStore.getState().loading).toBe(false);
+    expect(() => unsub()).not.toThrow();
   });
 
   it('populates opponents from snapshot', () => {
@@ -97,7 +93,7 @@ describe('useOpponentStore — subscribe (admin)', () => {
       return () => {};
     });
 
-    useOpponentStore.getState().subscribe([]);
+    useOpponentStore.getState().subscribe(['team-1']);
     expect(useOpponentStore.getState().opponents).toHaveLength(2);
     expect(useOpponentStore.getState().opponents[0].id).toBe('o1');
   });
@@ -107,7 +103,7 @@ describe('useOpponentStore — subscribe (admin)', () => {
       cb(makeSnapshot([]));
       return () => {};
     });
-    useOpponentStore.getState().subscribe([]);
+    useOpponentStore.getState().subscribe(['team-1']);
     expect(useOpponentStore.getState().loading).toBe(false);
   });
 
@@ -116,50 +112,18 @@ describe('useOpponentStore — subscribe (admin)', () => {
       errCb(new Error('Network error'));
       return () => {};
     });
-    useOpponentStore.getState().subscribe([]);
+    useOpponentStore.getState().subscribe(['team-1']);
     expect(useOpponentStore.getState().loading).toBe(false);
   });
 });
 
-// ── subscribe() — league_manager (same bypass as admin) ──────────────────────
+// ── subscribe() — additional scoping edge cases ───────────────────────────────
 
-describe('useOpponentStore — subscribe (league_manager)', () => {
-  beforeEach(() => {
-    mockGetAuthState.mockReturnValue({ profile: { role: 'league_manager' } });
-  });
-
-  it('uses unscoped query (no teamId filter) for league_manager', () => {
-    mockOnSnapshot.mockReturnValue(() => {});
-    useOpponentStore.getState().subscribe([]);
-    const whereArgs = mockWhere.mock.calls.map(c => c[0] as string);
-    expect(whereArgs).not.toContain('teamId');
-  });
-
-  it('opens a listener even when userTeamIds is empty', () => {
-    mockOnSnapshot.mockReturnValue(() => {});
-    useOpponentStore.getState().subscribe([]);
-    expect(mockOnSnapshot).toHaveBeenCalledTimes(1);
-  });
-});
-
-// ── subscribe() — non-admin scoping ──────────────────────────────────────────
-
-describe('useOpponentStore — subscribe (non-admin scoping)', () => {
-  beforeEach(() => {
-    mockGetAuthState.mockReturnValue({ profile: { role: 'coach' } });
-  });
-
+describe('useOpponentStore — subscribe (scoping edge cases)', () => {
   it('adds a teamId "in" filter scoped to the provided team IDs', () => {
     mockOnSnapshot.mockReturnValue(() => {});
     useOpponentStore.getState().subscribe(['team-1', 'team-2']);
     expect(mockWhere).toHaveBeenCalledWith('teamId', 'in', ['team-1', 'team-2']);
-  });
-
-  it('returns a no-op unsubscribe and sets loading: false when userTeamIds is empty', () => {
-    const unsub = useOpponentStore.getState().subscribe([]);
-    expect(mockOnSnapshot).not.toHaveBeenCalled();
-    expect(useOpponentStore.getState().loading).toBe(false);
-    expect(() => unsub()).not.toThrow();
   });
 
   it('caps the teamId filter at 30 IDs (Firestore in-query limit)', () => {
