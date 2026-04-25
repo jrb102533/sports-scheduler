@@ -1437,6 +1437,12 @@ export const onTeamMessageCreated = onDocumentCreated(
     const senderName = (msg.senderName as string) || 'A team member';
     const text = (msg.text as string) || '';
 
+    // Denormalize lastMessageAt onto the team doc for unread-dot detection on the client.
+    // Fire-and-forget — email delivery should not be gated on this write.
+    void admin.firestore().doc(`teams/${teamId}`).update({
+      lastMessageAt: msg.createdAt,
+    }).catch(err => console.error('[onTeamMessageCreated] lastMessageAt update failed:', err));
+
     // Load the team for its name
     const teamDoc = await admin.firestore().doc(`teams/${teamId}`).get();
     if (!teamDoc.exists) return;
@@ -6236,3 +6242,4 @@ export const exportTeamSchedule = onRequest(
     res.send(lines.join('\r\n'));
   }
 );
+

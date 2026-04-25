@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Users, Bell, MessageSquare, Settings, LogOut, UserCog, Layers, MapPin, X, CalendarClock, Home } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Bell, Settings, LogOut, UserCog, Layers, MapPin, X, CalendarClock, Home } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
@@ -19,7 +19,6 @@ const navItems = [
   { to: '/calendar', label: 'Calendar', icon: Calendar },
   { to: '/teams', label: 'Teams', icon: Users },
   { to: '/notifications', label: 'Notifications', icon: Bell },
-  { to: '/messaging', label: 'Messaging', icon: MessageSquare },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -70,8 +69,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
         homeNavItem,
         { to: '/parent', label: 'My Team', icon: Users, end: true },
         navItems[3], // Notifications
-        navItems[4], // Messaging
-        navItems[5], // Settings
+        navItems[4], // Settings
       ]
     : [
         homeNavItem,
@@ -80,8 +78,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
         ...(roles.has('admin') || roles.has('league_manager') ? leagueNavItems : []),
         ...(isElevatedNav ? venueNavItems : []),
         navItems[3], // Notifications
-        navItems[4], // Messaging
-        navItems[5], // Settings
+        navItems[4], // Settings
         ...(isAdminNav ? adminNavItems : []),
       ];
 

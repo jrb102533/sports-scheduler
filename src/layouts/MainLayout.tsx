@@ -24,7 +24,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/calendar': 'Calendar',
   '/teams': 'Teams',
   '/notifications': 'Notifications',
-  '/messaging': 'Messaging',
   '/settings': 'Settings',
   '/profile': 'My Profile',
   '/users': 'Manage Users',

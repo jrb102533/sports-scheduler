@@ -29,6 +29,8 @@ export interface Team {
   isPrivate?: boolean;
   isDeleted?: boolean;
   deletedAt?: string;
+  /** Denormalized: set by onTeamMessageCreated CF. Used for unread dot detection. */
+  lastMessageAt?: string;
   createdAt: string;
   updatedAt: string;
 }
