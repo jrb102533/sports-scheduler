@@ -5923,22 +5923,95 @@ export const syncUserClaims = onDocumentWritten(
     const role: string | null = (data?.role as string) ?? null;
     const roleBefore: string | null = (before?.exists ? (before.data()?.role as string) : null) ?? null;
 
+    // FW-63: derive subscription claim from subscriptionTier + adminGrantedLM bypass.
+    // Either Stripe-mirrored Pro tier OR admin grant produces the claim.
+    const tier = (data?.subscriptionTier as string) ?? 'free';
+    const adminGranted = data?.adminGrantedLM === true;
+    const subscription: string | null = (tier === 'league_manager_pro' || adminGranted) ? 'league_manager_pro' : null;
+
+    const beforeData = before?.exists ? before.data() : null;
+    const tierBefore = (beforeData?.subscriptionTier as string) ?? 'free';
+    const adminGrantedBefore = beforeData?.adminGrantedLM === true;
+    const subscriptionBefore: string | null =
+      (tierBefore === 'league_manager_pro' || adminGrantedBefore) ? 'league_manager_pro' : null;
+
     try {
-      await admin.auth().setCustomUserClaims(uid, { role });
-      console.log(`syncUserClaims: set role=${role} for uid=${uid}`);
+      const claims: Record<string, unknown> = { role };
+      if (subscription !== null) claims.subscription = subscription;
+      await admin.auth().setCustomUserClaims(uid, claims);
+      console.log(`syncUserClaims: set role=${role} subscription=${subscription} for uid=${uid}`);
     } catch (err: unknown) {
       console.error(`syncUserClaims: failed to set claims for uid=${uid}`, (err as Error)?.message);
       throw err; // SEC-78: allow Eventarc platform retry
     }
 
-    // SEC-77: revoke refresh tokens when role is demoted so the next Auth
-    // request forces a new ID token — limits the stale-privilege window to
-    // the remaining TTL of the current access token (~≤1h) rather than
-    // until the refresh token expires.
-    if (roleBefore !== null && role !== roleBefore) {
+    // SEC-77 / SEC-85: revoke refresh tokens when role is demoted OR when the
+    // subscription claim is downgraded (Pro → null). Limits the stale-privilege
+    // window to the remaining TTL of the current access token (~≤1h) rather
+    // than until the refresh token expires.
+    const subscriptionDowngraded = subscriptionBefore !== null && subscription === null;
+    if ((roleBefore !== null && role !== roleBefore) || subscriptionDowngraded) {
       await admin.auth().revokeRefreshTokens(uid);
-      console.log(`syncUserClaims: revoked refresh tokens for uid=${uid} (role changed ${roleBefore} → ${role})`);
+      const reason = subscriptionDowngraded
+        ? `subscription downgraded ${subscriptionBefore} → ${subscription}`
+        : `role changed ${roleBefore} → ${role}`;
+      console.log(`syncUserClaims: revoked refresh tokens for uid=${uid} (${reason})`);
     }
+  }
+);
+
+// ─── Stripe subscription → user doc mirror (FW-63) ───────────────────────────
+
+/**
+ * Mirrors Stripe subscription state from the firestore-stripe-payments extension's
+ * `customers/{uid}/subscriptions/{subId}` documents onto the user doc. The user-doc
+ * write triggers `syncUserClaims`, which then recomputes the JWT subscription claim.
+ *
+ * Entitled statuses (per FW-58 decision #4 — 7-day past-due grace):
+ *   active, trialing, past_due → tier = 'league_manager_pro'
+ *   anything else (canceled, incomplete, incomplete_expired, unpaid) → tier = 'free'
+ *
+ * If the user holds multiple subscriptions, picks the most-entitling one. Per
+ * FW-58 decision #6 (per-UID pricing), this should be at most one in practice.
+ */
+export const syncStripeSubscriptionToUser = onDocumentWritten(
+  { document: 'customers/{uid}/subscriptions/{subId}', retry: true },
+  async (event) => {
+    const uid = event.params.uid;
+    const ENTITLED = new Set(['active', 'trialing', 'past_due']);
+
+    // Re-read all subscriptions for this customer to compute the effective state,
+    // not just the one that changed. Handles the multi-sub edge case correctly.
+    const subsSnap = await admin.firestore()
+      .collection(`customers/${uid}/subscriptions`)
+      .get();
+
+    let effectiveStatus: string | null = null;
+    let effectiveExpiresAt: string | null = null;
+
+    for (const doc of subsSnap.docs) {
+      const sub = doc.data();
+      const status = sub.status as string | undefined;
+      if (!status) continue;
+      // Prefer entitled subs over non-entitled
+      if (ENTITLED.has(status) && (effectiveStatus === null || !ENTITLED.has(effectiveStatus))) {
+        effectiveStatus = status;
+        const periodEnd = sub.current_period_end;
+        effectiveExpiresAt = periodEnd?.toDate ? periodEnd.toDate().toISOString() : null;
+      } else if (effectiveStatus === null) {
+        effectiveStatus = status;
+      }
+    }
+
+    const tier = effectiveStatus && ENTITLED.has(effectiveStatus) ? 'league_manager_pro' : 'free';
+
+    await admin.firestore().doc(`users/${uid}`).set({
+      subscriptionTier: tier,
+      subscriptionStatus: effectiveStatus ?? 'canceled',
+      subscriptionExpiresAt: effectiveExpiresAt,
+    }, { merge: true });
+
+    console.log(`syncStripeSubscriptionToUser: uid=${uid} tier=${tier} status=${effectiveStatus} expiresAt=${effectiveExpiresAt}`);
   }
 );
 
