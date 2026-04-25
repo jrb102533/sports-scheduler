@@ -229,7 +229,7 @@ const ADMIN_UID = 'admin1';
 
 function seedBaseFixtures() {
   seedDoc(`users/${ADMIN_UID}`, { role: 'admin' });
-  seedDoc(`users/${MANAGER_UID}`, { role: 'league_manager' });
+  seedDoc(`users/${MANAGER_UID}`, { role: 'league_manager', subscriptionTier: 'league_manager_pro' });
   seedDoc(`users/${OUTSIDER_UID}`, { role: 'coach' });
   seedDoc(`leagues/${LEAGUE_ID}`, {
     id: LEAGUE_ID,
