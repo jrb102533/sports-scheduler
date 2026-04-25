@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import {
   collection, onSnapshot, doc, setDoc, query, orderBy, where, updateDoc,
-  arrayUnion, arrayRemove,
+  arrayUnion, arrayRemove, documentId,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@/lib/firebase';
@@ -12,7 +12,7 @@ interface TeamStore {
   teams: Team[];         // active (non-deleted) teams
   deletedTeams: Team[];  // soft-deleted teams (admin view)
   loading: boolean;
-  subscribe: () => () => void;
+  subscribe: (userTeamIds: string[]) => () => void;
   updateTeam: (team: Team) => Promise<void>;
   addTeamToLeague: (teamId: string, leagueId: string) => Promise<void>;
   removeTeamFromLeague: (teamId: string, leagueId: string) => Promise<void>;
@@ -28,24 +28,50 @@ export const useTeamStore = create<TeamStore>((set) => ({
   deletedTeams: [],
   loading: true,
 
-  subscribe: () => {
-    // Filter deleted teams server-side so Firestore never sends deleted docs
-    // over the wire. Firestore requires orderBy to match the inequality field first.
-    const q = query(
-      collection(db, 'teams'),
-      where('isDeleted', '!=', true),
-      orderBy('isDeleted'),
-      orderBy('createdAt'),
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      set({
-        teams: snap.docs.map(d => ({ ...d.data(), id: d.id }) as Team),
-        loading: false,
-      });
-    }, () => set({ loading: false }));
+  subscribe: (userTeamIds: string[]) => {
+    const profile = useAuthStore.getState().profile;
+    const isAdmin = profile?.role === 'admin' || profile?.role === 'league_manager';
+
+    // Non-admin users with no team memberships have nothing to subscribe to.
+    if (!isAdmin && userTeamIds.length === 0) {
+      set({ loading: false });
+      return () => {};
+    }
+
+    // Admin: keep the existing unscoped query (admins need to see all teams).
+    // Non-admin: scope to the user's own team IDs via documentId() `in` filter,
+    // which avoids the isDeleted inequality index requirement. Deleted teams are
+    // not accessible to non-admins so we don't need the deleted-teams listener.
+    let unsub: () => void;
+    if (isAdmin) {
+      // Filter deleted teams server-side so Firestore never sends deleted docs
+      // over the wire. Firestore requires orderBy to match the inequality field first.
+      const q = query(
+        collection(db, 'teams'),
+        where('isDeleted', '!=', true),
+        orderBy('isDeleted'),
+        orderBy('createdAt'),
+      );
+      unsub = onSnapshot(q, (snap) => {
+        set({
+          teams: snap.docs.map(d => ({ ...d.data(), id: d.id }) as Team),
+          loading: false,
+        });
+      }, () => set({ loading: false }));
+    } else {
+      const q = query(
+        collection(db, 'teams'),
+        where(documentId(), 'in', userTeamIds.slice(0, 30)),
+      );
+      unsub = onSnapshot(q, (snap) => {
+        set({
+          teams: snap.docs.map(d => ({ ...d.data(), id: d.id }) as Team),
+          loading: false,
+        });
+      }, () => set({ loading: false }));
+    }
 
     // Open a second listener for deleted teams, scoped to admin users only.
-    const isAdmin = useAuthStore.getState().profile?.role === 'admin';
     let unsubDeleted: (() => void) | undefined;
     if (isAdmin) {
       const qDeleted = query(

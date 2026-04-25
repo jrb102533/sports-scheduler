@@ -5,7 +5,11 @@
  * Firestore is mocked at the module boundary so no emulator is needed.
  *
  * Behaviors under test:
- *   - subscribe() splits active vs deleted teams correctly from a snapshot
+ *   - subscribe() uses documentId() "in" filter for non-admin users
+ *   - subscribe() uses isDeleted != true filter for admin users
+ *   - subscribe() returns immediately (no listener) when non-admin has no teams
+ *   - subscribe() populates teams from snapshot
+ *   - subscribe() opens a deleted-teams listener only for admin users
  *   - updateTeam() writes to the correct Firestore path
  *   - addTeamToLeague() uses arrayUnion and sets _managedLeagueId
  *   - removeTeamFromLeague() uses arrayRemove and sets _managedLeagueId
@@ -31,6 +35,7 @@ const mockOrderBy = vi.fn(() => ({ _orderBy: true }));
 const mockWhere = vi.fn((field, op, value) => ({ _where: { field, op, value } }));
 const mockArrayUnion = vi.fn(v => ({ _union: v }));
 const mockArrayRemove = vi.fn(v => ({ _remove: v }));
+const mockDocumentId = vi.fn(() => '__id__');
 
 vi.mock('firebase/firestore', () => ({
   collection: (...args: unknown[]) => mockCollection(...args),
@@ -44,6 +49,7 @@ vi.mock('firebase/firestore', () => ({
   updateDoc: (...args: unknown[]) => mockUpdateDoc(...args),
   arrayUnion: (v: unknown) => mockArrayUnion(v),
   arrayRemove: (v: unknown) => mockArrayRemove(v),
+  documentId: () => mockDocumentId(),
 }));
 
 const mockHttpsCallableFn = vi.fn().mockResolvedValue({ data: { success: true } });
@@ -102,16 +108,20 @@ beforeEach(() => {
   useTeamStore.setState({ teams: [], deletedTeams: [], loading: true });
 });
 
-// ── subscribe() ───────────────────────────────────────────────────────────────
+// ── subscribe() — admin ───────────────────────────────────────────────────────
 
-describe('useTeamStore — subscribe', () => {
+describe('useTeamStore — subscribe (admin)', () => {
+  beforeEach(() => {
+    mockGetAuthState.mockReturnValue({ profile: { role: 'admin' } });
+  });
+
   it('applies server-side where clause for isDeleted != true', () => {
     mockOnSnapshot.mockImplementation((_q, cb) => {
       cb(makeSnapshotDocs([]));
       return () => {};
     });
 
-    useTeamStore.getState().subscribe();
+    useTeamStore.getState().subscribe([]);
 
     expect(mockWhere).toHaveBeenCalledWith('isDeleted', '!=', true);
   });
@@ -125,7 +135,7 @@ describe('useTeamStore — subscribe', () => {
       return () => {};
     });
 
-    useTeamStore.getState().subscribe();
+    useTeamStore.getState().subscribe([]);
 
     const { teams } = useTeamStore.getState();
     expect(teams).toHaveLength(2);
@@ -138,14 +148,14 @@ describe('useTeamStore — subscribe', () => {
       return () => {};
     });
 
-    useTeamStore.getState().subscribe();
+    useTeamStore.getState().subscribe([]);
     expect(useTeamStore.getState().loading).toBe(false);
   });
 
   it('returns an unsubscribe function', () => {
     const mockUnsub = vi.fn();
     mockOnSnapshot.mockReturnValue(mockUnsub);
-    const unsub = useTeamStore.getState().subscribe();
+    const unsub = useTeamStore.getState().subscribe([]);
     expect(typeof unsub).toBe('function');
   });
 
@@ -155,45 +165,19 @@ describe('useTeamStore — subscribe', () => {
       return () => {};
     });
 
-    useTeamStore.getState().subscribe();
+    useTeamStore.getState().subscribe([]);
     expect(useTeamStore.getState().loading).toBe(false);
   });
 
-  it('opens only one snapshot listener for non-admin users', () => {
-    mockGetAuthState.mockReturnValue({ profile: { role: 'coach' } });
-
-    useTeamStore.getState().subscribe();
-
-    expect(mockOnSnapshot).toHaveBeenCalledTimes(1);
-    expect(mockWhere).toHaveBeenCalledTimes(1);
-    expect(mockWhere).toHaveBeenCalledWith('isDeleted', '!=', true);
-  });
-
-  it('keeps deletedTeams empty for non-admin users', () => {
-    mockGetAuthState.mockReturnValue({ profile: { role: 'coach' } });
-    mockOnSnapshot.mockImplementation((_q, cb) => {
-      cb(makeSnapshotDocs([]));
-      return () => {};
-    });
-
-    useTeamStore.getState().subscribe();
-
-    expect(useTeamStore.getState().deletedTeams).toEqual([]);
-  });
-
   it('opens a second snapshot listener for admin users', () => {
-    mockGetAuthState.mockReturnValue({ profile: { role: 'admin' } });
-
-    useTeamStore.getState().subscribe();
+    useTeamStore.getState().subscribe([]);
 
     expect(mockOnSnapshot).toHaveBeenCalledTimes(2);
-    expect(mockWhere).toHaveBeenCalledTimes(2);
     expect(mockWhere).toHaveBeenCalledWith('isDeleted', '!=', true);
     expect(mockWhere).toHaveBeenCalledWith('isDeleted', '==', true);
   });
 
   it('populates deletedTeams from the admin-scoped snapshot', () => {
-    mockGetAuthState.mockReturnValue({ profile: { role: 'admin' } });
     const deleted1 = makeTeam('d1', { isDeleted: true, deletedAt: '2024-06-01T00:00:00.000Z' } as Partial<Team>);
     const deleted2 = makeTeam('d2', { isDeleted: true, deletedAt: '2024-05-01T00:00:00.000Z' } as Partial<Team>);
 
@@ -202,7 +186,7 @@ describe('useTeamStore — subscribe', () => {
       .mockImplementationOnce((_q, cb) => { cb(makeSnapshotDocs([])); return () => {}; })
       .mockImplementationOnce((_q, cb) => { cb(makeSnapshotDocs([deleted1, deleted2])); return () => {}; });
 
-    useTeamStore.getState().subscribe();
+    useTeamStore.getState().subscribe([]);
 
     const { deletedTeams } = useTeamStore.getState();
     expect(deletedTeams).toHaveLength(2);
@@ -210,7 +194,6 @@ describe('useTeamStore — subscribe', () => {
   });
 
   it('tears down both listeners when unsubscribe is called for admin', () => {
-    mockGetAuthState.mockReturnValue({ profile: { role: 'admin' } });
     const unsubMain = vi.fn();
     const unsubDeleted = vi.fn();
 
@@ -218,24 +201,97 @@ describe('useTeamStore — subscribe', () => {
       .mockImplementationOnce(() => unsubMain)
       .mockImplementationOnce(() => unsubDeleted);
 
-    const unsub = useTeamStore.getState().subscribe();
+    const unsub = useTeamStore.getState().subscribe([]);
     unsub();
 
     expect(unsubMain).toHaveBeenCalledOnce();
     expect(unsubDeleted).toHaveBeenCalledOnce();
   });
+});
+
+// ── subscribe() — league_manager (same bypass as admin) ──────────────────────
+
+describe('useTeamStore — subscribe (league_manager)', () => {
+  beforeEach(() => {
+    mockGetAuthState.mockReturnValue({ profile: { role: 'league_manager' } });
+  });
+
+  it('uses unscoped query (no documentId filter) for league_manager', () => {
+    mockOnSnapshot.mockReturnValue(() => {});
+    useTeamStore.getState().subscribe([]);
+    expect(mockWhere).toHaveBeenCalledWith('isDeleted', '!=', true);
+    expect(mockDocumentId).not.toHaveBeenCalled();
+  });
+
+  it('opens a listener even when userTeamIds is empty', () => {
+    mockOnSnapshot.mockReturnValue(() => {});
+    useTeamStore.getState().subscribe([]);
+    expect(mockOnSnapshot).toHaveBeenCalled();
+  });
+});
+
+// ── subscribe() — non-admin scoping ──────────────────────────────────────────
+
+describe('useTeamStore — subscribe (non-admin scoping)', () => {
+  beforeEach(() => {
+    mockGetAuthState.mockReturnValue({ profile: { role: 'coach' } });
+  });
+
+  it('uses documentId() "in" filter scoped to the provided team IDs', () => {
+    useTeamStore.getState().subscribe(['t1', 't2']);
+
+    expect(mockDocumentId).toHaveBeenCalled();
+    expect(mockWhere).toHaveBeenCalledWith('__id__', 'in', ['t1', 't2']);
+  });
+
+  it('does NOT use the isDeleted inequality filter for non-admin users', () => {
+    useTeamStore.getState().subscribe(['t1']);
+
+    const whereArgs = mockWhere.mock.calls.map(c => c[0] as string);
+    expect(whereArgs).not.toContain('isDeleted');
+  });
+
+  it('returns a no-op unsubscribe and sets loading: false when userTeamIds is empty', () => {
+    const unsub = useTeamStore.getState().subscribe([]);
+    expect(mockOnSnapshot).not.toHaveBeenCalled();
+    expect(useTeamStore.getState().loading).toBe(false);
+    expect(() => unsub()).not.toThrow();
+  });
+
+  it('opens only one snapshot listener (no deleted-teams listener)', () => {
+    useTeamStore.getState().subscribe(['t1']);
+    expect(mockOnSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps deletedTeams empty for non-admin users', () => {
+    mockOnSnapshot.mockImplementation((_q, cb) => {
+      cb(makeSnapshotDocs([]));
+      return () => {};
+    });
+
+    useTeamStore.getState().subscribe(['t1']);
+
+    expect(useTeamStore.getState().deletedTeams).toEqual([]);
+  });
 
   it('tears down only the main listener when unsubscribe is called for non-admin', () => {
-    mockGetAuthState.mockReturnValue({ profile: { role: 'coach' } });
     const unsubMain = vi.fn();
 
     mockOnSnapshot.mockImplementationOnce(() => unsubMain);
 
-    const unsub = useTeamStore.getState().subscribe();
+    const unsub = useTeamStore.getState().subscribe(['t1']);
     unsub();
 
     expect(unsubMain).toHaveBeenCalledOnce();
     expect(mockOnSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('caps the documentId filter at 30 IDs (Firestore in-query limit)', () => {
+    const manyIds = Array.from({ length: 35 }, (_, i) => `team-${i}`);
+    useTeamStore.getState().subscribe(manyIds);
+    const inCall = mockWhere.mock.calls.find(c => c[1] === 'in');
+    expect(inCall).toBeDefined();
+    expect((inCall![2] as string[]).length).toBe(30);
   });
 });
 

@@ -46,22 +46,32 @@ export function MainLayout() {
 
   const handleTimeout = useCallback(() => { void logout(); }, [logout]);
   const { showWarning, countdown, resetTimer } = useIdleTimeout({ onTimeout: handleTimeout });
+
+  const profile = useAuthStore(s => s.profile);
+  // Derive the set of team IDs the current user belongs to. Used to scope
+  // Firestore subscriptions so non-admin users only read their own data.
+  const memberships = useAuthStore(s => s.profile?.memberships);
+  const userTeamIds = memberships
+    ?.map(m => m.teamId)
+    .filter((id): id is string => Boolean(id)) ?? [];
+
   // Subscribe all Firestore collections when user is authenticated.
+  // userTeamIds.join(',') is included in the deps array so that subscriptions
+  // are re-scoped if the user's team memberships change during the session.
   useEffect(() => {
     if (!user) return;
     const unsubs = [
-      useTeamStore.getState().subscribe(),
+      useTeamStore.getState().subscribe(userTeamIds),
       usePlayerStore.getState().subscribe(),
-      useEventStore.getState().subscribe(),
+      useEventStore.getState().subscribe(userTeamIds),
       useNotificationStore.getState().subscribe(user.uid),
       useSettingsStore.getState().subscribe(user.uid),
       useLeagueStore.getState().subscribe(),
-      useOpponentStore.getState().subscribe(),
+      useOpponentStore.getState().subscribe(userTeamIds),
     ];
     return () => unsubs.forEach(u => u());
-  }, [user]);
-
-  const profile = useAuthStore(s => s.profile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, userTeamIds.join(',')]);
 
   // Write data-hydrated="true" to <body> once the initial Firestore snapshots
   // for the two highest-traffic stores have arrived. E2E tests wait on this
