@@ -6027,6 +6027,18 @@ export const syncStripeSubscriptionToUser = onDocumentWritten(
 
     let effectiveStatus: string | null = null;
     let effectiveExpiresAt: string | null = null;
+    let effectiveInterval: 'month' | 'year' | null = null;
+    let effectivePriceAmount: number | null = null;
+    let effectiveCurrency: string | null = null;
+
+    function pickPlanFields(sub: Record<string, unknown>) {
+      const items = sub.items as Array<Record<string, unknown>> | undefined;
+      const plan = items?.[0]?.plan as Record<string, unknown> | undefined;
+      const interval = plan?.interval as 'month' | 'year' | undefined;
+      const amount = plan?.amount as number | undefined;
+      const currency = plan?.currency as string | undefined;
+      return { interval: interval ?? null, amount: amount ?? null, currency: currency ?? null };
+    }
 
     for (const doc of subsSnap.docs) {
       const sub = doc.data();
@@ -6037,8 +6049,16 @@ export const syncStripeSubscriptionToUser = onDocumentWritten(
         effectiveStatus = status;
         const periodEnd = sub.current_period_end;
         effectiveExpiresAt = periodEnd?.toDate ? periodEnd.toDate().toISOString() : null;
+        const plan = pickPlanFields(sub);
+        effectiveInterval = plan.interval;
+        effectivePriceAmount = plan.amount;
+        effectiveCurrency = plan.currency;
       } else if (effectiveStatus === null) {
         effectiveStatus = status;
+        const plan = pickPlanFields(sub);
+        effectiveInterval = plan.interval;
+        effectivePriceAmount = plan.amount;
+        effectiveCurrency = plan.currency;
       }
     }
 
@@ -6048,9 +6068,12 @@ export const syncStripeSubscriptionToUser = onDocumentWritten(
       subscriptionTier: tier,
       subscriptionStatus: effectiveStatus ?? 'canceled',
       subscriptionExpiresAt: effectiveExpiresAt,
+      subscriptionInterval: effectiveInterval,
+      subscriptionPriceAmount: effectivePriceAmount,
+      subscriptionCurrency: effectiveCurrency,
     }, { merge: true });
 
-    console.log(`syncStripeSubscriptionToUser: uid=${uid} tier=${tier} status=${effectiveStatus} expiresAt=${effectiveExpiresAt}`);
+    console.log(`syncStripeSubscriptionToUser: uid=${uid} tier=${tier} status=${effectiveStatus} expiresAt=${effectiveExpiresAt} interval=${effectiveInterval}`);
   }
 );
 

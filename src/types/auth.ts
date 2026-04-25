@@ -42,6 +42,12 @@ export interface UserProfile {
   subscriptionStatus?: SubscriptionStatus;
   /** ISO timestamp when paid access ends — period end if canceled, trial end if trialing, etc. */
   subscriptionExpiresAt?: string;
+  /** Billing interval of the active subscription. */
+  subscriptionInterval?: 'month' | 'year';
+  /** Price in the smallest currency unit (cents for USD). */
+  subscriptionPriceAmount?: number;
+  /** ISO 4217 currency code (e.g. 'usd'). */
+  subscriptionCurrency?: string;
   /** Admin-granted Pro access bypass (support cases, comps). When true, treat as Pro regardless of Stripe state. */
   adminGrantedLM?: boolean;
   /** Reserved for future grandfather policy. Locked false at launch (no existing LM users at decision time). */
