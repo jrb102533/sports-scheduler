@@ -5,8 +5,8 @@
  * The invertase/firestore-stripe-payments extension mirrors the Stripe
  * product catalogue into the `products` collection.
  *
- * We look for the active product whose metadata.role === 'league_manager_pro'
- * (set in the Stripe dashboard), then load its active prices.
+ * We look for the active product whose metadata.firebaseRole === 'league_manager'
+ * (set in the Stripe dashboard — see ADR-011), then load its active prices.
  */
 
 import { useState, useEffect } from 'react';
@@ -39,12 +39,12 @@ export function useStripeProducts(): UseStripeProductsResult {
 
     async function load() {
       try {
-        // Find the active LM Pro product by its metadata role marker
+        // Find the active LM Pro product by its metadata role marker (ADR-011)
         const productsSnap = await getDocs(
           query(
             collection(db, 'products'),
             where('active', '==', true),
-            where('metadata.role', '==', 'league_manager_pro')
+            where('metadata.firebaseRole', '==', 'league_manager')
           )
         );
 
