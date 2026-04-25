@@ -209,6 +209,27 @@ describe('useTeamStore — subscribe (admin)', () => {
   });
 });
 
+// ── subscribe() — league_manager (same bypass as admin) ──────────────────────
+
+describe('useTeamStore — subscribe (league_manager)', () => {
+  beforeEach(() => {
+    mockGetAuthState.mockReturnValue({ profile: { role: 'league_manager' } });
+  });
+
+  it('uses unscoped query (no documentId filter) for league_manager', () => {
+    mockOnSnapshot.mockReturnValue(() => {});
+    useTeamStore.getState().subscribe([]);
+    expect(mockWhere).toHaveBeenCalledWith('isDeleted', '!=', true);
+    expect(mockDocumentId).not.toHaveBeenCalled();
+  });
+
+  it('opens a listener even when userTeamIds is empty', () => {
+    mockOnSnapshot.mockReturnValue(() => {});
+    useTeamStore.getState().subscribe([]);
+    expect(mockOnSnapshot).toHaveBeenCalled();
+  });
+});
+
 // ── subscribe() — non-admin scoping ──────────────────────────────────────────
 
 describe('useTeamStore — subscribe (non-admin scoping)', () => {

@@ -29,7 +29,8 @@ export const useTeamStore = create<TeamStore>((set) => ({
   loading: true,
 
   subscribe: (userTeamIds: string[]) => {
-    const isAdmin = useAuthStore.getState().profile?.role === 'admin';
+    const profile = useAuthStore.getState().profile;
+    const isAdmin = profile?.role === 'admin' || profile?.role === 'league_manager';
 
     // Non-admin users with no team memberships have nothing to subscribe to.
     if (!isAdmin && userTeamIds.length === 0) {
