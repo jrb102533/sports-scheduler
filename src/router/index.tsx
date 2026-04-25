@@ -25,6 +25,8 @@ import { InviteAcceptancePage } from '@/pages/InviteAcceptancePage';
 import { ParentHomePage } from '@/pages/ParentHomePage';
 import { HomePage } from '@/pages/HomePage';
 import { StandingsPage } from '@/pages/StandingsPage';
+import { UpgradeToProPage } from '@/pages/UpgradeToProPage';
+import { SubscriptionPage } from '@/pages/SubscriptionPage';
 
 export const router = createBrowserRouter([
   // Public auth routes
@@ -63,6 +65,8 @@ export const router = createBrowserRouter([
       { path: 'home', element: <HomePage /> },
       { path: 'standings', element: <StandingsPage /> },
       { path: 'parent', element: <RoleGuard roles={['player', 'parent']} redirect><ParentHomePage /></RoleGuard> },
+      { path: 'upgrade', element: <RoleGuard roles={['league_manager']} redirect><UpgradeToProPage /></RoleGuard> },
+      { path: 'account/subscription', element: <RoleGuard roles={['league_manager']} redirect><SubscriptionPage /></RoleGuard> },
     ],
   },
 

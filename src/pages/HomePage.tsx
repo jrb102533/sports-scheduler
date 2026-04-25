@@ -6,6 +6,7 @@ import { TeamForm } from '@/components/teams/TeamForm';
 import { BecomeLeagueManagerModal } from '@/components/onboarding/BecomeLeagueManagerModal';
 import { EventCard } from '@/components/events/EventCard';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
+import { SubscriptionBanner } from '@/components/subscription/SubscriptionBanner';
 import { useEventStore } from '@/store/useEventStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useAuthStore, getMemberships, hasRole } from '@/store/useAuthStore';
@@ -174,6 +175,9 @@ export function HomePage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
+      {/* Subscription banner — trialing or free-tier league managers only */}
+      <SubscriptionBanner />
+
       {/* My Teams section — hidden for admins, who manage all teams via the Teams page */}
       {isAdminUser ? (
         <Card className="p-4 flex items-center gap-3 bg-purple-50 border-purple-100">
