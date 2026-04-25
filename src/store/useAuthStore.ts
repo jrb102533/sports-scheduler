@@ -176,7 +176,16 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         inviteVerifiedForEmail === normalizedEmail;
 
       if (!inviteBypassAllowed) {
-        const configSnap = await getDoc(doc(db, 'system', 'signupConfig'));
+        const INVITE_ONLY_MSG = 'Sign-ups are currently by invitation only. Contact the administrator to request access.';
+        let configSnap;
+        try {
+          configSnap = await getDoc(doc(db, 'system', 'signupConfig'));
+        } catch {
+          // If the config doc cannot be read (e.g. rules not yet deployed,
+          // network error), default to blocked — the safe fallback.
+          set({ error: INVITE_ONLY_MSG });
+          throw new Error(INVITE_ONLY_MSG);
+        }
         if (configSnap.exists()) {
           const config = configSnap.data() as { open?: boolean; allowedEmails?: string[]; allowedDomains?: string[] };
           if (!config.open) {
@@ -189,9 +198,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
               .split(',').map((p: string) => p.trim().toLowerCase()).filter(Boolean);
             const prefixAllowed = envPrefixes.some((p: string) => normalizedEmail.startsWith(p));
             if (!emailAllowed && !domainAllowed && !prefixAllowed) {
-              const err = 'Sign-ups are currently restricted. Contact the administrator to request access.';
-              set({ error: err });
-              throw new Error(err);
+              set({ error: INVITE_ONLY_MSG });
+              throw new Error(INVITE_ONLY_MSG);
             }
           }
         }

@@ -86,7 +86,7 @@ import { useAuthStore } from './useAuthStore';
 
 const RESTRICTED_EMAIL = 'newparent@blocked.com';
 const VALID_SECRET = 'valid-invite-secret-uuid';
-const ALLOWLIST_ERROR = 'Sign-ups are currently restricted. Contact the administrator to request access.';
+const ALLOWLIST_ERROR = 'Sign-ups are currently by invitation only. Contact the administrator to request access.';
 
 /** signupConfig doc: open=false, email NOT in allowlist. */
 function makeRestrictedConfig() {
@@ -213,5 +213,35 @@ describe('signup() — invite allowlist bypass', () => {
     expect(useAuthStore.getState().error).toBeNull();
     // previewInvite was called with the inviteSecret (not the typed email).
     expect(mockPreviewInviteFn).toHaveBeenCalledWith({ inviteSecret: VALID_SECRET });
+  });
+});
+
+describe('signup() — signupConfig Firestore read failure', () => {
+  it('shows friendly invitation-only message when getDoc throws permission-denied', async () => {
+    // Simulate a Firestore permission error on the signupConfig read.
+    mockGetDoc.mockRejectedValue(
+      Object.assign(new Error('Missing or insufficient permissions.'), {
+        code: 'permission-denied',
+      })
+    );
+
+    await useAuthStore.getState().signup(
+      RESTRICTED_EMAIL, 'password123', 'New Parent', 'parent',
+    ).catch(() => {});
+
+    expect(useAuthStore.getState().error).toBe(ALLOWLIST_ERROR);
+    // Account must NOT be created when the config read fails.
+    expect(mockCreateUserWithEmailAndPassword).not.toHaveBeenCalled();
+  });
+
+  it('shows friendly invitation-only message when getDoc throws network error', async () => {
+    mockGetDoc.mockRejectedValue(new Error('network error'));
+
+    await useAuthStore.getState().signup(
+      RESTRICTED_EMAIL, 'password123', 'New Parent', 'parent',
+    ).catch(() => {});
+
+    expect(useAuthStore.getState().error).toBe(ALLOWLIST_ERROR);
+    expect(mockCreateUserWithEmailAndPassword).not.toHaveBeenCalled();
   });
 });

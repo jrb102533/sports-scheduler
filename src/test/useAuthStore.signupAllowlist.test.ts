@@ -181,11 +181,11 @@ describe('useAuthStore.signup() — FW-9: invite allowlist bypass', () => {
         'Stranger',
         'player'
       )
-    ).rejects.toThrow(/restricted/i);
+    ).rejects.toThrow(/invitation only/i);
 
     expect(mockGetDoc).toHaveBeenCalled();
     expect(mockCreateUser).not.toHaveBeenCalled();
-    expect(useAuthStore.getState().error).toMatch(/restricted/i);
+    expect(useAuthStore.getState().error).toMatch(/invitation only/i);
   });
 
   it('throws the allowlist error when signup is closed and inviteSecret is an empty string', async () => {
@@ -201,7 +201,7 @@ describe('useAuthStore.signup() — FW-9: invite allowlist bypass', () => {
         undefined,
         ''
       )
-    ).rejects.toThrow(/restricted/i);
+    ).rejects.toThrow(/invitation only/i);
 
     expect(mockGetDoc).toHaveBeenCalled();
     expect(mockCreateUser).not.toHaveBeenCalled();
@@ -223,7 +223,7 @@ describe('useAuthStore.signup() — FW-9: invite allowlist bypass', () => {
         undefined,
         'unverifiable-secret'
       )
-    ).rejects.toThrow(/restricted/i);
+    ).rejects.toThrow(/invitation only/i);
 
     // Fell through to allowlist gate
     expect(mockGetDoc).toHaveBeenCalled();
@@ -246,7 +246,7 @@ describe('useAuthStore.signup() — FW-9: invite allowlist bypass', () => {
         undefined,
         'bad-secret'
       )
-    ).rejects.toThrow(/restricted/i);
+    ).rejects.toThrow(/invitation only/i);
 
     expect(mockGetDoc).toHaveBeenCalled();
     expect(mockCreateUser).not.toHaveBeenCalled();
@@ -268,7 +268,7 @@ describe('useAuthStore.signup() — FW-9: invite allowlist bypass', () => {
         undefined,
         'stolen-secret'
       )
-    ).rejects.toThrow(/restricted/i);
+    ).rejects.toThrow(/invitation only/i);
 
     // Email mismatch — no bypass, allowlist gate enforced
     expect(mockGetDoc).toHaveBeenCalled();
