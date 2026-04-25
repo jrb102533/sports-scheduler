@@ -5,21 +5,20 @@
  * "Manage subscription" button that redirects to the Stripe Customer Portal.
  *
  * The Stripe Customer Portal is accessed via the invertase extension's
- * portal_links pattern: write to `customers/{uid}/portal_links`, then
- * onSnapshot until the extension writes back a `url` field.
+ * createPortalLink HTTPS callable function (deployed in us-east4 by the
+ * extension), which returns the URL synchronously.
  *
  * Users without an active subscription are redirected to /upgrade.
  */
 
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { collection, addDoc, onSnapshot } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { CreditCard, CheckCircle2, AlertTriangle, Clock, XCircle, Loader2, ExternalLink } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useAuthStore } from '@/store/useAuthStore';
-import { db } from '@/lib/firebase';
 import type { SubscriptionStatus } from '@/types';
 
 type BadgeVariant = 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info';
@@ -124,41 +123,22 @@ export function SubscriptionPage() {
     setPortalError(null);
 
     try {
-      const portalRef = collection(db, 'customers', uid, 'portal_links');
-      const linkDoc = await addDoc(portalRef, {
-        return_url: `${window.location.origin}/account/subscription`,
+      // The invertase/firestore-stripe-payments extension exposes
+      // createPortalLink as an HTTPS callable, deployed in us-east4.
+      const functions = getFunctions(undefined, 'us-east4');
+      const createPortal = httpsCallable<{ returnUrl: string }, { url: string }>(
+        functions,
+        'ext-firestore-stripe-payments-createPortalLink',
+      );
+      const result = await createPortal({
+        returnUrl: `${window.location.origin}/account/subscription`,
       });
-
-      await new Promise<void>((resolve, reject) => {
-        // Wrap the unsubscribe in a ref object so callbacks that fire
-        // synchronously (e.g. mock implementations) can call it safely even
-        // before the outer `onSnapshot` call returns.
-        const unsubRef = { current: () => {} };
-        unsubRef.current = onSnapshot(
-          linkDoc,
-          (snap) => {
-            const data = snap.data();
-            if (data?.error) {
-              unsubRef.current();
-              reject(new Error((data.error as { message?: string }).message ?? 'Portal error'));
-            } else if (data?.url) {
-              unsubRef.current();
-              const url = String(data.url);
-              // SEC-93: only allow Stripe-hosted redirect URLs.
-              if (!/^https:\/\/(billing|checkout)\.stripe\.com\//.test(url)) {
-                reject(new Error('Invalid portal redirect URL.'));
-                return;
-              }
-              window.location.assign(url);
-              resolve();
-            }
-          },
-          (err) => {
-            unsubRef.current();
-            reject(err);
-          }
-        );
-      });
+      const url = String(result.data.url);
+      // SEC-93: only allow Stripe-hosted redirect URLs.
+      if (!/^https:\/\/(billing|checkout)\.stripe\.com\//.test(url)) {
+        throw new Error('Invalid portal redirect URL.');
+      }
+      window.location.assign(url);
     } catch (err) {
       console.error('[SubscriptionPage] portal link failed:', err);
       setPortalError('Failed to open the billing portal. Please try again.');

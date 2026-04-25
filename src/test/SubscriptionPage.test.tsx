@@ -30,15 +30,13 @@ vi.mock('react-router-dom', async (importOriginal) => {
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
-// ─── Firestore mock ───────────────────────────────────────────────────────────
+// ─── Firebase Functions mock (createPortalLink callable) ─────────────────────
 
-const mockOnSnapshot = vi.fn();
-const mockAddDoc = vi.fn();
+const mockCreatePortal = vi.fn();
 
-vi.mock('firebase/firestore', () => ({
-  collection: vi.fn(),
-  addDoc: (...args: unknown[]) => mockAddDoc(...args),
-  onSnapshot: (...args: unknown[]) => mockOnSnapshot(...args),
+vi.mock('firebase/functions', () => ({
+  getFunctions: vi.fn(() => ({})),
+  httpsCallable: vi.fn(() => mockCreatePortal),
 }));
 
 // ─── Auth store mock ──────────────────────────────────────────────────────────
@@ -266,13 +264,8 @@ describe('SubscriptionPage — manage subscription portal', () => {
     };
   });
 
-  it('calls addDoc on customers/{uid}/portal_links when "Manage subscription" is clicked', async () => {
-    mockAddDoc.mockResolvedValue({ id: 'portal-doc-1' });
-    mockOnSnapshot.mockImplementation((_ref: unknown, callback: (snap: { data: () => { url: string } }) => void) => {
-      // Simulate extension writing back the URL immediately
-      callback({ data: () => ({ url: 'https://billing.stripe.com/portal/test' }) });
-      return vi.fn(); // unsub
-    });
+  it('calls the createPortalLink function when "Manage subscription" is clicked', async () => {
+    mockCreatePortal.mockResolvedValue({ data: { url: 'https://billing.stripe.com/portal/test' } });
 
     const assignSpy = vi.fn();
     Object.defineProperty(window, 'location', {
@@ -284,17 +277,15 @@ describe('SubscriptionPage — manage subscription portal', () => {
     fireEvent.click(screen.getByRole('button', { name: /manage subscription/i }));
 
     await waitFor(() => {
-      expect(mockAddDoc).toHaveBeenCalled();
+      expect(mockCreatePortal).toHaveBeenCalledWith(
+        expect.objectContaining({ returnUrl: expect.stringContaining('/account/subscription') }),
+      );
     });
   });
 
-  it('redirects to the portal URL when onSnapshot returns a url', async () => {
+  it('redirects to the portal URL returned by createPortalLink', async () => {
     const portalUrl = 'https://billing.stripe.com/portal/test-session';
-    mockAddDoc.mockResolvedValue({ id: 'portal-doc-1' });
-    mockOnSnapshot.mockImplementation((_ref: unknown, callback: (snap: { data: () => { url: string } }) => void) => {
-      callback({ data: () => ({ url: portalUrl }) });
-      return vi.fn();
-    });
+    mockCreatePortal.mockResolvedValue({ data: { url: portalUrl } });
 
     const assignSpy = vi.fn();
     Object.defineProperty(window, 'location', {
@@ -311,7 +302,7 @@ describe('SubscriptionPage — manage subscription portal', () => {
   });
 
   it('shows an error message when the portal link fails', async () => {
-    mockAddDoc.mockRejectedValue(new Error('Firestore write failed'));
+    mockCreatePortal.mockRejectedValue(new Error('Function call failed'));
 
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: /manage subscription/i }));
