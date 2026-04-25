@@ -101,8 +101,8 @@ vi.mock('@/store/usePlayerStore', () => ({
 vi.mock('@/store/useAuthStore', () => ({
   useAuthStore: (selector: (s: typeof authStoreState) => unknown) =>
     selector(authStoreState),
-  getActiveMembership: (profile: { memberships?: Array<{ teamId?: string; isPrimary?: boolean }> }) =>
-    profile?.memberships?.find(m => m.isPrimary) ?? null,
+  getMemberships: (profile: { memberships?: Array<{ teamId?: string; isPrimary?: boolean }> }) =>
+    profile?.memberships ?? [],
   isMemberOfTeam: (profile: { memberships?: Array<{ teamId?: string }> }, teamId: string) =>
     profile?.memberships?.some(m => m.teamId === teamId) ?? false,
 }));

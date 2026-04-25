@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageSquare, Phone, Users, AlertCircle, Mail, CheckCircle, XCircle, Shield, MessageCircle, ChevronLeft } from 'lucide-react';
+import { MessageSquare, Phone, Users, AlertCircle, Mail, CheckCircle, XCircle, Shield, MessageCircle, ChevronLeft, Megaphone } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { Card } from '@/components/ui/Card';
@@ -10,17 +10,17 @@ import { ThreadView } from '@/components/messaging/ThreadView';
 import { DmList } from '@/components/messaging/DmList';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
-import { useAuthStore, getActiveMembership, isMemberOfTeam } from '@/store/useAuthStore';
+import { useAuthStore, getMemberships, isMemberOfTeam } from '@/store/useAuthStore';
 import { useTeamChatStore } from '@/store/useTeamChatStore';
 import { useDmStore, dmThreadId } from '@/store/useDmStore';
 import { functions, db } from '@/lib/firebase';
 import { FEATURE_SMS } from '@/lib/features';
-import type { Player, Team, UserProfile, DmThread } from '@/types';
+import type { Player, Team, UserProfile, DmThread, RoleMembership } from '@/types';
 
 
 type Channel = 'sms' | 'email';
 type SendState = 'idle' | 'sending' | 'success' | 'error';
-type MainTab = 'chat' | 'dms' | 'broadcast';
+type MainTab = 'chat' | 'dms' | 'announcements';
 
 const sendSms = httpsCallable<{ to: string[]; message: string }, { sent: number; failed: number; errors: string[] }>(
   functions, 'sendSms'
@@ -36,33 +36,93 @@ const roleColors: Record<string, string> = {
   parent: 'text-orange-600 bg-orange-50',
 };
 
+// ── Unread badge ─────────────────────────────────────────────────────────────
+
+function UnreadBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
 // ── Team Chat ────────────────────────────────────────────────────────────────
 
-function TeamChatPanel({ teamId }: { teamId: string }) {
+interface TeamChatPanelProps {
+  teamMemberships: RoleMembership[];
+  /** Called with the message count change for unread tracking */
+  onMessagesChange?: (teamId: string, messages: { createdAt: string }[]) => void;
+}
+
+function TeamChatPanel({ teamMemberships, onMessagesChange }: TeamChatPanelProps) {
   const uid = useAuthStore(s => s.user?.uid ?? '');
   const profile = useAuthStore(s => s.profile);
+  const allTeams = useTeamStore(s => s.teams);
   const senderName = profile?.displayName || profile?.email || 'You';
   const messages = useTeamChatStore(s => s.messages);
   const loading = useTeamChatStore(s => s.loading);
-  const subscribe = useTeamChatStore(s => s.subscribe);
   const sendMessage = useTeamChatStore(s => s.sendMessage);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    return useTeamChatStore.getState().subscribe(teamId);
-  }, [teamId]);
+  // Determine initial team: first membership with a teamId
+  const firstTeamId = teamMemberships.find(m => m.teamId)?.teamId ?? null;
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(firstTeamId);
 
-  // suppress unused warning — subscribe used via getState() above
-  void subscribe;
+  // Re-subscribe when selectedTeamId changes
+  useEffect(() => {
+    if (!selectedTeamId) return;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return useTeamChatStore.getState().subscribe(selectedTeamId);
+  }, [selectedTeamId]);
+
+  // Notify parent of messages for unread tracking
+  useEffect(() => {
+    if (selectedTeamId && onMessagesChange) {
+      onMessagesChange(selectedTeamId, messages);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTeamId, messages]);
+
+  const teamMembershipsWithName = teamMemberships
+    .filter(m => m.teamId)
+    .map(m => {
+      const team = allTeams.find(t => t.id === m.teamId);
+      return { teamId: m.teamId!, name: team?.name ?? m.teamId!, color: team?.color };
+    });
+
+  const showPicker = teamMembershipsWithName.length > 1;
+
+  if (!selectedTeamId) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-gray-400">
+        No team found. Join a team to access team chat.
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
+      {showPicker && (
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 bg-white flex-shrink-0">
+          <Users size={14} className="text-gray-400 shrink-0" />
+          <select
+            value={selectedTeamId}
+            onChange={e => setSelectedTeamId(e.target.value)}
+            className="flex-1 text-sm font-medium text-gray-800 bg-transparent border-none outline-none cursor-pointer py-0.5"
+            aria-label="Select team"
+          >
+            {teamMembershipsWithName.map(({ teamId, name }) => (
+              <option key={teamId} value={teamId}>{name}</option>
+            ))}
+          </select>
+        </div>
+      )}
       <ThreadView
         messages={messages}
         loading={loading}
         currentUid={uid}
         placeholder="Message the team…"
-        onSend={text => sendMessage(teamId, uid, senderName, text)}
+        onSend={text => sendMessage(selectedTeamId, uid, senderName, text)}
       />
     </div>
   );
@@ -70,7 +130,13 @@ function TeamChatPanel({ teamId }: { teamId: string }) {
 
 // ── Direct Messages ──────────────────────────────────────────────────────────
 
-function DmPanel({ myUid, myName }: { myUid: string; myName: string }) {
+interface DmPanelProps {
+  myUid: string;
+  myName: string;
+  onUnreadChange?: (count: number) => void;
+}
+
+function DmPanel({ myUid, myName, onUnreadChange }: DmPanelProps) {
   const allTeams = useTeamStore(s => s.teams);
   const players = usePlayerStore(s => s.players);
   const profile = useAuthStore(s => s.profile);
@@ -86,6 +152,9 @@ function DmPanel({ myUid, myName }: { myUid: string; myName: string }) {
   const [showNewDm, setShowNewDm] = useState(false);
   const profileCache = useRef<Map<string, UserProfile>>(new Map());
 
+  // Track when each thread was last viewed (session-only)
+  const lastViewedRef = useRef<Map<string, string>>(new Map());
+
   // Clear cache on user switch — shared-device sessions must not serve stale profiles
   useEffect(() => { profileCache.current.clear(); }, [myUid]);
 
@@ -95,9 +164,19 @@ function DmPanel({ myUid, myName }: { myUid: string; myName: string }) {
     return useDmStore.getState().subscribeThreads(myUid);
   }, [myUid]);
 
+  // Compute unread count: threads where lastMessageAt > lastViewed[threadId]
+  useEffect(() => {
+    if (!onUnreadChange) return;
+    const count = threads.filter(t => {
+      const lastViewed = lastViewedRef.current.get(t.id);
+      if (!lastViewed) return t.lastMessage !== '';
+      return t.lastMessageAt > lastViewed;
+    }).length;
+    onUnreadChange(count);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threads]);
+
   // Stable membership signature: sorted team IDs the current user belongs to.
-  // Recomputing on raw store lengths caused 100+ getDoc calls per store refresh;
-  // this fires only when the actual set of accessible teams changes.
   const membershipKey = profile
     ? allTeams
         .filter(t => isMemberOfTeam(profile, t.id) || profile.role === 'admin')
@@ -107,9 +186,6 @@ function DmPanel({ myUid, myName }: { myUid: string; myName: string }) {
     : '';
 
   // Load team members for the DM picker.
-  // Uses player.linkedUid (always set) + team coachIds to find all user accounts
-  // on the same team — avoids relying on the legacy profile.teamId scalar which
-  // is absent for multi-membership users added via the invite flow.
   useEffect(() => {
     if (!profile || !membershipKey) return;
 
@@ -154,19 +230,29 @@ function DmPanel({ myUid, myName }: { myUid: string; myName: string }) {
   }, [myUid, membershipKey]);
 
   function openThread(thread: DmThread) {
+    // Mark as viewed at the time of opening
+    lastViewedRef.current.set(thread.id, new Date().toISOString());
     setActiveThread(thread);
     setShowNewDm(false);
     useDmStore.getState().subscribeMessages(thread.id);
+    // Recompute unread after marking viewed
+    if (onUnreadChange) {
+      const count = threads.filter(t => {
+        if (t.id === thread.id) return false;
+        const lastViewed = lastViewedRef.current.get(t.id);
+        if (!lastViewed) return t.lastMessage !== '';
+        return t.lastMessageAt > lastViewed;
+      }).length;
+      onUnreadChange(count);
+    }
   }
 
   function openNewDmWith(member: UserProfile) {
     const threadId = dmThreadId(myUid, member.uid);
-    // Check if thread already exists
     const existing = threads.find(t => t.id === threadId);
     if (existing) {
       openThread(existing);
     } else {
-      // Synthetic thread for UI (no Firestore doc yet; created on first send)
       const synthetic: DmThread = {
         id: threadId,
         participants: [myUid, member.uid].sort() as [string, string],
@@ -175,6 +261,7 @@ function DmPanel({ myUid, myName }: { myUid: string; myName: string }) {
         lastMessageAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+      lastViewedRef.current.set(threadId, new Date().toISOString());
       setActiveThread(synthetic);
       setShowNewDm(false);
       useDmStore.getState().subscribeMessages(threadId);
@@ -275,9 +362,9 @@ function DmPanel({ myUid, myName }: { myUid: string; myName: string }) {
   );
 }
 
-// ── Broadcast (existing) ─────────────────────────────────────────────────────
+// ── Announcements (formerly Broadcast) ──────────────────────────────────────
 
-function BroadcastPanel() {
+function AnnouncementsPanel() {
   const allTeams = useTeamStore(s => s.teams);
   const players = usePlayerStore(s => s.players);
   const profile = useAuthStore(s => s.profile);
@@ -302,8 +389,6 @@ function BroadcastPanel() {
       );
 
   useEffect(() => {
-    // Only fetch when the admin email-broadcast section is actually visible.
-    // Scoped to users with an email address set to avoid fetching incomplete accounts.
     if (!isAdmin || channel !== 'email') return;
     const q = query(collection(db, 'users'), where('email', '!=', ''));
     getDocs(q).then(snap => {
@@ -442,6 +527,12 @@ function BroadcastPanel() {
 
   return (
     <div className="p-4 sm:p-6">
+      {/* One-way announcement callout */}
+      <div className="flex items-start gap-2 mb-5 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+        <Megaphone size={14} className="mt-0.5 shrink-0 text-amber-600" />
+        <span>Announcements are one-way messages sent by email{FEATURE_SMS ? ' or SMS' : ''}. Recipients cannot reply in-app.</span>
+      </div>
+
       {FEATURE_SMS && (
         <div className="flex gap-1 mb-6 border-b border-gray-200">
           <button
@@ -678,27 +769,71 @@ export function MessagingPage() {
   const displayName = profile?.displayName || profile?.email || '';
   const isCoachOrAdmin = profile?.role === 'admin' || profile?.role === 'coach' || profile?.role === 'league_manager';
 
-  // Active team for group chat — use active membership's teamId only.
-  // Never fall back to allTeams[0]: that would silently open a random team's
-  // chat if the active membership has no teamId (e.g. broken profile data).
-  const activeMembership = profile ? getActiveMembership(profile) : null;
-  const activeTeamId = activeMembership?.teamId ?? null;
+  // All team memberships for the current user (supports multi-team)
+  const teamMemberships = profile
+    ? getMemberships(profile).filter(m => m.teamId)
+    : [];
 
+  const hasTeam = teamMemberships.length > 0;
+
+  // Unread state — session only, resets on page refresh
+  const [chatUnread, setChatUnread] = useState(0);
+  const [dmUnread, setDmUnread] = useState(0);
+
+  // When user views the chat tab, clear its unread count
   const [tab, setTab] = useState<MainTab>('chat');
 
-  // Default non-coaches/admins away from broadcast tab
+  function selectTab(next: MainTab) {
+    setTab(next);
+    if (next === 'chat') setChatUnread(0);
+    if (next === 'dms') setDmUnread(0);
+  }
+
+  // Track last-read timestamp per team for chat unread counting (session only)
+  const chatLastReadRef = useRef<Map<string, string>>(new Map());
+  const [visibleTeamId, setVisibleTeamId] = useState<string | null>(null);
+
+  function handleChatMessagesChange(teamId: string, messages: { createdAt: string }[]) {
+    setVisibleTeamId(teamId);
+    if (tab === 'chat') {
+      // Currently viewing — keep lastRead current, no badge
+      chatLastReadRef.current.set(teamId, new Date().toISOString());
+      setChatUnread(0);
+    } else {
+      // Background update — count messages newer than last read
+      const lastRead = chatLastReadRef.current.get(teamId);
+      if (!lastRead) {
+        // First load for this team while away from tab — don't badge on initial hydration
+        chatLastReadRef.current.set(teamId, messages[messages.length - 1]?.createdAt ?? new Date().toISOString());
+        return;
+      }
+      const unread = messages.filter(m => m.createdAt > lastRead).length;
+      setChatUnread(unread);
+    }
+  }
+
+  // When switching to chat tab, mark current team as read
   useEffect(() => {
-    if (!isCoachOrAdmin && tab === 'broadcast') {
+    if (tab === 'chat' && visibleTeamId) {
+      chatLastReadRef.current.set(visibleTeamId, new Date().toISOString());
+      setChatUnread(0);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  // Default non-coaches/admins away from announcements tab
+  useEffect(() => {
+    if (!isCoachOrAdmin && tab === 'announcements') {
       setTab('chat');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCoachOrAdmin]);
 
-  const tabs: { id: MainTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'chat', label: 'Team Chat', icon: <Users size={14} /> },
-    { id: 'dms', label: 'Direct Messages', icon: <MessageCircle size={14} /> },
+  const tabs: { id: MainTab; label: string; icon: React.ReactNode; unread?: number }[] = [
+    { id: 'chat', label: 'Team Chat', icon: <Users size={14} />, unread: chatUnread },
+    { id: 'dms', label: 'Direct Messages', icon: <MessageCircle size={14} />, unread: dmUnread },
     ...(isCoachOrAdmin
-      ? [{ id: 'broadcast' as MainTab, label: 'Broadcast', icon: <Mail size={14} /> }]
+      ? [{ id: 'announcements' as MainTab, label: 'Announcements', icon: <Megaphone size={14} className="text-amber-500" /> }]
       : []),
   ];
 
@@ -711,14 +846,15 @@ export function MessagingPage() {
             key={t.id}
             role="tab"
             aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => selectTab(t.id)}
             className={`px-4 py-3 text-sm font-medium transition-colors flex items-center gap-1.5 border-b-2 ${
               tab === t.id
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-800'
-            }`}
+            } ${t.id === 'announcements' ? 'relative' : ''}`}
           >
             {t.icon} {t.label}
+            {t.unread != null && <UnreadBadge count={t.unread} />}
           </button>
         ))}
       </div>
@@ -726,8 +862,11 @@ export function MessagingPage() {
       {/* Tab content */}
       <div className="flex-1 overflow-hidden">
         {tab === 'chat' && (
-          activeTeamId
-            ? <TeamChatPanel teamId={activeTeamId} />
+          hasTeam
+            ? <TeamChatPanel
+                teamMemberships={teamMemberships}
+                onMessagesChange={handleChatMessagesChange}
+              />
             : (
               <div className="flex items-center justify-center h-full text-sm text-gray-400">
                 No team found. Join a team to access team chat.
@@ -735,10 +874,10 @@ export function MessagingPage() {
             )
         )}
         {tab === 'dms' && uid && (
-          <DmPanel myUid={uid} myName={displayName} />
+          <DmPanel myUid={uid} myName={displayName} onUnreadChange={setDmUnread} />
         )}
-        {tab === 'broadcast' && isCoachOrAdmin && (
-          <BroadcastPanel />
+        {tab === 'announcements' && isCoachOrAdmin && (
+          <AnnouncementsPanel />
         )}
       </div>
     </div>
