@@ -219,8 +219,8 @@ const COACH_UID = 'coach1';
 
 function seedBaseFixtures() {
   seedDoc(`users/${ADMIN_UID}`, { role: 'admin' });
-  seedDoc(`users/${MANAGER_UID}`, { role: 'league_manager', leagueId: LEAGUE_ID });
-  seedDoc(`users/${OUTSIDER_UID}`, { role: 'league_manager', leagueId: 'other-league' });
+  seedDoc(`users/${MANAGER_UID}`, { role: 'league_manager', leagueId: LEAGUE_ID, subscriptionTier: 'league_manager_pro' });
+  seedDoc(`users/${OUTSIDER_UID}`, { role: 'league_manager', leagueId: 'other-league', subscriptionTier: 'league_manager_pro' });
   seedDoc(`users/${COACH_UID}`, { role: 'coach' });
   seedDoc(`leagues/${LEAGUE_ID}`, {
     id: LEAGUE_ID,

@@ -367,7 +367,7 @@ describe('publishSchedule', () => {
     // A league managed by "manager1"
     seedDoc('leagues/league1', { managedBy: 'manager1', name: 'Test League' });
     // User doc — league_manager role
-    seedDoc('users/manager1', { role: 'league_manager', leagueId: 'league1' });
+    seedDoc('users/manager1', { role: 'league_manager', leagueId: 'league1', subscriptionTier: 'league_manager_pro' });
     // Season
     seedDoc('leagues/league1/seasons/season1', { status: 'setup', name: 'Spring 2026' });
     // Division
