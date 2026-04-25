@@ -7,6 +7,9 @@
  * Behaviors under test:
  *   - subscribe() only queries non-draft statuses (query safety invariant)
  *   - subscribe() populates events from snapshot
+ *   - subscribe() scopes query to userTeamIds for non-admin users
+ *   - subscribe() returns immediately (no listener) when non-admin has no teams
+ *   - subscribe() uses unscoped query for admin users
  *   - addEvent / updateEvent / deleteEvent write to correct paths
  *   - recordResult marks event as completed and writes result
  *   - recordResult is a no-op when event ID does not exist in store
@@ -43,6 +46,14 @@ vi.mock('firebase/firestore', () => ({
 
 vi.mock('@/lib/firebase', () => ({ db: {} }));
 
+// ── Auth store mock ───────────────────────────────────────────────────────────
+
+const mockGetAuthState = vi.fn(() => ({ profile: { role: 'admin' } }));
+
+vi.mock('@/store/useAuthStore', () => ({
+  useAuthStore: { getState: (...args: unknown[]) => mockGetAuthState(...args) },
+}));
+
 // ── Import store after mocks ──────────────────────────────────────────────────
 
 import { useEventStore } from './useEventStore';
@@ -76,19 +87,27 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockSetDoc.mockResolvedValue(undefined);
   mockDeleteDoc.mockResolvedValue(undefined);
+  mockGetAuthState.mockReturnValue({ profile: { role: 'admin' } });
   useEventStore.setState({ events: [], loading: true });
 });
 
-// ── subscribe() ───────────────────────────────────────────────────────────────
+// ── subscribe() — admin ───────────────────────────────────────────────────────
 
-describe('useEventStore — subscribe', () => {
+describe('useEventStore — subscribe (admin)', () => {
   it('queries with a where("status", "in", ...) filter (no draft leakage)', () => {
     mockOnSnapshot.mockReturnValue(() => {});
-    useEventStore.getState().subscribe();
-    // The where() call must contain 'status' and 'in' to satisfy the Firestore rule
+    useEventStore.getState().subscribe([]);
+    // Admin path: where() is called only once, with status filter (no teamId filter)
     expect(mockWhere).toHaveBeenCalledWith('status', 'in', expect.arrayContaining(['scheduled', 'completed']));
     const statusArg = mockWhere.mock.calls[0][2] as string[];
     expect(statusArg).not.toContain('draft');
+  });
+
+  it('does NOT add a teamId filter for admin users', () => {
+    mockOnSnapshot.mockReturnValue(() => {});
+    useEventStore.getState().subscribe([]);
+    const whereArgs = mockWhere.mock.calls.map(c => c[0] as string);
+    expect(whereArgs).not.toContain('teamId');
   });
 
   it('populates events array from snapshot', () => {
@@ -98,7 +117,7 @@ describe('useEventStore — subscribe', () => {
       return () => {};
     });
 
-    useEventStore.getState().subscribe();
+    useEventStore.getState().subscribe([]);
     expect(useEventStore.getState().events).toHaveLength(2);
     expect(useEventStore.getState().events[0].id).toBe('e1');
   });
@@ -108,7 +127,7 @@ describe('useEventStore — subscribe', () => {
       cb(makeSnapshot([]));
       return () => {};
     });
-    useEventStore.getState().subscribe();
+    useEventStore.getState().subscribe([]);
     expect(useEventStore.getState().loading).toBe(false);
   });
 
@@ -117,8 +136,46 @@ describe('useEventStore — subscribe', () => {
       errCb(new Error('Rules error'));
       return () => {};
     });
-    useEventStore.getState().subscribe();
+    useEventStore.getState().subscribe([]);
     expect(useEventStore.getState().loading).toBe(false);
+  });
+});
+
+// ── subscribe() — non-admin scoping ──────────────────────────────────────────
+
+describe('useEventStore — subscribe (non-admin scoping)', () => {
+  beforeEach(() => {
+    mockGetAuthState.mockReturnValue({ profile: { role: 'coach' } });
+  });
+
+  it('adds a teamId "in" filter scoped to the provided team IDs', () => {
+    mockOnSnapshot.mockReturnValue(() => {});
+    useEventStore.getState().subscribe(['team-1', 'team-2']);
+    expect(mockWhere).toHaveBeenCalledWith('teamId', 'in', ['team-1', 'team-2']);
+  });
+
+  it('still includes the status filter alongside the teamId filter', () => {
+    mockOnSnapshot.mockReturnValue(() => {});
+    useEventStore.getState().subscribe(['team-1']);
+    const whereFields = mockWhere.mock.calls.map(c => c[0] as string);
+    expect(whereFields).toContain('teamId');
+    expect(whereFields).toContain('status');
+  });
+
+  it('returns a no-op unsubscribe and sets loading: false when userTeamIds is empty', () => {
+    const unsub = useEventStore.getState().subscribe([]);
+    expect(mockOnSnapshot).not.toHaveBeenCalled();
+    expect(useEventStore.getState().loading).toBe(false);
+    expect(() => unsub()).not.toThrow();
+  });
+
+  it('caps the teamId filter at 30 IDs (Firestore in-query limit)', () => {
+    mockOnSnapshot.mockReturnValue(() => {});
+    const manyIds = Array.from({ length: 35 }, (_, i) => `team-${i}`);
+    useEventStore.getState().subscribe(manyIds);
+    const teamIdCall = mockWhere.mock.calls.find(c => c[0] === 'teamId');
+    expect(teamIdCall).toBeDefined();
+    expect((teamIdCall![2] as string[]).length).toBe(30);
   });
 });
 

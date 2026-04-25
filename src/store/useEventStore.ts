@@ -3,6 +3,7 @@ import {
   collection, onSnapshot, doc, setDoc, deleteDoc, query, orderBy, where,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useAuthStore } from '@/store/useAuthStore';
 import { todayISO } from '@/lib/dateUtils';
 import type { ScheduledEvent, GameResult } from '@/types';
 
@@ -15,7 +16,7 @@ const NON_DRAFT_STATUSES = ['scheduled', 'completed', 'cancelled', 'postponed'] 
 interface EventStore {
   events: ScheduledEvent[];
   loading: boolean;
-  subscribe: () => () => void;
+  subscribe: (userTeamIds: string[]) => () => void;
   addEvent: (event: ScheduledEvent) => Promise<void>;
   updateEvent: (event: ScheduledEvent) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
@@ -29,17 +30,36 @@ export const useEventStore = create<EventStore>((set, get) => ({
   events: [],
   loading: true,
 
-  subscribe: () => {
+  subscribe: (userTeamIds: string[]) => {
+    const isAdmin = useAuthStore.getState().profile?.role === 'admin';
+
+    // Non-admin users with no team memberships have nothing to subscribe to.
+    // Return a no-op unsubscribe and mark loading done immediately.
+    if (!isAdmin && userTeamIds.length === 0) {
+      set({ loading: false });
+      return () => {};
+    }
+
     // Filter drafts at the query level — makes the query statically satisfiable
     // for all authenticated users (parents/players/coaches/admins). Without this
     // filter, Firestore rejects list queries for users who are not coaches/admins
     // because it cannot statically verify resource.data.status != 'draft'.
     // Draft events are surfaced in the league/season dashboard via separate queries.
-    const q = query(
-      collection(db, 'events'),
-      where('status', 'in', [...NON_DRAFT_STATUSES]),
-      orderBy('date'),
-    );
+    //
+    // Non-admin users are also scoped to their own team IDs (up to 30 per Firestore
+    // `in` limit) to prevent reading every event in the database.
+    const q = isAdmin
+      ? query(
+          collection(db, 'events'),
+          where('status', 'in', [...NON_DRAFT_STATUSES]),
+          orderBy('date'),
+        )
+      : query(
+          collection(db, 'events'),
+          where('teamId', 'in', userTeamIds.slice(0, 30)),
+          where('status', 'in', [...NON_DRAFT_STATUSES]),
+          orderBy('date'),
+        );
 
     const unsub = onSnapshot(q, (snap) => {
       const events = snap.docs.map(d => ({ ...d.data(), id: d.id }) as ScheduledEvent);
