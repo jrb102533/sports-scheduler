@@ -121,6 +121,8 @@ class MockQuery {
     return q;
   }
 
+  limit(_n: number): MockQuery { return this; }
+
   async get(): Promise<MockQuerySnap> {
     const docs: Array<{ id: string; ref: MockDocRef; data: () => DocData }> = [];
     for (const [path, data] of _store.entries()) {
@@ -310,7 +312,7 @@ beforeEach(() => {
   // League owned by manager1
   seedDoc('leagues/league1', { managedBy: 'manager1', name: 'Test League' });
   // Users
-  seedDoc('users/manager1', { role: 'league_manager', leagueId: 'league1' });
+  seedDoc('users/manager1', { role: 'league_manager', leagueId: 'league1', subscriptionTier: 'league_manager_pro' });
   seedDoc('users/admin1',   { role: 'admin' });
   seedDoc('users/coach1',   { role: 'coach' });
 });
