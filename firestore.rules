@@ -130,13 +130,36 @@ service cloud.firestore {
       }
     }
 
-    // FW-63 / SEC-87: Stripe extension (firestore-stripe-payments) writes
-    // /customers/{uid}/** using the admin SDK, which bypasses these rules.
-    // No client should ever read or write this collection — explicit deny
-    // as defense-in-depth on top of default-deny. The user's subscription
-    // state is exposed via /users/{uid}.subscriptionTier, not here.
-    match /customers/{uid}/{document=**} {
-      allow read, write: if false;
+    // FW-63 / FW-65 / SEC-92: Stripe extension (firestore-stripe-payments)
+    // requires the *client* to write trigger docs to checkout_sessions and
+    // portal_links subcollections — the extension's auth-trigger reads them
+    // and writes back the redirect `url`. Users can read their OWN customer
+    // doc and trigger-response docs (subscriptions, payments). Admin SDK
+    // (extension) writes everything else. No cross-user access.
+    match /customers/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+
+      match /checkout_sessions/{id} {
+        allow read, create: if request.auth != null && request.auth.uid == uid;
+        allow update, delete: if false;
+      }
+      match /portal_links/{id} {
+        allow read, create: if request.auth != null && request.auth.uid == uid;
+        allow update, delete: if false;
+      }
+      match /subscriptions/{id} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow write: if false;
+      }
+      match /payments/{id} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow write: if false;
+      }
+      match /tax_rates/{id} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow write: if false;
+      }
     }
 
     // NOTE (SEC-29): Firestore rules unit tests for the field-level restrictions below

@@ -32,6 +32,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/venues': 'Venues',
   '/parent': 'My Team',
   '/standings': 'Standings',
+  '/upgrade': 'Upgrade to Pro',
+  '/account/subscription': 'Subscription',
 };
 
 export function MainLayout() {
