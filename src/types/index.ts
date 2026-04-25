@@ -5,7 +5,7 @@ export type { EventType, EventStatus, AttendanceStatus, RecurrenceFrequency, Gam
 export type { StandingsDocument, ManualRankOverride, TeamStandingRow, StandingsFilter } from './standings';
 export type { NotificationType, AppNotification } from './notification';
 export type { AppSettings } from './settings';
-export type { UserRole, UserProfile, RoleMembership } from './auth';
+export type { UserRole, UserProfile, RoleMembership, SubscriptionStatus } from './auth';
 export type { JoinRequest } from './joinRequest';
 export type { Opponent } from './opponent';
 export type { WizardMode, WizardVenueInput, WizardSurface, ScheduleConstraint, CoachAvailabilityInput, CollectionStatus, AvailabilityCollection, CoachAvailabilityResponse, WizardDraft } from './wizard';
