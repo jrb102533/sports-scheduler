@@ -8,6 +8,7 @@ import { useNotificationTrigger } from '@/hooks/useNotificationTrigger';
 import { useAttendanceNotification } from '@/hooks/useAttendanceNotification';
 import { useIdleTimeout } from '@/hooks/useIdleTimeout';
 import { SessionTimeoutModal } from '@/components/auth/SessionTimeoutModal';
+import { ConsentUpdateModal } from '@/components/auth/ConsentUpdateModal';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
@@ -40,6 +41,8 @@ export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user } = useAuthStore();
   const logout = useAuthStore(s => s.logout);
+  const mustChangePassword = useAuthStore(s => s.mustChangePassword);
+  const consentOutdated = useAuthStore(s => s.consentOutdated);
 
   const handleTimeout = useCallback(() => { void logout(); }, [logout]);
   const { showWarning, countdown, resetTimer } = useIdleTimeout({ onTimeout: handleTimeout });
@@ -128,6 +131,7 @@ export function MainLayout() {
           onSignOut={() => void logout()}
         />
       )}
+      {user && !mustChangePassword && consentOutdated && <ConsentUpdateModal />}
     </div>
   );
 }
