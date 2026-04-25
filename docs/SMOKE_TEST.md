@@ -97,3 +97,27 @@ Run these only when the related feature was changed in the PR.
 - **Staging**: https://first-whistle-e76f4.web.app
 - **DevTools**: open before starting — watch Console and Network tabs
 - **Test account**: use a dedicated smoke-test account, not your personal account
+
+---
+
+## Stripe Test Cards (Sandbox / Test Mode)
+
+For testing the subscription upgrade flow on staging.
+
+| Card number | Behavior |
+|---|---|
+| `4242 4242 4242 4242` | **Default happy path** — succeeds |
+| `4000 0000 0000 9995` | Declined (insufficient funds) — for failure testing |
+| `4000 0027 6000 3184` | Requires 3D Secure authentication |
+| `4000 0000 0000 0341` | Attaches but fails on first charge (post-trial billing failure) |
+| `4000 0000 0000 0002` | Generic decline |
+
+**Field values for any card above:**
+- Expiry: any future date (e.g. `12/34`)
+- CVC: any 3 digits (e.g. `123`)
+- ZIP: any 5 digits (e.g. `12345`)
+- Name on card: anything
+
+Full Stripe testing reference: https://docs.stripe.com/testing#cards
+
+**Do not use real card numbers in test/sandbox mode** — they will be rejected by Stripe regardless. Real cards only work in live mode.
