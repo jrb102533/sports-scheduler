@@ -118,6 +118,15 @@ service cloud.firestore {
       }
     }
 
+    // FW-63 / SEC-87: Stripe extension (firestore-stripe-payments) writes
+    // /customers/{uid}/** using the admin SDK, which bypasses these rules.
+    // No client should ever read or write this collection — explicit deny
+    // as defense-in-depth on top of default-deny. The user's subscription
+    // state is exposed via /users/{uid}.subscriptionTier, not here.
+    match /customers/{uid}/{document=**} {
+      allow read, write: if false;
+    }
+
     // NOTE (SEC-29): Firestore rules unit tests for the field-level restrictions below
     // are not yet implemented — the project has no @firebase/rules-unit-testing setup.
     // When that infrastructure is added, cover at minimum:

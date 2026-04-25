@@ -5929,6 +5929,12 @@ export const syncUserClaims = onDocumentWritten(
     const adminGranted = data?.adminGrantedLM === true;
     const subscription: string | null = (tier === 'league_manager_pro' || adminGranted) ? 'league_manager_pro' : null;
 
+    const beforeData = before?.exists ? before.data() : null;
+    const tierBefore = (beforeData?.subscriptionTier as string) ?? 'free';
+    const adminGrantedBefore = beforeData?.adminGrantedLM === true;
+    const subscriptionBefore: string | null =
+      (tierBefore === 'league_manager_pro' || adminGrantedBefore) ? 'league_manager_pro' : null;
+
     try {
       const claims: Record<string, unknown> = { role };
       if (subscription !== null) claims.subscription = subscription;
@@ -5939,13 +5945,17 @@ export const syncUserClaims = onDocumentWritten(
       throw err; // SEC-78: allow Eventarc platform retry
     }
 
-    // SEC-77: revoke refresh tokens when role is demoted so the next Auth
-    // request forces a new ID token — limits the stale-privilege window to
-    // the remaining TTL of the current access token (~≤1h) rather than
-    // until the refresh token expires.
-    if (roleBefore !== null && role !== roleBefore) {
+    // SEC-77 / SEC-85: revoke refresh tokens when role is demoted OR when the
+    // subscription claim is downgraded (Pro → null). Limits the stale-privilege
+    // window to the remaining TTL of the current access token (~≤1h) rather
+    // than until the refresh token expires.
+    const subscriptionDowngraded = subscriptionBefore !== null && subscription === null;
+    if ((roleBefore !== null && role !== roleBefore) || subscriptionDowngraded) {
       await admin.auth().revokeRefreshTokens(uid);
-      console.log(`syncUserClaims: revoked refresh tokens for uid=${uid} (role changed ${roleBefore} → ${role})`);
+      const reason = subscriptionDowngraded
+        ? `subscription downgraded ${subscriptionBefore} → ${subscription}`
+        : `role changed ${roleBefore} → ${role}`;
+      console.log(`syncUserClaims: revoked refresh tokens for uid=${uid} (${reason})`);
     }
   }
 );

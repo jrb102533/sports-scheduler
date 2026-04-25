@@ -155,13 +155,18 @@ function makeStripeWriteEvent(uid: string, subId: string) {
   };
 }
 
-function makeUserWriteEvent(uid: string, afterData: Record<string, unknown> | null) {
+function makeUserWriteEvent(
+  uid: string,
+  afterData: Record<string, unknown> | null,
+  beforeData: Record<string, unknown> | null = null,
+) {
   const exists = afterData !== null;
+  const beforeExists = beforeData !== null;
   return {
     params: { uid },
     data: {
       after: { exists, data: () => (exists ? afterData : undefined) },
-      before: { exists: false, data: () => undefined },
+      before: { exists: beforeExists, data: () => (beforeExists ? beforeData : undefined) },
     },
   };
 }
@@ -316,5 +321,51 @@ describe('syncUserClaims — subscription claim (FW-63)', () => {
       role: 'league_manager',
       subscription: 'league_manager_pro',
     });
+  });
+
+  // SEC-85: revoke refresh tokens on subscription downgrade so stale Pro tokens
+  // are limited to the remaining ID-token TTL (~1h) instead of refresh-token life.
+  it('revokes refresh tokens on subscription downgrade (Pro → free)', async () => {
+    await (syncUserClaims as unknown as (e: unknown) => Promise<void>)(
+      makeUserWriteEvent(
+        'uid-cancel',
+        { role: 'league_manager', subscriptionTier: 'free' },
+        { role: 'league_manager', subscriptionTier: 'league_manager_pro' },
+      ),
+    );
+    expect(mockRevokeRefreshTokens).toHaveBeenCalledWith('uid-cancel');
+  });
+
+  it('revokes refresh tokens when adminGrantedLM is removed', async () => {
+    await (syncUserClaims as unknown as (e: unknown) => Promise<void>)(
+      makeUserWriteEvent(
+        'uid-comp-revoked',
+        { role: 'league_manager', subscriptionTier: 'free', adminGrantedLM: false },
+        { role: 'league_manager', subscriptionTier: 'free', adminGrantedLM: true },
+      ),
+    );
+    expect(mockRevokeRefreshTokens).toHaveBeenCalledWith('uid-comp-revoked');
+  });
+
+  it('does NOT revoke refresh tokens on subscription upgrade (free → Pro)', async () => {
+    await (syncUserClaims as unknown as (e: unknown) => Promise<void>)(
+      makeUserWriteEvent(
+        'uid-upgrade',
+        { role: 'league_manager', subscriptionTier: 'league_manager_pro' },
+        { role: 'league_manager', subscriptionTier: 'free' },
+      ),
+    );
+    expect(mockRevokeRefreshTokens).not.toHaveBeenCalled();
+  });
+
+  it('does NOT revoke refresh tokens when subscription stays the same', async () => {
+    await (syncUserClaims as unknown as (e: unknown) => Promise<void>)(
+      makeUserWriteEvent(
+        'uid-stable',
+        { role: 'league_manager', subscriptionTier: 'league_manager_pro' },
+        { role: 'league_manager', subscriptionTier: 'league_manager_pro' },
+      ),
+    );
+    expect(mockRevokeRefreshTokens).not.toHaveBeenCalled();
   });
 });
