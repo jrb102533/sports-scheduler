@@ -14,30 +14,32 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Opponent } from '@/types';
+import type { Opponent } from '../types';
+
+type AnyFn = (...args: any[]) => any;
 
 // ── Firestore mock ────────────────────────────────────────────────────────────
 
-const mockSetDoc = vi.fn();
-const mockDeleteDoc = vi.fn();
-const mockGetDocs = vi.fn();
-const mockOnSnapshot = vi.fn(() => () => {});
-const mockDoc = vi.fn(() => ({}));
-const mockCollection = vi.fn(() => ({}));
-const mockQuery = vi.fn(q => q);
-const mockOrderBy = vi.fn(() => ({}));
-const mockWhere = vi.fn(() => ({}));
+const mockSetDoc = vi.fn<AnyFn>();
+const mockDeleteDoc = vi.fn<AnyFn>();
+const mockGetDocs = vi.fn<AnyFn>();
+const mockOnSnapshot = vi.fn<AnyFn>();
+const mockDoc = vi.fn<AnyFn>(() => ({}));
+const mockCollection = vi.fn<AnyFn>(() => ({}));
+const mockQuery = vi.fn<AnyFn>(q => q);
+const mockOrderBy = vi.fn<AnyFn>(() => ({}));
+const mockWhere = vi.fn<AnyFn>(() => ({}));
 
 vi.mock('firebase/firestore', () => ({
-  collection: (...args: unknown[]) => mockCollection(...args),
-  onSnapshot: (...args: unknown[]) => mockOnSnapshot(...args),
-  getDocs: (...args: unknown[]) => mockGetDocs(...args),
-  doc: (...args: unknown[]) => mockDoc(...args),
-  setDoc: (...args: unknown[]) => mockSetDoc(...args),
-  deleteDoc: (...args: unknown[]) => mockDeleteDoc(...args),
-  query: (...args: unknown[]) => mockQuery(...args),
-  orderBy: (...args: unknown[]) => mockOrderBy(...args),
-  where: (...args: unknown[]) => mockWhere(...args),
+  collection: (...args: any[]) => mockCollection(...args),
+  onSnapshot: (...args: any[]) => mockOnSnapshot(...args),
+  getDocs: (...args: any[]) => mockGetDocs(...args),
+  doc: (...args: any[]) => mockDoc(...args),
+  setDoc: (...args: any[]) => mockSetDoc(...args),
+  deleteDoc: (...args: any[]) => mockDeleteDoc(...args),
+  query: (...args: any[]) => mockQuery(...args),
+  orderBy: (...args: any[]) => mockOrderBy(...args),
+  where: (...args: any[]) => mockWhere(...args),
 }));
 
 vi.mock('@/lib/firebase', () => ({ db: {} }));
@@ -130,7 +132,7 @@ describe('useOpponentStore — subscribe (scoping edge cases)', () => {
     mockOnSnapshot.mockReturnValue(() => {});
     const manyIds = Array.from({ length: 35 }, (_, i) => `team-${i}`);
     useOpponentStore.getState().subscribe(manyIds);
-    const teamIdCall = mockWhere.mock.calls.find(c => c[0] === 'teamId');
+    const teamIdCall = (mockWhere.mock.calls as any[][]).find(c => c[0] === 'teamId');
     expect(teamIdCall).toBeDefined();
     expect((teamIdCall![2] as string[]).length).toBe(30);
   });

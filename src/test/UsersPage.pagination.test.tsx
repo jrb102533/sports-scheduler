@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import type { UserProfile } from '@/types';
+import type { UserProfile } from '../../types';
 
 // ─── Mutable spy refs ─────────────────────────────────────────────────────────
 
@@ -67,7 +67,7 @@ vi.mock('@/store/useAuthStore', () => ({
 
 // ─── Import after mocks ───────────────────────────────────────────────────────
 
-import { UsersPage, _resetUsersCache } from '@/pages/UsersPage';
+import { UsersPage, _resetUsersCache } from '../../pages/UsersPage';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

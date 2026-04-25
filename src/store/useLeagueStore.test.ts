@@ -9,45 +9,47 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { League } from '@/types';
-import type { Team } from '@/types';
-import type { ScheduledEvent } from '@/types';
+import type { League } from '../types';
+import type { Team } from '../types';
+import type { ScheduledEvent } from '../types';
+
+type AnyFn = (...args: any[]) => any;
 
 // ── Firestore mock ────────────────────────────────────────────────────────────
 
-const mockSetDoc = vi.fn();
-const mockDeleteDoc = vi.fn();
-const mockUpdateDoc = vi.fn();
-const mockOnSnapshot = vi.fn(() => () => {});
-const mockDoc = vi.fn((...args) => ({ _path: args.slice(1).join('/') }));
-const mockCollection = vi.fn(() => ({}));
-const mockQuery = vi.fn(q => q);
-const mockOrderBy = vi.fn(() => ({}));
-const mockArrayRemove = vi.fn(v => ({ _remove: v }));
-const mockWhere = vi.fn(() => ({}));
+const mockSetDoc = vi.fn<AnyFn>();
+const mockDeleteDoc = vi.fn<AnyFn>();
+const mockUpdateDoc = vi.fn<AnyFn>();
+const mockOnSnapshot = vi.fn<AnyFn>();
+const mockDoc = vi.fn<AnyFn>((...args) => ({ _path: args.slice(1).join('/') }));
+const mockCollection = vi.fn<AnyFn>(() => ({}));
+const mockQuery = vi.fn<AnyFn>(q => q);
+const mockOrderBy = vi.fn<AnyFn>(() => ({}));
+const mockArrayRemove = vi.fn<AnyFn>(v => ({ _remove: v }));
+const mockWhere = vi.fn<AnyFn>(() => ({}));
 
 vi.mock('firebase/firestore', () => ({
-  collection: (...args: unknown[]) => mockCollection(...args),
-  onSnapshot: (...args: unknown[]) => mockOnSnapshot(...args),
-  doc: (...args: unknown[]) => mockDoc(...args),
-  setDoc: (...args: unknown[]) => mockSetDoc(...args),
-  deleteDoc: (...args: unknown[]) => mockDeleteDoc(...args),
-  updateDoc: (...args: unknown[]) => mockUpdateDoc(...args),
-  query: (...args: unknown[]) => mockQuery(...args),
-  orderBy: (...args: unknown[]) => mockOrderBy(...args),
-  where: (...args: unknown[]) => mockWhere(...args),
-  arrayRemove: (v: unknown) => mockArrayRemove(v),
+  collection: (...args: any[]) => mockCollection(...args),
+  onSnapshot: (...args: any[]) => mockOnSnapshot(...args),
+  doc: (...args: any[]) => mockDoc(...args),
+  setDoc: (...args: any[]) => mockSetDoc(...args),
+  deleteDoc: (...args: any[]) => mockDeleteDoc(...args),
+  updateDoc: (...args: any[]) => mockUpdateDoc(...args),
+  query: (...args: any[]) => mockQuery(...args),
+  orderBy: (...args: any[]) => mockOrderBy(...args),
+  where: (...args: any[]) => mockWhere(...args),
+  arrayRemove: (v: any) => mockArrayRemove(v),
 }));
 
 vi.mock('@/lib/firebase', () => ({ db: {}, functions: {} }));
 
 // ── Firebase Functions mock ───────────────────────────────────────────────────
 
-const mockDeleteLeagueFn = vi.fn();
-const mockHttpsCallable = vi.fn(() => mockDeleteLeagueFn);
+const mockDeleteLeagueFn = vi.fn<AnyFn>();
+const mockHttpsCallable = vi.fn<AnyFn>(() => mockDeleteLeagueFn);
 
 vi.mock('firebase/functions', () => ({
-  httpsCallable: (...args: unknown[]) => mockHttpsCallable(...args),
+  httpsCallable: (...args: any[]) => mockHttpsCallable(...args),
 }));
 
 // ── Dependent store mocks ─────────────────────────────────────────────────────
