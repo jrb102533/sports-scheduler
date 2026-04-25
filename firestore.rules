@@ -21,6 +21,18 @@ service cloud.firestore {
     function isCoach() { return request.auth.token.role == 'coach'; }
     function isLeagueManager() { return request.auth.token.role == 'league_manager'; }
 
+    // FW-64: Returns true when the caller holds an active League Manager Pro
+    // subscription. The `subscription` JWT claim is set (and kept in sync) by
+    // the syncUserClaims Cloud Function — it is 'league_manager_pro' only when
+    // subscriptionTier == 'league_manager_pro' AND subscriptionStatus is active,
+    // OR when adminGrantedLM == true.
+    // Admins bypass this check via the explicit isAdmin() || branch on every
+    // gated path — do NOT fold isAdmin() into this helper so the semantics stay
+    // orthogonal (a future admin role change would not silently break the paywall).
+    function hasSubscription() {
+      return request.auth.token.subscription == 'league_manager_pro';
+    }
+
     // Cross-doc read: still required for rules that check non-role profile fields
     // (teamId for team message access, leagueId for season/division/standings
     // member reads). These are the remaining getProfile() call sites after the
@@ -365,23 +377,28 @@ service cloud.firestore {
       // SEC-44: soft-deleted leagues are not readable by anyone except admins.
       allow read: if request.auth != null
         && (isAdmin() || resource.data.isDeleted != true);
-      // Any authenticated user who self-assigns as manager can create a league.
+      // Any authenticated user who self-assigns as manager can create a league —
+      // but only if they hold an active LM Pro subscription (FW-64 paywall).
       // Aligns with createLeagueAndBecomeManager CF which has no role gate.
       // SEC-28: coaches/LMs with role='coach' at the top-level field are covered by
       // the isManagerOfLeague() check on request.resource.data.managerIds.
-      allow create: if isAdmin() || isLeagueManager()
-        || (request.auth != null && isManagerOfLeague(request.resource.data));
+      // FW-64: hasSubscription() required for all non-admin LM create paths.
+      allow create: if isAdmin()
+        || ((isLeagueManager() || (request.auth != null && isManagerOfLeague(request.resource.data)))
+            && hasSubscription());
       // Phase 2: use managerIds access list instead of profile.leagueId cross-doc read.
       // SEC-29: non-admin writes may not touch access-control fields (managerIds, managedBy).
       // Admins retain unrestricted write access.
       // SEC-76: isDeleted guard prevents a former manager from resurrecting a
       // deleted league via updateDoc (update does not require read permission).
+      // FW-64: hasSubscription() required for all non-admin LM update paths.
       allow update: if isAdmin()
         || (
           isManagerOfLeague(resource.data)
           && resource.data.isDeleted != true
           && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['managerIds', 'managedBy'])
+          && hasSubscription()
         );
       allow delete: if isAdmin();
 
@@ -389,8 +406,11 @@ service cloud.firestore {
       match /availabilityCollections/{collectionId} {
         allow read: if isAdmin()
           || (isManagerOfLeagueById(leagueId) && get(/databases/$(database)/documents/leagues/$(leagueId)).data.isDeleted != true);
+        // FW-64: hasSubscription() required for non-admin LM writes.
         allow create, update, delete: if isAdmin()
-          || (isManagerOfLeagueById(leagueId) && get(/databases/$(database)/documents/leagues/$(leagueId)).data.isDeleted != true);
+          || (isManagerOfLeagueById(leagueId)
+              && get(/databases/$(database)/documents/leagues/$(leagueId)).data.isDeleted != true
+              && hasSubscription());
 
         // Coach responses — coaches read/write only their own; LM reads all.
         match /responses/{coachUid} {
@@ -406,16 +426,20 @@ service cloud.firestore {
       }
 
       // Schedule fixtures — client writes these when LM publishes from the wizard preview.
+      // FW-64: hasSubscription() required for non-admin LM writes.
       match /fixtures/{fixtureId} {
         allow read: if request.auth != null;
         allow write: if isAdmin()
-          || isManagerOfLeagueById(leagueId);
+          || (isManagerOfLeagueById(leagueId) && hasSubscription());
       }
 
       // Schedule draft (backlog: async generation storage).
+      // FW-64: hasSubscription() required for non-admin LM writes.
       match /drafts/{draftId} {
-        allow read, write: if isAdmin()
+        allow read: if isAdmin()
           || isManagerOfLeagueById(leagueId);
+        allow write: if isAdmin()
+          || (isManagerOfLeagueById(leagueId) && hasSubscription());
       }
 
       // Generation status — written only by Cloud Functions via Admin SDK.
@@ -425,18 +449,24 @@ service cloud.firestore {
       }
 
       // Seasons — league managers can read/write; league members can read.
+      // FW-64: hasSubscription() required for non-admin LM writes.
       match /seasons/{seasonId} {
         allow read: if request.auth != null && (
           isAdmin() || isManagerOfLeagueById(leagueId) || isCoach()
           || getProfile().leagueId == leagueId
         );
         allow write: if isAdmin()
-          || isManagerOfLeagueById(leagueId);
+          || (isManagerOfLeagueById(leagueId) && hasSubscription());
 
         // Wizard draft — season-scoped (FW-54). Coaches and players have no access.
+        // FW-64: hasSubscription() required for non-admin LM writes.
         match /wizardDraft/{doc} {
-          allow read, write: if isAdmin()
+          allow read: if isAdmin()
             || (isManagerOfLeagueById(leagueId) && get(/databases/$(database)/documents/leagues/$(leagueId)).data.isDeleted != true);
+          allow write: if isAdmin()
+            || (isManagerOfLeagueById(leagueId)
+                && get(/databases/$(database)/documents/leagues/$(leagueId)).data.isDeleted != true
+                && hasSubscription());
         }
 
         // Standings subcollection — same access as the parent season.
@@ -449,24 +479,26 @@ service cloud.firestore {
         }
 
         // Schedule config subcollection — persisted wizard configurations.
+        // FW-64: hasSubscription() required for non-admin LM writes.
         match /scheduleConfig/{configId} {
           allow read: if request.auth != null && (
             isAdmin() || isManagerOfLeagueById(leagueId) || isCoach()
             || getProfile().leagueId == leagueId
           );
           allow write: if isAdmin()
-            || isManagerOfLeagueById(leagueId);
+            || (isManagerOfLeagueById(leagueId) && hasSubscription());
         }
       }
 
       // Divisions — league managers can read/write; league members can read.
+      // FW-64: hasSubscription() required for non-admin LM writes.
       match /divisions/{divisionId} {
         allow read: if request.auth != null && (
           isAdmin() || isManagerOfLeagueById(leagueId) || isCoach()
           || getProfile().leagueId == leagueId
         );
         allow write: if isAdmin()
-          || isManagerOfLeagueById(leagueId);
+          || (isManagerOfLeagueById(leagueId) && hasSubscription());
       }
 
       // Pending result submissions — written by callable function, readable by league managers/coaches.
@@ -483,15 +515,16 @@ service cloud.firestore {
 
       // League venue pool — LMs manage their own league's venue list; all auth'd users read.
       // Venues are copied from the LM's personal venue library (copy-based import).
+      // FW-64: hasSubscription() required for non-admin LM writes.
       match /venues/{venueId} {
         allow read: if request.auth != null;
         // SEC-34: isLeagueManager() checks the legacy `role` field which
         // assignScopedRole never sets — co-managers added via scoped role
         // assignment were blocked. Use isManagerOfLeagueById() alone, which
         // checks managerIds[] and managedBy on the league doc.
-        allow create: if isAdmin() || isManagerOfLeagueById(leagueId);
-        allow update: if isAdmin() || isManagerOfLeagueById(leagueId);
-        allow delete: if isAdmin() || isManagerOfLeagueById(leagueId);
+        allow create: if isAdmin() || (isManagerOfLeagueById(leagueId) && hasSubscription());
+        allow update: if isAdmin() || (isManagerOfLeagueById(leagueId) && hasSubscription());
+        allow delete: if isAdmin() || (isManagerOfLeagueById(leagueId) && hasSubscription());
       }
     }
 
