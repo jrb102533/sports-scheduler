@@ -130,6 +130,22 @@ service cloud.firestore {
       }
     }
 
+    // FW-65: Stripe product catalogue. Mirrored from Stripe by the
+    // firestore-stripe-payments extension. Authenticated users need read access
+    // to display plan options on /upgrade. Only the extension (admin SDK) writes.
+    match /products/{productId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+      match /prices/{priceId} {
+        allow read: if request.auth != null;
+        allow write: if false;
+      }
+      match /tax_rates/{rateId} {
+        allow read: if request.auth != null;
+        allow write: if false;
+      }
+    }
+
     // FW-63 / FW-65 / SEC-92: Stripe extension (firestore-stripe-payments)
     // requires the *client* to write trigger docs to checkout_sessions and
     // portal_links subcollections — the extension's auth-trigger reads them
