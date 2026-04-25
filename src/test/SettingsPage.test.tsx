@@ -8,15 +8,33 @@
  *   - Profile without weeklyDigestEnabled field = enabled (default true)
  *   - Profile with weeklyDigestEnabled: false = toggle unchecked
  *   - Kids Sports Mode section is hidden when FLAGS.KIDS_MODE is false
+ *
+ * Subscription card:
+ *   - Free tier: shows "Free" plan label with Upgrade CTA
+ *   - Active Pro: shows "League Manager Pro" plan label + "Active" status badge
+ *   - Admin-granted: shows "Comped" in plan label, no manage button
+ *   - Trialing: shows "Trial" status badge + trial end date
+ *   - Canceled: shows "Resubscribe" CTA
+ *   - Past due: shows "Past due" badge + "Update payment method" CTA
+ *   - Upgrade CTA navigates to /upgrade for free user
+ *   - Manage subscription CTA navigates to /account/subscription for active user
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import type { UserProfile } from '@/types';
 import type { AppSettings } from '@/types';
 
 // ── Firebase stub ──────────────────────────────────────────────────────────────
 vi.mock('@/lib/firebase', () => ({ auth: {}, db: {}, app: {} }));
+
+// ── Router ────────────────────────────────────────────────────────────────────
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return { ...actual, useNavigate: () => mockNavigate };
+});
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn(),
   updateDoc: vi.fn().mockResolvedValue(undefined),
@@ -67,7 +85,11 @@ function makeProfile(overrides: Partial<UserProfile> = {}): UserProfile {
 }
 
 function renderPage() {
-  return render(<SettingsPage />);
+  return render(
+    <MemoryRouter>
+      <SettingsPage />
+    </MemoryRouter>
+  );
 }
 
 beforeEach(() => {
@@ -139,5 +161,117 @@ describe('SettingsPage — unauthenticated', () => {
     currentProfile = null;
     const { container } = renderPage();
     expect(container).toBeTruthy();
+  });
+});
+
+// ── Subscription card ─────────────────────────────────────────────────────────
+
+describe('SettingsPage — Subscription card', () => {
+  it('shows "Free" plan label for a free-tier user', () => {
+    currentProfile = makeProfile({ subscriptionTier: 'free', subscriptionStatus: undefined });
+    renderPage();
+    expect(screen.getByText('Free')).toBeInTheDocument();
+  });
+
+  it('shows "Upgrade to Pro" CTA for a free-tier user', () => {
+    currentProfile = makeProfile({ subscriptionTier: 'free', subscriptionStatus: undefined });
+    renderPage();
+    expect(screen.getByRole('button', { name: /upgrade to pro/i })).toBeInTheDocument();
+  });
+
+  it('shows "League Manager Pro" plan label for an active subscriber', () => {
+    currentProfile = makeProfile({
+      subscriptionTier: 'league_manager_pro',
+      subscriptionStatus: 'active',
+      subscriptionExpiresAt: new Date(Date.now() + 30 * 86400_000).toISOString(),
+    });
+    renderPage();
+    expect(screen.getByText('League Manager Pro')).toBeInTheDocument();
+  });
+
+  it('shows "Active" status badge for an active subscriber', () => {
+    currentProfile = makeProfile({
+      subscriptionTier: 'league_manager_pro',
+      subscriptionStatus: 'active',
+    });
+    renderPage();
+    // The subscription card heading + badge both contain "Active" / "Subscription"
+    expect(screen.getByText('Active')).toBeInTheDocument();
+  });
+
+  it('shows "Manage subscription" CTA for an active subscriber', () => {
+    currentProfile = makeProfile({
+      subscriptionTier: 'league_manager_pro',
+      subscriptionStatus: 'active',
+    });
+    renderPage();
+    expect(screen.getByRole('button', { name: /manage subscription/i })).toBeInTheDocument();
+  });
+
+  it('navigates to /upgrade when "Upgrade to Pro" is clicked', () => {
+    currentProfile = makeProfile({ subscriptionTier: 'free', subscriptionStatus: undefined });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /upgrade to pro/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/upgrade');
+  });
+
+  it('navigates to /account/subscription when "Manage subscription" is clicked', () => {
+    currentProfile = makeProfile({
+      subscriptionTier: 'league_manager_pro',
+      subscriptionStatus: 'active',
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /manage subscription/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/account/subscription');
+  });
+
+  it('shows "Trial" status badge for a trialing subscriber', () => {
+    currentProfile = makeProfile({
+      subscriptionTier: 'league_manager_pro',
+      subscriptionStatus: 'trialing',
+      subscriptionExpiresAt: new Date(Date.now() + 7 * 86400_000).toISOString(),
+    });
+    renderPage();
+    expect(screen.getByText('Trial')).toBeInTheDocument();
+  });
+
+  it('shows "Past due" status badge and "Update payment method" CTA for past_due', () => {
+    currentProfile = makeProfile({
+      subscriptionTier: 'league_manager_pro',
+      subscriptionStatus: 'past_due',
+    });
+    renderPage();
+    expect(screen.getByText('Past due')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /update payment method/i })).toBeInTheDocument();
+  });
+
+  it('shows "Resubscribe" CTA for a canceled subscriber', () => {
+    currentProfile = makeProfile({
+      subscriptionTier: 'league_manager_pro',
+      subscriptionStatus: 'canceled',
+      subscriptionExpiresAt: new Date(Date.now() - 86400_000).toISOString(),
+    });
+    renderPage();
+    expect(screen.getByRole('button', { name: /resubscribe/i })).toBeInTheDocument();
+  });
+
+  it('shows "Comped" in plan label for admin-granted user', () => {
+    currentProfile = makeProfile({
+      subscriptionTier: 'league_manager_pro',
+      subscriptionStatus: 'active',
+      adminGrantedLM: true,
+    });
+    renderPage();
+    expect(screen.getByText('League Manager Pro · Comped')).toBeInTheDocument();
+  });
+
+  it('does not show a manage button for admin-granted user', () => {
+    currentProfile = makeProfile({
+      subscriptionTier: 'league_manager_pro',
+      subscriptionStatus: 'active',
+      adminGrantedLM: true,
+    });
+    renderPage();
+    expect(screen.queryByRole('button', { name: /manage subscription/i })).not.toBeInTheDocument();
   });
 });

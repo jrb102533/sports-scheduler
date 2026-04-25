@@ -2,6 +2,7 @@ import { Bell, Menu, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { SubscriptionStatusBadge } from '@/components/subscription/SubscriptionStatusBadge';
 
 interface TopBarProps {
   greeting: string;
@@ -42,6 +43,9 @@ export function TopBar({ greeting, onMenuClick }: TopBarProps) {
             </span>
           )}
         </button>
+
+        {/* Subscription status badge */}
+        <SubscriptionStatusBadge />
 
         {/* User avatar + name */}
         {profile && (

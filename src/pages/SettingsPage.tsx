@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Baby, Info, Mail, ShieldCheck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Baby, CreditCard, Info, Mail, ShieldCheck } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { SettingsToggle } from '@/components/settings/SettingsToggle';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -10,8 +13,30 @@ import { getUserConsents } from '@/lib/consent';
 import { FLAGS } from '@/lib/flags';
 import { buildInfo } from '@/lib/buildInfo';
 import type { ConsentRecord } from '@/lib/consent';
+import type { SubscriptionStatus } from '@/types/auth';
+
+// ── Subscription card helpers ──────────────────────────────────────────────────
+
+type BadgeVariant = 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info';
+
+const SUB_STATUS_LABEL: Record<SubscriptionStatus, { label: string; variant: BadgeVariant }> = {
+  active:             { label: 'Active',    variant: 'success' },
+  trialing:           { label: 'Trial',     variant: 'info' },
+  past_due:           { label: 'Past due',  variant: 'warning' },
+  canceled:           { label: 'Canceled',  variant: 'default' },
+  incomplete:         { label: 'Incomplete',variant: 'warning' },
+  incomplete_expired: { label: 'Expired',   variant: 'error' },
+  unpaid:             { label: 'Unpaid',    variant: 'error' },
+};
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  });
+}
 
 export function SettingsPage() {
+  const navigate = useNavigate();
   const { settings, updateSettings } = useSettingsStore();
   const user = useAuthStore(s => s.user);
   const profile = useAuthStore(s => s.profile);
@@ -41,6 +66,100 @@ export function SettingsPage() {
   return (
     <div className="p-6 max-w-2xl">
       <div className="space-y-6">
+        {/* Subscription */}
+        {profile && (() => {
+          const isAdminGranted = profile.adminGrantedLM === true;
+          const isPro = profile.subscriptionTier === 'league_manager_pro' || isAdminGranted;
+          const status = profile.subscriptionStatus ?? null;
+          const statusConfig = status ? SUB_STATUS_LABEL[status] : null;
+          const expiresAt = profile.subscriptionExpiresAt ?? null;
+
+          const isCanceled = status === 'canceled';
+          const isTrialing = status === 'trialing';
+          const isActive = status === 'active';
+          const isPastDue = status === 'past_due';
+
+          // Canceled but paid access not yet expired
+          const isCanceledActive =
+            isCanceled &&
+            expiresAt != null &&
+            new Date(expiresAt).getTime() > Date.now();
+
+          const planLabel = !isPro && !isCanceledActive
+            ? 'Free'
+            : isAdminGranted
+              ? 'League Manager Pro · Comped'
+              : 'League Manager Pro';
+
+          const showBillingDate = isPro && expiresAt && !isTrialing && !isCanceled;
+          const showAccessUntil = isCanceled && expiresAt && !isCanceledActive;
+          const showAccessEnds = isCanceledActive && expiresAt;
+
+          let ctaLabel = 'Upgrade to Pro';
+          let ctaPath = '/upgrade';
+          if (isPro && (isActive || isTrialing || isPastDue)) {
+            ctaLabel = isPastDue ? 'Update payment method' : 'Manage subscription';
+            ctaPath = '/account/subscription';
+          } else if (isCanceled) {
+            ctaLabel = 'Resubscribe';
+            ctaPath = '/upgrade';
+          }
+
+          return (
+            <Card className="overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                <CreditCard size={18} className="text-indigo-500" />
+                <h2 className="font-semibold text-gray-900">Subscription</h2>
+              </div>
+              <div className="px-5 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-medium text-gray-900">{planLabel}</p>
+                      {isCanceledActive && (
+                        <Badge variant="warning">Canceling</Badge>
+                      )}
+                    </div>
+                    {statusConfig && !isCanceledActive && (
+                      <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
+                    )}
+                    {showBillingDate && (
+                      <p className="text-xs text-gray-500">
+                        Next billing date: {formatDate(expiresAt)}
+                      </p>
+                    )}
+                    {showAccessUntil && (
+                      <p className="text-xs text-gray-500">
+                        Access until: {formatDate(expiresAt)}
+                      </p>
+                    )}
+                    {showAccessEnds && (
+                      <p className="text-xs text-gray-500">
+                        Access ends {formatDate(expiresAt)}
+                      </p>
+                    )}
+                    {isTrialing && expiresAt && (
+                      <p className="text-xs text-gray-500">
+                        Trial ends: {formatDate(expiresAt)}
+                      </p>
+                    )}
+                  </div>
+                  {!isAdminGranted && (
+                    <Button
+                      size="sm"
+                      variant={isPastDue ? 'primary' : 'secondary'}
+                      onClick={() => navigate(ctaPath)}
+                      className="flex-shrink-0"
+                    >
+                      {ctaLabel}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+          );
+        })()}
+
         {/* Kids Sports Mode — hidden behind feature flag */}
         {FLAGS.KIDS_MODE && (
           <Card className="overflow-hidden">
