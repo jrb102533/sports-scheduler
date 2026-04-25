@@ -262,7 +262,7 @@ export function SubscriptionPage() {
             ) : (
               <>
                 <ExternalLink size={14} />
-                Manage subscription
+                {status === 'past_due' ? 'Update payment method' : 'Manage subscription'}
               </>
             )}
           </Button>
