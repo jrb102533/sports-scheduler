@@ -67,7 +67,7 @@ vi.mock('@/store/useAuthStore', () => ({
 
 // ─── Import after mocks ───────────────────────────────────────────────────────
 
-import { UsersPage } from '@/pages/UsersPage';
+import { UsersPage, _resetUsersCache } from '@/pages/UsersPage';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -97,6 +97,7 @@ function makeSnap(profiles: UserProfile[]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  _resetUsersCache();
   mockQuery.mockReturnValue({ __query: true });
   mockOrderBy.mockReturnValue('__orderBy');
   mockLimit.mockReturnValue('__limit');

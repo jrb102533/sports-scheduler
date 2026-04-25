@@ -70,7 +70,7 @@ vi.mock('@/store/useAuthStore', () => ({
 // ─── Import after mocks ───────────────────────────────────────────────────────
 
 import { getDocs } from 'firebase/firestore';
-import { UsersPage } from '@/pages/UsersPage';
+import { UsersPage, _resetUsersCache } from '@/pages/UsersPage';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -114,6 +114,7 @@ async function openSlideOver(displayName: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  _resetUsersCache();
   mockBatchCommit.mockResolvedValue(undefined);
   mockUpdateDoc.mockResolvedValue(undefined);
 });

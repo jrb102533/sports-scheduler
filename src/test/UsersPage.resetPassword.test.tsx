@@ -65,7 +65,7 @@ vi.mock('@/store/useAuthStore', () => ({
 // ─── Import after mocks ───────────────────────────────────────────────────────
 
 import { getDocs } from 'firebase/firestore';
-import { UsersPage } from '@/pages/UsersPage';
+import { UsersPage, _resetUsersCache } from '@/pages/UsersPage';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -110,6 +110,7 @@ function getResetButton() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  _resetUsersCache();
   mockCallableFn.mockResolvedValue({ data: { success: true } });
   seedUsers([ADMIN_USER, OTHER_USER]);
 });

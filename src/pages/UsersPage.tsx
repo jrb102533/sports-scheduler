@@ -499,16 +499,26 @@ function EditPanel({
   );
 }
 
+// ── Module-level cache — persists across navigation within the session ─────────
+let usersCache: UserProfile[] | null = null;
+let usersCursor: QueryDocumentSnapshot<DocumentData> | null = null;
+
+/** Exposed for test teardown only. Resets the session-level cache. */
+export function _resetUsersCache() {
+  usersCache = null;
+  usersCursor = null;
+}
+
 // ── UsersPage ─────────────────────────────────────────────────────────────────
 
 export function UsersPage() {
   const PAGE_SIZE = 100;
 
-  const [users, setUsers] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<UserProfile[]>(usersCache ?? []);
+  const [loading, setLoading] = useState(usersCache === null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
-  const lastDocRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const lastDocRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(usersCursor);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all');
   const [addOpen, setAddOpen] = useState(false);
@@ -523,11 +533,20 @@ export function UsersPage() {
   const currentUid = useAuthStore(s => s.user?.uid);
 
   useEffect(() => {
+    // Use cached data if available — avoids re-querying on every page visit.
+    if (usersCache !== null) {
+      setHasMore(usersCache.length === PAGE_SIZE && usersCursor !== null);
+      return;
+    }
     const q = query(collection(db, 'users'), orderBy('displayName'), limit(PAGE_SIZE));
     getDocs(q).then(snap => {
-      lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
+      const cursor = snap.docs[snap.docs.length - 1] ?? null;
+      const fetched = snap.docs.map(d => d.data() as UserProfile);
+      usersCache = fetched;
+      usersCursor = cursor;
+      lastDocRef.current = cursor;
       setHasMore(snap.docs.length === PAGE_SIZE);
-      setUsers(snap.docs.map(d => d.data() as UserProfile));
+      setUsers(fetched);
       setLoading(false);
     });
   }, []);
@@ -543,9 +562,16 @@ export function UsersPage() {
     );
     try {
       const snap = await getDocs(q);
-      lastDocRef.current = snap.docs[snap.docs.length - 1] ?? null;
+      const cursor = snap.docs[snap.docs.length - 1] ?? null;
+      const fetched = snap.docs.map(d => d.data() as UserProfile);
+      lastDocRef.current = cursor;
+      usersCursor = cursor;
       setHasMore(snap.docs.length === PAGE_SIZE);
-      setUsers(prev => [...prev, ...snap.docs.map(d => d.data() as UserProfile)]);
+      setUsers(prev => {
+        const next = [...prev, ...fetched];
+        usersCache = next;
+        return next;
+      });
     } finally {
       setLoadingMore(false);
     }
@@ -557,12 +583,12 @@ export function UsersPage() {
     const prev = users.find(u => u.uid === uid);
     if (!prev) return;
     const next = { ...prev, ...patch };
-    setUsers(us => us.map(u => u.uid === uid ? next : u));
+    setUsers(us => { const n = us.map(u => u.uid === uid ? next : u); usersCache = n; return n; });
     if (selectedUser?.uid === uid) setSelectedUser(next);
     try {
       await updateDoc(doc(db, 'users', uid), patch as Record<string, unknown>);
     } catch (err) {
-      setUsers(us => us.map(u => u.uid === uid ? prev : u));
+      setUsers(us => { const n = us.map(u => u.uid === uid ? prev : u); usersCache = n; return n; });
       if (selectedUser?.uid === uid) setSelectedUser(prev);
       console.error('Failed to update user:', err);
       alert(`Failed to save: ${(err as Error).message}`);
@@ -577,7 +603,7 @@ export function UsersPage() {
     const userPatch: Record<string, unknown> = { memberships: nextMemberships, ...legacyScalars };
     const next = { ...prev, ...userPatch };
 
-    setUsers(us => us.map(u => u.uid === uid ? next : u));
+    setUsers(us => { const n = us.map(u => u.uid === uid ? next : u); usersCache = n; return n; });
     if (selectedUser?.uid === uid) setSelectedUser(next);
 
     try {
@@ -620,7 +646,7 @@ export function UsersPage() {
 
       await batch.commit();
     } catch (err) {
-      setUsers(us => us.map(u => u.uid === uid ? prev : u));
+      setUsers(us => { const n = us.map(u => u.uid === uid ? prev : u); usersCache = n; return n; });
       if (selectedUser?.uid === uid) setSelectedUser(prev);
       console.error('Failed to update memberships:', err);
       alert(`Failed to save: ${(err as Error).message}`);
@@ -631,7 +657,7 @@ export function UsersPage() {
     try {
       const deleteFn = httpsCallable<{ uid: string }, { success: boolean }>(functions, 'deleteUserByAdmin');
       await deleteFn({ uid: user.uid });
-      setUsers(prev => prev.filter(u => u.uid !== user.uid));
+      setUsers(prev => { const n = prev.filter(u => u.uid !== user.uid); usersCache = n; return n; });
       if (selectedUser?.uid === user.uid) setSelectedUser(null);
     } catch (err) {
       alert(`Failed to delete user: ${(err as Error).message}`);
@@ -778,7 +804,7 @@ export function UsersPage() {
       <AddUserModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        onCreated={user => setUsers(prev => [...prev, user])}
+        onCreated={user => setUsers(prev => { const n = [...prev, user]; usersCache = n; return n; })}
       />
 
       <ConfirmDialog

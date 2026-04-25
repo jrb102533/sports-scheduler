@@ -66,7 +66,7 @@ vi.mock('@/store/useAuthStore', () => ({
 // ─── Import after mocks ───────────────────────────────────────────────────────
 
 import { getDocs } from 'firebase/firestore';
-import { UsersPage } from '@/pages/UsersPage';
+import { UsersPage, _resetUsersCache } from '@/pages/UsersPage';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -102,6 +102,7 @@ function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  _resetUsersCache();
   mockUpdateDoc.mockResolvedValue(undefined);
 });
 

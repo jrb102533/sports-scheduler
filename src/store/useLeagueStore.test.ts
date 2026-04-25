@@ -142,8 +142,8 @@ describe('useLeagueStore — subscribe', () => {
 
     useLeagueStore.getState().subscribe();
 
-    // Server-side filter is applied — isDeleted docs never reach the snapshot
-    expect(mockWhere).toHaveBeenCalledWith('isDeleted', '!=', true);
+    // Server-side equality filter — only docs with isDeleted == false are returned
+    expect(mockWhere).toHaveBeenCalledWith('isDeleted', '==', false);
     const { leagues } = useLeagueStore.getState();
     expect(leagues).toHaveLength(1);
     expect(leagues[0].id).toBe('l1');
