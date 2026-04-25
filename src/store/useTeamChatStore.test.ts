@@ -27,14 +27,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 type SnapCb = (snap: unknown) => void;
 type ErrCb = (err: Error) => void;
 
-const { _mockAddDoc, _mockOnSnapshot, _snapCallbacks } = vi.hoisted(() => {
+const { _mockAddDoc, _mockOnSnapshot, _mockGetDocs, _snapCallbacks } = vi.hoisted(() => {
   const snapCallbacks: Array<{ cb: SnapCb; errCb?: ErrCb }> = [];
   const mockOnSnapshot = vi.fn((_q: unknown, cb: SnapCb, errCb?: ErrCb) => {
     snapCallbacks.push({ cb, errCb });
     return () => {};
   });
   const mockAddDoc = vi.fn().mockResolvedValue({ id: 'msg-auto-id' });
-  return { _mockAddDoc: mockAddDoc, _mockOnSnapshot: mockOnSnapshot, _snapCallbacks: snapCallbacks };
+  // getDocs resolves with an empty snapshot by default (no history)
+  const mockGetDocs = vi.fn().mockResolvedValue({ docs: [] });
+  return {
+    _mockAddDoc: mockAddDoc,
+    _mockOnSnapshot: mockOnSnapshot,
+    _mockGetDocs: mockGetDocs,
+    _snapCallbacks: snapCallbacks,
+  };
 });
 
 vi.mock('@/lib/firebase', () => ({ db: {} }));
@@ -45,11 +52,15 @@ vi.mock('firebase/firestore', () => ({
   })),
   query: vi.fn((ref: unknown) => ref),
   orderBy: vi.fn(),
+  where: vi.fn(),
   limit: vi.fn(),
+  getDocs: _mockGetDocs,
   onSnapshot: _mockOnSnapshot,
   addDoc: _mockAddDoc,
   serverTimestamp: vi.fn(() => ({ _type: 'serverTimestamp' })),
   Timestamp: class Timestamp {
+    static now() { return new Timestamp(Math.floor(Date.now() / 1000), 0); }
+    static fromDate(d: Date) { return new Timestamp(Math.floor(d.getTime() / 1000), 0); }
     constructor(public seconds: number, public nanoseconds: number) {}
     toDate() {
       return new Date(this.seconds * 1000);
@@ -60,6 +71,7 @@ vi.mock('firebase/firestore', () => ({
 // Convenience aliases
 const mockAddDoc = _mockAddDoc;
 const mockOnSnapshot = _mockOnSnapshot;
+const mockGetDocs = _mockGetDocs;
 
 // ── Import store ──────────────────────────────────────────────────────────────
 
@@ -83,10 +95,12 @@ function getLastSnapCallback() {
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  useTeamChatStore.setState({ messages: [], loading: false, teamId: null });
+  useTeamChatStore.setState({ messages: [], loading: false, teamId: null, _unsub: undefined });
   _snapCallbacks.length = 0;
   vi.clearAllMocks();
   mockAddDoc.mockResolvedValue({ id: 'msg-auto-id' });
+  // Default: getDocs resolves with an empty history snapshot
+  mockGetDocs.mockResolvedValue({ docs: [] });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,64 +109,79 @@ beforeEach(() => {
 
 describe('useTeamChatStore — subscribe', () => {
 
-  it('populates messages from Firestore snapshot', () => {
-    useTeamChatStore.getState().subscribe('team-abc');
+  /**
+   * subscribe() is async-under-the-hood: it fires getDocs, then inside the
+   * .then() callback sets up onSnapshot.  We flush the microtask queue with
+   * `await Promise.resolve()` (or a tick helper) after calling subscribe() so
+   * that getDocs resolves and onSnapshot is registered before we interact with
+   * the live callbacks.
+   */
+  async function flushPromises() {
+    // Two ticks: one for getDocs.then(), one for any nested microtasks
+    await Promise.resolve();
+    await Promise.resolve();
+  }
 
-    const { cb } = getLastSnapCallback();
-    cb(makeSnap([
-      { id: 'msg-1', data: { teamId: 'team-abc', senderId: 'u1', senderName: 'Alice', text: 'Hello', createdAt: '2026-01-01T00:00:00.000Z' } },
+  it('populates messages from getDocs initial history', async () => {
+    // getDocs returns docs in DESC order (newest first) as the store requests.
+    // The store calls .reverse() to produce ascending order for display.
+    mockGetDocs.mockResolvedValueOnce(makeSnap([
       { id: 'msg-2', data: { teamId: 'team-abc', senderId: 'u2', senderName: 'Bob', text: 'Hi', createdAt: '2026-01-01T00:01:00.000Z' } },
+      { id: 'msg-1', data: { teamId: 'team-abc', senderId: 'u1', senderName: 'Alice', text: 'Hello', createdAt: '2026-01-01T00:00:00.000Z' } },
     ]));
+
+    useTeamChatStore.getState().subscribe('team-abc');
+    await flushPromises();
 
     const { messages } = useTeamChatStore.getState();
     expect(messages).toHaveLength(2);
+    // After .reverse(), ascending order: msg-1 first, msg-2 second
     expect(messages[0].id).toBe('msg-1');
     expect(messages[0].text).toBe('Hello');
     expect(messages[1].id).toBe('msg-2');
   });
 
-  it('maps Firestore Timestamp createdAt to ISO string', async () => {
+  it('maps Firestore Timestamp createdAt to ISO string from getDocs history', async () => {
     const { Timestamp } = await import('firebase/firestore');
-    useTeamChatStore.getState().subscribe('team-abc');
-
-    const { cb } = getLastSnapCallback();
     const ts = new Timestamp(1_700_000_000, 0); // 2023-11-14T22:13:20Z
-    cb(makeSnap([
-      { id: 'msg-ts', data: { senderId: 'u1', senderName: 'Alice', text: 'TS test', createdAt: ts } },
+    mockGetDocs.mockResolvedValueOnce(makeSnap([
+      { id: 'msg-ts', data: { teamId: 'team-abc', senderId: 'u1', senderName: 'Alice', text: 'TS test', createdAt: ts } },
     ]));
+
+    useTeamChatStore.getState().subscribe('team-abc');
+    await flushPromises();
 
     const { messages } = useTeamChatStore.getState();
     expect(messages[0].createdAt).toBe(new Date(1_700_000_000 * 1000).toISOString());
   });
 
-  it('falls back to a string when createdAt is already a string', () => {
-    useTeamChatStore.getState().subscribe('team-abc');
-
-    const { cb } = getLastSnapCallback();
-    cb(makeSnap([
-      { id: 'msg-str', data: { senderId: 'u1', senderName: 'Alice', text: 'String', createdAt: '2026-01-01T10:00:00.000Z' } },
+  it('falls back to a string when createdAt is already a string', async () => {
+    mockGetDocs.mockResolvedValueOnce(makeSnap([
+      { id: 'msg-str', data: { teamId: 'team-abc', senderId: 'u1', senderName: 'Alice', text: 'String', createdAt: '2026-01-01T10:00:00.000Z' } },
     ]));
+
+    useTeamChatStore.getState().subscribe('team-abc');
+    await flushPromises();
 
     const { messages } = useTeamChatStore.getState();
     expect(messages[0].createdAt).toBe('2026-01-01T10:00:00.000Z');
   });
 
-  it('sets loading: false after snapshot fires', () => {
+  it('sets loading: false after getDocs resolves', async () => {
     useTeamChatStore.getState().subscribe('team-abc');
     expect(useTeamChatStore.getState().loading).toBe(true);
 
-    const { cb } = getLastSnapCallback();
-    cb(makeSnap([]));
+    await flushPromises();
 
     expect(useTeamChatStore.getState().loading).toBe(false);
   });
 
-  it('logs error and sets loading: false on snapshot error', () => {
+  it('logs error and sets loading: false when getDocs rejects', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    useTeamChatStore.getState().subscribe('team-abc');
+    mockGetDocs.mockRejectedValueOnce(new Error('Firestore permission denied'));
 
-    const { errCb } = getLastSnapCallback();
-    errCb!(new Error('Firestore permission denied'));
+    useTeamChatStore.getState().subscribe('team-abc');
+    await flushPromises();
 
     expect(useTeamChatStore.getState().loading).toBe(false);
     expect(consoleSpy).toHaveBeenCalledWith(
@@ -162,24 +191,50 @@ describe('useTeamChatStore — subscribe', () => {
     consoleSpy.mockRestore();
   });
 
-  it('skips re-subscribe when already subscribed to the same team with messages', () => {
-    // Pre-seed state to simulate an active subscription
-    useTeamChatStore.setState({
-      teamId: 'team-abc',
-      messages: [{ id: 'm1', teamId: 'team-abc', senderId: 'u1', senderName: 'A', text: 'Hi', createdAt: '2026-01-01T00:00:00Z' }],
-      loading: false,
+  it('appends live messages via onSnapshot docChanges after history loads', async () => {
+    useTeamChatStore.getState().subscribe('team-abc');
+    await flushPromises();
+
+    // onSnapshot is now registered — simulate a new message arriving
+    const { cb } = getLastSnapCallback();
+    cb({
+      docChanges: () => [{
+        type: 'added',
+        doc: {
+          id: 'live-1',
+          data: () => ({ teamId: 'team-abc', senderId: 'u1', senderName: 'Alice', text: 'Live!', createdAt: '2026-01-01T00:05:00.000Z' }),
+        },
+      }],
     });
 
-    useTeamChatStore.getState().subscribe('team-abc');
-
-    // onSnapshot should NOT have been called again — early return
-    expect(mockOnSnapshot).not.toHaveBeenCalled();
+    const { messages } = useTeamChatStore.getState();
+    expect(messages).toHaveLength(1);
+    expect(messages[0].id).toBe('live-1');
+    expect(messages[0].text).toBe('Live!');
   });
 
-  it('returns an unsubscribe function', () => {
-    const unsubFn = vi.fn();
-    mockOnSnapshot.mockReturnValueOnce(unsubFn);
+  it('resets messages and re-fetches when subscribe is called again for the same team', async () => {
+    // First call populates messages
+    mockGetDocs.mockResolvedValueOnce(makeSnap([
+      { id: 'm1', data: { teamId: 'team-abc', senderId: 'u1', senderName: 'A', text: 'Hi', createdAt: '2026-01-01T00:00:00Z' } },
+    ]));
+    useTeamChatStore.getState().subscribe('team-abc');
+    await flushPromises();
+    expect(useTeamChatStore.getState().messages).toHaveLength(1);
 
+    // Second call for the same team: store resets and reloads
+    mockGetDocs.mockResolvedValueOnce(makeSnap([]));
+    useTeamChatStore.getState().subscribe('team-abc');
+
+    // Immediately after subscribe, messages are cleared and loading is true
+    expect(useTeamChatStore.getState().messages).toHaveLength(0);
+    expect(useTeamChatStore.getState().loading).toBe(true);
+
+    await flushPromises();
+    expect(mockGetDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns an unsubscribe function synchronously', () => {
     const unsub = useTeamChatStore.getState().subscribe('team-xyz');
     expect(typeof unsub).toBe('function');
   });
