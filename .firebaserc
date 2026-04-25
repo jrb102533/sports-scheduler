@@ -3,5 +3,13 @@
     "default": "first-whistle-e76f4",
     "staging": "first-whistle-e76f4",
     "production": "first-whistle-prod"
+  },
+  "targets": {},
+  "etags": {
+    "first-whistle-e76f4": {
+      "extensionInstances": {
+        "firestore-stripe-payments": "1b789d2c8b06a6f2e2753028227f7d91f6464b6ea5505f6399e8250b9c0d73cc"
+      }
+    }
   }
 }
