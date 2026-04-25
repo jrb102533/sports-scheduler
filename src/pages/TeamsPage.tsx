@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus, Users, ChevronDown, ChevronRight, RotateCcw, Trash2 } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TeamCard } from '@/components/teams/TeamCard';
@@ -35,6 +35,9 @@ export function TeamsPage() {
 
   // Pending join request counts per team — only loaded for coaches/admins
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
+
+  // Session-only: track when each team's chat was last viewed to show unread dot
+  const lastReadRef = useRef<Record<string, string>>({});
 
   // Determine the user's own teams — check all memberships, not just profile.teamId
   const myTeams: Team[] = isAdmin
@@ -146,15 +149,29 @@ export function TeamsPage() {
       {(isAdmin || hasMyTeams) && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-            {myTeams.map(team => (
-              <TeamCard
-                key={team.id}
-                team={team}
-                playerCount={players.filter(p => p.teamId === team.id).length}
-                pendingRequestCount={isCoachOrAdmin ? (pendingCounts[team.id] ?? 0) : undefined}
-                onClick={() => navigate(`/teams/${team.id}`)}
-              />
-            ))}
+            {myTeams.map(team => {
+              const lastRead = lastReadRef.current[team.id];
+              const hasUnread = !!(team.lastMessageAt && lastRead && team.lastMessageAt > lastRead);
+              return (
+                <div key={team.id} className="relative">
+                  {hasUnread && (
+                    <span
+                      className="absolute top-2 right-2 z-10 w-2.5 h-2.5 rounded-full bg-blue-500"
+                      aria-label="Unread messages"
+                    />
+                  )}
+                  <TeamCard
+                    team={team}
+                    playerCount={players.filter(p => p.teamId === team.id).length}
+                    pendingRequestCount={isCoachOrAdmin ? (pendingCounts[team.id] ?? 0) : undefined}
+                    onClick={() => {
+                      lastReadRef.current[team.id] = new Date().toISOString();
+                      navigate(`/teams/${team.id}`);
+                    }}
+                  />
+                </div>
+              );
+            })}
           </div>
 
           {!isAdmin && otherTeams.length > 0 && (

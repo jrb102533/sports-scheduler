@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList, UserCheck, Crown, CalendarDays, Trophy, ClipboardCheck, Copy, Check, Mail } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList, UserCheck, Crown, CalendarDays, Trophy, ClipboardCheck, Copy, Check, Mail, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { TeamForm } from '@/components/teams/TeamForm';
 import { PlayerForm } from '@/components/roster/PlayerForm';
@@ -11,6 +11,7 @@ import { EventForm } from '@/components/events/EventForm';
 import { EventDetailPanel } from '@/components/events/EventDetailPanel';
 import { StandingsTable } from '@/components/standings/StandingsTable';
 import { SubscribeToCalendarButton } from '@/components/calendar/SubscribeToCalendarButton';
+import { TeamChatPanel } from '@/components/messaging/TeamChatPanel';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DeleteTeamModal } from '@/components/teams/DeleteTeamModal';
 import { AssignCoCoachModal } from '@/components/teams/AssignCoCoachModal';
@@ -45,7 +46,7 @@ const sendInviteFn = httpsCallable<{
 
 const revokeInviteFn = httpsCallable<{ inviteId: string }>(functions, 'revokeInvite');
 
-type Tab = 'schedule' | 'roster' | 'attendance' | 'standings' | 'info' | 'requests' | 'invites';
+type Tab = 'schedule' | 'roster' | 'attendance' | 'standings' | 'chat' | 'info' | 'requests' | 'invites';
 
 export function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -257,6 +258,7 @@ export function TeamDetailPage() {
     { key: 'roster', label: `Roster (${teamPlayers.length})`, icon: <Users size={14} /> },
     { key: 'attendance', label: 'Attendance', icon: <ClipboardList size={14} /> },
     { key: 'standings', label: 'Standings', icon: <Trophy size={14} /> },
+    { key: 'chat', label: 'Chat', icon: <MessageSquare size={14} /> },
     { key: 'info', label: 'Info', icon: <Info size={14} /> },
     ...(canSeeRequests ? [{ key: 'requests' as Tab, label: 'Requests', icon: <UserCheck size={14} /> }] : []),
     ...(userCanEdit ? [{ key: 'invites' as Tab, label: 'Invites', icon: <Mail size={14} /> }] : []),
@@ -484,6 +486,13 @@ export function TeamDetailPage() {
               This team is not part of a league. Assign it to a league to see standings.
             </div>
           )}
+        </div>
+      )}
+
+      {/* Chat Tab */}
+      {tab === 'chat' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden" style={{ height: '520px' }}>
+          <TeamChatPanel teamId={teamId} />
         </div>
       )}
 

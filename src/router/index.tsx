@@ -7,7 +7,6 @@ import { CalendarPage } from '@/pages/CalendarPage';
 import { TeamsPage } from '@/pages/TeamsPage';
 import { TeamDetailPage } from '@/pages/TeamDetailPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
-import { MessagingPage } from '@/pages/MessagingPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { LoginPage } from '@/pages/LoginPage';
@@ -52,7 +51,6 @@ export const router = createBrowserRouter([
       { path: 'teams', element: <TeamsPage /> },
       { path: 'teams/:id', element: <TeamDetailPage /> },
       { path: 'notifications', element: <NotificationsPage /> },
-      { path: 'messaging', element: <MessagingPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'profile', element: <ProfilePage /> },
       { path: 'users', element: <RoleGuard roles={['admin']} redirect><UsersPage /></RoleGuard> },
