@@ -92,7 +92,13 @@ export function useStripeCheckout(): UseStripeCheckoutResult {
               reject(new Error((data.error as { message?: string }).message ?? 'Checkout session error'));
             } else if (data?.url) {
               unsubRef.current();
-              window.location.assign(data.url as string);
+              const url = String(data.url);
+              // SEC-93: only allow Stripe-hosted redirect URLs.
+              if (!/^https:\/\/(checkout|billing)\.stripe\.com\//.test(url)) {
+                reject(new Error('Invalid checkout redirect URL.'));
+                return;
+              }
+              window.location.assign(url);
               resolve();
             }
           },

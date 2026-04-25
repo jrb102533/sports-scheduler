@@ -136,7 +136,13 @@ export function SubscriptionPage() {
               reject(new Error((data.error as { message?: string }).message ?? 'Portal error'));
             } else if (data?.url) {
               unsubRef.current();
-              window.location.assign(data.url as string);
+              const url = String(data.url);
+              // SEC-93: only allow Stripe-hosted redirect URLs.
+              if (!/^https:\/\/(billing|checkout)\.stripe\.com\//.test(url)) {
+                reject(new Error('Invalid portal redirect URL.'));
+                return;
+              }
+              window.location.assign(url);
               resolve();
             }
           },
