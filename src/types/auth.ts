@@ -36,4 +36,25 @@ export interface UserProfile {
   weeklyDigestEnabled?: boolean;
   /** When false, the user will not receive email notifications for team chat and direct messages. Defaults to true. */
   messagingNotificationsEnabled?: boolean;
+  /** Subscription tier. Defaults to 'free'. League managers must upgrade to 'league_manager_pro' to access LM features. */
+  subscriptionTier?: SubscriptionTier;
+  /** Stripe subscription status mirrored from the customers/{uid}/subscriptions subcollection. */
+  subscriptionStatus?: SubscriptionStatus;
+  /** ISO timestamp when paid access ends — period end if canceled, trial end if trialing, etc. */
+  subscriptionExpiresAt?: string;
+  /** Admin-granted Pro access bypass (support cases, comps). When true, treat as Pro regardless of Stripe state. */
+  adminGrantedLM?: boolean;
+  /** Reserved for future grandfather policy. Locked false at launch (no existing LM users at decision time). */
+  grandfathered?: boolean;
 }
+
+export type SubscriptionTier = 'free' | 'league_manager_pro';
+
+export type SubscriptionStatus =
+  | 'active'
+  | 'trialing'
+  | 'past_due'
+  | 'canceled'
+  | 'incomplete'
+  | 'incomplete_expired'
+  | 'unpaid';
