@@ -378,6 +378,9 @@ function AnnouncementsPanel() {
   const [sendResult, setSendResult] = useState<{ sent: number; failed: number; errors: string[] } | null>(null);
 
   const isAdmin = profile?.role === 'admin';
+  // Fetch all platform users once on mount (or when isAdmin/uid changes).
+  // Do not re-fetch on channel switch — channel filtering is done client-side.
+  const hasFetchedUsers = useRef(false);
 
   const teams: Team[] = isAdmin
     ? allTeams
@@ -389,13 +392,16 @@ function AnnouncementsPanel() {
       );
 
   useEffect(() => {
-    if (!isAdmin || channel !== 'email') return;
+    if (!isAdmin) return;
+    if (hasFetchedUsers.current) return;
+    hasFetchedUsers.current = true;
     const q = query(collection(db, 'users'), where('email', '!=', ''));
     getDocs(q).then(snap => {
       const users = snap.docs.map(d => d.data() as UserProfile).filter(u => u.uid !== profile?.uid);
       setPlatformUsers(users);
     });
-  }, [isAdmin, channel, profile?.uid]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, profile?.uid]);
 
   const playersForChannel = (ch: Channel) =>
     players.filter(p =>

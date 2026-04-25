@@ -20,10 +20,11 @@ export const useLeagueStore = create<LeagueStore>((set) => ({
   loading: true,
 
   subscribe: () => {
-    const q = query(collection(db, 'leagues'), where('isDeleted', '!=', true), orderBy('isDeleted'), orderBy('createdAt'));
+    const q = query(collection(db, 'leagues'), where('isDeleted', '==', false), orderBy('createdAt'));
     const unsub = onSnapshot(q, (snap) => {
       const leagues = snap.docs
-        .map(d => ({ ...d.data(), id: d.id }) as League);
+        .map(d => ({ ...d.data(), id: d.id }) as League)
+        .filter(l => l.isDeleted !== true);
       set({ leagues, loading: false });
     }, () => set({ loading: false }));
     return unsub;

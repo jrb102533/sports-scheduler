@@ -3,7 +3,6 @@ import {
   collection, onSnapshot, doc, setDoc, deleteDoc, query, orderBy, where, getDocs,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { useAuthStore } from '@/store/useAuthStore';
 import type { Opponent } from '@/types';
 
 interface OpponentStore {
@@ -22,25 +21,19 @@ export const useOpponentStore = create<OpponentStore>((set) => ({
   loading: true,
 
   subscribe: (userTeamIds: string[]) => {
-    const profile = useAuthStore.getState().profile;
-    const isAdmin = profile?.role === 'admin' || profile?.role === 'league_manager';
-
-    // Non-admin users with no team memberships have nothing to subscribe to.
-    if (!isAdmin && userTeamIds.length === 0) {
+    // Admins without team memberships see no opponents — avoids global scan.
+    if (userTeamIds.length === 0) {
       set({ loading: false });
       return () => {};
     }
 
-    // Opponents have a teamId field. Scope the subscription to the user's teams
-    // to avoid reading every opponent across all teams in the database.
-    // Admin users keep an unscoped subscription to see all opponents.
-    const q = isAdmin
-      ? query(collection(db, 'opponents'), orderBy('createdAt'))
-      : query(
-          collection(db, 'opponents'),
-          where('teamId', 'in', userTeamIds.slice(0, 30)),
-          orderBy('createdAt'),
-        );
+    // Scope to the user's teams for all roles (including admins).
+    // Admins' userTeamIds is populated from their memberships, same as other users.
+    const q = query(
+      collection(db, 'opponents'),
+      where('teamId', 'in', userTeamIds.slice(0, 30)),
+      orderBy('createdAt'),
+    );
 
     const unsub = onSnapshot(q, (snap) => {
       const opponents = snap.docs.map(d => ({ ...d.data(), id: d.id }) as Opponent);

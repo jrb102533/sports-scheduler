@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import type { UserProfile } from '@/types';
+import type { UserProfile } from '../../types';
 
 // ─── Mutable spy references ───────────────────────────────────────────────────
 
@@ -70,7 +70,7 @@ vi.mock('@/store/useAuthStore', () => ({
 // ─── Import after mocks ───────────────────────────────────────────────────────
 
 import { getDocs } from 'firebase/firestore';
-import { UsersPage } from '@/pages/UsersPage';
+import { UsersPage, _resetUsersCache } from '../../pages/UsersPage';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -114,6 +114,7 @@ async function openSlideOver(displayName: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  _resetUsersCache();
   mockBatchCommit.mockResolvedValue(undefined);
   mockUpdateDoc.mockResolvedValue(undefined);
 });
