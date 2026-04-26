@@ -19,6 +19,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ScheduledEvent, Team } from '@/types';
 
+vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
+
 // ── Firebase mocks ─────────────────────────────────────────────────────────────
 
 vi.mock('@/lib/firebase', () => ({ db: {}, auth: {}, app: {}, functions: {} }));

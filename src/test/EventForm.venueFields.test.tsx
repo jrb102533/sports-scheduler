@@ -18,6 +18,8 @@ import userEvent from '@testing-library/user-event';
 import type { ScheduledEvent, Team } from '@/types';
 import type { Venue } from '@/types/venue';
 
+vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Part A — pure logic: mirrors EventForm.doSave optionals-building
 // ─────────────────────────────────────────────────────────────────────────────

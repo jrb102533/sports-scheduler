@@ -14,6 +14,7 @@ import { useVenueStore } from '@/store/useVenueStore';
 import { FLAGS } from '@/lib/flags';
 import { SPORT_TYPES, SPORT_TYPE_LABELS, TEAM_COLORS, AGE_GROUPS, AGE_GROUP_LABELS, SPORT_FORFEIT_THRESHOLDS } from '@/constants';
 import { ColorPickerGrid } from '@/components/ui/ColorPickerGrid';
+import { PaywallAwareError } from '@/components/subscription/PaywallAwareError';
 import { Upload, X, Image, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Team, SportType, AgeGroup } from '@/types';
 
@@ -398,9 +399,7 @@ export function TeamForm({ open, onClose, editTeam, onCreated }: TeamFormProps) 
           )}
         </div>
 
-        {saveError && (
-          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>
-        )}
+        <PaywallAwareError error={saveError || null} action="create or edit a team" />
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={uploading}>Cancel</Button>
           <Button onClick={() => void handleSubmit()} disabled={uploading}>
