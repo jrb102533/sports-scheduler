@@ -180,95 +180,19 @@ jobs:
             functions-lib.tar.gz
 
 
-  # ── Smoke reminder (NON-BLOCKING) ──────────────────────────────────────────
-  # Surfaces a clearly visible PASS / NO RUN / FAIL for the SHA being deployed
-  # so you can make an informed call at the production environment approval
-  # gate. Never blocks the deploy — the human approval on `environment:
-  # production` is the actual gate.
-  smoke-reminder:
-    name: Smoke Status Reminder
-    runs-on: ubuntu-latest
-    needs: [compute-tag, build-frontend, build-functions, release]
-    permissions:
-      actions: read
-    steps:
-      - name: Look up smoke run for this SHA
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHA: ${{ github.sha }}
-          REPO: ${{ github.repository }}
-        run: |
-          echo "Querying E2E Smoke — Staging for SHA: $SHA"
-
-          RUN_JSON=$(gh run list \
-            --repo "$REPO" \
-            --workflow=e2e-smoke.yml \
-            --commit="$SHA" \
-            --json conclusion,status,databaseId,url \
-            --limit=1)
-
-          echo "API response: $RUN_JSON"
-
-          if [ "$(echo "$RUN_JSON" | jq 'length')" -eq 0 ]; then
-            {
-              echo "## Smoke status: NO RUN for this SHA"
-              echo ""
-              echo "No E2E Smoke — Staging run found for \`$SHA\`."
-              echo ""
-              echo "Smoke is no longer fired automatically. To run it now:"
-              echo "**Actions -> E2E Smoke — Staging -> Run workflow -> SHA \`$SHA\`**"
-              echo ""
-              echo "_This is a reminder, not a blocker. The production environment approval gate is what actually decides._"
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::No smoke run found for $SHA. Consider running smoke before approving production."
-            exit 0
-          fi
-
-          STATUS=$(echo "$RUN_JSON" | jq -r '.[0].status')
-          CONCLUSION=$(echo "$RUN_JSON" | jq -r '.[0].conclusion')
-          RUN_URL=$(echo "$RUN_JSON" | jq -r '.[0].url')
-
-          if [ "$STATUS" = "in_progress" ] || [ "$STATUS" = "queued" ] || [ "$STATUS" = "waiting" ]; then
-            {
-              echo "## Smoke status: STILL RUNNING"
-              echo ""
-              echo "Smoke run for \`$SHA\` is currently \`$STATUS\`."
-              echo ""
-              echo "[View live progress]($RUN_URL)"
-              echo ""
-              echo "_Wait for it to finish before deciding at the approval gate._"
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::Smoke for $SHA is still $STATUS — wait before approving."
-            exit 0
-          fi
-
-          if [ "$CONCLUSION" != "success" ]; then
-            {
-              echo "## Smoke status: FAILED"
-              echo ""
-              echo "Smoke run for \`$SHA\` concluded with: **$CONCLUSION**"
-              echo ""
-              echo "[Inspect the failing run]($RUN_URL)"
-              echo ""
-              echo "_Strongly consider rejecting the production approval gate and investigating._"
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::Smoke FAILED for $SHA — review before approving production."
-            exit 0
-          fi
-
-          {
-            echo "## Smoke status: PASSED"
-            echo ""
-            echo "Smoke run for \`$SHA\` passed."
-            echo ""
-            echo "[View full report]($RUN_URL)"
-          } >> "$GITHUB_STEP_SUMMARY"
+  # ── Smoke reminder (REMOVED) ──────────────────────────────────────────────
+  # The smoke-reminder job was removed 2026-04-26 alongside disabling the
+  # E2E Smoke — Staging workflow itself (FW-83). Each smoke run drove
+  # thousands of staging Firestore reads; until that read profile is reduced,
+  # smoke is fully disabled and reminding about a workflow that can't run is
+  # confusing. Restore both this job and e2e-smoke.yml's `on:` trigger after
+  # FW-83 lands.
 
   # ── Deploy ─────────────────────────────────────────────────────────────────
   deploy:
     name: Deploy to Firebase
     runs-on: ubuntu-latest
-    needs: [compute-tag, build-frontend, build-functions, release, smoke-reminder]
+    needs: [compute-tag, build-frontend, build-functions, release]
     environment: production
     permissions: {}   # No GITHUB_TOKEN capability needed — uses FIREBASE_TOKEN_PROD only
     steps:
