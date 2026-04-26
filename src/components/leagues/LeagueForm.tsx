@@ -3,6 +3,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
+import { PaywallAwareError } from '@/components/subscription/PaywallAwareError';
 import { SPORT_TYPE_LABELS } from '@/constants';
 import type { League, Team } from '@/types';
 
@@ -137,9 +138,11 @@ export function LeagueForm({ open, onClose, editLeague, allTeams, onSave }: Leag
           )}
         </div>
 
-        {saveError && (
-          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>
-        )}
+        <PaywallAwareError
+          error={saveError || null}
+          action={editLeague ? 'edit a league' : 'create a league'}
+        />
+
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
           <Button onClick={handleSubmit} disabled={saving}>
