@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { RequiresPro } from '@/components/subscription/RequiresPro';
 import { useLeagueVenueStore } from '@/store/useLeagueVenueStore';
 import { useVenueStore } from '@/store/useVenueStore';
 import type { LeagueVenue, Venue, VenueField } from '@/types';
@@ -255,20 +256,24 @@ function LeagueVenueCard({ venue, canManage, onEdit, onRemove }: LeagueVenueCard
         </div>
         {canManage && (
           <div className="flex gap-1 flex-shrink-0">
-            <button
-              onClick={onEdit}
-              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-              title="Edit venue"
-            >
-              <Pencil size={14} />
-            </button>
-            <button
-              onClick={onRemove}
-              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-              title="Remove from league"
-            >
-              <Trash2 size={14} />
-            </button>
+            <RequiresPro>
+              <button
+                onClick={onEdit}
+                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                title="Edit venue"
+              >
+                <Pencil size={14} />
+              </button>
+            </RequiresPro>
+            <RequiresPro>
+              <button
+                onClick={onRemove}
+                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                title="Remove from league"
+              >
+                <Trash2 size={14} />
+              </button>
+            </RequiresPro>
           </div>
         )}
       </div>
@@ -350,9 +355,11 @@ export function LeagueVenueTab({ leagueId, canManage, lmUid }: LeagueVenueTabPro
           {leagueVenues.length} {leagueVenues.length === 1 ? 'venue' : 'venues'}
         </p>
         {canManage && (
-          <Button size="sm" onClick={() => setImportOpen(true)}>
-            <Plus size={14} /> Add Venue
-          </Button>
+          <RequiresPro>
+            <Button size="sm" onClick={() => setImportOpen(true)}>
+              <Plus size={14} /> Add Venue
+            </Button>
+          </RequiresPro>
         )}
       </div>
 
@@ -362,7 +369,7 @@ export function LeagueVenueTab({ leagueId, canManage, lmUid }: LeagueVenueTabPro
           title="No venues yet"
           description="Add venues from your personal library to use them in league schedules."
           action={canManage ? (
-            <Button onClick={() => setImportOpen(true)}><Plus size={16} /> Add Venue</Button>
+            <RequiresPro><Button onClick={() => setImportOpen(true)}><Plus size={16} /> Add Venue</Button></RequiresPro>
           ) : undefined}
         />
       ) : (

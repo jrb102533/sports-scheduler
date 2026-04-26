@@ -24,6 +24,7 @@ import { useEventStore } from '@/store/useEventStore';
 import { useVenueStore } from '@/store/useVenueStore';
 import { useAuthStore, isManagerOfLeague } from '@/store/useAuthStore';
 import { useCollectionStore } from '@/store/useCollectionStore';
+import { RequiresPro } from '@/components/subscription/RequiresPro';
 import type { Division, Season, Team, ScheduledEvent, WizardMode } from '@/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -699,12 +700,16 @@ export function SeasonDashboard() {
               </div>
               {canManage && (
                 <div className="flex gap-2 flex-wrap">
-                  <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode(undefined); setWizardResumeAtPreview(false); setWizardOpen(true); }}>
-                    <Wand2 size={14} /> Regenerate
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode('practice'); setWizardResumeAtPreview(false); setWizardOpen(true); }}>
-                    <Dumbbell size={14} /> Schedule Practices
-                  </Button>
+                  <RequiresPro>
+                    <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode(undefined); setWizardResumeAtPreview(false); setWizardOpen(true); }}>
+                      <Wand2 size={14} /> Regenerate
+                    </Button>
+                  </RequiresPro>
+                  <RequiresPro>
+                    <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode('practice'); setWizardResumeAtPreview(false); setWizardOpen(true); }}>
+                      <Dumbbell size={14} /> Schedule Practices
+                    </Button>
+                  </RequiresPro>
                 </div>
               )}
             </div>
@@ -734,23 +739,31 @@ export function SeasonDashboard() {
               </div>
               {canManage && (
                 <div className="flex gap-2 flex-wrap">
-                  <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode(undefined); setWizardResumeAtPreview(true); setWizardOpen(true); }}>
-                    <Wand2 size={14} /> Edit Schedule
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode('practice'); setWizardResumeAtPreview(false); setWizardOpen(true); }}>
-                    <Dumbbell size={14} /> Schedule Practices
-                  </Button>
-                  <Button variant="danger" size="sm" onClick={() => setConfirmClearAll(true)} disabled={deleting}>
-                    <Trash2 size={14} /> Clear Draft
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => void handlePublishDraft()}
-                    disabled={publishing}
-                  >
-                    {publishing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                    {publishing ? 'Publishing…' : 'Publish Now'}
-                  </Button>
+                  <RequiresPro>
+                    <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode(undefined); setWizardResumeAtPreview(true); setWizardOpen(true); }}>
+                      <Wand2 size={14} /> Edit Schedule
+                    </Button>
+                  </RequiresPro>
+                  <RequiresPro>
+                    <Button variant="secondary" size="sm" onClick={() => { setWizardInitialMode('practice'); setWizardResumeAtPreview(false); setWizardOpen(true); }}>
+                      <Dumbbell size={14} /> Schedule Practices
+                    </Button>
+                  </RequiresPro>
+                  <RequiresPro>
+                    <Button variant="danger" size="sm" onClick={() => setConfirmClearAll(true)} disabled={deleting}>
+                      <Trash2 size={14} /> Clear Draft
+                    </Button>
+                  </RequiresPro>
+                  <RequiresPro>
+                    <Button
+                      size="sm"
+                      onClick={() => void handlePublishDraft()}
+                      disabled={publishing}
+                    >
+                      {publishing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                      {publishing ? 'Publishing…' : 'Publish Now'}
+                    </Button>
+                  </RequiresPro>
                 </div>
               )}
             </div>
@@ -887,19 +900,23 @@ export function SeasonDashboard() {
                 </p>
               </div>
               <div className="flex gap-2 flex-wrap">
-                <Button
-                  onClick={() => { setWizardInitialMode(undefined); setWizardResumeAtPreview(false); setWizardOpen(true); }}
-                  disabled={!canGenerate || leagueTeams.length < 2}
-                >
-                  <Wand2 size={14} /> Generate Schedule
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => { setWizardInitialMode('practice'); setWizardResumeAtPreview(false); setWizardOpen(true); }}
-                  disabled={leagueTeams.length < 1}
-                >
-                  <Dumbbell size={14} /> Schedule Practices
-                </Button>
+                <RequiresPro>
+                  <Button
+                    onClick={() => { setWizardInitialMode(undefined); setWizardResumeAtPreview(false); setWizardOpen(true); }}
+                    disabled={!canGenerate || leagueTeams.length < 2}
+                  >
+                    <Wand2 size={14} /> Generate Schedule
+                  </Button>
+                </RequiresPro>
+                <RequiresPro>
+                  <Button
+                    variant="secondary"
+                    onClick={() => { setWizardInitialMode('practice'); setWizardResumeAtPreview(false); setWizardOpen(true); }}
+                    disabled={leagueTeams.length < 1}
+                  >
+                    <Dumbbell size={14} /> Schedule Practices
+                  </Button>
+                </RequiresPro>
               </div>
             </div>
           </div>
@@ -912,9 +929,11 @@ export function SeasonDashboard() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-gray-800">Divisions</h2>
             {canManage && (
-              <Button variant="secondary" size="sm" onClick={() => setAddDivisionOpen(true)}>
-                <Plus size={14} /> Add Division
-              </Button>
+              <RequiresPro>
+                <Button variant="secondary" size="sm" onClick={() => setAddDivisionOpen(true)}>
+                  <Plus size={14} /> Add Division
+                </Button>
+              </RequiresPro>
             )}
           </div>
 
