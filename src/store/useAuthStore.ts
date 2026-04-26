@@ -9,7 +9,10 @@ import {
   sendEmailVerification,
   type User,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
+import {
+  doc, setDoc, getDoc, onSnapshot, updateDoc,
+  terminate, clearIndexedDbPersistence,
+} from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, db, functions } from '@/lib/firebase';
 import { getUserConsents } from '@/lib/consent';
@@ -295,6 +298,26 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   logout: async () => {
     await signOut(auth);
+    // SEC-110: Firestore IndexedDB persistence caches every doc the user has
+    // read. On a shared device, those cached docs (player rosters, parent
+    // emails, league data) would briefly surface to the next user before the
+    // SDK re-validates rules against new credentials. Terminate the SDK and
+    // wipe the IndexedDB store, then full-reload to a clean state. The
+    // emulator path uses initializeFirestore({}) with no persistence, so
+    // clearIndexedDbPersistence is a no-op there — safe to call unconditionally.
+    try {
+      await terminate(db);
+      await clearIndexedDbPersistence(db);
+    } catch (err) {
+      // Best-effort. If termination fails (e.g., active listeners not yet
+      // closed) the reload below will still wipe in-memory state.
+      console.warn('[useAuthStore] Firestore cache clear on logout failed:', err);
+    }
+    // db instance is now permanently disabled — full reload restores a usable
+    // app. Logout already redirects to /login, so a reload is the natural step.
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
   },
 
   updateProfile: async (patch) => {
