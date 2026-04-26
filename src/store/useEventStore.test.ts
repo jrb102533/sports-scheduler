@@ -20,38 +20,40 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ScheduledEvent, GameResult } from '@/types';
+import type { ScheduledEvent, GameResult } from '../types';
 
 // ── Firestore mock ────────────────────────────────────────────────────────────
 
-const mockSetDoc = vi.fn();
-const mockDeleteDoc = vi.fn();
-const mockOnSnapshot = vi.fn(() => () => {});
-const mockDoc = vi.fn((...args) => ({ _path: args.slice(1).join('/') }));
-const mockCollection = vi.fn(() => ({ _coll: true }));
-const mockQuery = vi.fn(q => q);
-const mockOrderBy = vi.fn(() => ({}));
-const mockWhere = vi.fn(() => ({}));
+type AnyFn = (...args: any[]) => any;
+
+const mockSetDoc = vi.fn<AnyFn>();
+const mockDeleteDoc = vi.fn<AnyFn>();
+const mockOnSnapshot = vi.fn<AnyFn>(() => () => {});
+const mockDoc = vi.fn<AnyFn>((...args: any[]) => ({ _path: args.slice(1).join('/') }));
+const mockCollection = vi.fn<AnyFn>(() => ({ _coll: true }));
+const mockQuery = vi.fn<AnyFn>((q: unknown) => q);
+const mockOrderBy = vi.fn<AnyFn>(() => ({}));
+const mockWhere = vi.fn<AnyFn>(() => ({}));
 
 vi.mock('firebase/firestore', () => ({
-  collection: (...args: unknown[]) => mockCollection(...args),
-  onSnapshot: (...args: unknown[]) => mockOnSnapshot(...args),
-  doc: (...args: unknown[]) => mockDoc(...args),
-  setDoc: (...args: unknown[]) => mockSetDoc(...args),
-  deleteDoc: (...args: unknown[]) => mockDeleteDoc(...args),
-  query: (...args: unknown[]) => mockQuery(...args),
-  orderBy: (...args: unknown[]) => mockOrderBy(...args),
-  where: (...args: unknown[]) => mockWhere(...args),
+  collection: (...args: any[]) => mockCollection(...args),
+  onSnapshot: (...args: any[]) => mockOnSnapshot(...args),
+  doc: (...args: any[]) => mockDoc(...args),
+  setDoc: (...args: any[]) => mockSetDoc(...args),
+  deleteDoc: (...args: any[]) => mockDeleteDoc(...args),
+  query: (...args: any[]) => mockQuery(...args),
+  orderBy: (...args: any[]) => mockOrderBy(...args),
+  where: (...args: any[]) => mockWhere(...args),
 }));
 
 vi.mock('@/lib/firebase', () => ({ db: {} }));
 
 // ── Auth store mock ───────────────────────────────────────────────────────────
 
-const mockGetAuthState = vi.fn(() => ({ profile: { role: 'admin' } }));
+const mockGetAuthState = vi.fn<AnyFn>(() => ({ profile: { role: 'admin' } }));
 
 vi.mock('@/store/useAuthStore', () => ({
-  useAuthStore: { getState: (...args: unknown[]) => mockGetAuthState(...args) },
+  useAuthStore: { getState: (...args: any[]) => mockGetAuthState(...args) },
 }));
 
 // ── Import store after mocks ──────────────────────────────────────────────────
@@ -108,6 +110,20 @@ describe('useEventStore — subscribe (admin)', () => {
     useEventStore.getState().subscribe([]);
     const whereArgs = mockWhere.mock.calls.map(c => c[0] as string);
     expect(whereArgs).not.toContain('teamId');
+  });
+
+  it('bounds the admin query with a 90-day date floor (read-cost cap)', () => {
+    mockOnSnapshot.mockReturnValue(() => {});
+    useEventStore.getState().subscribe([]);
+    const dateCall = mockWhere.mock.calls.find(c => c[0] === 'date');
+    expect(dateCall).toBeDefined();
+    expect(dateCall![1]).toBe('>=');
+    const floor = dateCall![2] as string;
+    // Floor is an ISO date (YYYY-MM-DD) ~90 days in the past
+    expect(floor).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const ageDays = (Date.now() - new Date(floor).getTime()) / 86_400_000;
+    expect(ageDays).toBeGreaterThan(89);
+    expect(ageDays).toBeLessThan(91);
   });
 
   it('populates events array from snapshot', () => {
@@ -181,6 +197,14 @@ describe('useEventStore — subscribe (non-admin scoping)', () => {
     const whereFields = mockWhere.mock.calls.map(c => c[0] as string);
     expect(whereFields).toContain('teamId');
     expect(whereFields).toContain('status');
+  });
+
+  it('also applies the 90-day date floor for non-admin queries', () => {
+    mockOnSnapshot.mockReturnValue(() => {});
+    useEventStore.getState().subscribe(['team-1']);
+    const dateCall = mockWhere.mock.calls.find(c => c[0] === 'date');
+    expect(dateCall).toBeDefined();
+    expect(dateCall![1]).toBe('>=');
   });
 
   it('returns a no-op unsubscribe and sets loading: false when userTeamIds is empty', () => {

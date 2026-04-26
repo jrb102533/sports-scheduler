@@ -49,16 +49,26 @@ export const useEventStore = create<EventStore>((set, get) => ({
     //
     // Non-admin users are also scoped to their own team IDs (up to 30 per Firestore
     // `in` limit) to prevent reading every event in the database.
+    //
+    // Date floor (90 days back): bounds admin reads against unbounded growth — the
+    // calendar/home views only need recent + future events. Older completed events
+    // are accessible via lazy-load on archive/stats views, not the global subscription.
+    const dateFloor = new Date();
+    dateFloor.setDate(dateFloor.getDate() - 90);
+    const dateFloorIso = dateFloor.toISOString().slice(0, 10);
+
     const q = isAdmin
       ? query(
           collection(db, 'events'),
           where('status', 'in', [...NON_DRAFT_STATUSES]),
+          where('date', '>=', dateFloorIso),
           orderBy('date'),
         )
       : query(
           collection(db, 'events'),
           where('teamId', 'in', userTeamIds.slice(0, 30)),
           where('status', 'in', [...NON_DRAFT_STATUSES]),
+          where('date', '>=', dateFloorIso),
           orderBy('date'),
         );
 

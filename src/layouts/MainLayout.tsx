@@ -57,9 +57,16 @@ export function MainLayout() {
     ?.map(m => m.teamId)
     .filter((id): id is string => Boolean(id)) ?? [];
 
+  // Admins and LMs use unscoped queries — their subscriptions don't depend on
+  // userTeamIds. Using a stable key prevents unnecessary re-subscription when
+  // they create a team (which updates memberships), which would tear down the
+  // existing onSnapshot before the new team document is delivered via real-time
+  // update, causing the new team to be temporarily missing from the list.
+  const isAdminOrLM = profile?.role === 'admin' || profile?.role === 'league_manager';
+  const subscriptionKey = isAdminOrLM ? 'admin' : userTeamIds.join(',');
+
   // Subscribe all Firestore collections when user is authenticated.
-  // userTeamIds.join(',') is included in the deps array so that subscriptions
-  // are re-scoped if the user's team memberships change during the session.
+  // subscriptionKey changes when non-admin membership changes, re-scoping subscriptions.
   useEffect(() => {
     if (!user) return;
     const unsubs = [
@@ -73,7 +80,7 @@ export function MainLayout() {
     ];
     return () => unsubs.forEach(u => u());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, userTeamIds.join(',')]);
+  }, [user, subscriptionKey]);
 
   // Write data-hydrated="true" to <body> once the initial Firestore snapshots
   // for the two highest-traffic stores have arrived. E2E tests wait on this

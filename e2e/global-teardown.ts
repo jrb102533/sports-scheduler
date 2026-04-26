@@ -179,6 +179,83 @@ async function deleteTeamSubcollections(
 }
 
 /**
+ * Strips memberships pointing to non-existent (deleted) teams from each E2E
+ * role account's profile. Without this, every team an admin/coach creates
+ * during a test leaves a permanent orphan in their `memberships` array — the
+ * array grows unbounded across test runs and inflates every subsequent profile
+ * read and store re-subscription.
+ */
+async function pruneStaleMemberships(
+  db: ReturnType<typeof getFirestore>,
+): Promise<number> {
+  const E2E_EMAIL_VARS = [
+    'E2E_ADMIN_EMAIL',
+    'E2E_COACH_EMAIL',
+    'E2E_PARENT_EMAIL',
+    'E2E_PLAYER_EMAIL',
+    'E2E_LM_EMAIL',
+  ] as const;
+
+  const authAdmin = getAuth();
+  let totalPruned = 0;
+
+  for (const envVar of E2E_EMAIL_VARS) {
+    const rawEmail = process.env[envVar];
+    if (!rawEmail) continue;
+
+    const email = rawEmail.trim().toLowerCase();
+    try {
+      const userRecord = await authAdmin.getUserByEmail(email);
+      const profileRef = db.collection('users').doc(userRecord.uid);
+      const profileSnap = await profileRef.get();
+      if (!profileSnap.exists) continue;
+
+      const profile = profileSnap.data() ?? {};
+      const memberships: Array<Record<string, unknown>> = Array.isArray(profile.memberships)
+        ? profile.memberships
+        : [];
+      if (memberships.length === 0) continue;
+
+      const teamIds = memberships
+        .map(m => m.teamId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0);
+      if (teamIds.length === 0) continue;
+
+      const liveTeamIds = new Set<string>();
+      for (const teamId of teamIds) {
+        const teamSnap = await db.collection('teams').doc(teamId).get();
+        if (teamSnap.exists) liveTeamIds.add(teamId);
+      }
+
+      const pruned = memberships.filter(m => {
+        const tid = m.teamId;
+        return typeof tid !== 'string' || tid.length === 0 || liveTeamIds.has(tid);
+      });
+
+      if (pruned.length !== memberships.length) {
+        const removed = memberships.length - pruned.length;
+        const update: Record<string, unknown> = { memberships: pruned };
+        if (typeof profile.activeContext === 'number' && profile.activeContext >= pruned.length) {
+          update.activeContext = Math.max(0, pruned.length - 1);
+        }
+        await profileRef.update(update);
+        totalPruned += removed;
+        console.log(
+          `[global-teardown] Pruned ${removed} stale membership(s) from ${email} (${userRecord.uid})`,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `[global-teardown] Could not prune memberships for ${email} (${envVar}) —`,
+        err,
+      );
+    }
+  }
+
+  return totalPruned;
+}
+
+/**
  * Deletes users/{uid}/consents subcollection docs for all E2E role accounts.
  * These consent docs are seeded by global-setup but carry no `isE2eData` flag
  * (they mirror exactly what a real user consent doc looks like). We identify
@@ -260,7 +337,14 @@ async function globalTeardown(): Promise<void> {
       if (count > 0) console.log(`[global-teardown] Deleted ${count} E2E doc(s) from ${col}`);
     }
 
-    // ── 4. User consent subcollections ───────────────────────────────────────
+    // ── 4. Prune stale memberships from E2E role profiles ────────────────────
+    //     (must run AFTER team deletes so we can detect orphaned teamIds)
+    const prunedCount = await pruneStaleMemberships(db);
+    if (prunedCount > 0) {
+      console.log(`[global-teardown] Pruned ${prunedCount} total stale membership(s)`);
+    }
+
+    // ── 5. User consent subcollections ───────────────────────────────────────
     const consentCount = await deleteE2eUserConsents(db);
     if (consentCount > 0) {
       console.log(`[global-teardown] Deleted ${consentCount} total consent doc(s)`);
