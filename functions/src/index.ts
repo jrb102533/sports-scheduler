@@ -2213,7 +2213,26 @@ export const sendScheduledNotifications = onSchedule(
       }
 
       // ── Snack reminder (2 days out, no snack claimed, not yet sent) ───────
-      if (eventDate === in2DaysStr && ev.snackAssignment && !ev.snackReminderSent) {
+      // Reads events/{id}/snackSlot/slot subcollection — same source-of-truth
+      // as the legacy sendSnackReminders CF. Fail closed on read errors so we
+      // never spam "no one signed up" when the slot is actually claimed but
+      // the read failed.
+      let snackIsClaimed = false;
+      let snackReadFailed = false;
+      if (eventDate === in2DaysStr && !ev.snackReminderSent) {
+        try {
+          const snackSnap = await db.doc(`events/${eventId}/snackSlot/slot`).get();
+          if (snackSnap.exists) {
+            const slot = snackSnap.data() as { claimedBy?: string | null };
+            snackIsClaimed = typeof slot.claimedBy === 'string' && slot.claimedBy.length > 0;
+          }
+        } catch (err) {
+          console.error(`[sendScheduledNotifications] event=${eventId} snackSlot read failed — skipping snack reminder to avoid false spam`, err);
+          snackReadFailed = true;
+        }
+      }
+
+      if (eventDate === in2DaysStr && !ev.snackReminderSent && !snackIsClaimed && !snackReadFailed) {
         const sends: Promise<unknown>[] = [];
         const subjectTeam = (ev.teamIds as string[])?.[0] ? `the team's game` : 'the game';
         const venueClause = location ? ` at ${location}` : '';
