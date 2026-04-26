@@ -10,6 +10,11 @@ name: E2E Smoke — Staging
 # (PASS / NO RUN / FAIL) for the SHA being deployed when you go to approve
 # the production environment gate; smoke is still recommended before every
 # prod deploy, but it is no longer mandatory and no longer fires automatically.
+#
+# Scope: customer-facing flows only. Admin tools are tagged @admin-smoke
+# (not @smoke) and run only in the full E2E suite. Admin regressions can be
+# remediated post-deploy without customer impact, so they do not gate
+# customer-facing releases. See FW-81 for the rationale.
 
 on:
   workflow_dispatch:
