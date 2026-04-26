@@ -87,45 +87,111 @@ jobs:
           retention-days: 1
 
   # ── Deploy ────────────────────────────────────────────────────────────────
+  # Path-scoped: only deploy the targets whose source files changed in this
+  # push. Docs-only / legal-only / test-only PRs no longer redeploy functions
+  # (which re-creates Cloud Scheduler jobs and burns staging reads via
+  # cold-start init). See ADR-012 for the cost-discipline rationale.
   deploy:
     name: Deploy to Firebase
     runs-on: ubuntu-latest
     needs: [build-frontend, build-functions]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            functions:
+              - 'functions/**'
+              - 'firebase.json'
+            hosting:
+              - 'src/**'
+              - 'index.html'
+              - 'vite.config.ts'
+              - 'tsconfig*.json'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'public/**'
+            firestore:
+              - 'firestore.rules'
+              - 'firestore.indexes.json'
+            storage:
+              - 'storage.rules'
+            extensions:
+              - 'extensions/**'
+
+      - id: targets
+        name: Compute deploy targets
+        env:
+          CHANGED_FUNCTIONS: ${{ steps.changes.outputs.functions }}
+          CHANGED_HOSTING: ${{ steps.changes.outputs.hosting }}
+          CHANGED_FIRESTORE: ${{ steps.changes.outputs.firestore }}
+          CHANGED_STORAGE: ${{ steps.changes.outputs.storage }}
+          CHANGED_EXTENSIONS: ${{ steps.changes.outputs.extensions }}
+        run: |
+          TARGETS=()
+          [ "$CHANGED_HOSTING" = "true" ] && TARGETS+=("hosting")
+          [ "$CHANGED_FUNCTIONS" = "true" ] && TARGETS+=("functions")
+          [ "$CHANGED_FIRESTORE" = "true" ] && TARGETS+=("firestore")
+          [ "$CHANGED_STORAGE" = "true" ] && TARGETS+=("storage")
+          [ "$CHANGED_EXTENSIONS" = "true" ] && TARGETS+=("extensions")
+          if [ ${#TARGETS[@]} -eq 0 ]; then
+            echo "No deploy targets — skipping firebase deploy."
+            echo "targets=" >> "$GITHUB_OUTPUT"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            JOINED=$(IFS=,; echo "${TARGETS[*]}")
+            echo "Deploying targets: $JOINED"
+            echo "targets=$JOINED" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/setup-node@v4
+        if: steps.targets.outputs.skip != 'true'
         with:
           node-version: '20'
           cache: 'npm'
 
       - name: Install root dependencies
+        if: steps.targets.outputs.skip != 'true'
         run: npm ci
 
       - name: Download frontend dist
+        if: contains(steps.targets.outputs.targets, 'hosting')
         uses: actions/download-artifact@v4
         with:
           name: frontend-dist
           path: dist/
 
       - uses: actions/setup-node@v4
+        if: contains(steps.targets.outputs.targets, 'functions')
         with:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: functions/package-lock.json
 
       - name: Install functions dependencies
+        if: contains(steps.targets.outputs.targets, 'functions')
         working-directory: functions
         run: npm ci
 
       - name: Download functions lib
+        if: contains(steps.targets.outputs.targets, 'functions')
         uses: actions/download-artifact@v4
         with:
           name: functions-lib
           path: functions/lib/
 
       - name: Install Firebase CLI
+        if: steps.targets.outputs.skip != 'true'
         run: npm install -g firebase-tools
 
       - name: Deploy to Firebase
-        run: firebase deploy --token "${{ secrets.FIREBASE_TOKEN }}" --project first-whistle-e76f4 --non-interactive --force
+        if: steps.targets.outputs.skip != 'true'
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          DEPLOY_TARGETS: ${{ steps.targets.outputs.targets }}
+        run: firebase deploy --token "$FIREBASE_TOKEN" --project first-whistle-e76f4 --non-interactive --force --only "$DEPLOY_TARGETS"
