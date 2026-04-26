@@ -1,8 +1,8 @@
 # Privacy Policy
 
 **First Whistle**
-Effective Date: 2026-03-24
-Last Updated: 2026-03-24
+Effective Date: 2026-04-25
+Last Updated: 2026-04-25
 
 ---
 
@@ -76,7 +76,20 @@ First Whistle intends to support team and player photo uploads in a future relea
 - Photos of minor players will require parental consent before upload
 - Parents may request removal of their child's photo at any time
 
-### 2.6 Usage and Technical Data
+### 2.6 Payment Information (League Manager Pro Subscribers Only)
+
+When you subscribe to a paid plan, payment data (card number, expiry, CVC, billing address) is collected and stored by **Stripe**, our payment processor. **First Whistle does not store, process, or have access to your full payment card details.**
+
+We retain only:
+
+- A Stripe-issued customer ID (so we can look up your subscription)
+- Your subscription tier and status (e.g., active, trialing, canceled)
+- The current billing period's end date
+- The interval (monthly or annual) and price
+
+See Section 5.4 for more detail on how Stripe handles your payment data.
+
+### 2.7 Usage and Technical Data
 
 We automatically collect certain technical information when you use the platform:
 
@@ -165,7 +178,21 @@ We use a third-party email delivery service to send transactional emails. Google
 
 SMS notifications are not currently offered.
 
-### 5.4 No Advertising Networks
+### 5.4 Stripe — Payment Processing
+
+We use **Stripe, Inc.** to process subscription payments for our paid plans (such as League Manager Pro). When you subscribe, the following information is shared with or collected by Stripe:
+
+- Your email address (used to identify the customer in Stripe and send receipts)
+- Your name (if entered during checkout)
+- Your billing address (collected by Stripe during checkout for tax-jurisdiction purposes)
+- Payment method details (card number, expiry, CVC) — **collected and stored by Stripe directly; First Whistle never sees or stores full card numbers**
+- Subscription history, invoices, and payment outcomes
+
+Stripe is a PCI-DSS Level 1 compliant payment processor. Their handling of your payment data is governed by [Stripe's Privacy Policy](https://stripe.com/privacy) and [Stripe's Services Agreement](https://stripe.com/legal). Stripe processes data in the United States and other jurisdictions per their global infrastructure.
+
+We retain in our own records only the limited subscription metadata necessary to provide and bill for the Service: your subscription tier, billing status, current period end date, and a Stripe-issued customer ID.
+
+### 5.5 No Advertising Networks
 
 We do not use advertising networks, analytics platforms that build individual user profiles for advertising, or data brokers.
 
