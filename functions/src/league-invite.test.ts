@@ -325,8 +325,8 @@ beforeEach(() => {
   sendMailSpy.mockClear();
 
   // Users
-  seedDoc('users/lm1', { role: 'league_manager' });
-  seedDoc('users/lm2', { role: 'league_manager' });
+  seedDoc('users/lm1', { role: 'league_manager', subscriptionTier: 'league_manager_pro' });
+  seedDoc('users/lm2', { role: 'league_manager', subscriptionTier: 'league_manager_pro' });
   seedDoc('users/admin1', { role: 'admin' });
   seedDoc('users/coach1', { role: 'coach' });
   seedDoc('users/player1', { role: 'player' });

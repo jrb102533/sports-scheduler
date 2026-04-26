@@ -271,23 +271,29 @@ beforeEach(() => {
   seedDoc('rateLimits/admin1_createLeague', { count: 0, windowStart: Date.now() });
 
   // Default user profiles.
+  // SEC-91 (FW-64): all non-admin LM-onboarding callers must have an active
+  // LM Pro subscription. Real flow: user pays via Stripe → JWT claim sets
+  // subscriptionTier on profile → user calls createLeagueAndBecomeManager.
   seedDoc('users/player1', {
     uid: 'player1',
     displayName: 'Alice Player',
     role: 'player',
     memberships: [],
+    subscriptionTier: 'league_manager_pro',
   });
   seedDoc('users/coach1', {
     uid: 'coach1',
     displayName: 'Bob Coach',
     role: 'coach',
     memberships: [{ role: 'coach', teamId: 'team-alpha', isPrimary: true }],
+    subscriptionTier: 'league_manager_pro',
   });
   seedDoc('users/lm1', {
     uid: 'lm1',
     displayName: 'Eve Manager',
     role: 'league_manager',
     memberships: [{ role: 'league_manager', leagueId: 'league-old', isPrimary: true }],
+    subscriptionTier: 'league_manager_pro',
   });
   seedDoc('users/admin1', {
     uid: 'admin1',

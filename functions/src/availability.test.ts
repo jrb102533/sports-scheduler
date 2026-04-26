@@ -259,7 +259,7 @@ describe('requestAvailability', () => {
 
   it('throws permission-denied when LM calls with a leagueId they do not own', async () => {
     // LM whose leagueId is 'my-league', but they are requesting 'other-league'
-    regDoc('users/lm-uid', { role: 'league_manager', leagueId: 'my-league' });
+    regDoc('users/lm-uid', { role: 'league_manager', leagueId: 'my-league', subscriptionTier: 'league_manager_pro' });
     regDoc('leagues/other-league', { name: 'Other League', managedBy: 'someone-else' });
 
     const req = makeRequest({ uid: 'lm-uid' }, { leagueId: 'other-league', collectionId: 'col-1' });
@@ -269,7 +269,7 @@ describe('requestAvailability', () => {
   });
 
   it('returns { notified: 0 } when league has no teams', async () => {
-    regDoc('users/lm-uid', { role: 'league_manager', leagueId: 'league-1' });
+    regDoc('users/lm-uid', { role: 'league_manager', leagueId: 'league-1', subscriptionTier: 'league_manager_pro' });
     regDoc('leagues/league-1', { name: 'Test League', managedBy: 'lm-uid' });
     regDoc('leagues/league-1/availabilityCollections/col-1', { dueDate: '2026-04-01', status: 'open' });
     // 'teams' collection left empty (default: no docs)
@@ -280,7 +280,7 @@ describe('requestAvailability', () => {
   });
 
   it('creates one notification per coach and returns { notified: 3 }', async () => {
-    regDoc('users/lm-uid', { role: 'league_manager', leagueId: 'league-1' });
+    regDoc('users/lm-uid', { role: 'league_manager', leagueId: 'league-1', subscriptionTier: 'league_manager_pro' });
     regDoc('leagues/league-1', { name: 'Test League', managedBy: 'lm-uid' });
     regDoc('leagues/league-1/availabilityCollections/col-1', { dueDate: '2026-04-01', status: 'open' });
     regDoc('users/c1', { displayName: 'Coach 1' });
@@ -315,7 +315,7 @@ describe('sendAvailabilityReminder — cooldown logic', () => {
   function baseSetup(opts: { lastReminderSentAt?: string; hasResponded?: boolean } = {}) {
     const { lastReminderSentAt, hasResponded = false } = opts;
 
-    regDoc('users/lm-uid', { role: 'league_manager', leagueId: LEAGUE_ID });
+    regDoc('users/lm-uid', { role: 'league_manager', leagueId: LEAGUE_ID, subscriptionTier: 'league_manager_pro' });
     regDoc(`leagues/${LEAGUE_ID}`, { name: 'Test League', managedBy: 'lm-uid' });
     regDoc(`leagues/${LEAGUE_ID}/availabilityCollections/${COL_ID}`, {
       status: 'open',
