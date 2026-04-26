@@ -1992,6 +1992,365 @@ export async function fetchTeamsAndPlayersForEvents(
   return { teamsById, playersByTeamId };
 }
 
+// ─── Scheduled: consolidated notification dispatcher (daily 8AM UTC) ─────────
+//
+// Replaces the 4 legacy per-type reminder CFs (sendEventReminders,
+// sendGameDayReminders, sendSnackReminders, sendRsvpFollowups).
+//
+// Strategy (ADR-012 / FW-82, Phase C):
+//   1. Single query: events where date IN [today, tomorrow, in2days] + status=scheduled
+//   2. For each event, dispatch via event.recipients[] — NO fan-out reads
+//   3. Idempotency: per-type boolean flags on the event doc
+//      (dayBeforeSent, gameDaySent, snackReminderSent, rsvpFollowupSent)
+//   4. Shadow mode: DISPATCHER_SHADOW_MODE=true → log what would be sent, don't send
+//      Default is NOT shadow mode — PM has approved skipping the parity window.
+//
+// FW-85 (Phase C)
+
+export const sendScheduledNotifications = onSchedule(
+  {
+    schedule: '0 8 * * *',
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret],
+  },
+  async () => {
+    if (!ENV.shouldRunScheduledJobs()) {
+      console.log('[sendScheduledNotifications] skipped: scheduled jobs disabled');
+      return;
+    }
+
+    const shadowMode = process.env.DISPATCHER_SHADOW_MODE === 'true';
+    if (shadowMode) {
+      console.log('[sendScheduledNotifications] SHADOW MODE — logging only, no sends');
+    }
+
+    const db = admin.firestore();
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const tomorrowDate = new Date(now); tomorrowDate.setUTCDate(now.getUTCDate() + 1);
+    const tomorrowStr = tomorrowDate.toISOString().slice(0, 10);
+    const in2DaysDate = new Date(now); in2DaysDate.setUTCDate(now.getUTCDate() + 2);
+    const in2DaysStr = in2DaysDate.toISOString().slice(0, 10);
+
+    const targetDates = [todayStr, tomorrowStr, in2DaysStr];
+
+    // Single query across all target dates — uses the status + date composite index.
+    const eventsSnap = await db
+      .collection('events')
+      .where('status', '==', 'scheduled')
+      .where('date', 'in', targetDates)
+      .get();
+
+    if (eventsSnap.empty) {
+      console.log(`[sendScheduledNotifications] no events on dates: ${targetDates.join(', ')}`);
+      return;
+    }
+
+    console.log(
+      `[sendScheduledNotifications] processing ${eventsSnap.size} event(s) across dates: ${targetDates.join(', ')}`,
+    );
+
+    const transporter = shadowMode ? null : createTransporter();
+
+    let dayBeforeSent = 0;
+    let gameDaySent = 0;
+    let snackReminderSent = 0;
+    let rsvpFollowupSent = 0;
+
+    const btnStyle = (bg: string) =>
+      `display:inline-block;padding:10px 22px;border-radius:8px;background:${bg};color:white;text-decoration:none;font-weight:600;font-size:14px;margin:0 6px`;
+
+    for (const evDoc of eventsSnap.docs) {
+      const ev = evDoc.data();
+      const eventId = evDoc.id;
+      const eventDate: string = ev.date ?? '';
+      const title: string = ev.title ?? 'Event';
+      const time: string = ev.startTime ?? '';
+      const location: string = ev.location ?? '';
+
+      const recipients: Array<{ uid?: string; email: string; name: string; type: string }> =
+        Array.isArray(ev.recipients) ? ev.recipients : [];
+
+      if (!recipients.length) {
+        console.log(`[sendScheduledNotifications] event=${eventId} has no recipients — skipping`);
+        continue;
+      }
+
+      // ── Day-before reminder (tomorrow's events, not yet sent) ────────────
+      if (eventDate === tomorrowStr && !ev.dayBeforeSent) {
+        const sends: Promise<unknown>[] = [];
+
+        for (const r of recipients) {
+          const firstName = r.name.split(' ')[0] ?? r.name;
+          // Generate RSVP token using recipient uid as player proxy.
+          // If no uid, use email as stable identifier for token signing.
+          const recipientKey = r.uid ?? r.email;
+          const token = signRsvpToken(eventId, recipientKey);
+          const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(recipientKey)}&n=${encodeURIComponent(r.name)}&t=${token}`;
+          const yesUrl = `${base}&r=yes`;
+          const noUrl = `${base}&r=no`;
+          const maybeUrl = `${base}&r=maybe`;
+
+          const bodyHtml = `
+            <p style="margin:0 0 16px">This is a reminder that <strong>${esc(title)}</strong> is tomorrow.</p>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:24px">
+              <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${esc(title)}</td></tr>
+              <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(eventDate)}</td></tr>
+              <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>
+              ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
+            </table>
+            <p style="font-size:15px;font-weight:600;text-align:center;margin:0 0 20px;color:#1B3A6B">Will you be there, ${esc(firstName)}?</p>
+            <div style="text-align:center;margin-bottom:8px">
+              <a href="${yesUrl}" style="${btnStyle('#15803d')}">Yes, I'll be there</a>
+              <a href="${maybeUrl}" style="${btnStyle('#d97706')}">Maybe</a>
+              <a href="${noUrl}" style="${btnStyle('#dc2626')}">Can't make it</a>
+            </div>`;
+
+          if (shadowMode) {
+            console.log(`[sendScheduledNotifications][shadow] DAY_BEFORE event=${eventId} to=${r.email}`);
+            continue;
+          }
+
+          sends.push(
+            transporter!.sendMail({
+              from: emailFrom.value(),
+              to: `${r.name} <${r.email}>`,
+              subject: `First Whistle Reminder: ${title} is tomorrow – RSVP now`,
+              text: [
+                `Hi ${firstName},`,
+                '',
+                `${title} is tomorrow.`,
+                `Date: ${eventDate}`,
+                time ? `Time: ${time}` : '',
+                location ? `Location: ${location}` : '',
+                '',
+                `RSVP: Yes: ${yesUrl} | Maybe: ${maybeUrl} | No: ${noUrl}`,
+              ].filter(Boolean).join('\n'),
+              html: buildEmail({
+                recipientName: firstName,
+                preheader: `${title} is tomorrow — RSVP now`,
+                title: 'Upcoming Event',
+                message: bodyHtml,
+              }),
+            })
+          );
+        }
+
+        if (!shadowMode) {
+          const results = await Promise.allSettled(sends);
+          const sent = results.filter(r => r.status === 'fulfilled').length;
+          dayBeforeSent += sent;
+        }
+
+        // Stamp idempotency flag.
+        await evDoc.ref.update({ dayBeforeSent: true });
+      }
+
+      // ── Game-day reminder (today's events, not yet sent) ─────────────────
+      if (eventDate === todayStr && !ev.gameDaySent) {
+        const rsvpYesCount = ((ev.rsvps as Array<{ response: string }>) ?? []).filter(
+          (r) => r.response === 'yes',
+        ).length;
+
+        const sends: Promise<unknown>[] = [];
+
+        for (const r of recipients) {
+          const firstName = r.name.split(' ')[0] ?? r.name;
+          const recipientKey = r.uid ?? r.email;
+          const token = signRsvpToken(eventId, recipientKey);
+          const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(recipientKey)}&n=${encodeURIComponent(r.name)}&t=${token}`;
+          const gdYes = `${base}&r=yes`;
+          const gdNo = `${base}&r=no`;
+          const gdMaybe = `${base}&r=maybe`;
+
+          const bodyHtml = `
+            <p style="margin:0 0 16px">Your event is <strong>today</strong>. Here are the details:</p>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:8px">
+              <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${esc(title)}</td></tr>
+              <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(eventDate)}</td></tr>
+              ${time ? `<tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>` : ''}
+              ${location ? `<tr><td style="padding:4px 8px 4px 0">Venue</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
+              <tr><td style="padding:4px 8px 4px 0">RSVPs</td><td style="color:#111827">${rsvpYesCount} attending</td></tr>
+            </table>`;
+
+          if (shadowMode) {
+            console.log(`[sendScheduledNotifications][shadow] GAME_DAY event=${eventId} to=${r.email}`);
+            continue;
+          }
+
+          sends.push(
+            transporter!.sendMail({
+              from: emailFrom.value(),
+              to: `${r.name} <${r.email}>`,
+              subject: `First Whistle: ${title} is today`,
+              text: [
+                `Hi ${firstName},`,
+                '',
+                `${title} is today.`,
+                `Date: ${eventDate}`,
+                time ? `Time: ${time}` : '',
+                location ? `Venue: ${location}` : '',
+                `RSVPs: ${rsvpYesCount} attending`,
+                '',
+                `RSVP: Yes: ${gdYes} | Maybe: ${gdMaybe} | No: ${gdNo}`,
+              ].filter(Boolean).join('\n'),
+              html: buildEmail({
+                recipientName: firstName,
+                preheader: `${title} is today`,
+                title: 'Event Today',
+                message: bodyHtml,
+                extraHtml: rsvpButtonsHtml(gdYes, gdNo, gdMaybe),
+              }),
+            })
+          );
+        }
+
+        if (!shadowMode) {
+          const results = await Promise.allSettled(sends);
+          gameDaySent += results.filter(r => r.status === 'fulfilled').length;
+        }
+
+        await evDoc.ref.update({ gameDaySent: true });
+      }
+
+      // ── Snack reminder (2 days out, no snack claimed, not yet sent) ───────
+      if (eventDate === in2DaysStr && ev.snackAssignment && !ev.snackReminderSent) {
+        const sends: Promise<unknown>[] = [];
+        const subjectTeam = (ev.teamIds as string[])?.[0] ? `the team's game` : 'the game';
+        const venueClause = location ? ` at ${location}` : '';
+        const venueClauseHtml = location ? ` at <strong>${esc(location)}</strong>` : '';
+
+        const snackMsgHtml = `<p style="margin:0 0 12px">No one has signed up to bring snacks for ${subjectTeam} on <strong>${esc(eventDate)}</strong>${venueClauseHtml}.</p><p style="margin:0">Can you help out?</p>`;
+
+        for (const r of recipients) {
+          const firstName = r.name.split(' ')[0] ?? r.name;
+
+          if (shadowMode) {
+            console.log(`[sendScheduledNotifications][shadow] SNACK_REMINDER event=${eventId} to=${r.email}`);
+            continue;
+          }
+
+          sends.push(
+            transporter!.sendMail({
+              from: emailFrom.value(),
+              to: `${r.name} <${r.email}>`,
+              subject: `Can you bring snacks? Game on ${eventDate}`,
+              text: [
+                `Hi ${firstName},`,
+                '',
+                `No one has signed up to bring snacks for the game on ${eventDate}${venueClause}.`,
+                '',
+                `Sign up: ${APP_URL}`,
+              ].join('\n'),
+              html: buildEmail({
+                recipientName: firstName,
+                preheader: `Can you bring snacks? Game on ${eventDate}`,
+                title: 'Snack Reminder',
+                message: snackMsgHtml,
+                ctaUrl: APP_URL,
+                ctaLabel: 'Sign Up to Bring Snacks',
+              }),
+            })
+          );
+        }
+
+        if (!shadowMode) {
+          const results = await Promise.allSettled(sends);
+          snackReminderSent += results.filter(r => r.status === 'fulfilled').length;
+        }
+
+        await evDoc.ref.update({ snackReminderSent: true });
+      }
+
+      // ── RSVP follow-up (tomorrow's events, unresponded recipients) ────────
+      if (eventDate === tomorrowStr && !ev.rsvpFollowupSent) {
+        const respondedSet = new Set<string>(
+          ((ev.rsvps as Array<{ playerId: string }>) ?? []).map((r) => r.playerId),
+        );
+
+        const unresponded = recipients.filter((r) => {
+          const key = r.uid ?? r.email;
+          return !respondedSet.has(key);
+        });
+
+        if (!unresponded.length) {
+          // Everyone responded — still stamp so we don't check again.
+          await evDoc.ref.update({ rsvpFollowupSent: true });
+          continue;
+        }
+
+        const sends: Promise<unknown>[] = [];
+
+        for (const r of unresponded) {
+          const firstName = r.name.split(' ')[0] ?? r.name;
+          const recipientKey = r.uid ?? r.email;
+          const token = signRsvpToken(eventId, recipientKey);
+          const base = `${FUNCTIONS_BASE}/rsvpEvent?e=${encodeURIComponent(eventId)}&p=${encodeURIComponent(recipientKey)}&n=${encodeURIComponent(r.name)}&t=${token}`;
+          const yesUrl = `${base}&r=yes`;
+          const noUrl = `${base}&r=no`;
+          const maybeUrl = `${base}&r=maybe`;
+
+          const bodyHtml = `
+            <p style="margin:0 0 16px">You haven't responded yet to tomorrow's event.</p>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;color:#6b7280;margin-bottom:24px">
+              <tr><td style="padding:4px 8px 4px 0;width:80px">Event</td><td style="color:#111827;font-weight:600">${esc(title)}</td></tr>
+              <tr><td style="padding:4px 8px 4px 0">Date</td><td style="color:#111827">${esc(eventDate)}</td></tr>
+              <tr><td style="padding:4px 8px 4px 0">Time</td><td style="color:#111827">${esc(time)}</td></tr>
+              ${location ? `<tr><td style="padding:4px 8px 4px 0">Location</td><td style="color:#111827">${esc(location)}</td></tr>` : ''}
+            </table>
+            <p style="font-size:15px;font-weight:600;text-align:center;margin:0 0 20px;color:#1B3A6B">Will you be there, ${esc(firstName)}?</p>
+            <div style="text-align:center;margin-bottom:8px">
+              <a href="${yesUrl}" style="${btnStyle('#15803d')}">Yes</a>
+              <a href="${maybeUrl}" style="${btnStyle('#d97706')}">Maybe</a>
+              <a href="${noUrl}" style="${btnStyle('#dc2626')}">Can't make it</a>
+            </div>`;
+
+          if (shadowMode) {
+            console.log(`[sendScheduledNotifications][shadow] RSVP_FOLLOWUP event=${eventId} to=${r.email}`);
+            continue;
+          }
+
+          sends.push(
+            transporter!.sendMail({
+              from: emailFrom.value(),
+              to: `${r.name} <${r.email}>`,
+              subject: `First Whistle: Don't forget to RSVP — ${title}`,
+              text: [
+                `Hi ${firstName},`,
+                '',
+                `You haven't responded yet to tomorrow's event.`,
+                `Event: ${title}`,
+                `Date: ${eventDate}`,
+                time ? `Time: ${time}` : '',
+                location ? `Location: ${location}` : '',
+                '',
+                `RSVP: Yes: ${yesUrl} | Maybe: ${maybeUrl} | No: ${noUrl}`,
+              ].filter(Boolean).join('\n'),
+              html: buildEmail({
+                recipientName: firstName,
+                preheader: `Don't forget to RSVP — ${title} is tomorrow`,
+                title: 'RSVP Reminder',
+                message: bodyHtml,
+              }),
+            })
+          );
+        }
+
+        if (!shadowMode) {
+          const results = await Promise.allSettled(sends);
+          rsvpFollowupSent += results.filter(r => r.status === 'fulfilled').length;
+        }
+
+        await evDoc.ref.update({ rsvpFollowupSent: true });
+      }
+    }
+
+    console.log(
+      `[sendScheduledNotifications] done${shadowMode ? ' (shadow)' : ''} — ` +
+      `dayBefore=${dayBeforeSent}, gameDay=${gameDaySent}, snack=${snackReminderSent}, rsvpFollowup=${rsvpFollowupSent}`,
+    );
+  }
+);
+
 // ─── Scheduled: send 24-hour event reminders (daily 8AM UTC) ─────────────────
 
 export const sendEventReminders = onSchedule(
