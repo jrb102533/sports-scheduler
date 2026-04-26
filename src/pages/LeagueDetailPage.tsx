@@ -25,6 +25,7 @@ import { useSeasonStore } from '@/store/useSeasonStore';
 import { useCollectionStore } from '@/store/useCollectionStore';
 import { useLeagueVenueStore } from '@/store/useLeagueVenueStore';
 import { RoleGuard } from '@/components/auth/RoleGuard';
+import { RequiresPro } from '@/components/subscription/RequiresPro';
 import { SPORT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent } from '@/types';
 
@@ -178,7 +179,9 @@ export function LeagueDetailPage() {
         {canManage && (
           <div className="flex gap-2 flex-shrink-0">
             <Button variant="secondary" size="sm" onClick={() => setAssignCoManagerOpen(true)}><Users size={14} /> Add Co-Manager</Button>
-            <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}><Pencil size={14} /> Edit</Button>
+            <RequiresPro>
+              <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}><Pencil size={14} /> Edit</Button>
+            </RequiresPro>
             {(isAdmin || canSoftDelete) && (
               <Button variant="danger" size="sm" onClick={() => setSoftDeleteOpen(true)} aria-label="Delete league"><Trash2 size={14} /></Button>
             )}
@@ -322,9 +325,11 @@ export function LeagueDetailPage() {
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm text-gray-500">{seasons.length} {seasons.length === 1 ? 'season' : 'seasons'}</p>
             {canManage && (
-              <Button size="sm" onClick={() => setSeasonCreateOpen(true)}>
-                <Plus size={14} /> New Season
-              </Button>
+              <RequiresPro>
+                <Button size="sm" onClick={() => setSeasonCreateOpen(true)}>
+                  <Plus size={14} /> New Season
+                </Button>
+              </RequiresPro>
             )}
           </div>
           {seasons.length === 0 ? (
@@ -335,9 +340,11 @@ export function LeagueDetailPage() {
               <p className="text-sm font-medium text-gray-700 mb-1">No seasons yet</p>
               <p className="text-xs text-gray-400 mb-4">Create a season to start scheduling games for this league.</p>
               {canManage && (
-                <Button size="sm" onClick={() => setSeasonCreateOpen(true)}>
-                  <Plus size={14} /> Create First Season
-                </Button>
+                <RequiresPro>
+                  <Button size="sm" onClick={() => setSeasonCreateOpen(true)}>
+                    <Plus size={14} /> Create First Season
+                  </Button>
+                </RequiresPro>
               )}
             </div>
           ) : (

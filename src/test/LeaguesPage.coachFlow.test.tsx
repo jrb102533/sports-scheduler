@@ -134,23 +134,33 @@ describe('LeaguesPage — "New League" button visibility', () => {
   // Note: when leagues list is empty, LeaguesPage renders the button TWICE —
   // once in the header and once in the EmptyState. Use getAllByRole when that
   // is expected.
+  //
+  // RequiresPro wraps the button — Pro users see an active button; free-tier
+  // users see the disabled overlay. We test Pro users here to verify the button
+  // is reachable. Free-tier gate behaviour is covered by RequiresPro.test.tsx.
 
-  it('coach sees "New League" button', () => {
+  it('coach with Pro tier sees "New League" button', () => {
     currentProfile = makeProfile('coach', {
       memberships: [{ role: 'coach', teamId: 't1' }],
+      subscriptionTier: 'league_manager_pro',
     });
     renderPage();
     expect(screen.getAllByRole('button', { name: /new league/i }).length).toBeGreaterThan(0);
   });
 
-  it('league_manager sees "New League" button', () => {
-    currentProfile = makeProfile('league_manager');
+  it('league_manager with Pro tier sees "New League" button', () => {
+    currentProfile = makeProfile('league_manager', {
+      memberships: [{ role: 'league_manager', leagueId: 'lg-1' }],
+      subscriptionTier: 'league_manager_pro',
+    });
     renderPage();
     expect(screen.getAllByRole('button', { name: /new league/i }).length).toBeGreaterThan(0);
   });
 
-  it('admin sees "New League" button', () => {
-    currentProfile = makeProfile('admin');
+  it('admin sees "New League" button (admin always bypasses Pro gate)', () => {
+    currentProfile = makeProfile('admin', {
+      memberships: [{ role: 'admin', isPrimary: true }],
+    });
     renderPage();
     expect(screen.getAllByRole('button', { name: /new league/i }).length).toBeGreaterThan(0);
   });
@@ -175,9 +185,11 @@ describe('LeaguesPage — "New League" button visibility', () => {
 // ─── Modal routing ────────────────────────────────────────────────────────────
 
 describe('LeaguesPage — coach clicking "New League" opens BecomeLeagueManagerModal', () => {
-  it('opens BecomeLeagueManagerModal (not LeagueForm) for a coach', async () => {
+  it('opens BecomeLeagueManagerModal (not LeagueForm) for a Pro coach', async () => {
+    // Seed Pro so RequiresPro renders the active button (not the upgrade overlay)
     currentProfile = makeProfile('coach', {
       memberships: [{ role: 'coach', teamId: 't1' }],
+      subscriptionTier: 'league_manager_pro',
     });
     renderPage();
 
@@ -193,9 +205,11 @@ describe('LeaguesPage — coach clicking "New League" opens BecomeLeagueManagerM
 });
 
 describe('LeaguesPage — LM clicking "New League" opens LeagueForm', () => {
-  it('opens LeagueForm directly for a league_manager (scalar role)', async () => {
+  it('opens LeagueForm directly for a Pro league_manager', async () => {
+    // Seed Pro so RequiresPro renders the active button (not the upgrade overlay)
     currentProfile = makeProfile('league_manager', {
       memberships: [{ role: 'league_manager', leagueId: 'lg-1' }],
+      subscriptionTier: 'league_manager_pro',
     });
     renderPage();
 
@@ -207,8 +221,10 @@ describe('LeaguesPage — LM clicking "New League" opens LeagueForm', () => {
     expect(screen.queryByRole('dialog', { name: 'become-lm-modal' })).toBeNull();
   });
 
-  it('opens LeagueForm directly for an admin', async () => {
-    currentProfile = makeProfile('admin');
+  it('opens LeagueForm directly for an admin (admin bypasses Pro gate)', async () => {
+    currentProfile = makeProfile('admin', {
+      memberships: [{ role: 'admin', isPrimary: true }],
+    });
     renderPage();
 
     fireEvent.click(screen.getAllByRole('button', { name: /new league/i })[0]);

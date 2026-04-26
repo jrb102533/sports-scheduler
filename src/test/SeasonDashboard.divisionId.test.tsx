@@ -183,6 +183,11 @@ vi.mock('@/store/useAuthStore', () => ({
   useAuthStore: (selector: (s: { profile: { uid: string; role: string; leagueId: string } }) => unknown) =>
     selector({ profile: { uid: 'uid-1', role: 'admin', leagueId: 'league-1' } }),
   isManagerOfLeague: vi.fn(() => false),
+  // hasRole is imported by useIsPro (via RequiresPro); admin bypasses Pro gate
+  hasRole: vi.fn((_profile: { role: string } | null, ...roles: string[]) => {
+    if (!_profile) return false;
+    return roles.includes(_profile.role);
+  }),
 }));
 
 vi.mock('@/store/useEventStore', () => ({

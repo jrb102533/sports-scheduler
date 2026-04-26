@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LeagueForm } from '@/components/leagues/LeagueForm';
+import { RequiresPro } from '@/components/subscription/RequiresPro';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useAuthStore, hasRole } from '@/store/useAuthStore';
@@ -79,7 +80,9 @@ export function LeaguesPage() {
       <div className="flex items-center justify-between mb-6">
         <p className="text-sm text-gray-500">{visibleLeagues.length} {visibleLeagues.length === 1 ? 'league' : 'leagues'}</p>
         {canCreateLeague && (
-          <Button onClick={openAdd}><Plus size={16} /> New League</Button>
+          <RequiresPro>
+            <Button onClick={openAdd}><Plus size={16} /> New League</Button>
+          </RequiresPro>
         )}
       </div>
 
@@ -88,7 +91,7 @@ export function LeaguesPage() {
           icon={<Trophy size={40} />}
           title="No leagues yet"
           description="Create a league to manage multi-team schedules and standings."
-          action={canCreateLeague ? <Button onClick={openAdd}><Plus size={16} /> New League</Button> : undefined}
+          action={canCreateLeague ? <RequiresPro><Button onClick={openAdd}><Plus size={16} /> New League</Button></RequiresPro> : undefined}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -214,9 +217,11 @@ function LeagueCard({ league, leagueTeams, canEdit, canDelete, isManager, onClic
         </div>
         <div className="flex gap-1 flex-shrink-0">
           {canEdit && (
-            <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
-              <Pencil size={14} />
-            </button>
+            <RequiresPro>
+              <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                <Pencil size={14} />
+              </button>
+            </RequiresPro>
           )}
           {canDelete && (
             <button onClick={onDelete} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors">

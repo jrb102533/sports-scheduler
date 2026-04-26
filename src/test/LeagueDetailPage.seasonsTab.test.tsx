@@ -411,8 +411,10 @@ describe('LeagueDetailPage — empty Seasons tab CTA', () => {
   it('shows "Create First Season" button when the managing LM opens the Seasons tab with no seasons', () => {
     currentLeagues = [{ id: 'league-1', name: 'Spring League' }];
     currentSeasons = [];
+    // Seed Pro so RequiresPro renders the active button (not the upgrade overlay)
     currentProfile = makeProfile('league_manager', {
       memberships: [{ role: 'league_manager', leagueId: 'league-1', isPrimary: true }],
+      subscriptionTier: 'league_manager_pro',
     });
     renderLeagueDetail('league-1');
 
