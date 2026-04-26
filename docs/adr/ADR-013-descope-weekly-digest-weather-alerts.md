@@ -1,66 +1,57 @@
-# ADR-013 — Descope: Weekly Digest and Weather Alerts
+# ADR-013 — Descope sendWeeklyDigest and checkWeatherAlerts
 
 **Status:** Accepted
 **Date:** 2026-04-26
 **Deciders:** PM + Architect
-**Jira:** FW-82 (parent epic), FW-86 (deletion subtask)
-
----
-
-## Decision
-
-Two scheduled Cloud Functions are **descoped from the product** and will be deleted (not migrated, not deferred):
-
-1. **`sendWeeklyDigest`** — Monday 7am LM-facing weekly summary email
-2. **`checkWeatherAlerts`** — every-6-hour venue weather check + alert email for upcoming events
-
-These features are not part of First Whistle's current product surface. Code, scheduled jobs, and any UI references will be removed in FW-86 (the same PR that cuts over to the new dispatcher CF architecture).
+**Jira:** FW-82, FW-86
 
 ---
 
 ## Context
 
-The cost-discipline audit on 2026-04-26 found 9 scheduled CFs running on staging burning ~57K Firestore reads/day from fanout-style recipient resolution. The audit also surfaced that some of those CFs may not deliver active product value:
+As part of the FW-82 notification-architecture refactor, we reviewed which scheduled Cloud Functions were worth migrating to the new denormalized-recipient model and which should be removed entirely.
 
-- **Weekly Digest** is a "nice to have" LM summary that has minimal current LM usage (no metrics suggest it's being read), and overlaps significantly with the day-before/game-day reminders that LMs already get.
-- **Weather Alerts** are the most expensive CF in the bunch (every 6 hours, reads all upcoming events × all venues × external weather API calls). The feature was speculative — it depends on venue geocoding and an active weather-alert UI integration that has not materialized.
-
-Rather than spend engineering effort migrating these to the new denormalized + consolidated architecture (FW-82), we cut them.
+`sendWeeklyDigest` and `checkWeatherAlerts` were both identified as candidates for descoping rather than migration.
 
 ---
 
-## Why delete instead of defer
+## Decision
 
-- **Defer rots into permanent dead code.** Every "we'll get back to this later" CF that survives a year accumulates technical debt: schema dependencies, env-var guards, scheduler config, test fixtures.
-- **Cost is real, even when guarded.** The env-guard from ADR-012 stops the per-invocation reads, but the function image still deploys, the scheduler job still exists, and any code path depending on the CF still has to be maintained.
-- **Re-adding is cheap if needed.** If we decide to bring weekly digest back later, it'll be a clean greenfield design against the new dispatcher architecture, not a port of legacy fanout code.
-- **Honest scoping.** The product surface should reflect what the product actually does. Two CFs that fire reminders nobody reads is not a feature.
+### `sendWeeklyDigest` — deleted, not migrated
+
+The weekly digest wrote in-app `AppNotification` documents for every player/parent on every team that had an event in the coming week. At the time it was built, there was no in-app notification UI to surface these. The feature was shipped speculatively.
+
+Migration cost: high (would require the same recipient denormalization + a working in-app notification inbox).
+Value: low (no UI, no user feedback that it is valued, email reminders already cover upcoming events more precisely via `sendScheduledNotifications`).
+
+Decision: delete. Re-evaluate if a notification inbox is built.
+
+### `checkWeatherAlerts` — deleted, not migrated
+
+Weather alerts polled the Open-Meteo geocoding and forecast APIs every 6 hours for all outdoor events in the next 24 hours. Problems:
+
+1. **Geocoding was unreliable on free-text location strings** — "Riverside Park field 3" geocodes inconsistently.
+2. **No user configuration** — there was no way to opt out or set a threshold per team/event.
+3. **Cost** — 6 CF invocations per day, each reading potentially many event docs and making 2 external API calls per event.
+4. **Maintenance burden** — Open-Meteo API shape changes could silently break it.
+
+The feature was useful in concept but the implementation was fragile and not worth migrating without a proper venue coordinates pipeline and user opt-in UX.
+
+Decision: delete. Re-evaluate when venue lat/lng coverage is high and user opt-in UX exists.
 
 ---
 
 ## Consequences
 
-### Positive
-
-- Reduces the scheduled-CF inventory from 9 to 7 (then to 4 after the FW-82 consolidation completes).
-- Cuts the every-6-hour weather check immediately — the largest single read source per cron tick.
-- Removes the speculative dependency on venue geocoding being complete and accurate.
-- Less code to migrate to the new dispatcher; FW-82 ships sooner.
-
-### Negative
-
-- Any LM who was actively using the Monday digest loses it. Mitigation: zero-user impact in production today (no active LMs in prod per `project_stripe_prod_rollout.md`). For staging test LMs, the in-app dashboard surfaces the same data.
-- If we re-add either feature later, it needs greenfield design + tests rather than a refactor of existing code. Acceptable trade-off — see "Why delete" above.
-
-### Migration
-
-- FW-86 deletes both CFs as part of the cut-over PR. No separate migration step needed.
-- The corresponding Cloud Scheduler jobs (`firebase-schedule-sendWeeklyDigest-us-central1`, `firebase-schedule-checkWeatherAlerts-us-central1`) get auto-deleted by `firebase deploy` when the function exports are removed. No manual cleanup needed.
+- Both CFs are deleted from `functions/src/index.ts` as of Phase D (FW-86).
+- The corresponding Cloud Scheduler jobs auto-delete on the next `firebase deploy --only functions`.
+- No data migration required — `weatherAlertSent` field on event docs can remain (harmless).
+- `AppNotification` documents written by the old `sendWeeklyDigest` remain in Firestore (visible if an inbox UI is built later).
 
 ---
 
 ## Related
 
-- **ADR-012** — Cost discipline architecture (the env-var guards that bandaided the cost issue)
-- **FW-82** — Notification architecture epic that consolidates remaining 4 reminder CFs into 1 dispatcher
-- **FW-86** — Cut-over subtask that includes deleting these 2 CFs alongside replacing the other 4
+- **ADR-012** — Cost discipline architecture (the parent decision)
+- **FW-82** — Full notification architecture epic
+- **PR #646** — Phase D cutover (deletes these CFs)
