@@ -312,4 +312,11 @@ jobs:
         run: npm install -g firebase-tools@15.12.0
 
       - name: Deploy to Firebase (production)
-        run: firebase deploy --token "${{ secrets.FIREBASE_TOKEN_PROD }}" --project first-whistle-prod --non-interactive --force
+        # `--only` explicitly scopes the deploy and excludes `extensions`. The
+        # firestore-stripe-payments extension (PR #604) is configured in
+        # firebase.json but its STRIPE_API_KEY secret is intentionally NOT set
+        # in production yet — payments aren't live. When you're ready to flip
+        # on Stripe in prod: (1) create the live STRIPE_API_KEY in Secret
+        # Manager on first-whistle-prod, (2) add `extensions` to the --only
+        # list (or remove --only entirely).
+        run: firebase deploy --token "${{ secrets.FIREBASE_TOKEN_PROD }}" --project first-whistle-prod --non-interactive --force --only hosting,functions,firestore,storage
