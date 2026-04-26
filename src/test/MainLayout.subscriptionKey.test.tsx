@@ -203,6 +203,21 @@ function makeProfile(role: UserProfile['role'], teamIds: string[] = []): UserPro
   };
 }
 
+/**
+ * Builds a profile whose memberships have leagueIds (LM-style memberships)
+ * rather than teamIds. Used to exercise the userLeagueIds derivation path.
+ */
+function makeProfileWithLeagues(role: UserProfile['role'], leagueIds: string[]): UserProfile {
+  return {
+    uid: 'uid-1',
+    email: 'test@example.com',
+    displayName: 'Test User',
+    role,
+    memberships: leagueIds.map((leagueId, i) => ({ role, leagueId, isPrimary: i === 0 })),
+    createdAt: '2024-01-01T00:00:00.000Z',
+  };
+}
+
 function renderLayout() {
   return render(
     <MemoryRouter>
@@ -218,10 +233,11 @@ function renderLayout() {
 
 function deriveSubscriptionKey(
   role: UserProfile['role'] | undefined,
-  teamIds: string[]
+  teamIds: string[],
+  leagueIds: string[] = [],
 ): string {
   const isAdminOrLM = role === 'admin' || role === 'league_manager';
-  return isAdminOrLM ? 'admin' : teamIds.join(',');
+  return isAdminOrLM ? 'admin' : `${teamIds.join(',')}|${leagueIds.join(',')}`;
 }
 
 describe('subscriptionKey derivation', () => {
@@ -264,16 +280,16 @@ describe('subscriptionKey derivation', () => {
   });
 
   describe('coach role', () => {
-    it('returns empty string when coach has no memberships', () => {
-      expect(deriveSubscriptionKey('coach', [])).toBe('');
+    it('returns empty teams|leagues delimiter when coach has no memberships', () => {
+      expect(deriveSubscriptionKey('coach', [])).toBe('|');
     });
 
-    it('returns teamId when coach has one team', () => {
-      expect(deriveSubscriptionKey('coach', ['team-123'])).toBe('team-123');
+    it('returns teamId|empty when coach has one team and no leagues', () => {
+      expect(deriveSubscriptionKey('coach', ['team-123'])).toBe('team-123|');
     });
 
-    it('returns comma-joined teamIds when coach has two teams', () => {
-      expect(deriveSubscriptionKey('coach', ['team-a', 'team-b'])).toBe('team-a,team-b');
+    it('returns comma-joined teamIds|empty when coach has two teams', () => {
+      expect(deriveSubscriptionKey('coach', ['team-a', 'team-b'])).toBe('team-a,team-b|');
     });
 
     it('key changes when coach gains a new team membership (triggers re-subscribe)', () => {
@@ -283,47 +299,80 @@ describe('subscriptionKey derivation', () => {
     });
   });
 
-  describe('player role', () => {
-    it('returns empty string when player has no memberships', () => {
-      expect(deriveSubscriptionKey('player', [])).toBe('');
+  describe('non-admin userLeagueIds contribution (the league-store scoping path)', () => {
+    it('includes leagueIds in the key for non-admin coach', () => {
+      expect(deriveSubscriptionKey('coach', ['team-a'], ['league-x'])).toBe('team-a|league-x');
     });
 
-    it('returns teamId when player has one team', () => {
-      expect(deriveSubscriptionKey('player', ['team-xyz'])).toBe('team-xyz');
+    it('comma-joins multiple leagueIds', () => {
+      expect(deriveSubscriptionKey('coach', ['team-a'], ['league-x', 'league-y']))
+        .toBe('team-a|league-x,league-y');
+    });
+
+    it('key changes when coach gains access to a new league (triggers leagues re-subscribe)', () => {
+      const before = deriveSubscriptionKey('coach', ['team-a'], ['league-x']);
+      const after = deriveSubscriptionKey('coach', ['team-a'], ['league-x', 'league-y']);
+      expect(before).not.toBe(after);
+    });
+
+    it('key changes when leagueIds change even if teamIds are unchanged', () => {
+      // e.g., the user's team got added to a new league — userTeamIds stays
+      // the same but the team's leagueIds grew, so userLeagueIds grows too
+      const before = deriveSubscriptionKey('parent', ['team-a'], ['league-x']);
+      const after = deriveSubscriptionKey('parent', ['team-a'], ['league-y']);
+      expect(before).not.toBe(after);
+    });
+
+    it('admin/LM ignore leagueIds entirely (stable "admin" key)', () => {
+      // admin + LM use unscoped league query inside the store, so changes to
+      // their derived leagueIds must NOT trigger a re-subscription
+      expect(deriveSubscriptionKey('admin', ['team-a'], ['league-x'])).toBe('admin');
+      expect(deriveSubscriptionKey('admin', ['team-a'], ['league-x', 'league-y'])).toBe('admin');
+      expect(deriveSubscriptionKey('league_manager', [], ['league-x'])).toBe('admin');
+    });
+  });
+
+  describe('player role', () => {
+    it('returns empty teams|leagues delimiter when player has no memberships', () => {
+      expect(deriveSubscriptionKey('player', [])).toBe('|');
+    });
+
+    it('returns teamId|empty when player has one team', () => {
+      expect(deriveSubscriptionKey('player', ['team-xyz'])).toBe('team-xyz|');
     });
   });
 
   describe('parent role', () => {
-    it('returns teamId for parent with one team', () => {
-      expect(deriveSubscriptionKey('parent', ['team-xyz'])).toBe('team-xyz');
+    it('returns teamId|empty for parent with one team', () => {
+      expect(deriveSubscriptionKey('parent', ['team-xyz'])).toBe('team-xyz|');
     });
   });
 
   describe('role change transitions', () => {
-    it('admin → coach: key changes from "admin" to teamId (triggers re-subscribe)', () => {
+    it('admin → coach: key changes from "admin" to teamId|leagueIds (triggers re-subscribe)', () => {
       const adminKey = deriveSubscriptionKey('admin', ['team-a']);
       const coachKey = deriveSubscriptionKey('coach', ['team-a']);
       expect(adminKey).toBe('admin');
-      expect(coachKey).toBe('team-a');
+      expect(coachKey).toBe('team-a|');
       expect(adminKey).not.toBe(coachKey);
     });
 
-    it('coach → admin: key changes from teamId to "admin" (triggers re-subscribe)', () => {
+    it('coach → admin: key changes from teamId|leagueIds to "admin" (triggers re-subscribe)', () => {
       const coachKey = deriveSubscriptionKey('coach', ['team-a']);
       const adminKey = deriveSubscriptionKey('admin', ['team-a']);
-      expect(coachKey).toBe('team-a');
+      expect(coachKey).toBe('team-a|');
       expect(adminKey).toBe('admin');
       expect(coachKey).not.toBe(adminKey);
     });
 
-    it('coach → league_manager: key changes from teamId to "admin" (triggers re-subscribe)', () => {
+    it('coach → league_manager: key changes (triggers re-subscribe)', () => {
       const coachKey = deriveSubscriptionKey('coach', ['team-a']);
       const lmKey = deriveSubscriptionKey('league_manager', ['team-a']);
       expect(coachKey).not.toBe(lmKey);
     });
 
-    it('undefined role (profile loading) → produces empty string, not crash', () => {
-      expect(deriveSubscriptionKey(undefined, [])).toBe('');
+    it('undefined role (profile loading) → produces empty teams|leagues delimiter, not crash', () => {
+      expect(deriveSubscriptionKey(undefined, [])).toBe('|');
     });
   });
 });
@@ -420,5 +469,79 @@ describe('MainLayout — subscription lifecycle', () => {
     expect(mockSubscribeTeams).toHaveBeenCalledTimes(1);
     // The first argument passed to subscribe should contain the actual team IDs
     expect(mockSubscribeTeams).toHaveBeenCalledWith(['team-a', 'team-b']);
+  });
+
+  // ─── userLeagueIds forwarding (the league-store scoping path) ──────────────
+  //
+  // The team-derived leagueIds path (union of team.leagueIds for the user's
+  // teams) is hard to exercise here because the useTeamStore mock returns
+  // empty teams unconditionally. These tests cover the membership-derived
+  // path (m.leagueId on a profile membership), which is the load-bearing
+  // path for league_manager memberships and for any future role that has
+  // direct leagueId memberships.
+
+  it('forwards membership-derived userLeagueIds to useLeagueStore.subscribe for non-admin', () => {
+    currentUser = { uid: 'uid-coach' };
+    // Coach with both a team membership and a league-bound membership
+    currentProfile = {
+      ...makeProfile('coach', ['team-a']),
+      memberships: [
+        { role: 'coach', teamId: 'team-a', isPrimary: true },
+        { role: 'coach', leagueId: 'league-x' },
+      ],
+    };
+
+    renderLayout();
+
+    expect(mockSubscribeLeagues).toHaveBeenCalledTimes(1);
+    // userLeagueIds is sorted (Array.from(Set).sort()) — single id so no
+    // ordering ambiguity. The argument should be ['league-x'].
+    expect(mockSubscribeLeagues).toHaveBeenCalledWith(['league-x']);
+  });
+
+  it('non-admin gaining a new league membership triggers leagues re-subscribe', () => {
+    currentUser = { uid: 'uid-coach' };
+    currentProfile = makeProfileWithLeagues('coach', ['league-x']);
+
+    const { rerender } = renderLayout();
+
+    expect(mockSubscribeLeagues).toHaveBeenCalledTimes(1);
+    expect(mockSubscribeLeagues).toHaveBeenLastCalledWith(['league-x']);
+
+    // Coach gets added to a second league
+    act(() => {
+      currentProfile = makeProfileWithLeagues('coach', ['league-x', 'league-y']);
+    });
+    rerender(
+      <MemoryRouter>
+        <MainLayout />
+      </MemoryRouter>
+    );
+
+    expect(mockSubscribeLeagues).toHaveBeenCalledTimes(2);
+    // sorted output — both ids in alphabetical order
+    expect(mockSubscribeLeagues).toHaveBeenLastCalledWith(['league-x', 'league-y']);
+  });
+
+  it('admin profile with leagueId memberships still gets stable "admin" subscriptionKey', () => {
+    currentUser = { uid: 'uid-admin' };
+    currentProfile = makeProfileWithLeagues('admin', ['league-x']);
+
+    const { rerender } = renderLayout();
+
+    expect(mockSubscribeLeagues).toHaveBeenCalledTimes(1);
+
+    // Admin acquires a second league — should NOT trigger re-subscribe
+    // because admin's subscriptionKey is the stable 'admin' literal
+    act(() => {
+      currentProfile = makeProfileWithLeagues('admin', ['league-x', 'league-y']);
+    });
+    rerender(
+      <MemoryRouter>
+        <MainLayout />
+      </MemoryRouter>
+    );
+
+    expect(mockSubscribeLeagues).toHaveBeenCalledTimes(1);
   });
 });

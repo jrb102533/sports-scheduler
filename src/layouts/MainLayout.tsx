@@ -63,7 +63,34 @@ export function MainLayout() {
   // existing onSnapshot before the new team document is delivered via real-time
   // update, causing the new team to be temporarily missing from the list.
   const isAdminOrLM = profile?.role === 'admin' || profile?.role === 'league_manager';
-  const subscriptionKey = isAdminOrLM ? 'admin' : userTeamIds.join(',');
+
+  // Derive the set of league IDs the current user needs visibility into:
+  //   1. Direct memberships with a leagueId (LMs membership-bound to a league)
+  //   2. Union of team.leagueIds for teams the user is on (so a coach/parent
+  //      can see league info for any league their team belongs to)
+  // Admin + LM bypass this list inside useLeagueStore (unscoped global query),
+  // so for them this just contributes to a stable subscriptionKey.
+  const teams = useTeamStore(s => s.teams);
+  const userLeagueIds = (() => {
+    const ids = new Set<string>();
+    for (const m of memberships ?? []) {
+      if (m.leagueId) ids.add(m.leagueId);
+    }
+    if (!isAdminOrLM) {
+      // Only intersect with team.leagueIds for non-elevated roles. For admins
+      // this would be wasteful (they get unscoped queries anyway).
+      const userTeamIdSet = new Set(userTeamIds);
+      for (const t of teams) {
+        if (!userTeamIdSet.has(t.id)) continue;
+        for (const lid of t.leagueIds ?? []) ids.add(lid);
+      }
+    }
+    return Array.from(ids).sort();
+  })();
+
+  const subscriptionKey = isAdminOrLM
+    ? 'admin'
+    : `${userTeamIds.join(',')}|${userLeagueIds.join(',')}`;
 
   // Subscribe all Firestore collections when user is authenticated.
   // subscriptionKey changes when non-admin membership changes, re-scoping subscriptions.
@@ -75,7 +102,7 @@ export function MainLayout() {
       useEventStore.getState().subscribe(userTeamIds),
       useNotificationStore.getState().subscribe(user.uid),
       useSettingsStore.getState().subscribe(user.uid),
-      useLeagueStore.getState().subscribe(),
+      useLeagueStore.getState().subscribe(userLeagueIds),
       useOpponentStore.getState().subscribe(userTeamIds),
     ];
     return () => unsubs.forEach(u => u());
