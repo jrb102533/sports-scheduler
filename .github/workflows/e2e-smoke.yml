@@ -16,13 +16,21 @@ name: E2E Smoke — Staging
 # remediated post-deploy without customer impact, so they do not gate
 # customer-facing releases. See FW-81 for the rationale.
 
-on:
-  workflow_dispatch:
-    inputs:
-      sha:
-        description: 'Commit SHA to test (defaults to current main)'
-        type: string
-        required: false
+# DISABLED 2026-04-26 — each smoke run drives 5 role logins × full app load ×
+# admin unscoped queries, burning thousands of staging Firestore reads per run.
+# Re-enable only after FW-83 (smoke read-cost audit) reduces the per-run read
+# profile to a sustainable level. The original workflow_dispatch trigger is
+# commented out below; with no `on:` block, GitHub will not run this workflow
+# under any circumstance — not on schedule, not on push, not on manual dispatch.
+#
+# Original trigger (re-enable after FW-83):
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       sha:
+#         description: 'Commit SHA to test (defaults to current main)'
+#         type: string
+#         required: false
 
 permissions:
   contents: read
