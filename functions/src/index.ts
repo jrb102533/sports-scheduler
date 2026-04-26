@@ -798,6 +798,9 @@ export const createLeagueAndBecomeManager = onCall<CreateLeagueAndBecomeManagerD
     if (sportType && !ALLOWED_SPORT_TYPES.includes(sportType)) throw new HttpsError('invalid-argument', 'Invalid sport type.');
     if (description && description.trim().length > 2000) throw new HttpsError('invalid-argument', 'Description is too long.');
 
+    // SEC-91 (FW-64): paywall enforcement
+    await assertSubscribedOrAdmin(uid);
+
     await checkRateLimit(uid, 'createLeague', 3);
 
     try {
@@ -3127,6 +3130,9 @@ export const requestAvailability = onCall<RequestAvailabilityData, Promise<{ not
       throw new HttpsError('permission-denied', 'Only league managers and admins can request availability.');
     }
 
+    // SEC-91 (FW-64): paywall enforcement
+    await assertSubscribedOrAdmin(request.auth.uid);
+
     const { leagueId, collectionId } = request.data;
     if (!leagueId?.trim()) throw new HttpsError('invalid-argument', 'leagueId is required.');
     if (!collectionId?.trim()) throw new HttpsError('invalid-argument', 'collectionId is required.');
@@ -3248,6 +3254,9 @@ export const sendAvailabilityReminder = onCall<SendAvailabilityReminderData, Pro
     if (callerRole !== 'admin' && callerRole !== 'league_manager') {
       throw new HttpsError('permission-denied', 'Only league managers and admins can send reminders.');
     }
+
+    // SEC-91 (FW-64): paywall enforcement
+    await assertSubscribedOrAdmin(request.auth.uid);
 
     const { leagueId, collectionId } = request.data;
     if (!leagueId?.trim()) throw new HttpsError('invalid-argument', 'leagueId is required.');
@@ -4696,6 +4705,10 @@ export const sendLeagueInvite = onCall<SendLeagueInviteData, Promise<SendLeagueI
     if (role !== 'admin' && role !== 'league_manager') {
       throw new HttpsError('permission-denied', 'Only league managers and admins can send league invites.');
     }
+
+    // SEC-91 (FW-64): paywall enforcement
+    await assertSubscribedOrAdmin(uid);
+
     await checkRateLimit(uid, 'sendLeagueInvite', 1);
 
     const { emails, leagueId } = request.data;
@@ -4825,6 +4838,10 @@ export const resendLeagueInvite = onCall<ResendLeagueInviteData, Promise<{ succe
     if (role !== 'admin' && role !== 'league_manager') {
       throw new HttpsError('permission-denied', 'Only league managers and admins can resend league invites.');
     }
+
+    // SEC-91 (FW-64): paywall enforcement
+    await assertSubscribedOrAdmin(uid);
+
     await checkRateLimit(uid, 'resendLeagueInvite', 10);
 
     const { placeholderTeamId } = request.data;
@@ -5520,6 +5537,12 @@ export const assignScopedRole = onCall<AssignScopedRoleData, Promise<AssignScope
       (m: Record<string, unknown>) => m.role as string
     );
     const callerIsAdmin = [callerLegacyRole, ...callerMembershipRoles].includes('admin');
+
+    // SEC-91 (FW-64): paywall enforcement — only the league_manager assignment
+    // path is paywalled. Coach assignment (co-coach path) is a free feature.
+    if (role === 'league_manager') {
+      await assertSubscribedOrAdmin(callerUid);
+    }
 
     // ── Atomic write + authorization (SEC-30: auth check inside transaction) ──
     // Reading the entity doc inside the transaction eliminates the TOCTOU window
