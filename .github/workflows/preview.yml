@@ -1,16 +1,27 @@
 name: PR Preview
 
-# Deploys a Firebase Hosting preview channel on every PR to main.
-# Posts the preview URL as a PR comment.
-# Channel expires after 7 days.
+# DISABLED — was previously firing on every PR push to main, deploying a
+# Firebase Hosting preview channel pointing at the staging Firebase backend.
+# When anyone (the user, an automated reviewer, a scanner) opened the preview
+# URL, the app fired the full Firestore subscription stack against staging.
+# At ~20 PRs/day that was a meaningful chunk of staging-reads quota.
+#
+# At soft-launch scale, deploy your local branch to staging directly via
+# `firebase deploy --project staging` when you actually want a browser look.
+#
+# To re-enable: restore the `pull_request` trigger below. The job body still
+# uses PR-context fields (github.event.pull_request.number, head_ref) so it
+# only works correctly in PR context — workflow_dispatch is left as a no-op
+# safety net, not a usable runtime path. Refactor before relying on it.
 #
 # Required GitHub secrets:
 #   FIREBASE_TOKEN — same token used for deploy.yml
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [main]
+  workflow_dispatch: {}
+  # pull_request:
+  #   types: [opened, synchronize, reopened]
+  #   branches: [main]
 
 permissions:
   contents: read
