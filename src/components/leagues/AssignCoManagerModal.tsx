@@ -4,6 +4,7 @@ import { functions } from '@/lib/firebase';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { PaywallAwareError } from '@/components/subscription/PaywallAwareError';
 
 interface AssignCoManagerModalProps {
   open: boolean;
@@ -85,13 +86,13 @@ export function AssignCoManagerModal({ open, onClose, leagueId, leagueName }: As
             Enter the email address of the person you'd like to add as a co-manager of{' '}
             <strong>{leagueName}</strong>. They must already have a First Whistle account.
           </p>
+          <PaywallAwareError error={error || null} action="add a co-manager" />
           <Input
             label="Email address"
             type="email"
             value={email}
             onChange={e => setEmail(e.target.value)}
             placeholder="manager@example.com"
-            error={error}
             autoFocus
           />
           <div className="flex justify-end gap-2 pt-1">

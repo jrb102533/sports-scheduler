@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
+import { PaywallAwareError } from '@/components/subscription/PaywallAwareError';
 import { functions } from '@/lib/firebase';
 import { SPORT_TYPES, SPORT_TYPE_LABELS } from '@/constants';
 import type { SportType } from '@/types';
@@ -108,14 +109,8 @@ export function BecomeLeagueManagerModal({ open, onClose }: Props) {
     <Modal open={open} onClose={onClose} title="New League">
       <form onSubmit={handleSubmit} noValidate>
         <div className="flex flex-col gap-4">
-          {error && (
-            <div
-              role="alert"
-              className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700"
-            >
-              {error}
-            </div>
-          )}
+          <PaywallAwareError error={error} action="create a league" />
+
 
           <Input
             label="League Name"
