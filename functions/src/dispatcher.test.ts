@@ -5,7 +5,8 @@
  *   - Shadow mode: logs but does not call sendMail
  *   - Day-before reminder: sent when event.date==tomorrow && !dayBeforeSent
  *   - Game-day reminder: sent when event.date==today && !gameDaySent
- *   - Snack reminder: sent when event.date==in2days && snackAssignment && !snackReminderSent
+ *   - Snack reminder: sent when event.date==in2days && snackSlot/slot unclaimed && !snackReminderSent
+ *                     (fail-closed on snackSlot read failure)
  *   - RSVP follow-up: sent to unresponded recipients only when event.date==tomorrow && !rsvpFollowupSent
  *   - Idempotency: not sent when flag already set
  *   - Events with no recipients are skipped
@@ -72,6 +73,15 @@ interface DocData { [key: string]: unknown }
 const _events: Array<{ id: string; data: DocData; ref: { update: ReturnType<typeof vi.fn> } }> = [];
 const updateMocks: Array<{ id: string; data: DocData }> = [];
 
+/**
+ * Per-event snackSlot data. Set in tests to control the snack reminder branch.
+ *   undefined     → no snackSlot doc exists (legacy / no snack tracking) — reminder fires
+ *   { claimedBy: '' | null } → slot exists but unclaimed — reminder fires
+ *   { claimedBy: 'someone' } → claimed — reminder skipped
+ *   'THROW'       → simulate read failure — reminder skipped (fail-closed)
+ */
+const _snackSlots = new Map<string, { claimedBy?: string | null } | 'THROW'>();
+
 function makeEventDoc(id: string, data: DocData) {
   const updateFn = vi.fn((d: DocData) => {
     updateMocks.push({ id, data: d });
@@ -109,6 +119,21 @@ const mockFirestore = {
       },
     };
     return obj;
+  },
+
+  // Used by the snack-reminder branch: db.doc('events/{eventId}/snackSlot/slot')
+  doc(path: string) {
+    const match = path.match(/^events\/([^/]+)\/snackSlot\/slot$/);
+    return {
+      async get() {
+        if (!match) return { exists: false, data: () => undefined };
+        const eventId = match[1];
+        const entry = _snackSlots.get(eventId);
+        if (entry === 'THROW') throw new Error('mocked snackSlot read failure');
+        if (entry === undefined) return { exists: false, data: () => undefined };
+        return { exists: true, data: () => entry };
+      },
+    };
   },
 };
 
@@ -156,6 +181,7 @@ function makeRecipient(email = 'test@example.com', name = 'Test User') {
 beforeEach(() => {
   _events.length = 0;
   updateMocks.length = 0;
+  _snackSlots.clear();
   sendMailMock.mockClear();
   // Ensure DISPATCHER_SHADOW_MODE is off by default in tests.
   delete process.env.DISPATCHER_SHADOW_MODE;
@@ -319,15 +345,15 @@ describe('sendScheduledNotifications', () => {
   });
 
   describe('snack reminder', () => {
-    it('sends when event is in 2 days, snackAssignment present, snackReminderSent is false', async () => {
+    it('sends when no snackSlot doc exists (treated as unclaimed)', async () => {
       _events.push(makeEventDoc('ev-snack', {
         date: IN_2_DAYS,
         status: 'scheduled',
         title: 'Snack Game',
-        snackAssignment: true,
         recipients: [makeRecipient()],
         snackReminderSent: false,
       }));
+      // _snackSlots not set → mock returns exists:false → treated as unclaimed
 
       await getHandler()();
 
@@ -336,15 +362,45 @@ describe('sendScheduledNotifications', () => {
       expect(subject.toLowerCase()).toContain('snack');
     });
 
-    it('skips when snackAssignment is falsy', async () => {
-      _events.push(makeEventDoc('ev-no-snack', {
+    it('sends when snackSlot exists but claimedBy is empty', async () => {
+      _events.push(makeEventDoc('ev-unclaimed', {
         date: IN_2_DAYS,
         status: 'scheduled',
         title: 'Game',
-        snackAssignment: false, // no snack needed
         recipients: [makeRecipient()],
         snackReminderSent: false,
       }));
+      _snackSlots.set('ev-unclaimed', { claimedBy: null });
+
+      await getHandler()();
+
+      expect(sendMailMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips when snackSlot.claimedBy is set (someone already signed up)', async () => {
+      _events.push(makeEventDoc('ev-claimed', {
+        date: IN_2_DAYS,
+        status: 'scheduled',
+        title: 'Game',
+        recipients: [makeRecipient()],
+        snackReminderSent: false,
+      }));
+      _snackSlots.set('ev-claimed', { claimedBy: 'parent-uid-123' });
+
+      await getHandler()();
+
+      expect(sendMailMock).not.toHaveBeenCalled();
+    });
+
+    it('skips on snackSlot read failure (fail-closed to avoid false spam)', async () => {
+      _events.push(makeEventDoc('ev-read-fail', {
+        date: IN_2_DAYS,
+        status: 'scheduled',
+        title: 'Game',
+        recipients: [makeRecipient()],
+        snackReminderSent: false,
+      }));
+      _snackSlots.set('ev-read-fail', 'THROW');
 
       await getHandler()();
 
@@ -356,7 +412,6 @@ describe('sendScheduledNotifications', () => {
         date: IN_2_DAYS,
         status: 'scheduled',
         title: 'Game',
-        snackAssignment: true,
         recipients: [makeRecipient()],
         snackReminderSent: true,
       }));
