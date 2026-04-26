@@ -286,6 +286,27 @@ describe('hasRole (multi-membership)', () => {
     expect(hasRole(profile, 'coach')).toBe(true);
     expect(hasRole(profile, 'admin')).toBe(false);
   });
+
+  // Regression: admin profile with accumulated non-admin memberships should
+  // still be detected as admin via the top-level `profile.role` field. Before
+  // the fix, hasRole only consulted memberships, so an admin who'd accumulated
+  // stale `coach` memberships (e.g., from createTeamAndBecomeCoach calls in
+  // E2E test runs) would render as a non-admin in the UI and the admin
+  // TeamsPage would show the "No teams yet" empty state.
+  it('detects admin via top-level role even when memberships have no admin entry', () => {
+    const profile = makeProfile({
+      role: 'admin',
+      memberships: [
+        { role: 'coach', teamId: 't1', isPrimary: true },
+        { role: 'coach', teamId: 't2' },
+        { role: 'coach', teamId: 't3' },
+      ],
+    });
+    expect(hasRole(profile, 'admin')).toBe(true);
+    // Membership-based roles still work too
+    expect(hasRole(profile, 'coach')).toBe(true);
+    expect(hasRole(profile, 'parent')).toBe(false);
+  });
 });
 
 // ── multi-membership isReadOnly ───────────────────────────────────────────────

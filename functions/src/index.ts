@@ -664,25 +664,41 @@ export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Pro
         const existingMemberships: Record<string, unknown>[] = Array.isArray(profile.memberships)
           ? profile.memberships
           : [];
-        const newMembership = {
-          role: 'coach',
-          teamId,
-          isPrimary: existingMemberships.length === 0,
-        };
-        const newMemberships = [...existingMemberships, newMembership];
-        newMembershipIndex = newMemberships.length - 1;
 
-        const profilePatch: Record<string, unknown> = {
-          memberships: newMemberships,
-          activeContext: newMembershipIndex, // Set server-side — client write is blocked by Firestore rules after role elevation (SEC-29).
-        };
-        const nonElevatedRoles = ['player', 'parent'];
-        if (nonElevatedRoles.includes(profile.role as string)) {
-          profilePatch.role = 'coach';
+        // Admins are platform operators, not coaches of every team they create
+        // on behalf of users. Appending a `coach` membership to admins on every
+        // call accumulates unboundedly (E2E test runs can grow this to hundreds
+        // of stale entries) and breaks `hasRole(profile, 'admin')` detection in
+        // the UI (which only consults memberships when memberships is non-empty).
+        // Skip the membership append entirely for admin callers — the team doc's
+        // coachId/coachIds still grants them write access via Firestore rules.
+        const isAdminCaller = profile.role === 'admin';
+
+        if (isAdminCaller) {
+          newMembershipIndex = -1; // Sentinel: no new membership added.
+          tx.set(teamRef, teamDoc);
+          // No profile patch — admin's profile is intentionally untouched.
+        } else {
+          const newMembership = {
+            role: 'coach',
+            teamId,
+            isPrimary: existingMemberships.length === 0,
+          };
+          const newMemberships = [...existingMemberships, newMembership];
+          newMembershipIndex = newMemberships.length - 1;
+
+          const profilePatch: Record<string, unknown> = {
+            memberships: newMemberships,
+            activeContext: newMembershipIndex, // Set server-side — client write is blocked by Firestore rules after role elevation (SEC-29).
+          };
+          const nonElevatedRoles = ['player', 'parent'];
+          if (nonElevatedRoles.includes(profile.role as string)) {
+            profilePatch.role = 'coach';
+          }
+
+          tx.set(teamRef, teamDoc);
+          tx.update(profileRef, profilePatch);
         }
-
-        tx.set(teamRef, teamDoc);
-        tx.update(profileRef, profilePatch);
       });
 
       console.log(`createTeamAndBecomeCoach: uid=${uid}, teamId=${teamId}`);

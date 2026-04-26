@@ -484,15 +484,76 @@ describe('createTeamAndBecomeCoach — admin user', () => {
     expect(profile?.role).toBe('admin');
   });
 
-  it('(7) admin still gets a coach membership appended', async () => {
+  // Behavior change: admins are platform operators creating teams on behalf
+  // of others — they are NOT coaches of those teams. Appending coach memberships
+  // to admin profiles on every call accumulated unboundedly across E2E test runs
+  // (one staging admin reached 125 stale entries) and broke admin-detection in
+  // the UI. The team doc still records coachId/coachIds=[adminUid] so the admin
+  // retains write access via Firestore rules.
+  it('(7) does NOT append a coach membership to admin callers', async () => {
+    const profileBefore = _store.get('users/admin1');
+    const membershipsBefore = (profileBefore?.memberships as Array<Record<string, unknown>>) ?? [];
+    const countBefore = membershipsBefore.length;
+
     const result = await fn(makeRequest('admin1', { name: 'Gold Stars' })) as {
       teamId: string;
       newMembershipIndex: number;
     };
 
+    const profileAfter = _store.get('users/admin1');
+    const membershipsAfter = (profileAfter?.memberships as Array<Record<string, unknown>>) ?? [];
+
+    // Memberships must be unchanged
+    expect(membershipsAfter.length).toBe(countBefore);
+    expect(membershipsAfter.some((m) => m.role === 'coach' && m.teamId === result.teamId)).toBe(false);
+
+    // Sentinel return value documents that no membership was added
+    expect(result.newMembershipIndex).toBe(-1);
+  });
+
+  it('(7) team doc still records admin caller via coachId/coachIds for write access', async () => {
+    const result = await fn(makeRequest('admin1', { name: 'Gold Stars' })) as {
+      teamId: string;
+      newMembershipIndex: number;
+    };
+
+    const team = _store.get(`teams/${result.teamId}`);
+    expect(team?.coachId).toBe('admin1');
+    expect(team?.coachIds).toEqual(['admin1']);
+    expect(team?.createdBy).toBe('admin1');
+  });
+
+  it('(7) leaves activeContext untouched on admin profile', async () => {
+    // Seed admin with an explicit activeContext to verify it isn't overwritten.
+    _store.set('users/admin1', {
+      ...(_store.get('users/admin1') ?? {}),
+      activeContext: 0,
+    });
+
+    await fn(makeRequest('admin1', { name: 'Gold Stars' }));
+
     const profile = _store.get('users/admin1');
+    expect(profile?.activeContext).toBe(0);
+  });
+});
+
+// ─── Non-admin callers still get the membership (regression guard) ────────────
+
+describe('createTeamAndBecomeCoach — non-admin coach-membership append', () => {
+  it('(7) coach caller still gets a new coach membership appended', async () => {
+    const profileBefore = _store.get('users/coach1');
+    const countBefore = (profileBefore?.memberships as Array<unknown>).length;
+
+    const result = await fn(makeRequest('coach1', { name: 'Test Team' })) as {
+      teamId: string;
+      newMembershipIndex: number;
+    };
+
+    const profile = _store.get('users/coach1');
     const memberships = profile?.memberships as Array<Record<string, unknown>>;
+    expect(memberships.length).toBe(countBefore + 1);
     expect(memberships.some((m) => m.role === 'coach' && m.teamId === result.teamId)).toBe(true);
+    expect(result.newMembershipIndex).toBeGreaterThanOrEqual(0);
   });
 });
 
