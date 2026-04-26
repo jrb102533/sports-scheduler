@@ -1906,6 +1906,90 @@ export const onEventCreated = onDocumentCreated(
   }
 );
 
+// ─── Helper: batch-fetch teams + players for a set of event docs ─────────────
+//
+// The daily reminder + RSVP-followup CFs both iterate every event happening
+// tomorrow and, for each event, separately fetch that event's teams + players.
+// At N events sharing M unique teams, that's O(N) reads of the same M teams.
+//
+// This helper does a single sweep:
+//   1. Collect every distinct teamId referenced across the input events
+//   2. Batch-read those teams (chunked by Firestore's 30-value `in` limit)
+//   3. Batch-read all players whose teamId is in the unique set
+//   4. Return Map<teamId, teamData> + Map<teamId, players[]>
+//
+// Net effect: one events query + ceil(unique_teams / 30) team batches +
+// ceil(unique_teams / 30) player batches — independent of event count.
+//
+// Note: this preserves the existing behavior of dropping teams 11+ on a
+// single event (the old code used .slice(0, 10), an artifact of the legacy
+// 10-value `in` limit). The batched version respects all teamIds since we
+// chunk into groups of 30. If any single event has >30 unique teams, it
+// still gets the first 30 — no realistic event has more than a handful.
+export const FIRESTORE_IN_QUERY_LIMIT = 30;
+
+export interface EventTeamPlayerMaps {
+  teamsById: Map<string, FirebaseFirestore.DocumentData>;
+  playersByTeamId: Map<string, FirebaseFirestore.QueryDocumentSnapshot[]>;
+}
+
+export async function fetchTeamsAndPlayersForEvents(
+  eventDocs: FirebaseFirestore.QueryDocumentSnapshot[],
+  firestore: FirebaseFirestore.Firestore = admin.firestore(),
+): Promise<EventTeamPlayerMaps> {
+  const teamsById = new Map<string, FirebaseFirestore.DocumentData>();
+  const playersByTeamId = new Map<string, FirebaseFirestore.QueryDocumentSnapshot[]>();
+
+  // 1. Collect every distinct teamId across all events
+  const uniqueTeamIds = new Set<string>();
+  for (const evDoc of eventDocs) {
+    const ev = evDoc.data();
+    const teamIds: string[] = Array.isArray(ev.teamIds) ? ev.teamIds : [];
+    for (const tid of teamIds) {
+      if (typeof tid === 'string' && tid.length > 0) uniqueTeamIds.add(tid);
+    }
+  }
+
+  if (uniqueTeamIds.size === 0) return { teamsById, playersByTeamId };
+
+  const teamIdList = Array.from(uniqueTeamIds);
+
+  // 2. Batch-read teams (chunked by 30, the Firestore `in` limit)
+  for (let i = 0; i < teamIdList.length; i += FIRESTORE_IN_QUERY_LIMIT) {
+    const chunk = teamIdList.slice(i, i + FIRESTORE_IN_QUERY_LIMIT);
+    const teamSnap = await firestore
+      .collection('teams')
+      .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
+      .get();
+    for (const doc of teamSnap.docs) {
+      teamsById.set(doc.id, doc.data());
+    }
+    // Initialize the players bucket for every requested teamId so callers can
+    // safely call playersByTeamId.get(id) ?? [] without checking Map.has().
+    for (const id of chunk) {
+      if (!playersByTeamId.has(id)) playersByTeamId.set(id, []);
+    }
+  }
+
+  // 3. Batch-read players (same chunking strategy)
+  for (let i = 0; i < teamIdList.length; i += FIRESTORE_IN_QUERY_LIMIT) {
+    const chunk = teamIdList.slice(i, i + FIRESTORE_IN_QUERY_LIMIT);
+    const playerSnap = await firestore
+      .collection('players')
+      .where('teamId', 'in', chunk)
+      .get();
+    for (const doc of playerSnap.docs) {
+      const teamId = doc.data().teamId as string | undefined;
+      if (!teamId) continue;
+      const bucket = playersByTeamId.get(teamId) ?? [];
+      bucket.push(doc);
+      playersByTeamId.set(teamId, bucket);
+    }
+  }
+
+  return { teamsById, playersByTeamId };
+}
+
 // ─── Scheduled: send 24-hour event reminders (daily 8AM UTC) ─────────────────
 
 export const sendEventReminders = onSchedule(
@@ -1928,6 +2012,11 @@ export const sendEventReminders = onSchedule(
       return;
     }
 
+    // Batch-read all teams + players referenced by tomorrow's events in one
+    // sweep instead of re-reading per event. Same recipient set, much lower
+    // read count when many events share a few teams.
+    const { teamsById, playersByTeamId } = await fetchTeamsAndPlayersForEvents(eventsSnap.docs);
+
     const transporter = createTransporter();
     let totalSent = 0;
 
@@ -1936,16 +2025,15 @@ export const sendEventReminders = onSchedule(
       const teamIds: string[] = ev.teamIds ?? [];
       if (!teamIds.length) continue;
 
-      const playersSnap = await admin.firestore()
-        .collection('players')
-        .where('teamId', 'in', teamIds.slice(0, 10))
-        .get();
-
-      let teamName = '';
-      if (teamIds[0]) {
-        const teamDoc = await admin.firestore().doc(`teams/${teamIds[0]}`).get();
-        teamName = teamDoc.data()?.name ?? '';
+      // Collect players from the pre-fetched map (preserves the legacy 10-team
+      // cap on a single event for parity with the previous implementation).
+      const playerDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+      for (const tid of teamIds.slice(0, 10)) {
+        const bucket = playersByTeamId.get(tid);
+        if (bucket) playerDocs.push(...bucket);
       }
+
+      const teamName = teamIds[0] ? (teamsById.get(teamIds[0])?.name ?? '') : '';
 
       const title: string = ev.title ?? 'Event';
       const date: string = ev.date ?? '';
@@ -1957,7 +2045,7 @@ export const sendEventReminders = onSchedule(
       const btnStyle = (bg: string) =>
         `display:inline-block;padding:10px 22px;border-radius:8px;background:${bg};color:white;text-decoration:none;font-weight:600;font-size:14px;margin:0 6px`;
 
-      for (const p of playersSnap.docs) {
+      for (const p of playerDocs) {
         const d = p.data();
         const name: string = `${d.firstName ?? ''} ${d.lastName ?? ''}`.trim() || 'Player';
         const firstName: string = d.firstName ?? name.split(' ')[0];
@@ -2055,6 +2143,11 @@ export const sendRsvpFollowups = onSchedule(
       return;
     }
 
+    // Batch-read all teams + players referenced by tomorrow's events in one
+    // sweep instead of re-reading per event. Same recipient set + same
+    // already-responded dedup logic, much lower read count.
+    const { teamsById, playersByTeamId } = await fetchTeamsAndPlayersForEvents(eventsSnap.docs);
+
     const transporter = createTransporter();
     let totalSent = 0;
 
@@ -2067,16 +2160,15 @@ export const sendRsvpFollowups = onSchedule(
       const existingRsvps: any[] = ev.rsvps ?? [];
       const respondedIds = new Set(existingRsvps.map((r: any) => r.playerId));
 
-      const playersSnap = await admin.firestore()
-        .collection('players')
-        .where('teamId', 'in', teamIds.slice(0, 10))
-        .get();
-
-      let teamName = '';
-      if (teamIds[0]) {
-        const teamDoc = await admin.firestore().doc(`teams/${teamIds[0]}`).get();
-        teamName = teamDoc.data()?.name ?? '';
+      // Collect players from the pre-fetched map (preserves the legacy 10-team
+      // cap on a single event for parity with the previous implementation).
+      const playerDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+      for (const tid of teamIds.slice(0, 10)) {
+        const bucket = playersByTeamId.get(tid);
+        if (bucket) playerDocs.push(...bucket);
       }
+
+      const teamName = teamIds[0] ? (teamsById.get(teamIds[0])?.name ?? '') : '';
 
       const title: string = ev.title ?? 'Event';
       const date: string = ev.date ?? '';
@@ -2085,7 +2177,7 @@ export const sendRsvpFollowups = onSchedule(
 
       const sends: Promise<any>[] = [];
 
-      for (const p of playersSnap.docs) {
+      for (const p of playerDocs) {
         if (respondedIds.has(p.id)) continue;
 
         const d = p.data();
