@@ -124,6 +124,79 @@ function initAdmin(): ReturnType<typeof getFirestore> | null {
 }
 
 // ---------------------------------------------------------------------------
+// Admin profile normalization
+// ---------------------------------------------------------------------------
+
+/**
+ * Resets the admin E2E account to a canonical profile state. Idempotent.
+ *
+ * Why this exists: `createTeamAndBecomeCoach` historically appended a
+ * `{role:'coach'}` membership to every caller — including admins — and over
+ * many test runs this corrupts the admin profile (memberships balloons to
+ * hundreds of stale entries pointing to deleted teams; in one prod-staging
+ * incident `role` itself was mutated to 'coach'). The CF has been patched to
+ * skip the append for admins, but this normalization runs on every E2E run as
+ * defense-in-depth so any other code path that mutates the admin profile is
+ * also self-healed at the start of the next run.
+ *
+ * Canonical state:
+ *   - `role`: 'admin'
+ *   - `memberships`: [{ role: 'admin', isPrimary: true }]
+ *   - `activeContext`: 0
+ */
+async function normalizeAdminProfile(
+  db: ReturnType<typeof getFirestore>,
+): Promise<void> {
+  const adminEmail = process.env.E2E_ADMIN_EMAIL;
+  if (!adminEmail) {
+    console.warn('[global-setup] E2E_ADMIN_EMAIL not set — skipping admin profile normalization.');
+    return;
+  }
+
+  let adminUid: string;
+  try {
+    const userRecord = await getAuth().getUserByEmail(adminEmail.trim().toLowerCase());
+    adminUid = userRecord.uid;
+  } catch (err) {
+    console.warn(`[global-setup] Could not resolve admin UID for ${adminEmail} —`, err);
+    return;
+  }
+
+  const profileRef = db.doc(`users/${adminUid}`);
+  const snap = await profileRef.get();
+  const data = snap.exists ? snap.data() ?? {} : {};
+
+  const currentRole = data.role;
+  const currentMemberships: Array<Record<string, unknown>> = Array.isArray(data.memberships)
+    ? data.memberships
+    : [];
+  const currentContext = data.activeContext;
+
+  const isCanonical =
+    currentRole === 'admin' &&
+    currentMemberships.length === 1 &&
+    currentMemberships[0]?.role === 'admin' &&
+    currentMemberships[0]?.isPrimary === true &&
+    currentContext === 0;
+
+  if (isCanonical) {
+    console.log(`[global-setup] Admin profile already canonical for ${adminEmail} (${adminUid})`);
+    return;
+  }
+
+  await profileRef.set({
+    role: 'admin',
+    memberships: [{ role: 'admin', isPrimary: true }],
+    activeContext: 0,
+  }, { merge: true });
+
+  console.log(
+    `[global-setup] Normalized admin profile ${adminEmail} (${adminUid}): ` +
+      `was role=${currentRole}, memberships.length=${currentMemberships.length}, activeContext=${currentContext}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Test data seeding
 // ---------------------------------------------------------------------------
 
@@ -531,6 +604,22 @@ async function globalSetup(): Promise<void> {
   // ── Step 2: Seed Firestore test data ──────────────────────────────────────
   const db = initAdmin();
   if (db) {
+    // Normalize the admin profile FIRST, before any seeding or test runs.
+    // Past test runs without proper teardown can leave the admin in a corrupt
+    // state (role mutated to 'coach', dozens of stale coach memberships from
+    // createTeamAndBecomeCoach calls, activeContext pointing into the stale
+    // entries). When that happens `hasRole(profile, 'admin')` returns false in
+    // the client, the admin TeamsPage renders the non-admin "No teams yet"
+    // empty state, and admin smoke tests fail mysteriously. This normalize
+    // step is idempotent: if the profile is already canonical it's a no-op.
+    try {
+      await normalizeAdminProfile(db);
+    } catch (err) {
+      // Non-fatal — if we can't normalize, tests may still work (or fail in a
+      // way that points to the underlying issue). Don't block the whole run.
+      console.warn('[global-setup] Admin profile normalization failed (non-fatal) —', err);
+    }
+
     try {
       await seedTestData(db);
     } catch (err) {

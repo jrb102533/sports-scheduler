@@ -369,9 +369,20 @@ export function getActiveMembership(profile: UserProfile | null): import('@/type
 
 // ── Role permission helpers ───────────────────────────────────────────────────
 
-/** Returns true if the user holds ANY of the given roles across all memberships. */
+/**
+ * Returns true if the user holds ANY of the given roles across all memberships
+ * OR via the top-level `profile.role` field.
+ *
+ * Defense-in-depth: we previously consulted only memberships, which broke
+ * admin detection in production-like profiles where memberships had grown to
+ * include non-admin entries (e.g., admins who'd created teams accumulating
+ * stale `coach` memberships). The top-level `role` field remains the canonical
+ * source of truth for the user's primary role; checking it here ensures admin
+ * detection survives whatever crud has piled up in the memberships array.
+ */
 export function hasRole(profile: UserProfile | null, ...roles: UserRole[]): boolean {
   if (!profile) return false;
+  if (profile.role && roles.includes(profile.role)) return true;
   return getMemberships(profile).some(m => roles.includes(m.role));
 }
 
