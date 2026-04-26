@@ -2,6 +2,9 @@
  * useLeagueStore — action unit tests
  *
  * Behaviors under test:
+ *   - subscribe(userLeagueIds) — admin/LM use unscoped query, others use
+ *     scoped documentId() in query, empty userLeagueIds for non-admin returns
+ *     empty leagues + no listener
  *   - subscribe() filters isDeleted leagues out
  *   - addLeague() / updateLeague() write to Firestore
  *   - deleteLeague() calls the deleteLeague Cloud Function via httpsCallable
@@ -27,6 +30,7 @@ const mockQuery = vi.fn<AnyFn>(q => q);
 const mockOrderBy = vi.fn<AnyFn>(() => ({}));
 const mockArrayRemove = vi.fn<AnyFn>(v => ({ _remove: v }));
 const mockWhere = vi.fn<AnyFn>(() => ({}));
+const mockDocumentId = vi.fn<AnyFn>(() => '__id__');
 
 vi.mock('firebase/firestore', () => ({
   collection: (...args: any[]) => mockCollection(...args),
@@ -38,6 +42,7 @@ vi.mock('firebase/firestore', () => ({
   query: (...args: any[]) => mockQuery(...args),
   orderBy: (...args: any[]) => mockOrderBy(...args),
   where: (...args: any[]) => mockWhere(...args),
+  documentId: () => mockDocumentId(),
   arrayRemove: (v: any) => mockArrayRemove(v),
 }));
 
@@ -56,6 +61,7 @@ vi.mock('firebase/functions', () => ({
 
 let mockTeams: Team[] = [];
 let mockEvents: ScheduledEvent[] = [];
+let mockProfile: { role: string } | null = { role: 'admin' };
 
 vi.mock('@/store/useTeamStore', () => ({
   useTeamStore: {
@@ -66,6 +72,12 @@ vi.mock('@/store/useTeamStore', () => ({
 vi.mock('@/store/useEventStore', () => ({
   useEventStore: {
     getState: () => ({ events: mockEvents }),
+  },
+}));
+
+vi.mock('@/store/useAuthStore', () => ({
+  useAuthStore: {
+    getState: () => ({ profile: mockProfile }),
   },
 }));
 
@@ -129,20 +141,22 @@ beforeEach(() => {
   mockDeleteLeagueFn.mockResolvedValue({ data: { success: true } });
   mockTeams = [];
   mockEvents = [];
+  mockProfile = { role: 'admin' };
   useLeagueStore.setState({ leagues: [], loading: true });
 });
 
-// ── subscribe() ───────────────────────────────────────────────────────────────
+// ── subscribe() — admin / league_manager (unscoped) ──────────────────────────
 
-describe('useLeagueStore — subscribe', () => {
+describe('useLeagueStore — subscribe (admin)', () => {
   it('queries with server-side isDeleted filter and populates leagues from snapshot', () => {
+    mockProfile = { role: 'admin' };
     const active = makeLeague('l1');
     mockOnSnapshot.mockImplementation((_q, cb) => {
       cb(makeSnapshot([active]));
       return () => {};
     });
 
-    useLeagueStore.getState().subscribe();
+    useLeagueStore.getState().subscribe([]);
 
     // Server-side equality filter — only docs with isDeleted == false are returned
     expect(mockWhere).toHaveBeenCalledWith('isDeleted', '==', false);
@@ -152,12 +166,79 @@ describe('useLeagueStore — subscribe', () => {
   });
 
   it('sets loading to false after snapshot fires', () => {
+    mockProfile = { role: 'admin' };
     mockOnSnapshot.mockImplementation((_q, cb) => {
       cb(makeSnapshot([]));
       return () => {};
     });
-    useLeagueStore.getState().subscribe();
+    useLeagueStore.getState().subscribe([]);
     expect(useLeagueStore.getState().loading).toBe(false);
+  });
+
+  it('uses unscoped query for league_manager (no documentId IN filter)', () => {
+    mockProfile = { role: 'league_manager' };
+    mockOnSnapshot.mockImplementation((_q, cb) => {
+      cb(makeSnapshot([]));
+      return () => {};
+    });
+    useLeagueStore.getState().subscribe([]);
+
+    // Admin/LM path uses isDeleted filter, never the documentId IN filter
+    const whereCalls = mockWhere.mock.calls;
+    expect(whereCalls.some((c: any[]) => c[0] === 'isDeleted')).toBe(true);
+    expect(whereCalls.some((c: any[]) => c[0] === '__id__')).toBe(false);
+  });
+});
+
+// ── subscribe() — non-admin scoping ──────────────────────────────────────────
+
+describe('useLeagueStore — subscribe (non-admin)', () => {
+  it('returns empty + no-op unsub when non-admin has no league memberships', () => {
+    mockProfile = { role: 'coach' };
+    const unsub = useLeagueStore.getState().subscribe([]);
+    expect(mockOnSnapshot).not.toHaveBeenCalled();
+    expect(useLeagueStore.getState().leagues).toEqual([]);
+    expect(useLeagueStore.getState().loading).toBe(false);
+    expect(() => unsub()).not.toThrow();
+  });
+
+  it('uses documentId() in query scoped to userLeagueIds', () => {
+    mockProfile = { role: 'coach' };
+    mockOnSnapshot.mockImplementation((_q, cb) => {
+      cb(makeSnapshot([makeLeague('l1'), makeLeague('l2')]));
+      return () => {};
+    });
+
+    useLeagueStore.getState().subscribe(['l1', 'l2']);
+
+    expect(mockWhere).toHaveBeenCalledWith('__id__', 'in', ['l1', 'l2']);
+    expect(useLeagueStore.getState().leagues).toHaveLength(2);
+  });
+
+  it('caps the documentId IN list at 30 (Firestore limit)', () => {
+    mockProfile = { role: 'parent' };
+    const lots = Array.from({ length: 50 }, (_, i) => `l${i}`);
+    mockOnSnapshot.mockImplementation((_q, cb) => {
+      cb(makeSnapshot([]));
+      return () => {};
+    });
+    useLeagueStore.getState().subscribe(lots);
+
+    const inCall = mockWhere.mock.calls.find((c: any[]) => c[0] === '__id__');
+    expect(inCall).toBeDefined();
+    expect((inCall as any[])[2]).toHaveLength(30);
+  });
+
+  it('still filters out client-side soft-deleted leagues for non-admin', () => {
+    mockProfile = { role: 'coach' };
+    mockOnSnapshot.mockImplementation((_q, cb) => {
+      cb(makeSnapshot([makeLeague('l1'), makeLeague('l2', { isDeleted: true })]));
+      return () => {};
+    });
+    useLeagueStore.getState().subscribe(['l1', 'l2']);
+    const { leagues } = useLeagueStore.getState();
+    expect(leagues).toHaveLength(1);
+    expect(leagues[0].id).toBe('l1');
   });
 });
 
