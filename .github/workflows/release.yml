@@ -180,74 +180,95 @@ jobs:
             functions-lib.tar.gz
 
 
-  # ── Smoke gate ─────────────────────────────────────────────────────────────
-  smoke-gate:
-    name: Verify Staging Smoke Passed
+  # ── Smoke reminder (NON-BLOCKING) ──────────────────────────────────────────
+  # Surfaces a clearly visible PASS / NO RUN / FAIL for the SHA being deployed
+  # so you can make an informed call at the production environment approval
+  # gate. Never blocks the deploy — the human approval on `environment:
+  # production` is the actual gate.
+  smoke-reminder:
+    name: Smoke Status Reminder
     runs-on: ubuntu-latest
     needs: [compute-tag, build-frontend, build-functions, release]
     permissions:
       actions: read
     steps:
-      - name: Check smoke run for this SHA
+      - name: Look up smoke run for this SHA
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
         run: |
           echo "Querying E2E Smoke — Staging for SHA: $SHA"
 
           RUN_JSON=$(gh run list \
-            --repo "${{ github.repository }}" \
+            --repo "$REPO" \
             --workflow=e2e-smoke.yml \
-            --branch=main \
             --commit="$SHA" \
             --json conclusion,status,databaseId,url \
             --limit=1)
 
           echo "API response: $RUN_JSON"
 
-          # No run found at all
           if [ "$(echo "$RUN_JSON" | jq 'length')" -eq 0 ]; then
-            echo ""
-            echo "ERROR: No E2E Smoke — Staging run found for SHA $SHA."
-            echo "The smoke workflow runs automatically after a staging deploy."
-            echo "Wait for it to complete, then re-run this Release workflow."
-            exit 1
+            {
+              echo "## Smoke status: NO RUN for this SHA"
+              echo ""
+              echo "No E2E Smoke — Staging run found for \`$SHA\`."
+              echo ""
+              echo "Smoke is no longer fired automatically. To run it now:"
+              echo "**Actions -> E2E Smoke — Staging -> Run workflow -> SHA \`$SHA\`**"
+              echo ""
+              echo "_This is a reminder, not a blocker. The production environment approval gate is what actually decides._"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::No smoke run found for $SHA. Consider running smoke before approving production."
+            exit 0
           fi
 
           STATUS=$(echo "$RUN_JSON" | jq -r '.[0].status')
           CONCLUSION=$(echo "$RUN_JSON" | jq -r '.[0].conclusion')
           RUN_URL=$(echo "$RUN_JSON" | jq -r '.[0].url')
 
-          echo "Smoke run status: $STATUS  conclusion: $CONCLUSION"
-          echo "Run URL: $RUN_URL"
-
-          # Still running — fail fast, do not wait
           if [ "$STATUS" = "in_progress" ] || [ "$STATUS" = "queued" ] || [ "$STATUS" = "waiting" ]; then
-            echo ""
-            echo "ERROR: Smoke run is still $STATUS. Do not approve a production deploy"
-            echo "until smoke has completed."
-            echo "Check progress at: $RUN_URL"
-            echo "Re-run this Release workflow once smoke finishes."
-            exit 1
+            {
+              echo "## Smoke status: STILL RUNNING"
+              echo ""
+              echo "Smoke run for \`$SHA\` is currently \`$STATUS\`."
+              echo ""
+              echo "[View live progress]($RUN_URL)"
+              echo ""
+              echo "_Wait for it to finish before deciding at the approval gate._"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Smoke for $SHA is still $STATUS — wait before approving."
+            exit 0
           fi
 
-          # Run exists but did not succeed
           if [ "$CONCLUSION" != "success" ]; then
-            echo ""
-            echo "ERROR: Smoke run concluded with '$CONCLUSION' — production deploy is blocked."
-            echo "Investigate the failing smoke run before deploying to production."
-            echo "Smoke run: $RUN_URL"
-            exit 1
+            {
+              echo "## Smoke status: FAILED"
+              echo ""
+              echo "Smoke run for \`$SHA\` concluded with: **$CONCLUSION**"
+              echo ""
+              echo "[Inspect the failing run]($RUN_URL)"
+              echo ""
+              echo "_Strongly consider rejecting the production approval gate and investigating._"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Smoke FAILED for $SHA — review before approving production."
+            exit 0
           fi
 
-          echo ""
-          echo "Smoke passed for SHA $SHA. Proceeding to production deploy."
+          {
+            echo "## Smoke status: PASSED"
+            echo ""
+            echo "Smoke run for \`$SHA\` passed."
+            echo ""
+            echo "[View full report]($RUN_URL)"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Deploy ─────────────────────────────────────────────────────────────────
   deploy:
     name: Deploy to Firebase
     runs-on: ubuntu-latest
-    needs: [compute-tag, build-frontend, build-functions, release, smoke-gate]
+    needs: [compute-tag, build-frontend, build-functions, release, smoke-reminder]
     environment: production
     permissions: {}   # No GITHUB_TOKEN capability needed — uses FIREBASE_TOKEN_PROD only
     steps:

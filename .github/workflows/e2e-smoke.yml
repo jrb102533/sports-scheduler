@@ -1,14 +1,23 @@
 name: E2E Smoke — Staging
 
-# Runs after every successful deploy to main.
-# Fast, cheap smoke check — catches critical regressions only.
-# Tests tagged @smoke are selected.
+# Manual-only. Fire before triggering a production release to confirm staging
+# is healthy on the SHA you're about to ship.
+#
+# Auto-firing on every staging deploy was removed because each smoke run logs
+# in 5 role accounts × multiple browser contexts × admin unscoped queries —
+# at ~15-20 staging deploys/day this drove tens of thousands of unnecessary
+# Firestore reads/day on staging. The Release workflow surfaces a reminder
+# (PASS / NO RUN / FAIL) for the SHA being deployed when you go to approve
+# the production environment gate; smoke is still recommended before every
+# prod deploy, but it is no longer mandatory and no longer fires automatically.
 
 on:
-  workflow_run:
-    workflows: ["Deploy to Firebase"]
-    types: [completed]
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Commit SHA to test (defaults to current main)'
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -21,12 +30,11 @@ jobs:
   e2e-smoke:
     name: Playwright Smoke — Staging
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ inputs.sha || github.sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -83,13 +91,19 @@ jobs:
 
       - name: Post result to PR
         if: always()
+        env:
+          TARGET_SHA: ${{ inputs.sha || github.sha }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const conclusion = '${{ job.status }}';
-            const sha = '${{ github.event.workflow_run.head_sha }}'.slice(0, 7);
-            const runUrl = `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+            const conclusion = process.env.JOB_STATUS;
+            const fullSha = process.env.TARGET_SHA;
+            const sha = fullSha.slice(0, 7);
+            const runUrl = `https://github.com/${process.env.REPO}/actions/runs/${process.env.RUN_ID}`;
             const icon = conclusion === 'success' ? '✅' : '❌';
             const label = conclusion === 'success' ? 'passed' : 'FAILED';
 
@@ -103,15 +117,15 @@ jobs:
             });
 
             const pr = prs.find(p =>
-              p.merge_commit_sha?.startsWith('${{ github.event.workflow_run.head_sha }}') ||
-              p.head.sha === '${{ github.event.workflow_run.head_sha }}'
+              p.merge_commit_sha?.startsWith(fullSha) ||
+              p.head.sha === fullSha
             );
             if (!pr) return;
 
             const body = [
               `## ${icon} Staging Smoke ${label}`,
               '',
-              `Smoke suite ran against staging after deploy of \`${sha}\`.`,
+              `Smoke suite ran manually against staging on \`${sha}\`.`,
               '',
               `[View full report](${runUrl})`,
             ].join('\n');
