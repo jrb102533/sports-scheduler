@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { SportIcon } from '@/components/ui/SportIcon';
 import { SPORT_TYPE_LABELS, AGE_GROUP_LABELS } from '@/constants';
+import { isTeamUnread } from '@/lib/messagingUnread';
 import type { Team } from '@/types';
 
 interface TeamCardProps {
@@ -13,6 +14,13 @@ interface TeamCardProps {
 }
 
 export function TeamCard({ team, playerCount, pendingRequestCount, onClick }: TeamCardProps) {
+  // Unread dot — appears when the team's denormalized lastMessageAt is newer
+  // than the localStorage lastReadAt for this team. Clears when the user
+  // opens the Chat tab on TeamDetailPage (which calls markTeamRead). This
+  // surfaces unread chat activity at the team-list level without any extra
+  // Firestore reads — the team subscription already provides lastMessageAt.
+  const hasUnreadChat = isTeamUnread(team.id, team.lastMessageAt);
+
   return (
     <Card className="overflow-hidden" onClick={onClick}>
       {/* Color strip */}
@@ -36,7 +44,15 @@ export function TeamCard({ team, playerCount, pendingRequestCount, onClick }: Te
             )}
           </div>
           <div className="min-w-0">
-            <h3 className="font-semibold text-gray-900 truncate">{team.name}</h3>
+            <h3 className="font-semibold text-gray-900 truncate flex items-center gap-1.5">
+              {team.name}
+              {hasUnreadChat && (
+                <span
+                  className="inline-block w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"
+                  aria-label="Unread chat messages"
+                />
+              )}
+            </h3>
             <p className="text-xs text-gray-500">{SPORT_TYPE_LABELS[team.sportType]}</p>
             {team.ageGroup && (
               <div className="mt-1">

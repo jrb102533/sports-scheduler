@@ -31,4 +31,17 @@ export interface Team {
   deletedAt?: string;
   createdAt: string;
   updatedAt: string;
+
+  // Denorm — written by `onTeamMessageCreated` CF (in a follow-up PR).
+  // Drives the unread dot on TeamsPage and TeamDetailPage Chat tab. Compared
+  // against client-side localStorage `lastReadAt` to determine the dot.
+  // Optional because it is absent on legacy teams until the next message
+  // creates it; consumers must treat undefined as "no unread."
+  lastMessageAt?: string;
+
+  // Denorm of coach display info, kept in sync by a follow-up coach-change CF
+  // when `coachIds` changes. Powers DM contact discovery without N+1 user
+  // lookups. Map keys are coach UIDs; values are name + optional email.
+  // Falls back to per-coach getDoc in consumers if missing (legacy teams).
+  coaches?: Record<string, { name: string; email?: string }>;
 }
