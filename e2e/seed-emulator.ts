@@ -134,6 +134,11 @@ async function seedProfile(user: EmuUser): Promise<void> {
   }
   if (user.role === 'league_manager') {
     profile.leagueId = EMU_IDS.leagueId;
+    // SEC-91 (FW-64): LM callables (createLeagueAndBecomeManager,
+    // sendLeagueInvite, requestAvailability, etc.) require an active LM Pro
+    // subscription. Seed the tier so emulator E2E tests don't 401 at the
+    // paywall before reaching their assertions.
+    profile.subscriptionTier = 'league_manager_pro';
   }
 
   await db.doc(`users/${user.uid}`).set(profile, { merge: true });
