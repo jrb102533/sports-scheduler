@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList, UserCheck, Crown, CalendarDays, Trophy, ClipboardCheck, Copy, Check, Mail } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList, UserCheck, Crown, CalendarDays, Trophy, ClipboardCheck, Copy, Check, Mail, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { TeamForm } from '@/components/teams/TeamForm';
 import { PlayerForm } from '@/components/roster/PlayerForm';
@@ -14,6 +14,8 @@ import { SubscribeToCalendarButton } from '@/components/calendar/SubscribeToCale
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DeleteTeamModal } from '@/components/teams/DeleteTeamModal';
 import { AssignCoCoachModal } from '@/components/teams/AssignCoCoachModal';
+import { TeamChatPanel } from '@/components/teams/TeamChatPanel';
+import { isTeamUnread } from '@/lib/messagingUnread';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useEventStore } from '@/store/useEventStore';
@@ -45,7 +47,7 @@ const sendInviteFn = httpsCallable<{
 
 const revokeInviteFn = httpsCallable<{ inviteId: string }>(functions, 'revokeInvite');
 
-type Tab = 'schedule' | 'roster' | 'attendance' | 'standings' | 'info' | 'requests' | 'invites';
+type Tab = 'schedule' | 'roster' | 'attendance' | 'standings' | 'chat' | 'info' | 'requests' | 'invites';
 
 export function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -252,11 +254,17 @@ export function TeamDetailPage() {
     }
   }
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  // Unread dot on the Chat tab — visible iff the team's denormalized
+  // lastMessageAt is newer than the localStorage lastReadAt for this team.
+  // The dot clears as soon as TeamChatPanel mounts and calls markTeamRead.
+  const chatHasUnread = team ? isTeamUnread(team.id, team.lastMessageAt) : false;
+
+  const tabs: { key: Tab; label: string; icon: React.ReactNode; badge?: boolean }[] = [
     { key: 'schedule', label: 'Schedule', icon: <CalendarDays size={14} /> },
     { key: 'roster', label: `Roster (${teamPlayers.length})`, icon: <Users size={14} /> },
     { key: 'attendance', label: 'Attendance', icon: <ClipboardList size={14} /> },
     { key: 'standings', label: 'Standings', icon: <Trophy size={14} /> },
+    { key: 'chat', label: 'Chat', icon: <MessageSquare size={14} />, badge: chatHasUnread },
     { key: 'info', label: 'Info', icon: <Info size={14} /> },
     ...(canSeeRequests ? [{ key: 'requests' as Tab, label: 'Requests', icon: <UserCheck size={14} /> }] : []),
     ...(userCanEdit ? [{ key: 'invites' as Tab, label: 'Invites', icon: <Mail size={14} /> }] : []),
@@ -348,6 +356,12 @@ export function TeamDetailPage() {
             }`}
           >
             {t.icon} {t.label}
+            {t.badge && (
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 ml-0.5"
+                aria-label="Unread messages"
+              />
+            )}
           </button>
         ))}
       </div>
@@ -484,6 +498,13 @@ export function TeamDetailPage() {
               This team is not part of a league. Assign it to a league to see standings.
             </div>
           )}
+        </div>
+      )}
+
+      {/* Chat Tab — lazy-mounted; subscribe only when the user opens it */}
+      {tab === 'chat' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden" style={{ height: 'calc(100vh - 320px)', minHeight: 400 }}>
+          <TeamChatPanel teamId={team.id} />
         </div>
       )}
 

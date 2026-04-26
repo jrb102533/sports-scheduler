@@ -35,6 +35,24 @@ export interface AttendanceRecord {
   status: AttendanceStatus;
 }
 
+/**
+ * A single notification recipient denormalized onto the event document.
+ *
+ * Populated at event write time (onEventWritten trigger) and kept fresh by
+ * onTeamMembershipChanged. Consumed by sendScheduledNotifications to dispatch
+ * reminders without fan-out reads at send time.
+ *
+ * `uid` is absent for contacts that exist only as player parent emails (no
+ * First Whistle account). `email` is always required — it is the primary
+ * dispatch address.
+ */
+export interface EventRecipient {
+  uid?: string;
+  email: string;
+  name: string;
+  type: 'coach' | 'player' | 'parent';
+}
+
 export interface ScheduledEvent {
   id: string;
   title: string;
@@ -88,6 +106,12 @@ export interface ScheduledEvent {
   rsvpDeadline?: string;
   /** Set to 'open' when coaches submit mismatching scores. Cleared on resolution. */
   disputeStatus?: 'open';
+  /**
+   * Denormalized recipient list — computed from teamIds at write time and kept
+   * fresh by triggers. Consumed by sendScheduledNotifications to avoid fan-out
+   * reads at dispatch time. See ADR-012 / FW-82.
+   */
+  recipients?: EventRecipient[];
   createdAt: string;
   updatedAt: string;
 }
