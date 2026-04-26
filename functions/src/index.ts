@@ -3217,7 +3217,10 @@ export const sendAvailabilityReminder = onCall<SendAvailabilityReminderData, Pro
 export const autoCloseCollections = onSchedule(
   { schedule: '5 0 * * *' }, // 00:05 UTC daily
   async () => {
-    if (!ENV.shouldRunScheduledJobs()) { console.log('[autoCloseCollections] skipped: scheduled jobs disabled'); return; }
+    // No ENV.shouldRunScheduledJobs() guard — this maintenance CF runs on
+    // staging and prod alike (FW-82 Phase E). Staging has real data that
+    // also needs expiry and purge. sendScheduledNotifications retains the
+    // guard because notifications to non-existent staging users are wasteful.
     const db = admin.firestore();
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
@@ -3386,7 +3389,8 @@ export const autoCloseCollections = onSchedule(
 export const purgeSoftDeletedData = onSchedule(
   { schedule: '0 1 * * *' }, // 01:00 UTC daily
   async () => {
-    if (!ENV.shouldRunScheduledJobs()) { console.log('[purgeSoftDeletedData] skipped: scheduled jobs disabled'); return; }
+    // No ENV.shouldRunScheduledJobs() guard — see autoCloseCollections note
+    // above (FW-82 Phase E).
     const db = admin.firestore();
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -4912,7 +4916,8 @@ export const acceptLeagueInvite = onCall<AcceptLeagueInviteData, Promise<{ succe
 // rolling 30-day history for any manual audit.
 
 export const cleanupEmailQuota = onSchedule('0 0 * * 0', async () => {
-  if (!ENV.shouldRunScheduledJobs()) { console.log('[cleanupEmailQuota] skipped: scheduled jobs disabled'); return; }
+  // No ENV.shouldRunScheduledJobs() guard — see autoCloseCollections note
+  // above (FW-82 Phase E).
   const db = admin.firestore();
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 30);

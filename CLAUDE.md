@@ -121,24 +121,32 @@ onSnapshot(query(collection(db, 'events'), where('teamId', 'in', userTeamIds)), 
 - Avoids re-reading data already in a Zustand store?
 - For CFs: read count bounded independently of dataset growth?
 
-### Cost Discipline Architecture (ADR-012)
+### Cost Discipline Architecture (ADR-012 + FW-82)
 
 Three hard rules, enforced at the code/CI layer not by tribal knowledge:
 
-**1. Every `onSchedule(...)` MUST guard with `ENV.shouldRunScheduledJobs()`.**
+**1. Notification-dispatch CFs MUST guard with `ENV.shouldRunScheduledJobs()`.** Maintenance CFs (`autoCloseCollections`, `purgeSoftDeletedData`, `cleanupEmailQuota`) do NOT carry this guard — they run on staging and prod alike because staging has real data that needs expiry and purge (FW-82 Phase E). The guard applies only to CFs that send notifications to users (no real staging users to notify).
+
+Current notification dispatcher: `sendScheduledNotifications` (daily 8AM UTC) — replaces the former 4 per-type reminder CFs. Reads `event.recipients[]` (denormalized at write time) — no fan-out reads at send time.
+
 ```typescript
-// functions/src/index.ts
+// functions/src/index.ts — pattern for any NEW notification-dispatch CF
 import { ENV } from './env';
 
-export const myJob = onSchedule(..., async () => {
+export const myNotificationJob = onSchedule(..., async () => {
   if (!ENV.shouldRunScheduledJobs()) {
-    console.log('[myJob] skipped: scheduled jobs disabled');
+    console.log('[myNotificationJob] skipped: scheduled jobs disabled');
     return;
   }
   // real work
 });
 ```
-Defaults: production runs normally; staging skips (no real users to notify); emulator skips. Override on a specific staging deploy with `STAGING_ENABLE_SCHEDULES=true`. Reviewers/agents must reject any new scheduled CF that omits this guard — Firebase silently re-creates Cloud Scheduler jobs as ENABLED on every deploy, so the only durable defense is in the function body.
+
+Shadow mode for new dispatchers: gate with `DISPATCHER_SHADOW_MODE=true` env var on first deploy. Log what would be sent without sending. PM approves disabling shadow mode before real sends go live.
+
+**2. `deploy.yml` is path-scoped — `firebase deploy --only` deploys ONLY what changed.** Docs-only / legal-only / test-only PRs deploy nothing. Path → target mapping lives in `.github/workflows/deploy.yml` `paths-filter` step. When adding a new top-level directory or deployable artifact, update the path filters in the same PR.
+
+**3. NO auto-firing E2E against live staging Firestore.** `e2e-smoke.yml` has no `on:` trigger; the smoke-reminder job in `release.yml` is removed. E2E redesign tracked as FW-80 (move to emulator). Do not propose re-enabling.
 
 **2. `deploy.yml` is path-scoped — `firebase deploy --only` deploys ONLY what changed.** Docs-only / legal-only / test-only PRs deploy nothing. Path → target mapping lives in `.github/workflows/deploy.yml` `paths-filter` step. When adding a new top-level directory or deployable artifact, update the path filters in the same PR.
 
