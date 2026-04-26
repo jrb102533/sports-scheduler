@@ -13,7 +13,7 @@
  * Reads only from useAuthStore — zero additional Firestore reads.
  */
 
-import { useAuthStore, hasRole } from '@/store/useAuthStore';
+import { useAuthStore } from '@/store/useAuthStore';
 
 export function useIsPro(): boolean {
   const profile = useAuthStore(s => s.profile);
@@ -21,7 +21,11 @@ export function useIsPro(): boolean {
   if (!profile) return false;
 
   // Admins bypass the subscription gate entirely.
-  if (hasRole(profile, 'admin')) return true;
+  // Inline check (no hasRole dependency) so this hook stays decoupled from
+  // role-helper imports — keeps the test mock surface tiny.
+  const legacyRole = profile.role;
+  const membershipRoles = (profile.memberships ?? []).map(m => m.role);
+  if (legacyRole === 'admin' || membershipRoles.includes('admin')) return true;
 
   const { subscriptionTier, subscriptionStatus, subscriptionExpiresAt, adminGrantedLM } = profile;
 

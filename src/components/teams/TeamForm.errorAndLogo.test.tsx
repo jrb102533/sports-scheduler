@@ -19,6 +19,9 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Team } from '@/types';
 
+// react-router stub so PaywallAwareError's useNavigate() works without a Router
+vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
+
 // ── Firebase stubs ─────────────────────────────────────────────────────────────
 
 const mockCallable = vi.fn();
@@ -164,7 +167,9 @@ describe('TeamForm — CF error shows error banner', () => {
     fireEvent.click(screen.getByRole('button', { name: /create team/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/permission denied/i)).toBeInTheDocument();
+      // PaywallAwareError now surfaces a paywall-aware CTA instead of the
+      // legacy "Permission denied" string when the caller is not Pro.
+      expect(screen.getByText(/league manager pro is required/i)).toBeInTheDocument();
     });
   });
 

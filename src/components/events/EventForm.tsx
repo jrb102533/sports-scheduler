@@ -13,6 +13,7 @@ import { usePlayerStore } from '@/store/usePlayerStore';
 import { useAvailabilityStore } from '@/store/useAvailabilityStore';
 import { todayISO, formatTime } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS } from '@/constants';
+import { PaywallAwareError } from '@/components/subscription/PaywallAwareError';
 import type { ScheduledEvent, EventType, EventStatus, RecurrenceFrequency } from '@/types';
 import { RefreshCw } from 'lucide-react';
 
@@ -587,9 +588,7 @@ export function EventForm({ open, onClose, initial, editEvent }: EventFormProps)
           </div>
         )}
 
-        {saveError && (
-          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>
-        )}
+        <PaywallAwareError error={saveError || null} action="add or edit an event" />
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={isSaving}>Cancel</Button>
           <Button onClick={() => void handleSubmit()} disabled={isSaving}>{isSaving ? 'Saving…' : editEvent ? 'Save Changes' : 'Create Event'}</Button>
