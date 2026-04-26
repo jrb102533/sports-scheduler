@@ -121,6 +121,29 @@ onSnapshot(query(collection(db, 'events'), where('teamId', 'in', userTeamIds)), 
 - Avoids re-reading data already in a Zustand store?
 - For CFs: read count bounded independently of dataset growth?
 
+### Cost Discipline Architecture (ADR-012)
+
+Three hard rules, enforced at the code/CI layer not by tribal knowledge:
+
+**1. Every `onSchedule(...)` MUST guard with `ENV.shouldRunScheduledJobs()`.**
+```typescript
+// functions/src/index.ts
+import { ENV } from './env';
+
+export const myJob = onSchedule(..., async () => {
+  if (!ENV.shouldRunScheduledJobs()) {
+    console.log('[myJob] skipped: scheduled jobs disabled');
+    return;
+  }
+  // real work
+});
+```
+Defaults: production runs normally; staging skips (no real users to notify); emulator skips. Override on a specific staging deploy with `STAGING_ENABLE_SCHEDULES=true`. Reviewers/agents must reject any new scheduled CF that omits this guard — Firebase silently re-creates Cloud Scheduler jobs as ENABLED on every deploy, so the only durable defense is in the function body.
+
+**2. `deploy.yml` is path-scoped — `firebase deploy --only` deploys ONLY what changed.** Docs-only / legal-only / test-only PRs deploy nothing. Path → target mapping lives in `.github/workflows/deploy.yml` `paths-filter` step. When adding a new top-level directory or deployable artifact, update the path filters in the same PR.
+
+**3. NO auto-firing E2E against live staging Firestore.** `e2e-smoke.yml` has no `on:` trigger; the smoke-reminder job in `release.yml` is removed. E2E redesign tracked as FW-80 (move to emulator). Do not propose re-enabling.
+
 ## TypeScript Import Discipline
 
 ### Type-only imports are mandatory for types (`verbatimModuleSyntax`)

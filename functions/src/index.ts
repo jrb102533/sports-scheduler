@@ -17,6 +17,7 @@ import {
 } from './scheduleAlgorithm';
 import { isCoachOfTeamDoc, isManagerOfLeagueDoc } from './rbacHelpers';
 import { isAllowedTeamColor } from './teamColors';
+import { ENV } from './env';
 
 const APP_URL = process.env.APP_URL ?? 'https://first-whistle-e76f4.web.app';
 const FUNCTIONS_BASE = process.env.FUNCTIONS_BASE ?? 'https://us-central1-first-whistle-e76f4.cloudfunctions.net';
@@ -1998,6 +1999,7 @@ export const sendEventReminders = onSchedule(
     secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret],
   },
   async () => {
+    if (!ENV.shouldRunScheduledJobs()) { console.log('[sendEventReminders] skipped: scheduled jobs disabled'); return; }
     const tomorrow = new Date();
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
     const tomorrowStr = tomorrow.toISOString().slice(0, 10); // YYYY-MM-DD
@@ -2129,6 +2131,7 @@ export const sendRsvpFollowups = onSchedule(
     secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret],
   },
   async () => {
+    if (!ENV.shouldRunScheduledJobs()) { console.log('[sendRsvpFollowups] skipped: scheduled jobs disabled'); return; }
     const tomorrow = new Date();
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
     const tomorrowStr = tomorrow.toISOString().slice(0, 10); // YYYY-MM-DD
@@ -2862,6 +2865,7 @@ async function getPrecipitationProbability(
 export const checkWeatherAlerts = onSchedule(
   { schedule: '0 */6 * * *' }, // every 6 hours
   async () => {
+    if (!ENV.shouldRunScheduledJobs()) { console.log('[checkWeatherAlerts] skipped: scheduled jobs disabled'); return; }
     const db = admin.firestore();
     const now = new Date();
 
@@ -2995,6 +2999,7 @@ export const checkWeatherAlerts = onSchedule(
 // ─── Scheduled: send weekly digest every Monday at 7AM UTC ───────────────────
 
 export const sendWeeklyDigest = onSchedule('0 7 * * 1', async () => {
+  if (!ENV.shouldRunScheduledJobs()) { console.log('[sendWeeklyDigest] skipped: scheduled jobs disabled'); return; }
   const db = admin.firestore();
 
   // Build date range: today (Monday) through Sunday
@@ -3506,6 +3511,7 @@ export const sendAvailabilityReminder = onCall<SendAvailabilityReminderData, Pro
 export const autoCloseCollections = onSchedule(
   { schedule: '5 0 * * *' }, // 00:05 UTC daily
   async () => {
+    if (!ENV.shouldRunScheduledJobs()) { console.log('[autoCloseCollections] skipped: scheduled jobs disabled'); return; }
     const db = admin.firestore();
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
@@ -3674,6 +3680,7 @@ export const autoCloseCollections = onSchedule(
 export const purgeSoftDeletedData = onSchedule(
   { schedule: '0 1 * * *' }, // 01:00 UTC daily
   async () => {
+    if (!ENV.shouldRunScheduledJobs()) { console.log('[purgeSoftDeletedData] skipped: scheduled jobs disabled'); return; }
     const db = admin.firestore();
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -5203,6 +5210,7 @@ export const sendGameDayReminders = onSchedule(
     secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
   },
   async () => {
+    if (!ENV.shouldRunScheduledJobs()) { console.log('[sendGameDayReminders] skipped: scheduled jobs disabled'); return; }
     const db = admin.firestore();
 
     const tomorrow = new Date();
@@ -5384,6 +5392,7 @@ export const sendSnackReminders = onSchedule(
     secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom],
   },
   async () => {
+    if (!ENV.shouldRunScheduledJobs()) { console.log('[sendSnackReminders] skipped: scheduled jobs disabled'); return; }
     const db = admin.firestore();
 
     const inTwoDays = new Date();
@@ -5540,6 +5549,7 @@ export const sendSnackReminders = onSchedule(
 // rolling 30-day history for any manual audit.
 
 export const cleanupEmailQuota = onSchedule('0 0 * * 0', async () => {
+  if (!ENV.shouldRunScheduledJobs()) { console.log('[cleanupEmailQuota] skipped: scheduled jobs disabled'); return; }
   const db = admin.firestore();
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 30);
