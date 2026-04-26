@@ -1,8 +1,8 @@
 # Terms of Service
 
 **First Whistle**
-Effective Date: 2026-03-24
-Last Updated: 2026-03-24
+Effective Date: 2026-04-25
+Last Updated: 2026-04-25
 
 ---
 
@@ -121,15 +121,52 @@ You agree not to use First Whistle to:
 
 ### 7.1 Subscription Plans
 
-Access to certain features requires a paid subscription. Pricing and features are described on our website. We reserve the right to change pricing with at least **30 days' notice** to current subscribers.
+Some features of First Whistle require a paid subscription. The current paid offering is **League Manager Pro**, which unlocks league management capabilities (creating leagues, managing seasons, building schedules, and related tools). League Manager Pro is offered on the following plans:
 
-### 7.2 Billing
+- **Monthly:** $9.99 USD per month, billed monthly
+- **Annual:** $99.99 USD per year, billed annually
 
-By subscribing, you authorize recurring charges to your payment method at the applicable rate. Charges are non-refundable except as required by law or stated in our refund policy.
+Coach, parent, and player features remain free of charge.
 
-### 7.3 Cancellation
+We reserve the right to change pricing or plan composition with at least **30 days' notice** to current subscribers. Existing subscribers retain their current pricing through the end of their billing period before any change takes effect.
 
-You may cancel your subscription at any time. Cancellation takes effect at the end of the current billing period. We do not provide prorated refunds for unused time.
+### 7.2 Free Trial
+
+New League Manager Pro subscriptions begin with a **14-day free trial**. You will not be charged during the trial period. You may cancel at any time during the trial through your account settings or the Stripe Customer Portal, and no charge will be made.
+
+If you do not cancel before the trial ends, your payment method will be charged the applicable subscription rate at the end of the trial, and your subscription will renew at the start of each billing period thereafter.
+
+### 7.3 Payment Processing
+
+All payments are processed by **Stripe, Inc.** ("Stripe"), our third-party payment processor. By subscribing, you agree to Stripe's terms of service and privacy policy. First Whistle does not store, process, or have access to your full payment card details — Stripe handles this directly under PCI-DSS compliance. We receive only the limited customer and subscription metadata necessary to provide and bill for the Service.
+
+By providing a payment method and starting a subscription, you authorize Stripe (on our behalf) to charge that payment method at the applicable rate at the start of each billing period for as long as your subscription remains active.
+
+### 7.4 Failed Payments and Past-Due Grace Period
+
+If a payment fails (for example, due to an expired card or insufficient funds), Stripe will retry the charge per its standard retry schedule. We provide a **7-day grace period** during which your subscription remains active and you retain access to paid features.
+
+If payment is not successfully collected within the grace period, your access to paid features will be suspended until you update your payment method and a successful charge is processed.
+
+### 7.5 No Refunds
+
+**All subscription fees are non-refundable.** We do not provide refunds or credits for partial billing periods, unused time, or features you did not use during a paid period. This includes but is not limited to:
+
+- Time remaining after you cancel
+- Time during which you did not actively use the Service
+- Time during which a feature was temporarily unavailable but restored within a reasonable period
+
+Refund exceptions will only be made where required by applicable law.
+
+### 7.6 Cancellation
+
+You may cancel your subscription at any time through your account settings or the Stripe Customer Portal. **Cancellation takes effect at the end of your current billing period** — you will continue to have access to paid features until that date, after which your account will revert to free-tier access. We do not provide prorated refunds for unused time within a billing period.
+
+If you cancel during the 14-day free trial, cancellation takes effect immediately and no charge will be made.
+
+### 7.7 Account Suspension or Termination
+
+If your subscription is canceled, expires, or is suspended for non-payment, your data is preserved but access to paid features is removed. League Manager Pro features such as league management, season creation, and schedule generation will be unavailable until you resubscribe.
 
 ---
 
