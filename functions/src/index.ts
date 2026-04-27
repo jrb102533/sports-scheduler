@@ -41,6 +41,11 @@ const rsvpSecret = defineSecret('RSVP_HMAC_SECRET');
 // HMAC secret for signing calendar feed URLs.
 // Provision with: firebase functions:secrets:set ICAL_SECRET
 const icalSecret = defineSecret('ICAL_SECRET');
+// Optional toggle for sendScheduledNotifications. Set to 'true' on a project
+// to make the dispatcher log-but-not-send. Provision per-environment:
+//   printf 'true' | gcloud secrets create DISPATCHER_SHADOW_MODE --project=<proj> --data-file=-
+// Then deploy. Default (secret absent or value !== 'true') = real sends.
+const dispatcherShadowMode = defineSecret('DISPATCHER_SHADOW_MODE');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -2085,7 +2090,7 @@ export async function fetchTeamsAndPlayersForEvents(
 export const sendScheduledNotifications = onSchedule(
   {
     schedule: '0 8 * * *',
-    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret],
+    secrets: [smtpHost, smtpPort, smtpUser, smtpPass, emailFrom, rsvpSecret, dispatcherShadowMode],
   },
   async () => {
     if (!ENV.shouldRunScheduledJobs()) {
