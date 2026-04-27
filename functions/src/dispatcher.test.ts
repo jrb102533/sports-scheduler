@@ -369,6 +369,53 @@ describe('sendScheduledNotifications', () => {
 
       expect(evDoc.ref.update).toHaveBeenCalledWith(expect.objectContaining({ gameDaySent: true }));
     });
+
+    // ── FW-97: yes-count read from subcollection ─────────────────────────────
+
+    it('(FW-97) email body shows correct yes-count from subcollection (3 yes, 2 no)', async () => {
+      _events.push(makeEventDoc('ev-gd-yescount', {
+        date: TODAY,
+        status: 'scheduled',
+        title: 'Yes-Count Game',
+        recipients: [makeRecipient()],
+        gameDaySent: false,
+        // Legacy array absent — count must come from subcollection.
+      }));
+
+      _rsvpSubcollection.set('ev-gd-yescount', [
+        { uid: 'uid-a', response: 'yes' },
+        { uid: 'uid-b', response: 'yes' },
+        { uid: 'uid-c', response: 'yes' },
+        { uid: 'uid-d', response: 'no' },
+        { uid: 'uid-e', response: 'no' },
+      ]);
+
+      await getHandler()();
+
+      expect(sendMailMock).toHaveBeenCalledTimes(1);
+      const call = sendMailMock.mock.calls[0][0] as { text: string; html: string };
+      // Both plaintext and HTML body must show "3 attending".
+      expect(call.text).toContain('RSVPs: 3 attending');
+      expect(call.html).toContain('3 attending');
+    });
+
+    it('(FW-97) email body shows 0 attending when no RSVP subcollection docs exist', async () => {
+      _events.push(makeEventDoc('ev-gd-zero', {
+        date: TODAY,
+        status: 'scheduled',
+        title: 'Zero RSVPs Game',
+        recipients: [makeRecipient()],
+        gameDaySent: false,
+      }));
+      // _rsvpSubcollection not set → mock returns empty snapshot → count = 0
+
+      await getHandler()();
+
+      expect(sendMailMock).toHaveBeenCalledTimes(1);
+      const call = sendMailMock.mock.calls[0][0] as { text: string; html: string };
+      expect(call.text).toContain('RSVPs: 0 attending');
+      expect(call.html).toContain('0 attending');
+    });
   });
 
   describe('snack reminder', () => {
