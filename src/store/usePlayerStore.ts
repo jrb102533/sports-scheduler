@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuthStore, getMemberships } from './useAuthStore';
+import { useTeamStore } from './useTeamStore';
 import type { Player, SensitivePlayerData, UserProfile } from '@/types';
 
 // Module-level caches — shared across the singleton store instance.
@@ -48,6 +49,16 @@ function extractTeamIds(profile: UserProfile | null): string[] {
     if (m.teamId) set.add(m.teamId);
   }
   if (profile.teamId) set.add(profile.teamId);
+  return [...set];
+}
+
+function extractLeagueIds(profile: UserProfile | null): string[] {
+  if (!profile) return [];
+  const set = new Set<string>();
+  if (profile.leagueId) set.add(profile.leagueId);
+  for (const m of getMemberships(profile)) {
+    if (m.role === 'league_manager' && m.leagueId) set.add(m.leagueId);
+  }
   return [...set];
 }
 
@@ -212,7 +223,24 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
 
       // Non-admin: fan-out listeners across every team the user has membership in.
       teardownAdmin();
-      const wanted = new Set(extractTeamIds(profile));
+
+      let wanted: Set<string>;
+
+      if (profile.role === 'league_manager') {
+        // LMs have leagueId memberships, not teamId memberships. Derive team set
+        // by intersecting the LM's leagueIds with teams.leagueIds from the team store.
+        const lmLeagueIds = new Set(extractLeagueIds(profile));
+        const directTeamIds = new Set(extractTeamIds(profile));
+        const allTeams = useTeamStore.getState().teams;
+        for (const team of allTeams) {
+          if (team.leagueIds?.some(lid => lmLeagueIds.has(lid))) {
+            directTeamIds.add(team.id);
+          }
+        }
+        wanted = directTeamIds;
+      } else {
+        wanted = new Set(extractTeamIds(profile));
+      }
 
       for (const id of Object.keys(teamListeners)) {
         if (!wanted.has(id)) unsubscribeTeam(id);
@@ -233,19 +261,36 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
 
     reconcile();
 
-    // Re-reconcile whenever the profile's role or set of teamIds changes.
+    // Re-reconcile whenever the profile's role, set of teamIds, or leagueIds changes.
     // A signature string lets us ignore unrelated auth-store changes (token
     // refresh, unrelated field updates) that would otherwise churn listeners.
-    const computeSignature = (p: UserProfile | null) => {
+    const computeAuthSignature = (p: UserProfile | null) => {
       if (!p) return '';
-      const ids = extractTeamIds(p).sort().join(',');
-      return `${p.role}|${ids}`;
+      const teamIds = extractTeamIds(p).sort().join(',');
+      const leagueIds = extractLeagueIds(p).sort().join(',');
+      return `${p.role}|${teamIds}|${leagueIds}`;
     };
-    let lastSignature = computeSignature(getProfile());
+    let lastAuthSignature = computeAuthSignature(getProfile());
     const authUnsub = useAuthStore.subscribe((state) => {
-      const sig = computeSignature(state.profile);
-      if (sig !== lastSignature) {
-        lastSignature = sig;
+      const sig = computeAuthSignature(state.profile);
+      if (sig !== lastAuthSignature) {
+        lastAuthSignature = sig;
+        reconcile();
+      }
+    });
+
+    // Re-reconcile when teams change (LMs derive their player set from team store).
+    // Compute a signature from team IDs + their leagueIds to avoid churn on
+    // unrelated team-store updates (e.g. loading flag changes).
+    const computeTeamSignature = () => {
+      const teams = useTeamStore.getState().teams;
+      return teams.map(t => `${t.id}:${(t.leagueIds ?? []).sort().join('/')}`).sort().join(',');
+    };
+    let lastTeamSignature = computeTeamSignature();
+    const teamUnsub = useTeamStore.subscribe(() => {
+      const sig = computeTeamSignature();
+      if (sig !== lastTeamSignature) {
+        lastTeamSignature = sig;
         reconcile();
       }
     });
@@ -254,6 +299,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       teardownNonAdmin();
       teardownAdmin();
       authUnsub();
+      teamUnsub();
     };
   },
 
