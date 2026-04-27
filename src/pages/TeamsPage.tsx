@@ -30,14 +30,24 @@ export function TeamsPage() {
   const [requestingIds, setRequestingIds] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
 
+  // Admins and league managers see every team (their stores are unscoped via
+  // useTeamStore's admin/LM bypass). Treating LM the same as admin in the page
+  // filter restores parity — without this, an LM whose staging account isn't
+  // also a coach on any team falls through to the personal-membership filter
+  // and ends up seeing zero teams, with no path to navigate into a team detail
+  // page. The architecturally-correct future fix is to scope LMs to teams in
+  // *their* leagues only (team.leagueIds intersected with managed league IDs);
+  // until that lands, the bypass at least lets LMs see and operate on the
+  // teams they manage.
   const isAdmin = hasRole(profile, 'admin');
+  const isAdminOrLM = hasRole(profile, 'admin', 'league_manager');
   const isCoachOrAdmin = hasRole(profile, 'admin', 'coach', 'league_manager');
 
   // Pending join request counts per team — only loaded for coaches/admins
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
 
   // Determine the user's own teams — check all memberships, not just profile.teamId
-  const myTeams: Team[] = isAdmin
+  const myTeams: Team[] = isAdminOrLM
     ? teams
     : teams.filter(t =>
         t.createdBy === profile?.uid ||
@@ -46,13 +56,13 @@ export function TeamsPage() {
         isMemberOfTeam(profile, t.id)
       );
 
-  const otherTeams: Team[] = isAdmin
+  const otherTeams: Team[] = isAdminOrLM
     ? []
     : teams.filter(t => !myTeams.find(m => m.id === t.id) && !t.isPrivate);
 
-  // Load existing join request statuses for other teams when user is logged in (non-admin)
+  // Load existing join request statuses for other teams when user is logged in (non-admin/non-LM)
   useEffect(() => {
-    if (!user || isAdmin || otherTeams.length === 0) return;
+    if (!user || isAdminOrLM || otherTeams.length === 0) return;
     const uid = user.uid;
     Promise.all(
       otherTeams.map(async t => {
@@ -65,7 +75,7 @@ export function TeamsPage() {
       setRequestStatuses(map);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid, isAdmin, teams.length]);
+  }, [user?.uid, isAdminOrLM, teams.length]);
 
   // Load pending join request counts for coaches/admins
   useEffect(() => {
@@ -106,7 +116,7 @@ export function TeamsPage() {
     <div className="p-4 sm:p-6">
       <div className="flex items-center justify-between mb-6">
         <p className="text-sm text-gray-500">
-          {isAdmin
+          {isAdminOrLM
             ? `${teams.length} ${teams.length === 1 ? 'team' : 'teams'}`
             : `${myTeams.length} ${myTeams.length === 1 ? 'team' : 'teams'}`}
         </p>
@@ -117,8 +127,8 @@ export function TeamsPage() {
         )}
       </div>
 
-      {/* Non-admin with no teams, but teams exist to browse */}
-      {!isAdmin && !hasMyTeams && otherTeams.length === 0 && (
+      {/* Non-admin/non-LM with no teams, but teams exist to browse */}
+      {!isAdminOrLM && !hasMyTeams && otherTeams.length === 0 && (
         <EmptyState
           icon={<Users size={40} />}
           title="No teams yet"
@@ -129,7 +139,7 @@ export function TeamsPage() {
         />
       )}
 
-      {!isAdmin && !hasMyTeams && otherTeams.length > 0 && (
+      {!isAdminOrLM && !hasMyTeams && otherTeams.length > 0 && (
         <FindTeamSection
           teams={otherTeams}
           players={players}
@@ -143,7 +153,7 @@ export function TeamsPage() {
         />
       )}
 
-      {(isAdmin || hasMyTeams) && (
+      {(isAdminOrLM || hasMyTeams) && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             {myTeams.map(team => (
@@ -157,7 +167,7 @@ export function TeamsPage() {
             ))}
           </div>
 
-          {!isAdmin && otherTeams.length > 0 && (
+          {!isAdminOrLM && otherTeams.length > 0 && (
             <FindTeamSection
               teams={otherTeams}
               players={players}
