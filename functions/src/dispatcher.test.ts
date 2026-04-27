@@ -118,7 +118,7 @@ const mockFirestore = {
     }
 
     // Default: events top-level query with where() chaining.
-    let _conditions: Array<{ field: string; op: string; values: unknown[] }> = [];
+    const _conditions: Array<{ field: string; op: string; values: unknown[] }> = [];
     const obj = {
       where(field: string, op: string, values: unknown) {
         _conditions.push({ field, op, values: Array.isArray(values) ? values : [values] });

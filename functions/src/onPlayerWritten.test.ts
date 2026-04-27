@@ -60,7 +60,7 @@ const _eventsByTeam = new Map<
 >();
 
 function makeDocRef(path: string) {
-  const updateFn = vi.fn((data: DocData) => {
+  const updateFn = vi.fn((_data: DocData) => {
     Promise.resolve();
     return Promise.resolve();
   });

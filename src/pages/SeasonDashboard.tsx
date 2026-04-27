@@ -264,6 +264,10 @@ function EditDivisionModal({ open, onClose, leagueId, division, leagueTeams, oth
 
   useEffect(() => {
     setSelectedTeamIds(new Set(division.teamIds));
+    // Intentionally omit division.teamIds: re-syncing on every parent rerender
+    // would clobber the user's in-progress selections. Re-sync only when the
+    // division changes or the modal re-opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [division.id, open]);
 
   function toggleTeam(id: string) {

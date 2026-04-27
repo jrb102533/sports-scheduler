@@ -35,7 +35,6 @@ import {
   type ScheduleSurfaceInput,
   type DivisionInput,
   type CoachAvailabilityInput,
-  type AvailabilityState,
 } from './scheduleAlgorithm';
 
 // ─── Test Data Factory ────────────────────────────────────────────────────────

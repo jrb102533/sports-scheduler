@@ -165,8 +165,6 @@ function lmReadAllowed(
 
 // ─── Test fixtures ────────────────────────────────────────────────────────────
 
-const LEAGUE_ID = 'league-abc';
-
 const lmWithSub: AuthToken = {
   uid: 'lm-sub-uid',
   role: 'league_manager',

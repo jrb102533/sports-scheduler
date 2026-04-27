@@ -12,9 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { League } from '../types';
-import type { Team } from '../types';
-import type { ScheduledEvent } from '../types';
+import type { League, Team, ScheduledEvent } from '../types';
 
 type AnyFn = (...args: any[]) => any;
 
@@ -96,35 +94,6 @@ function makeLeague(id: string, overrides: Partial<League> = {}): League {
     updatedAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
   } as League;
-}
-
-function makeTeam(id: string, leagueIds: string[] = []): Team {
-  return {
-    id,
-    name: `Team ${id}`,
-    sportType: 'soccer',
-    color: '#000',
-    createdBy: 'uid',
-    ownerName: 'Coach',
-    leagueIds,
-    createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-01-01T00:00:00.000Z',
-  } as Team;
-}
-
-function makeEvent(id: string, teamIds: string[], overrides: Partial<ScheduledEvent> = {}): ScheduledEvent {
-  return {
-    id,
-    title: `Event ${id}`,
-    type: 'game',
-    status: 'scheduled',
-    date: '2026-06-01',
-    startTime: '10:00',
-    teamIds,
-    createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-01-01T00:00:00.000Z',
-    ...overrides,
-  } as ScheduledEvent;
 }
 
 function makeSnapshot(leagues: League[]) {
