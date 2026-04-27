@@ -1,12 +1,11 @@
 /**
- * EventCard — RSVP subcollection migration (FW-97)
+ * EventCard — RSVP subcollection (FW-97 / FW-95)
  *
  * Verifies that EventCard:
  *   A) Calls submitRsvp (not setDoc) when a player RSVPs
- *   B) Reads RSVP state from useRsvpStore.rsvps[eventId] instead of event.rsvps
- *   C) Falls back to event.rsvps when store has no entry for the event
- *   D) Coach going-count reads from store, not event.rsvps
- *   E) submitRsvp receives the correct (eventId, uid, name, response, playerId) args
+ *   B) Reads RSVP state from useRsvpStore.rsvps[eventId] (sole source of truth; FW-95 dropped event.rsvps)
+ *   C) Coach going-count reads from store
+ *   D) submitRsvp receives the correct (eventId, uid, name, response, playerId) args
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -176,7 +175,7 @@ describe('EventCard — RSVP display reads from store (FW-97)', () => {
         { uid: 'uid-alice', playerId: 'player-123', name: 'Alice Smith', response: 'yes', updatedAt: '2026-01-01' },
       ],
     };
-    render(<EventCard event={makeEvent({ rsvps: [] })} teams={[]} />);
+    render(<EventCard event={makeEvent()} teams={[]} />);
     expect(screen.getByText(/going/i)).toBeInTheDocument();
   });
 
@@ -186,7 +185,7 @@ describe('EventCard — RSVP display reads from store (FW-97)', () => {
         { uid: 'uid-alice', playerId: 'player-123', name: 'Alice Smith', response: 'maybe', updatedAt: '2026-01-01' },
       ],
     };
-    render(<EventCard event={makeEvent({ rsvps: [] })} teams={[]} />);
+    render(<EventCard event={makeEvent()} teams={[]} />);
     expect(screen.getByText(/maybe/i)).toBeInTheDocument();
   });
 
@@ -197,32 +196,12 @@ describe('EventCard — RSVP display reads from store (FW-97)', () => {
         { uid: 'uid-alice', playerId: 'player-123', name: 'Alice Smith', response: 'yes', updatedAt: '2026-01-01' },
       ],
     };
-    render(<EventCard event={makeEvent({ rsvps: [] })} teams={[]} />);
+    render(<EventCard event={makeEvent()} teams={[]} />);
     expect(screen.getByRole('button', { name: /rsvp/i })).toBeInTheDocument();
   });
 });
 
-// ── C. Legacy event.rsvps fallback ────────────────────────────────────────────
-
-describe('EventCard — falls back to event.rsvps when store is empty (FW-97)', () => {
-  beforeEach(() => {
-    currentUser = { uid: 'uid-alice' };
-    currentProfile = makePlayerProfile();
-    mockStoreRsvps = {};
-  });
-
-  it('shows Going badge using event.rsvps when store has no entry for the event', () => {
-    const event = makeEvent({
-      rsvps: [
-        { playerId: 'player-123', name: 'Alice Smith', email: 'alice@example.com', response: 'yes', respondedAt: '2026-01-01' },
-      ],
-    });
-    render(<EventCard event={event} teams={[]} />);
-    expect(screen.getByText(/going/i)).toBeInTheDocument();
-  });
-});
-
-// ── D. Coach going-count reads from store ────────────────────────────────────
+// ── C. Coach going-count reads from store ────────────────────────────────────
 
 describe('EventCard — coach going count reads from store (FW-97)', () => {
   beforeEach(() => {
@@ -238,7 +217,7 @@ describe('EventCard — coach going count reads from store (FW-97)', () => {
         { uid: 'uid-c', name: 'Charlie', response: 'no', updatedAt: '2026-01-01' },
       ],
     };
-    render(<EventCard event={makeEvent({ rsvps: [] })} teams={[]} />);
+    render(<EventCard event={makeEvent()} teams={[]} />);
     expect(screen.getByText(/2 going/i)).toBeInTheDocument();
   });
 });

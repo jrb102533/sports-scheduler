@@ -44,8 +44,8 @@ export function AttendanceTracker({ event }: AttendanceTrackerProps) {
 
   const recorded = event.attendance?.length ?? 0;
   const hasNoAttendance = recorded === 0;
-  // Prefer subcollection RSVPs from store; fall back to legacy array during migration
-  const allRsvps = storeRsvps ?? event.rsvps ?? [];
+  // Subcollection RSVPs from store are the sole source of truth (FW-95: legacy array dropped)
+  const allRsvps = storeRsvps ?? [];
   const canPrefill = hasNoAttendance && allRsvps.length > 0;
 
   function handlePrefillFromRsvps() {

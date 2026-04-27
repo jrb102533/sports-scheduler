@@ -28,8 +28,8 @@ function RsvpIndicator({ event }: { event: ScheduledEvent; onOpenDetail?: () => 
 
   // Use active membership role so context-switcher is respected
   const role = getActiveMembership(profile)?.role ?? profile?.role;
-  // Prefer subcollection data from the store; fall back to legacy array while migration is live
-  const rsvps = storeRsvps ?? event.rsvps ?? [];
+  // Subcollection data from the store is the sole source of truth (FW-95: legacy array dropped)
+  const rsvps = storeRsvps ?? [];
 
   // Coach / admin / league_manager: show going count
   if (role === 'coach' || role === 'admin' || role === 'league_manager') {
@@ -52,7 +52,7 @@ function RsvpIndicator({ event }: { event: ScheduledEvent; onOpenDetail?: () => 
     // Prefer the Firestore player doc ID (matches email-link RSVPs); fall back to auth UID
     const playerId = profile?.playerId ?? uid;
 
-    // Match by playerId in subcollection entries (RsvpEntry.playerId) or legacy EventRsvp.playerId
+    // Match by playerId in subcollection entries (RsvpEntry.playerId)
     const myRsvp = rsvps.find(r => r.playerId === playerId);
 
     const handleRsvp = async (response: 'yes' | 'no' | 'maybe', e: React.MouseEvent) => {
