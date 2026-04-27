@@ -48,7 +48,7 @@ export const useEventStore = create<EventStore>((set, get) => ({
     // Draft events are surfaced in the league/season dashboard via separate queries.
     //
     // Non-admin users are also scoped to their own team IDs (up to 30 per Firestore
-    // `in` limit) to prevent reading every event in the database.
+    // `array-contains-any` limit) to prevent reading every event in the database.
     //
     // Date floor (90 days back): bounds admin reads against unbounded growth — the
     // calendar/home views only need recent + future events. Older completed events
@@ -66,7 +66,7 @@ export const useEventStore = create<EventStore>((set, get) => ({
         )
       : query(
           collection(db, 'events'),
-          where('teamId', 'in', userTeamIds.slice(0, 30)),
+          where('teamIds', 'array-contains-any', userTeamIds.slice(0, 30)),
           where('status', 'in', [...NON_DRAFT_STATUSES]),
           where('date', '>=', dateFloorIso),
           orderBy('date'),

@@ -185,17 +185,26 @@ describe('useEventStore — subscribe (non-admin scoping)', () => {
     mockGetAuthState.mockReturnValue({ profile: { role: 'coach' } });
   });
 
-  it('adds a teamId "in" filter scoped to the provided team IDs', () => {
+  it('adds a teamIds "array-contains-any" filter scoped to the provided team IDs', () => {
     mockOnSnapshot.mockReturnValue(() => {});
     useEventStore.getState().subscribe(['team-1', 'team-2']);
-    expect(mockWhere).toHaveBeenCalledWith('teamId', 'in', ['team-1', 'team-2']);
+    expect(mockWhere).toHaveBeenCalledWith('teamIds', 'array-contains-any', ['team-1', 'team-2']);
   });
 
-  it('still includes the status filter alongside the teamId filter', () => {
+  it('does NOT use the singular teamId "in" operator (regression guard for PR #603)', () => {
+    mockOnSnapshot.mockReturnValue(() => {});
+    useEventStore.getState().subscribe(['team-1', 'team-2']);
+    const hasStaleClause = mockWhere.mock.calls.some(
+      c => c[0] === 'teamId' && c[1] === 'in',
+    );
+    expect(hasStaleClause).toBe(false);
+  });
+
+  it('still includes the status filter alongside the teamIds filter', () => {
     mockOnSnapshot.mockReturnValue(() => {});
     useEventStore.getState().subscribe(['team-1']);
     const whereFields = mockWhere.mock.calls.map(c => c[0] as string);
-    expect(whereFields).toContain('teamId');
+    expect(whereFields).toContain('teamIds');
     expect(whereFields).toContain('status');
   });
 
@@ -214,13 +223,13 @@ describe('useEventStore — subscribe (non-admin scoping)', () => {
     expect(() => unsub()).not.toThrow();
   });
 
-  it('caps the teamId filter at 30 IDs (Firestore in-query limit)', () => {
+  it('caps the teamIds filter at 30 IDs (Firestore array-contains-any limit)', () => {
     mockOnSnapshot.mockReturnValue(() => {});
     const manyIds = Array.from({ length: 35 }, (_, i) => `team-${i}`);
     useEventStore.getState().subscribe(manyIds);
-    const teamIdCall = mockWhere.mock.calls.find(c => c[0] === 'teamId');
-    expect(teamIdCall).toBeDefined();
-    expect((teamIdCall![2] as string[]).length).toBe(30);
+    const teamIdsCall = mockWhere.mock.calls.find(c => c[0] === 'teamIds');
+    expect(teamIdsCall).toBeDefined();
+    expect((teamIdsCall![2] as string[]).length).toBe(30);
   });
 });
 
