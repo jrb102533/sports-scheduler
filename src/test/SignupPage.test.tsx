@@ -209,6 +209,124 @@ describe('SignupPage — form validation', () => {
     });
     expect(mockSignup).not.toHaveBeenCalled();
   });
+
+  it('shows a validation error when last name is empty', async () => {
+    renderPage();
+    fireEvent.change(screen.getByRole('textbox', { name: /first name/i }), {
+      target: { value: 'Alice' },
+    });
+    // Deliberately leave last name blank
+    fireEvent.change(screen.getByRole('textbox', { name: /email/i }), {
+      target: { value: 'alice@example.com' },
+    });
+    const form = document.querySelector('form')!;
+    const pwInputs = form.querySelectorAll('input[type="password"]');
+    fireEvent.change(pwInputs[0], { target: { value: 'password123' } });
+    fireEvent.change(pwInputs[1], { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /terms of service and privacy policy/i }));
+
+    submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByText(/last name is required/i)).toBeInTheDocument();
+    });
+    expect(mockSignup).not.toHaveBeenCalled();
+  });
+
+  it('shows a validation error when first name is only whitespace', async () => {
+    renderPage();
+    fireEvent.change(screen.getByRole('textbox', { name: /first name/i }), {
+      target: { value: '   ' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: /last name/i }), {
+      target: { value: 'Smith' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: /email/i }), {
+      target: { value: 'alice@example.com' },
+    });
+    const form = document.querySelector('form')!;
+    const pwInputs = form.querySelectorAll('input[type="password"]');
+    fireEvent.change(pwInputs[0], { target: { value: 'password123' } });
+    fireEvent.change(pwInputs[1], { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /terms of service and privacy policy/i }));
+
+    submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByText(/first name is required/i)).toBeInTheDocument();
+    });
+    expect(mockSignup).not.toHaveBeenCalled();
+  });
+
+  it('shows a validation error when last name is only whitespace', async () => {
+    renderPage();
+    fireEvent.change(screen.getByRole('textbox', { name: /first name/i }), {
+      target: { value: 'Alice' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: /last name/i }), {
+      target: { value: '   ' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: /email/i }), {
+      target: { value: 'alice@example.com' },
+    });
+    const form = document.querySelector('form')!;
+    const pwInputs = form.querySelectorAll('input[type="password"]');
+    fireEvent.change(pwInputs[0], { target: { value: 'password123' } });
+    fireEvent.change(pwInputs[1], { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /terms of service and privacy policy/i }));
+
+    submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByText(/last name is required/i)).toBeInTheDocument();
+    });
+    expect(mockSignup).not.toHaveBeenCalled();
+  });
+
+  it('passes displayName as "firstName lastName" (trimmed) to signup', async () => {
+    mockSignup.mockResolvedValue(undefined);
+
+    renderPage();
+    fireEvent.change(screen.getByRole('textbox', { name: /first name/i }), {
+      target: { value: '  Jane  ' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: /last name/i }), {
+      target: { value: '  Doe  ' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: /email/i }), {
+      target: { value: 'jane@example.com' },
+    });
+    const form = document.querySelector('form')!;
+    const pwInputs = form.querySelectorAll('input[type="password"]');
+    fireEvent.change(pwInputs[0], { target: { value: 'password123' } });
+    fireEvent.change(pwInputs[1], { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /terms of service and privacy policy/i }));
+
+    submitForm();
+
+    await waitFor(() => expect(mockSignup).toHaveBeenCalled());
+
+    // Third argument to signup is displayName
+    const callArgs = mockSignup.mock.calls[0] as unknown[];
+    expect(callArgs[2]).toBe('Jane Doe');
+  });
+
+  it('does not derive displayName from email — uses entered name values', async () => {
+    mockSignup.mockResolvedValue(undefined);
+
+    renderPage();
+    fillForm('jrboyd33dev+prodtest1@gmail.com');
+
+    submitForm();
+
+    await waitFor(() => expect(mockSignup).toHaveBeenCalled());
+
+    // Third argument must NOT be the email local-part
+    const callArgs = mockSignup.mock.calls[0] as unknown[];
+    expect(callArgs[2]).not.toBe('jrboyd33dev+prodtest1');
+    // It should be the name we entered via fillForm ('Alice Smith')
+    expect(callArgs[2]).toBe('Alice Smith');
+  });
 });
 
 describe('SignupPage — invited user flow (verifyInvitedUser finds invite)', () => {
