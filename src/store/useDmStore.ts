@@ -34,6 +34,7 @@ interface DmState {
     otherUid: string,
     otherName: string,
     text: string,
+    teamId: string,
   ) => Promise<void>;
 }
 
@@ -118,17 +119,20 @@ export const useDmStore = create<DmState>((set) => ({
     return unsub;
   },
 
-  async sendDm(myUid, myName, otherUid, otherName, text) {
+  async sendDm(myUid, myName, otherUid, otherName, text, teamId) {
     const threadId = dmThreadId(myUid, otherUid);
     const threadRef = doc(db, 'dmThreads', threadId);
     const now = serverTimestamp();
 
-    // Upsert thread metadata
+    // Upsert thread metadata. teamId grounds the coach-led permission
+    // (SEC-71): Firestore rules verify at least one participant is a coach
+    // of this team, and that the other participant is on the team.
     await setDoc(
       threadRef,
       {
         participants: [myUid, otherUid].sort(),
         participantNames: { [myUid]: myName, [otherUid]: otherName },
+        teamId,
         lastMessage: text.trim(),
         lastMessageAt: now,
         updatedAt: now,

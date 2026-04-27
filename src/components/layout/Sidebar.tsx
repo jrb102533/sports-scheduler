@@ -5,6 +5,8 @@ import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useAuthStore, getMemberships } from '@/store/useAuthStore';
 import { useEventStore } from '@/store/useEventStore';
+import { useDmStore } from '@/store/useDmStore';
+import { countUnreadThreads } from '@/lib/messagingUnread';
 import { FLAGS } from '@/lib/flags';
 import { todayISO, formatTime } from '@/lib/dateUtils';
 import { format, parseISO, isToday, isTomorrow } from 'date-fns';
@@ -19,7 +21,7 @@ const navItems = [
   { to: '/calendar', label: 'Calendar', icon: Calendar },
   { to: '/teams', label: 'Teams', icon: Users },
   { to: '/notifications', label: 'Notifications', icon: Bell },
-  { to: '/messaging', label: 'Messaging', icon: MessageSquare },
+  { to: '/messaging', label: 'Direct Messages', icon: MessageSquare },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -37,6 +39,8 @@ const venueNavItems = [
 
 function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   const unread = useNotificationStore(s => s.notifications.filter(n => !n.isRead).length);
+  const dmThreads = useDmStore(s => s.threads);
+  const dmUnread = countUnreadThreads(dmThreads.map(t => ({ id: t.id, lastMessageAt: t.lastMessageAt })));
   const kidsSetting = useSettingsStore(s => s.settings.kidsSportsMode);
   const kidsMode = FLAGS.KIDS_MODE && kidsSetting;
   const user = useAuthStore(s => s.user);
@@ -114,6 +118,11 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
             {label === 'Notifications' && unread > 0 && (
               <span className="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                 {unread > 9 ? '9+' : unread}
+              </span>
+            )}
+            {label === 'Direct Messages' && dmUnread > 0 && (
+              <span className="ml-auto bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                {dmUnread > 9 ? '9+' : dmUnread}
               </span>
             )}
           </NavLink>

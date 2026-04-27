@@ -29,6 +29,8 @@ export function TeamChatPanel({ teamId }: TeamChatPanelProps) {
 
   const messages = useTeamChatStore(s => s.messages);
   const loading = useTeamChatStore(s => s.loading);
+  const loadingOlder = useTeamChatStore(s => s.loadingOlder);
+  const reachedStart = useTeamChatStore(s => s.reachedStart);
   const sendMessage = useTeamChatStore(s => s.sendMessage);
 
   // Read the denormalized lastMessageAt so we can update the local read
@@ -51,13 +53,31 @@ export function TeamChatPanel({ teamId }: TeamChatPanelProps) {
     markTeamRead(teamId, teamLastMessageAt);
   }, [teamId, teamLastMessageAt]);
 
+  const showLoadOlder = !loading && !reachedStart && messages.length > 0;
+
   return (
-    <ThreadView
-      messages={messages}
-      loading={loading}
-      currentUid={uid}
-      placeholder="Message the team…"
-      onSend={text => sendMessage(teamId, uid, senderName, text)}
-    />
+    <div className="flex flex-col h-full">
+      {showLoadOlder && (
+        <div className="flex justify-center py-2 border-b border-gray-100 bg-white flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => useTeamChatStore.getState().loadOlder()}
+            disabled={loadingOlder}
+            className="text-xs text-blue-600 font-medium hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loadingOlder ? 'Loading…' : 'Load older messages'}
+          </button>
+        </div>
+      )}
+      <div className="flex-1 overflow-hidden">
+        <ThreadView
+          messages={messages}
+          loading={loading}
+          currentUid={uid}
+          placeholder="Message the team…"
+          onSend={text => sendMessage(teamId, uid, senderName, text)}
+        />
+      </div>
+    </div>
   );
 }

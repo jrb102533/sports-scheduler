@@ -6078,9 +6078,58 @@ export const onTeamMembershipChanged = onDocumentWritten(
     const teamId = event.params.teamId;
     console.log(`[onTeamMembershipChanged] team=${teamId} — rebuilding recipients`);
     await rebuildRecipientsForTeam(teamId, admin.firestore());
+
+    // Refresh denormalized team.coaches map so DM contact discovery and
+    // sender-name display can read coach metadata without N+1 user-doc
+    // getDocs (FW-90 / ADR-014 Rule 2). Idempotent; safe to re-run.
+    if (coachIdsChanged) {
+      try {
+        await refreshTeamCoachesDenorm(teamId, after.coachIds ?? [], admin.firestore());
+      } catch (err) {
+        console.warn(`[onTeamMembershipChanged] refreshTeamCoachesDenorm failed for ${teamId}:`, err);
+      }
+    }
+
     console.log(`[onTeamMembershipChanged] team=${teamId} — done`);
   }
 );
+
+/**
+ * Reads the user docs for the given coachIds and writes a denormalized
+ * `coaches: { [uid]: { name, email? } }` map back onto the team doc.
+ *
+ * Idempotent: identical input produces identical output. Skips the write
+ * when the resolved map matches what's already on the team. Per ADR-014
+ * Rule 2 (Denormalize via triggers, fan-out at write time, free reads).
+ */
+async function refreshTeamCoachesDenorm(
+  teamId: string,
+  coachIds: string[],
+  db: admin.firestore.Firestore,
+): Promise<void> {
+  if (coachIds.length === 0) {
+    // No coaches → clear the map. Use FieldValue.delete to remove the field
+    // entirely so reads don't see an empty {} shape.
+    await db.doc(`teams/${teamId}`).update({
+      coaches: admin.firestore.FieldValue.delete(),
+    }).catch(() => { /* doc may have been deleted */ });
+    return;
+  }
+
+  const snaps = await Promise.all(coachIds.map(uid => db.doc(`users/${uid}`).get()));
+  const coaches: Record<string, { name: string; email?: string }> = {};
+  snaps.forEach((s, i) => {
+    const uid = coachIds[i];
+    if (!s.exists) return;
+    const u = s.data() ?? {};
+    const name = (u.displayName as string | undefined) ?? (u.email as string | undefined) ?? uid;
+    const entry: { name: string; email?: string } = { name };
+    if (typeof u.email === 'string' && u.email.length > 0) entry.email = u.email;
+    coaches[uid] = entry;
+  });
+
+  await db.doc(`teams/${teamId}`).set({ coaches }, { merge: true });
+}
 
 // ─── Trigger: rebuild recipients on player roster changes ─────────────────────
 //
