@@ -1724,8 +1724,39 @@ export const rsvpEvent = onRequest(
     const eventData = eventSnap.data()!;
     const existing: any[] = eventData.rsvps ?? [];
     const filtered = existing.filter((r: any) => r.playerId !== playerId);
-    filtered.push({ playerId, name: name ?? 'Guest', response, respondedAt: new Date().toISOString() });
-    await eventRef.update({ rsvps: filtered, updatedAt: new Date().toISOString() });
+    const respondedAt = new Date().toISOString();
+    filtered.push({ playerId, name: name ?? 'Guest', response, respondedAt });
+
+    // Derive subcollection docKey from the playerId param (which is recipientKey:
+    // uid, uid_playerId, or raw email for no-auth recipients).
+    const isEmail = (playerId as string).includes('@');
+    const subcollectionDocKey = isEmail
+      ? `email_${(playerId as string).replace(/[@.]/g, '_')}`
+      : (playerId as string);
+
+    // Build the subcollection RSVP doc.
+    const rsvpSubDoc: Record<string, unknown> = {
+      name: name ?? 'Guest',
+      response,
+      source: 'email' as const,
+      updatedAt: respondedAt,
+    };
+    if (isEmail) {
+      rsvpSubDoc.email = playerId;
+    } else {
+      // playerId is either a bare uid or uid_childId composite.
+      const parts = (playerId as string).split('_');
+      rsvpSubDoc.uid = parts[0];
+      if (parts.length > 1) rsvpSubDoc.playerId = parts[1];
+    }
+
+    const db = admin.firestore();
+    // Write to both stores during transition (PR 1 of FW-90).
+    // Legacy array update + subcollection write run in parallel.
+    await Promise.all([
+      eventRef.update({ rsvps: filtered, updatedAt: respondedAt }),
+      db.doc(`events/${eventId}/rsvps/${subcollectionDocKey}`).set(rsvpSubDoc),
+    ]);
 
     const eventTitle = esc(eventData.title ?? 'Event');
     const eventDate = esc(eventData.date ?? '');
@@ -2331,13 +2362,40 @@ export const sendScheduledNotifications = onSchedule(
 
       // ── RSVP follow-up (tomorrow's events, unresponded recipients) ────────
       if (eventDate === tomorrowStr && !ev.rsvpFollowupSent) {
-        const respondedSet = new Set<string>(
-          ((ev.rsvps as Array<{ playerId: string }>) ?? []).map((r) => r.playerId),
-        );
+        // Build respondedSet by unioning ALL identifying keys from both stores:
+        //   1. Legacy events.rsvps[] array (in-app + pre-FW-90 email RSVPs).
+        //   2. Subcollection events/{id}/rsvps/* (in-app via submitRsvp + post-FW-90 email RSVPs).
+        // A recipient is considered "responded" if ANY of their identifying keys
+        // (uid, email, playerId) appears in this set.
+        const respondedSet = new Set<string>();
+
+        // Source 1: legacy array — each entry's playerId is the recipientKey
+        // (uid, uid_playerId composite, or raw email for no-auth recipients).
+        for (const r of (ev.rsvps as Array<{ playerId: string }>) ?? []) {
+          if (r.playerId) respondedSet.add(r.playerId);
+        }
+
+        // Source 2: subcollection — read all docs and add every identifying key.
+        try {
+          const rsvpSubSnap = await db.collection(`events/${eventId}/rsvps`).get();
+          for (const rsvpDoc of rsvpSubSnap.docs) {
+            const d = rsvpDoc.data() as { uid?: string; email?: string; playerId?: string };
+            if (d.uid) respondedSet.add(d.uid);
+            if (d.email) respondedSet.add(d.email);
+            if (d.playerId) respondedSet.add(d.playerId);
+          }
+        } catch (err) {
+          console.error(
+            `[sendScheduledNotifications] event=${eventId} rsvp subcollection read failed — falling back to array only`,
+            err,
+          );
+        }
 
         const unresponded = recipients.filter((r) => {
-          const key = r.uid ?? r.email;
-          return !respondedSet.has(key);
+          // Match on any of the recipient's identifying keys.
+          if (r.uid && respondedSet.has(r.uid)) return false;
+          if (r.email && respondedSet.has(r.email)) return false;
+          return true;
         });
 
         if (!unresponded.length) {
