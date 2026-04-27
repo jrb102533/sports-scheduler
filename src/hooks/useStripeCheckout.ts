@@ -75,6 +75,12 @@ export function useStripeCheckout(): UseStripeCheckoutResult {
         success_url: successUrl,
         cancel_url: cancelUrl,
         allow_promotion_codes: true,
+        // FW-58 decision #3: every new subscriber gets a 14-day free trial.
+        // The invertase extension forwards this to Stripe Checkout's
+        // subscription_data.trial_period_days. Stripe automatically suppresses
+        // the trial for customers who have used a trial on this product before
+        // — no need to gate this on the client.
+        trial_period_days: 14,
       });
 
       // The extension writes the `url` field back asynchronously.
