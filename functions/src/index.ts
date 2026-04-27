@@ -6129,3 +6129,52 @@ export const onPlayerWritten = onDocumentWritten(
     console.log(`[onPlayerWritten] player=${playerId} — done`);
   }
 );
+
+// ─── Trigger: denormalize rsvpCounts on event doc ────────────────────────────
+//
+// Fires whenever any rsvp subcollection document is created, updated, or
+// deleted. Re-reads the full subcollection and overwrites event.rsvpCounts.
+//
+// Design notes (FW-98 / ADR-012):
+//   - Both submitRsvp (callable) and rsvpEvent (HTTP) write to the subcollection,
+//     so the trigger fires on either path — no dual write-site risk.
+//   - The trigger is idempotent: it re-reads the entire subcollection and
+//     overwrites the counter each time. Safe on retry (retry: true).
+//   - Cost: O(N) reads where N = total RSVPs for this event per trigger fire.
+//     Bounded per event; expected N is small (roster size, typically < 30).
+//   - Guard against non-existent event: we read the event doc before writing;
+//     if it doesn't exist we bail out rather than silently creating a stub doc.
+//   - Does NOT use ENV.shouldRunScheduledJobs() — this is a write trigger,
+//     not a notification dispatcher. Runs on staging and prod alike.
+//
+// FW-98
+
+export const onRsvpWritten = onDocumentWritten(
+  { document: 'events/{eventId}/rsvps/{rsvpId}', retry: true },
+  async (event) => {
+    const eventId = event.params.eventId;
+    const db = admin.firestore();
+
+    // Guard: do not write to a non-existent event doc.
+    const eventRef = db.doc(`events/${eventId}`);
+    const eventSnap = await eventRef.get();
+    if (!eventSnap.exists) {
+      console.warn(`[onRsvpWritten] event=${eventId} does not exist — skipping rsvpCounts update`);
+      return;
+    }
+
+    // Re-read entire subcollection and recompute counts.
+    // Cost: O(N) reads where N = total RSVPs for this event. Bounded per write.
+    const rsvpsSnap = await db.collection(`events/${eventId}/rsvps`).get();
+    const counts = { yes: 0, no: 0, maybe: 0 };
+    for (const doc of rsvpsSnap.docs) {
+      const r = doc.data()['response'];
+      if (r === 'yes' || r === 'no' || r === 'maybe') {
+        counts[r as 'yes' | 'no' | 'maybe']++;
+      }
+    }
+
+    await eventRef.update({ rsvpCounts: counts });
+    console.log(`[onRsvpWritten] event=${eventId} rsvpId=${event.params.rsvpId} — rsvpCounts updated: yes=${counts.yes} no=${counts.no} maybe=${counts.maybe}`);
+  }
+);
