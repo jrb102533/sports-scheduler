@@ -70,6 +70,48 @@ describe('findCoachLedTeamId', () => {
   it('coach-to-coach (different teams) → null unless they share a team', () => {
     expect(findCoachLedTeamId(COACH_A, COACH_B, [team1, team2], players)).toBeNull();
   });
+
+  describe('FW-105 — multi-team tie-break by affiliation strength', () => {
+    // Coach A coaches both teams; parent X is parentUid on team A but only
+    // linkedUid on team B. Should prefer team A (parent affiliation > linked).
+    const COACH_M = 'coachM';
+    const PARENT_M = 'parentM';
+
+    const tA: Team = {
+      id: 'tA', name: 'Alpha', sport: 'soccer', ageGroup: 'U10',
+      coachId: COACH_M, coachIds: [COACH_M], createdBy: COACH_M, createdAt: '',
+    } as unknown as Team;
+
+    const tB: Team = {
+      id: 'tB', name: 'Bravo', sport: 'soccer', ageGroup: 'U10',
+      coachId: COACH_M, coachIds: [COACH_M], createdBy: COACH_M, createdAt: '',
+    } as unknown as Team;
+
+    it('prefers parent affiliation (team A) over linked-only (team B), even though B iterated later', () => {
+      const ps: Player[] = [
+        { id: 'pA', teamId: 'tA', firstName: 'M', lastName: 'M', parentUid: PARENT_M } as unknown as Player,
+        { id: 'pB', teamId: 'tB', firstName: 'M', lastName: 'M', linkedUid: PARENT_M } as unknown as Player,
+      ];
+      expect(findCoachLedTeamId(COACH_M, PARENT_M, [tA, tB], ps)).toBe('tA');
+    });
+
+    it('prefers parent affiliation when iteration order is reversed (team A is second)', () => {
+      const ps: Player[] = [
+        { id: 'pB', teamId: 'tB', firstName: 'M', lastName: 'M', linkedUid: PARENT_M } as unknown as Player,
+        { id: 'pA', teamId: 'tA', firstName: 'M', lastName: 'M', parentUid: PARENT_M } as unknown as Player,
+      ];
+      expect(findCoachLedTeamId(COACH_M, PARENT_M, [tB, tA], ps)).toBe('tA');
+    });
+
+    it('ties broken by iteration order when both teams have equal affiliation', () => {
+      const ps: Player[] = [
+        { id: 'pA', teamId: 'tA', firstName: 'M', lastName: 'M', parentUid: PARENT_M } as unknown as Player,
+        { id: 'pB', teamId: 'tB', firstName: 'M', lastName: 'M', parentUid: PARENT_M } as unknown as Player,
+      ];
+      expect(findCoachLedTeamId(COACH_M, PARENT_M, [tA, tB], ps)).toBe('tA');
+      expect(findCoachLedTeamId(COACH_M, PARENT_M, [tB, tA], ps)).toBe('tB');
+    });
+  });
 });
 
 describe('isCoachLedDmAllowed', () => {

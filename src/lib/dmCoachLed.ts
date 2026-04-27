@@ -30,14 +30,20 @@ export function findCoachLedTeamId(
   teams: Team[],
   players: Player[],
 ): string | null {
+  // Score each candidate team and return the strongest match. Affiliation
+  // strength per uid: coach=3, parent-of-player=2, linked-player=1, none=0.
+  // FW-105: when a coach manages multiple teams both containing the other
+  // participant, picking the first iterated team produced an arbitrary
+  // audit-trail teamId. Scoring prefers the team where both participants
+  // are most directly affiliated. Ties broken by iteration order.
+  let best: { teamId: string; score: number } | null = null;
+
   for (const t of teams) {
     const coaches = new Set<string>();
     if (t.coachId) coaches.add(t.coachId);
     t.coachIds?.forEach(id => coaches.add(id));
 
-    const aIsCoach = coaches.has(uidA);
-    const bIsCoach = coaches.has(uidB);
-    if (!aIsCoach && !bIsCoach) continue;
+    if (!coaches.has(uidA) && !coaches.has(uidB)) continue;
 
     const teamParents = new Set<string>(
       players.filter(p => p.teamId === t.id && p.parentUid).map(p => p.parentUid!),
@@ -45,12 +51,24 @@ export function findCoachLedTeamId(
     const teamLinked = new Set<string>(
       players.filter(p => p.teamId === t.id && p.linkedUid).map(p => p.linkedUid!),
     );
-    const onTeam = (uid: string) =>
-      coaches.has(uid) || teamParents.has(uid) || teamLinked.has(uid);
+    const affiliationScore = (uid: string): number => {
+      if (coaches.has(uid)) return 3;
+      if (teamParents.has(uid)) return 2;
+      if (teamLinked.has(uid)) return 1;
+      return 0;
+    };
 
-    if (onTeam(uidA) && onTeam(uidB)) return t.id;
+    const scoreA = affiliationScore(uidA);
+    const scoreB = affiliationScore(uidB);
+    if (scoreA === 0 || scoreB === 0) continue;
+
+    const score = scoreA + scoreB;
+    if (!best || score > best.score) {
+      best = { teamId: t.id, score };
+    }
   }
-  return null;
+
+  return best?.teamId ?? null;
 }
 
 /**
