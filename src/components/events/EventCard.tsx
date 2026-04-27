@@ -1,7 +1,5 @@
 import { useState } from 'react';
 import { MapPin, Clock, AlertTriangle } from 'lucide-react';
-import { doc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EventStatusBadge } from './EventStatusBadge';
@@ -9,7 +7,7 @@ import { formatDate, formatTime } from '@/lib/dateUtils';
 import { EVENT_TYPE_LABELS, EVENT_TYPE_COLORS, EVENT_TYPE_BADGE_CLASSES } from '@/constants';
 import type { ScheduledEvent, Team } from '@/types';
 import { useAuthStore, getActiveMembership } from '@/store/useAuthStore';
-import { useEventStore } from '@/store/useEventStore';
+import { useRsvpStore } from '@/store/useRsvpStore';
 
 interface EventCardProps {
   event: ScheduledEvent;
@@ -20,7 +18,8 @@ interface EventCardProps {
 function RsvpIndicator({ event }: { event: ScheduledEvent; onOpenDetail?: () => void }) {
   const user = useAuthStore(s => s.user);
   const profile = useAuthStore(s => s.profile);
-  const updateEvent = useEventStore(s => s.updateEvent);
+  const storeRsvps = useRsvpStore(s => s.rsvps[event.id]);
+  const submitRsvp = useRsvpStore(s => s.submitRsvp);
   const [submitting, setSubmitting] = useState(false);
   const [showButtons, setShowButtons] = useState(false);
 
@@ -29,7 +28,8 @@ function RsvpIndicator({ event }: { event: ScheduledEvent; onOpenDetail?: () => 
 
   // Use active membership role so context-switcher is respected
   const role = getActiveMembership(profile)?.role ?? profile?.role;
-  const rsvps = event.rsvps ?? [];
+  // Prefer subcollection data from the store; fall back to legacy array while migration is live
+  const rsvps = storeRsvps ?? event.rsvps ?? [];
 
   // Coach / admin / league_manager: show going count
   if (role === 'coach' || role === 'admin' || role === 'league_manager') {
@@ -52,6 +52,7 @@ function RsvpIndicator({ event }: { event: ScheduledEvent; onOpenDetail?: () => 
     // Prefer the Firestore player doc ID (matches email-link RSVPs); fall back to auth UID
     const playerId = profile?.playerId ?? uid;
 
+    // Match by playerId in subcollection entries (RsvpEntry.playerId) or legacy EventRsvp.playerId
     const myRsvp = rsvps.find(r => r.playerId === playerId);
 
     async function handleRsvp(response: 'yes' | 'no' | 'maybe', e: React.MouseEvent) {
@@ -59,23 +60,13 @@ function RsvpIndicator({ event }: { event: ScheduledEvent; onOpenDetail?: () => 
       if (submitting) return;
       setSubmitting(true);
       try {
-        const now = new Date().toISOString();
-        const existingRsvps = event.rsvps ?? [];
-        const filtered = existingRsvps.filter(r => r.playerId !== playerId);
-        const newRsvp = {
-          playerId: playerId,
-          name: profile?.displayName ?? '',
-          email: profile?.email ?? '',
+        await submitRsvp(
+          event.id,
+          uid,
+          profile?.displayName ?? '',
           response,
-          respondedAt: now,
-        };
-        const updatedEvent = {
-          ...event,
-          rsvps: [...filtered, newRsvp],
-          updatedAt: now,
-        };
-        await setDoc(doc(db, 'events', event.id), updatedEvent);
-        await updateEvent(updatedEvent);
+          playerId !== uid ? playerId : undefined,
+        );
         setShowButtons(false);
       } finally {
         setSubmitting(false);

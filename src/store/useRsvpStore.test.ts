@@ -12,6 +12,9 @@
  *   - subscribeRsvps populates rsvps keyed by eventId from snapshot
  *   - subscribeRsvps returns an unsubscribe function
  *   - subscribeRsvps merges entries from different events without clobbering
+ *   - loadForEvent (FW-97) fetches subcollection via getDocs and stores result
+ *   - loadForEvent no-ops when rsvps[eventId] is already populated
+ *   - loadForEvent leaves state unchanged on Firestore error
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -30,10 +33,12 @@ vi.mock('firebase/functions', () => ({
 
 const mockOnSnapshot = vi.fn(() => () => {});
 const mockCollection = vi.fn(() => ({}));
+const mockGetDocs = vi.fn();
 
 vi.mock('firebase/firestore', () => ({
   collection: (...args: unknown[]) => mockCollection(...args),
   onSnapshot: (...args: unknown[]) => mockOnSnapshot(...args),
+  getDocs: (...args: unknown[]) => mockGetDocs(...args),
 }));
 
 vi.mock('@/lib/firebase', () => ({ db: {}, functions: {} }));
@@ -47,6 +52,7 @@ import { useRsvpStore } from './useRsvpStore';
 beforeEach(() => {
   vi.clearAllMocks();
   mockCallableFn.mockResolvedValue({ data: { success: true } });
+  mockGetDocs.mockResolvedValue({ docs: [] });
   useRsvpStore.setState({ rsvps: {} });
 });
 
@@ -164,6 +170,72 @@ describe('useRsvpStore — subscribeRsvps', () => {
 
     useRsvpStore.getState().subscribeRsvps('event-1');
     // State should be unchanged
+    expect(useRsvpStore.getState().rsvps['event-1']).toEqual([]);
+  });
+});
+
+// ── loadForEvent() — FW-97 ───────────────────────────────────────────────────
+
+describe('useRsvpStore — loadForEvent (FW-97)', () => {
+  it('calls getDocs on the events/{id}/rsvps subcollection', async () => {
+    mockGetDocs.mockResolvedValue({ docs: [] });
+    await useRsvpStore.getState().loadForEvent('event-1');
+    expect(mockGetDocs).toHaveBeenCalledOnce();
+    expect(mockCollection).toHaveBeenCalledWith({}, 'events', 'event-1', 'rsvps');
+  });
+
+  it('populates rsvps[eventId] with fetched entries', async () => {
+    const entries: RsvpEntry[] = [
+      { uid: 'uid-1', playerId: 'p1', name: 'Alice', response: 'yes', updatedAt: '2026-01-01' },
+    ];
+    mockGetDocs.mockResolvedValue({
+      docs: entries.map(e => ({ data: () => e })),
+    });
+
+    await useRsvpStore.getState().loadForEvent('event-1');
+    expect(useRsvpStore.getState().rsvps['event-1']).toHaveLength(1);
+    expect(useRsvpStore.getState().rsvps['event-1'][0].name).toBe('Alice');
+  });
+
+  it('does not call getDocs when rsvps[eventId] is already populated (no-op)', async () => {
+    useRsvpStore.setState({
+      rsvps: { 'event-1': [{ uid: 'uid-1', name: 'Cached', response: 'yes', updatedAt: '2026-01-01' }] },
+    });
+
+    await useRsvpStore.getState().loadForEvent('event-1');
+    expect(mockGetDocs).not.toHaveBeenCalled();
+  });
+
+  it('treats an empty array [] as already populated (no refetch)', async () => {
+    // An empty array means the event has no RSVPs — we still should not refetch
+    useRsvpStore.setState({ rsvps: { 'event-1': [] } });
+
+    await useRsvpStore.getState().loadForEvent('event-1');
+    expect(mockGetDocs).not.toHaveBeenCalled();
+  });
+
+  it('does not clobber rsvps for other events when populating a new event', async () => {
+    useRsvpStore.setState({
+      rsvps: { 'event-2': [{ uid: 'uid-2', name: 'Bob', response: 'no', updatedAt: '2026-01-01' }] },
+    });
+
+    mockGetDocs.mockResolvedValue({
+      docs: [{ data: () => ({ uid: 'uid-1', name: 'Alice', response: 'yes', updatedAt: '2026-01-01' }) }],
+    });
+
+    await useRsvpStore.getState().loadForEvent('event-1');
+
+    expect(useRsvpStore.getState().rsvps['event-2']).toHaveLength(1);
+    expect(useRsvpStore.getState().rsvps['event-1']).toHaveLength(1);
+  });
+
+  it('leaves state unchanged when getDocs rejects', async () => {
+    useRsvpStore.setState({ rsvps: { 'event-1': [] } });
+    mockGetDocs.mockRejectedValue(new Error('permission-denied'));
+
+    // Should not throw
+    await expect(useRsvpStore.getState().loadForEvent('event-2')).resolves.toBeUndefined();
+    // event-1 state is untouched
     expect(useRsvpStore.getState().rsvps['event-1']).toEqual([]);
   });
 });

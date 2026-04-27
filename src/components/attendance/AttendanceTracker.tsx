@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { ClipboardList } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Button } from '@/components/ui/Button';
 import { useEventStore } from '@/store/useEventStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
+import { useRsvpStore } from '@/store/useRsvpStore';
 import type { ScheduledEvent, AttendanceStatus } from '@/types';
 
 interface AttendanceTrackerProps {
@@ -18,6 +20,13 @@ const statuses: { value: AttendanceStatus; label: string; color: string }[] = [
 export function AttendanceTracker({ event }: AttendanceTrackerProps) {
   const { updateEvent } = useEventStore();
   const players = usePlayerStore(s => s.players);
+  const storeRsvps = useRsvpStore(s => s.rsvps[event.id]);
+
+  // Ensure subcollection RSVPs are loaded; no-ops if already populated by subscribeRsvps
+  useEffect(() => {
+    void useRsvpStore.getState().loadForEvent(event.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id]);
 
   const teamPlayers = players.filter(p => event.teamIds.includes(p.teamId) && p.status !== 'inactive');
 
@@ -35,14 +44,17 @@ export function AttendanceTracker({ event }: AttendanceTrackerProps) {
 
   const recorded = event.attendance?.length ?? 0;
   const hasNoAttendance = recorded === 0;
-  const allRsvps = event.rsvps ?? [];
+  // Prefer subcollection RSVPs from store; fall back to legacy array during migration
+  const allRsvps = storeRsvps ?? event.rsvps ?? [];
   const canPrefill = hasNoAttendance && allRsvps.length > 0;
 
   function handlePrefillFromRsvps() {
-    const attendance = allRsvps.map(r => ({
-      playerId: r.playerId,
-      status: (r.response === 'yes' ? 'present' : r.response === 'no' ? 'absent' : 'excused') as AttendanceStatus,
-    }));
+    const attendance = allRsvps
+      .filter(r => r.playerId != null)
+      .map(r => ({
+        playerId: r.playerId as string,
+        status: (r.response === 'yes' ? 'present' : r.response === 'no' ? 'absent' : 'excused') as AttendanceStatus,
+      }));
     updateEvent({ ...event, attendance, attendanceRecorded: true, updatedAt: new Date().toISOString() });
   }
 

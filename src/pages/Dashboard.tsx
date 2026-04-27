@@ -15,6 +15,7 @@ import { usePlayerStore } from '@/store/usePlayerStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useAuthStore, getAccessibleTeamIds, getMemberships, hasRole } from '@/store/useAuthStore';
+import { useRsvpStore } from '@/store/useRsvpStore';
 import { isUpcoming, formatDate, formatTime, todayISO, parseISO } from '@/lib/dateUtils';
 import { SPORT_TYPE_LABELS, getAttendanceThreshold, isAttendanceWarningEnabled } from '@/constants';
 import type { ScheduledEvent } from '@/types';
@@ -38,6 +39,7 @@ export function Dashboard() {
   const leagues = useLeagueStore(s => s.leagues);
   const notifications = useNotificationStore(s => s.notifications);
   const profile = useAuthStore(s => s.profile);
+  const storeRsvps = useRsvpStore(s => s.rsvps);
   const navigate = useNavigate();
   const [formOpen, setFormOpen] = useState(false);
   const [selected, setSelected] = useState<ScheduledEvent | null>(null);
@@ -50,6 +52,19 @@ export function Dashboard() {
       navigate('/home', { replace: true });
     }
   }, [profile, navigate]);
+
+  // Approach A (FW-97): one-shot load for upcoming event RSVP subcollections.
+  // N+1 is acceptable at current dashboard scale (~10-30 events). See FW-97 PR
+  // description for follow-up perf optimization (denormalized rsvpCounts field).
+  useEffect(() => {
+    const upcomingIds = allEvents
+      .filter(e => isUpcoming(e) && e.status !== 'cancelled')
+      .map(e => e.id);
+    for (const id of upcomingIds) {
+      void useRsvpStore.getState().loadForEvent(id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allEvents]);
 
   const accessibleTeamIds = getAccessibleTeamIds(profile, allTeams);
   const teams = accessibleTeamIds === null ? allTeams : allTeams.filter(t => accessibleTeamIds.includes(t.id));
@@ -138,7 +153,8 @@ export function Dashboard() {
       const teamPlayers = allPlayers.filter(p => e.teamIds.includes(p.teamId));
       const rosterSize = teamPlayers.length;
       if (rosterSize > 0) {
-        const responded = (e.rsvps ?? []).length;
+        // Read from subcollection store (populated by loadForEvent effect above)
+        const responded = (storeRsvps[e.id] ?? []).length;
         if (responded / rosterSize < LOW_RSVP_RESPONSE_RATIO) {
           return { kind: 'low_rsvp', event: e, nonResponders: rosterSize - responded };
         }
@@ -151,7 +167,8 @@ export function Dashboard() {
       if (hoursUntil <= SOON_HOURS) {
         const eventTeam = allTeams.find(t => e.teamIds.includes(t.id));
         if (!isAttendanceWarningEnabled(eventTeam)) continue;
-        const confirmed = (e.rsvps ?? []).filter(r => r.response === 'yes').length;
+        // Read from subcollection store (populated by loadForEvent effect above)
+        const confirmed = (storeRsvps[e.id] ?? []).filter(r => r.response === 'yes').length;
         if (confirmed < getAttendanceThreshold(eventTeam)) {
           return { kind: 'low_confirmation', event: e, confirmed };
         }
