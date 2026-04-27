@@ -2227,9 +2227,21 @@ export const sendScheduledNotifications = onSchedule(
 
       // ── Game-day reminder (today's events, not yet sent) ─────────────────
       if (eventDate === todayStr && !ev.gameDaySent) {
-        const rsvpYesCount = ((ev.rsvps as Array<{ response: string }>) ?? []).filter(
-          (r) => r.response === 'yes',
-        ).length;
+        // FW-97: read yes-count from subcollection (legacy ev.rsvps array removed in FW-95).
+        // +1 read per game-day-eligible event — acceptable at modeled scale (~95 reads/day).
+        let rsvpYesCount = 0;
+        try {
+          const rsvpSubSnap = await db.collection(`events/${eventId}/rsvps`).get();
+          for (const rsvpDoc of rsvpSubSnap.docs) {
+            const d = rsvpDoc.data() as { response?: string };
+            if (d.response === 'yes') rsvpYesCount++;
+          }
+        } catch (err) {
+          console.error(
+            `[sendScheduledNotifications] event=${eventId} rsvp subcollection read failed for game-day yes-count — defaulting to 0`,
+            err,
+          );
+        }
 
         const sends: Promise<unknown>[] = [];
 
