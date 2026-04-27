@@ -543,7 +543,6 @@ export function TeamDetailPage() {
             teamId={teamId}
             modifyMode={pendingRoster.state.active}
             pendingChanges={pendingRoster.state.changes}
-            onStageAdd={pendingRoster.stageAdd}
             onStageUpdate={pendingRoster.stageUpdate}
             onStageRemove={pendingRoster.stageRemove}
             onUnstageRemove={pendingRoster.unstageRemove}

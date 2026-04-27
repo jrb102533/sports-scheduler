@@ -63,7 +63,6 @@ interface RosterTableProps {
   /** When provided the table operates in Modify Roster mode. */
   modifyMode?: boolean;
   pendingChanges?: PendingRosterChanges;
-  onStageAdd?: (player: Player) => void;
   onStageUpdate?: (playerId: string, patch: Partial<Player>) => void;
   onStageRemove?: (playerId: string) => void;
   onUnstageRemove?: (playerId: string) => void;
@@ -88,7 +87,6 @@ export function RosterTable({
   teamName,
   modifyMode = false,
   pendingChanges,
-  onStageAdd,
   onStageUpdate,
   onStageRemove,
   onUnstageRemove,
