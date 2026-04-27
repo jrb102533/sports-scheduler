@@ -31,8 +31,7 @@
 
 import { test, expect } from './fixtures/auth.fixture';
 import { waitForAppHydrated } from './fixtures/auth.fixture';
-import { ScheduleWizardPage, dateOffset } from './pages/ScheduleWizardPage';
-import { SeasonDashboardPage } from './pages/SeasonDashboardPage';
+import { ScheduleWizardPage } from './pages/ScheduleWizardPage';
 
 // ─── Shared setup helpers ─────────────────────────────────────────────────────
 

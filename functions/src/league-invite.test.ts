@@ -290,7 +290,7 @@ const revokeFn = revokeInvite as unknown as Fn;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function makeReq(data: unknown, uid: string | null, role?: string) {
+function makeReq(data: unknown, uid: string | null, _role?: string) {
   // Provide a fake custom claim token so assertAdminOrCoach reads the user doc.
   return uid
     ? { auth: { uid, token: { email: `${uid}@test.com` }, app: {} }, data }
