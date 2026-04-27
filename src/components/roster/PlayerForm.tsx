@@ -15,6 +15,18 @@ interface PlayerFormProps {
   onClose: () => void;
   teamId: string;
   editPlayer?: Player;
+  /**
+   * When provided (Modify Roster mode), a successful edit will call this
+   * with the staged patch instead of writing directly to Firestore.
+   * Only used when `editPlayer` is also provided.
+   */
+  onStagedSave?: (patch: Partial<Player>) => void;
+  /**
+   * When provided (Modify Roster mode), a successful add will call this
+   * with the full new Player instead of writing directly to Firestore.
+   * Only used when `editPlayer` is NOT provided.
+   */
+  onStagedAdd?: (player: Player) => void;
 }
 
 const statusOptions = Object.entries(PLAYER_STATUS_LABELS).map(([value, label]) => ({ value, label }));
@@ -62,7 +74,7 @@ function ParentFields({
   );
 }
 
-export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProps) {
+export function PlayerForm({ open, onClose, teamId, editPlayer, onStagedSave, onStagedAdd }: PlayerFormProps) {
   const { addPlayer, updatePlayer, addSensitiveData, updateSensitiveData } = usePlayerStore();
   const team = useTeamStore(s => s.teams.find(t => t.id === teamId));
 
@@ -162,11 +174,45 @@ export function PlayerForm({ open, onClose, teamId, editPlayer }: PlayerFormProp
     };
 
     try {
+      if (editPlayer && onStagedSave) {
+        // Modify Roster mode: stage the edit locally rather than writing to Firestore.
+        const patch: Partial<Player> = {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          status,
+          updatedAt: now,
+          ...mainOptionals,
+          ...sensitiveFields,
+        };
+        onStagedSave(patch);
+        setSaving(false);
+        onClose();
+        return;
+      }
+
       if (editPlayer) {
         await updatePlayer({ ...editPlayer, firstName: firstName.trim(), lastName: lastName.trim(), status, updatedAt: now, ...mainOptionals });
         if (Object.keys(sensitiveFields).length > 0) {
           await updateSensitiveData(editPlayer.id, teamId, sensitiveFields);
         }
+      } else if (onStagedAdd) {
+        // Modify Roster mode: stage the new player locally rather than writing to Firestore.
+        const playerId = crypto.randomUUID();
+        const stagedPlayer: Player = {
+          id: playerId,
+          teamId,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          status,
+          createdAt: now,
+          updatedAt: now,
+          ...mainOptionals,
+          ...sensitiveFields,
+        };
+        onStagedAdd(stagedPlayer);
+        setSaving(false);
+        onClose();
+        return;
       } else {
         const playerId = crypto.randomUUID();
         await addPlayer({ id: playerId, teamId, firstName: firstName.trim(), lastName: lastName.trim(), status, createdAt: now, updatedAt: now, ...mainOptionals });

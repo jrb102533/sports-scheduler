@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList, UserCheck, Crown, CalendarDays, Trophy, ClipboardCheck, Copy, Check, Mail, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Plus, Users, Info, ClipboardList, UserCheck, Crown, CalendarDays, Trophy, ClipboardCheck, Copy, Check, Mail, MessageSquare, Loader2, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { TeamForm } from '@/components/teams/TeamForm';
 import { PlayerForm } from '@/components/roster/PlayerForm';
@@ -19,6 +19,7 @@ import { isTeamUnread } from '@/lib/messagingUnread';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { useEventStore } from '@/store/useEventStore';
+import { usePendingRosterChanges } from '@/hooks/usePendingRosterChanges';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { useAvailabilityStore } from '@/store/useAvailabilityStore';
 import { RoleGuard } from '@/components/auth/RoleGuard';
@@ -58,6 +59,7 @@ export function TeamDetailPage() {
   const hardDeleteTeam = useTeamStore(s => s.hardDeleteTeam);
   const players = usePlayerStore(s => s.players);
   const deletePlayersForTeam = usePlayerStore(s => s.deletePlayersForTeam);
+  const pendingRoster = usePendingRosterChanges();
   const allEvents = useEventStore(s => s.events);
   const leagues = useLeagueStore(s => s.leagues);
   const profile = useAuthStore(s => s.profile);
@@ -77,6 +79,9 @@ export function TeamDetailPage() {
   const [confirmHardDelete, setConfirmHardDelete] = useState(false);
   const [rosterCopied, setRosterCopied] = useState(false);
   const [assignCoCoachOpen, setAssignCoCoachOpen] = useState(false);
+  const [rosterSaving, setRosterSaving] = useState(false);
+  const [rosterSaveError, setRosterSaveError] = useState<string | null>(null);
+  const [rosterSaveSuccess, setRosterSaveSuccess] = useState(false);
 
   // Join requests state
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
@@ -163,6 +168,28 @@ export function TeamDetailPage() {
   const lastAttendanceEvent = eventsWithAttendance.length > 0 ? eventsWithAttendance[eventsWithAttendance.length - 1] : null;
   const lastPresent = lastAttendanceEvent?.attendance?.filter(a => a.status === 'present').length ?? 0;
   const lastTotal = lastAttendanceEvent?.attendance?.length ?? 0;
+
+  async function handleSaveRoster() {
+    setRosterSaveError(null);
+    setRosterSaving(true);
+    try {
+      await usePlayerStore.getState().bulkApplyRosterChanges(teamId, pendingRoster.state.changes);
+      pendingRoster.exitMode();
+      setRosterSaveSuccess(true);
+      setTimeout(() => setRosterSaveSuccess(false), 3000);
+    } catch (err: unknown) {
+      console.error('[TeamDetailPage] bulk roster save failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setRosterSaveError(`Failed to save roster: ${msg}`);
+    } finally {
+      setRosterSaving(false);
+    }
+  }
+
+  function handleDiscardRoster() {
+    pendingRoster.exitMode();
+    setRosterSaveError(null);
+  }
 
   function handleCopyRoster() {
     const text = teamPlayers.map(p => `${p.firstName} ${p.lastName}`).join('\n');
@@ -448,18 +475,79 @@ export function TeamDetailPage() {
       {/* Roster Tab */}
       {tab === 'roster' && (
         <div className="bg-white rounded-xl border border-gray-200">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h3 className="font-medium text-gray-800">Players</h3>
-            <div className="flex items-center gap-2">
-              {teamPlayers.length > 0 && (
-                <Button size="sm" variant="secondary" onClick={handleCopyRoster}>
-                  {rosterCopied ? <><Check size={13} /> Copied!</> : <><Copy size={13} /> Copy Roster</>}
-                </Button>
-              )}
-              {userCanEdit && <Button size="sm" onClick={() => setAddPlayerOpen(true)}><Plus size={14} /> Add Player</Button>}
+          {/* Roster header — view mode */}
+          {!pendingRoster.state.active && (
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <h3 className="font-medium text-gray-800">Players</h3>
+              <div className="flex items-center gap-2">
+                {teamPlayers.length > 0 && (
+                  <Button size="sm" variant="secondary" onClick={handleCopyRoster}>
+                    {rosterCopied ? <><Check size={13} /> Copied!</> : <><Copy size={13} /> Copy Roster</>}
+                  </Button>
+                )}
+                {userCanEdit && (
+                  <Button size="sm" variant="secondary" onClick={pendingRoster.enterMode}>
+                    <Pencil size={14} /> Modify Roster
+                  </Button>
+                )}
+                {userCanEdit && <Button size="sm" onClick={() => setAddPlayerOpen(true)}><Plus size={14} /> Add Player</Button>}
+              </div>
             </div>
-          </div>
-          <RosterTable players={teamPlayers} teamId={teamId} />
+          )}
+
+          {/* Roster header — modify mode */}
+          {pendingRoster.state.active && (
+            <div className="px-4 py-3 border-b border-gray-100 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-gray-800">Modify Roster</span>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                    {pendingRoster.pendingCount} pending {pendingRoster.pendingCount === 1 ? 'change' : 'changes'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={() => setAddPlayerOpen(true)}>
+                    <Plus size={14} /> Add Player
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleDiscardRoster}
+                    disabled={rosterSaving}
+                  >
+                    Discard
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => void handleSaveRoster()}
+                    disabled={rosterSaving || pendingRoster.pendingCount === 0}
+                  >
+                    {rosterSaving ? <><Loader2 size={13} className="animate-spin" /> Saving…</> : 'Save Roster'}
+                  </Button>
+                </div>
+              </div>
+              {rosterSaveError && (
+                <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{rosterSaveError}</p>
+              )}
+            </div>
+          )}
+
+          {rosterSaveSuccess && !pendingRoster.state.active && (
+            <div className="px-4 py-2 bg-green-50 border-b border-green-100">
+              <p className="text-sm text-green-700">Roster saved successfully.</p>
+            </div>
+          )}
+
+          <RosterTable
+            players={teamPlayers}
+            teamId={teamId}
+            modifyMode={pendingRoster.state.active}
+            pendingChanges={pendingRoster.state.changes}
+            onStageAdd={pendingRoster.stageAdd}
+            onStageUpdate={pendingRoster.stageUpdate}
+            onStageRemove={pendingRoster.stageRemove}
+            onUnstageRemove={pendingRoster.unstageRemove}
+          />
         </div>
       )}
 
@@ -635,7 +723,13 @@ export function TeamDetailPage() {
       )}
 
       <TeamForm open={editOpen} onClose={() => setEditOpen(false)} editTeam={team} />
-      <PlayerForm key={addPlayerOpen ? 'open' : 'closed'} open={addPlayerOpen} onClose={() => setAddPlayerOpen(false)} teamId={teamId} />
+      <PlayerForm
+        key={addPlayerOpen ? 'open' : 'closed'}
+        open={addPlayerOpen}
+        onClose={() => setAddPlayerOpen(false)}
+        teamId={teamId}
+        {...(pendingRoster.state.active ? { onStagedAdd: pendingRoster.stageAdd } : {})}
+      />
       <EventForm
         open={eventFormOpen}
         onClose={() => setEventFormOpen(false)}
