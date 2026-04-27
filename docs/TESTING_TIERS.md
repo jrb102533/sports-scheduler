@@ -94,6 +94,32 @@ First Whistle uses a four-tier testing model designed to maximise defect coverag
 
 ---
 
+## Required Role-Based Coverage
+
+Every primary route that displays role-scoped data must have at least one emulator-tier (`@emu`) spec per role that can reach it, asserting the expected data **actually renders** — not just that the page loads.
+
+**Minimum matrix:**
+
+| Route | admin | league_manager | coach | parent | player |
+|---|---|---|---|---|---|
+| `/home` (Upcoming Events list) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `/teams` | ✅ | ✅ | ✅ | n/a | n/a |
+| `/calendar` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `/parent` | n/a | n/a | n/a | ✅ | n/a |
+
+A spec satisfies this requirement when it:
+1. Seeds the emulator with a user in that role + at least one event/team for that user
+2. Logs in as that role (via the auth fixture)
+3. Asserts the seeded event/team renders with its specific identifying text (title, date) — `expect(page.getByText('Game 1')).toBeVisible()` not `expect(page.locator('.event-card').count()).toBeGreaterThan(0)`
+
+**Why a strict matrix:** PR #603 (Apr 25) introduced a one-character field-name typo in `useEventStore` (`teamId` vs `teamIds`) that returned zero events for every non-admin user. It shipped to prod on Saturday and was only caught two days later when the PM logged in as a coach. Admin/LM use a separate query path and were unaffected, so admin-only smoke coverage missed it entirely. Per-role data-render assertions on the home page would have caught it immediately on the PR.
+
+**Open coverage gap (incident 2026-04-27 / FW-events-teamids-query):** No `@emu` spec asserts a non-admin coach sees their team's upcoming events on `/home`. Track filling this gap before closing the next testing-strategy revision.
+
+**Enforcement:** When a new top-level route is added or an existing route's data scoping changes, the PR must add the corresponding `@emu` specs in the same PR. Reviewer (security-engineer or qa-test-engineer) blocks merge if the matrix isn't satisfied.
+
+---
+
 ## Cross-references
 
 - CI workflow files: `.github/workflows/`
