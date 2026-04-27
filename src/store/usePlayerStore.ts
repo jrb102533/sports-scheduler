@@ -51,6 +51,12 @@ function extractTeamIds(profile: UserProfile | null): string[] {
   return [...set];
 }
 
+export interface PendingRosterChanges {
+  added: Player[];
+  updated: Map<string, Partial<Player>>;
+  removed: Set<string>;
+}
+
 interface PlayerStore {
   players: Player[];
   loading: boolean;
@@ -61,6 +67,7 @@ interface PlayerStore {
   updateSensitiveData: (playerId: string, teamId: string, data: Partial<SensitivePlayerData>) => Promise<void>;
   deletePlayer: (id: string) => Promise<void>;
   deletePlayersForTeam: (teamId: string) => Promise<void>;
+  bulkApplyRosterChanges: (teamId: string, changes: PendingRosterChanges) => Promise<void>;
 }
 
 export const usePlayerStore = create<PlayerStore>((set) => ({
@@ -299,6 +306,28 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
         delete _sensitiveMap[p.id];
       });
     }
+    await batch.commit();
+  },
+
+  bulkApplyRosterChanges: async (_teamId, changes) => {
+    const batch = writeBatch(db);
+
+    for (const player of changes.added) {
+      // Strip sensitive PII — same pattern as addPlayer
+      const { dateOfBirth: _dob, parentContact: _pc, parentContact2: _pc2, emergencyContact: _ec, ...mainFields } = player;
+      batch.set(doc(db, 'players', player.id), mainFields);
+    }
+
+    for (const [playerId, patch] of changes.updated) {
+      const { dateOfBirth: _dob, parentContact: _pc, parentContact2: _pc2, emergencyContact: _ec, ...safeFields } = patch as Player;
+      batch.update(doc(db, 'players', playerId), safeFields as Record<string, unknown>);
+    }
+
+    for (const playerId of changes.removed) {
+      batch.delete(doc(db, 'players', playerId));
+      delete _sensitiveMap[playerId];
+    }
+
     await batch.commit();
   },
 }));
