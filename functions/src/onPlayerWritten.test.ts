@@ -157,6 +157,11 @@ vi.mock('firebase-admin', () => {
   };
 });
 
+// Helper now imports FieldPath directly from firebase-admin/firestore (PR #657 follow-up).
+vi.mock('firebase-admin/firestore', () => ({
+  FieldPath: { documentId: () => ({ __id: true }) },
+}));
+
 // Import after mocks are in place.
 import { onPlayerWritten } from './index';
 

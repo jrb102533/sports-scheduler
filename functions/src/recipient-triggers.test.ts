@@ -142,6 +142,12 @@ vi.mock('firebase-admin', () => {
   };
 });
 
+// Helper now imports FieldPath directly from firebase-admin/firestore (PR #657 follow-up).
+// Mock the modular import so the test mock's where() impl recognizes the sentinel.
+vi.mock('firebase-admin/firestore', () => ({
+  FieldPath: { documentId: () => ({ __id: true }) },
+}));
+
 // Import after mocks
 import { onEventWrittenRecipients, onTeamMembershipChanged } from './index';
 
