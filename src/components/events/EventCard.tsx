@@ -55,7 +55,7 @@ function RsvpIndicator({ event }: { event: ScheduledEvent; onOpenDetail?: () => 
     // Match by playerId in subcollection entries (RsvpEntry.playerId) or legacy EventRsvp.playerId
     const myRsvp = rsvps.find(r => r.playerId === playerId);
 
-    async function handleRsvp(response: 'yes' | 'no' | 'maybe', e: React.MouseEvent) {
+    const handleRsvp = async (response: 'yes' | 'no' | 'maybe', e: React.MouseEvent) => {
       e.stopPropagation();
       if (submitting) return;
       setSubmitting(true);
@@ -71,7 +71,7 @@ function RsvpIndicator({ event }: { event: ScheduledEvent; onOpenDetail?: () => 
       } finally {
         setSubmitting(false);
       }
-    }
+    };
 
     if (myRsvp?.response === 'yes') {
       return (
