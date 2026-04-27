@@ -605,7 +605,8 @@ describe('sendScheduledNotifications', () => {
         recipients: [r],
         dayBeforeSent: true,
         rsvpFollowupSent: false,
-        // rsvps[] array still present in Firestore (not dropped), but dispatcher ignores it.
+        // rsvps[] array present in this fixture to simulate pre-FW-95 docs; dispatcher ignores it.
+        // FW-95 cleanup script removes this field from existing event docs.
         rsvps: [{ playerId: 'uid-legacy', response: 'yes' }],
       }));
 
@@ -631,7 +632,7 @@ describe('sendScheduledNotifications', () => {
         recipients: [r],
         dayBeforeSent: true,
         rsvpFollowupSent: false,
-        rsvps: [{ playerId: 'uid-both', response: 'yes' }], // legacy array
+        rsvps: [{ playerId: 'uid-both', response: 'yes' }], // pre-FW-95 fixture; field removed from live docs by cleanup script
       }));
 
       _rsvpSubcollection.set('ev-both-rsvp', [{ uid: 'uid-both', response: 'yes' }]); // subcollection

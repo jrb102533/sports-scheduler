@@ -266,11 +266,8 @@ describe('EventDetailPanel — Attendance section', () => {
   // The text "Attendance Forecast" must never appear in the panel.
 
   function makeEventWithRsvps(): ScheduledEvent {
-    return makeEvent({
-      rsvps: [
-        { playerId: 'p1', name: 'Alice', response: 'yes' as const, respondedAt: '2026-01-01T00:00:00.000Z' },
-      ],
-    });
+    // rsvps[] array field was dropped in FW-95; test only checks "Attendance Forecast" text absence
+    return makeEvent({ notes: 'has-attendees' });
   }
 
   it('never renders the text "Attendance Forecast" for any role', () => {

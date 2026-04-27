@@ -22,14 +22,6 @@ export interface SnackSignup {
   signedUpAt: string;
 }
 
-export interface EventRsvp {
-  playerId: string;
-  name: string;
-  email: string;
-  response: 'yes' | 'no' | 'maybe';
-  respondedAt: string;
-}
-
 export interface AttendanceRecord {
   playerId: string;
   status: AttendanceStatus;
@@ -79,7 +71,6 @@ export interface ScheduledEvent {
   snackVolunteer?: SnackVolunteer;
   snackItem?: string;
   snackSignups?: SnackSignup[];
-  rsvps?: EventRsvp[];
   attendance?: AttendanceRecord[];
   attendanceRecorded?: boolean;
   /** True if the event is held outdoors (default true). Set to false for indoor venues. */

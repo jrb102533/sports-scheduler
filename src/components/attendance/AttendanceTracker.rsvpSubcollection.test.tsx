@@ -1,11 +1,10 @@
 /**
- * AttendanceTracker — RSVP subcollection migration (FW-97)
+ * AttendanceTracker — RSVP subcollection (FW-97 / FW-95)
  *
  * Verifies that AttendanceTracker:
  *   A) Calls loadForEvent on mount to fetch subcollection RSVPs
- *   B) Pre-fills attendance from store RSVPs (not event.rsvps)
- *   C) Falls back to event.rsvps when the store has no entry for the event
- *   D) "Pre-fill from RSVPs" button is absent when store has no RSVPs
+ *   B) Pre-fills attendance from store RSVPs (sole source of truth; FW-95 dropped event.rsvps)
+ *   C) "Pre-fill from RSVPs" button is absent when store has no RSVPs
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -170,28 +169,12 @@ describe('AttendanceTracker — pre-fill uses subcollection store data (FW-97)',
   });
 });
 
-// ── C. Fallback to event.rsvps when store empty ───────────────────────────────
+// ── C. Pre-fill absent when no RSVPs ─────────────────────────────────────────
 
-describe('AttendanceTracker — falls back to event.rsvps when store is empty (FW-97)', () => {
-  it('shows Pre-fill button from event.rsvps when store has no entry for the event', () => {
+describe('AttendanceTracker — no pre-fill button when store has no RSVPs (FW-97)', () => {
+  it('hides Pre-fill button when store has no entry for the event', () => {
     mockStoreRsvps = {};
-    const event = makeEvent({
-      attendance: [],
-      rsvps: [
-        { playerId: 'p1', name: 'Player p1', email: 'p1@test.com', response: 'yes', respondedAt: '2026-01-01' },
-      ],
-    });
-    render(<AttendanceTracker event={event} />);
-    expect(screen.getByRole('button', { name: /pre-fill from rsvps/i })).toBeInTheDocument();
-  });
-});
-
-// ── D. Pre-fill absent when no RSVPs ─────────────────────────────────────────
-
-describe('AttendanceTracker — no pre-fill button when no RSVPs (FW-97)', () => {
-  it('hides Pre-fill button when store is empty and event.rsvps is also empty', () => {
-    mockStoreRsvps = {};
-    render(<AttendanceTracker event={makeEvent({ attendance: [], rsvps: [] })} />);
+    render(<AttendanceTracker event={makeEvent({ attendance: [] })} />);
     expect(screen.queryByRole('button', { name: /pre-fill from rsvps/i })).not.toBeInTheDocument();
   });
 });
