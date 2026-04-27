@@ -302,6 +302,12 @@ beforeEach(() => {
     role: 'admin',
     memberships: [],
   });
+  seedDoc('users/lm1', {
+    uid: 'lm1',
+    displayName: 'Eve Leag',
+    role: 'league_manager',
+    memberships: [{ role: 'league_manager', leagueId: 'lg-1', isPrimary: true }],
+  });
 });
 
 // ─── Auth / argument guards ───────────────────────────────────────────────────
@@ -534,6 +540,38 @@ describe('createTeamAndBecomeCoach — admin user', () => {
 
     const profile = _store.get('users/admin1');
     expect(profile?.activeContext).toBe(0);
+  });
+
+  // League managers are operators too — they create teams on behalf of their
+  // leagues, not as coaches. Same skip rule as admin.
+  it('(7-LM) does NOT append a coach membership to league_manager callers', async () => {
+    const profileBefore = _store.get('users/lm1');
+    const membershipsBefore = (profileBefore?.memberships as Array<Record<string, unknown>>) ?? [];
+    const countBefore = membershipsBefore.length;
+
+    const result = await fn(makeRequest('lm1', { name: 'LM Team A' })) as {
+      teamId: string;
+      newMembershipIndex: number;
+    };
+
+    const profileAfter = _store.get('users/lm1');
+    const membershipsAfter = (profileAfter?.memberships as Array<Record<string, unknown>>) ?? [];
+
+    expect(membershipsAfter.length).toBe(countBefore);
+    expect(membershipsAfter.some((m) => m.role === 'coach' && m.teamId === result.teamId)).toBe(false);
+    expect(result.newMembershipIndex).toBe(-1);
+  });
+
+  it('(7-LM) team doc still records LM caller via coachId/coachIds for write access', async () => {
+    const result = await fn(makeRequest('lm1', { name: 'LM Team B' })) as {
+      teamId: string;
+      newMembershipIndex: number;
+    };
+
+    const team = _store.get(`teams/${result.teamId}`);
+    expect(team?.coachId).toBe('lm1');
+    expect(team?.coachIds).toEqual(['lm1']);
+    expect(team?.createdBy).toBe('lm1');
   });
 });
 
