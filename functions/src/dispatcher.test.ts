@@ -463,8 +463,11 @@ describe('sendScheduledNotifications', () => {
         recipients: [responded, unresponded],
         dayBeforeSent: true, // skip day-before so only rsvp runs
         rsvpFollowupSent: false,
-        rsvps: [{ playerId: 'uid-responded', response: 'yes' }],
+        // FW-90b: RSVPs read from subcollection only (legacy array ignored).
       }));
+
+      // Seed subcollection: only 'responded' has RSVPd.
+      _rsvpSubcollection.set('ev-rsvp', [{ uid: 'uid-responded', response: 'yes' }]);
 
       await getHandler()();
 
@@ -485,9 +488,12 @@ describe('sendScheduledNotifications', () => {
         recipients: [r],
         dayBeforeSent: true,
         rsvpFollowupSent: false,
-        rsvps: [{ playerId: 'uid-done', response: 'yes' }],
+        // FW-90b: RSVPs read from subcollection only (legacy array ignored).
       });
       _events.push(evDoc);
+
+      // Seed subcollection: everyone has RSVPd.
+      _rsvpSubcollection.set('ev-all-responded', [{ uid: 'uid-done', response: 'yes' }]);
 
       await getHandler()();
 
@@ -539,27 +545,29 @@ describe('sendScheduledNotifications', () => {
       expect(sendMailMock).not.toHaveBeenCalled();
     });
 
-    it('(FW-90a) array-only RSVP (legacy) → recipient matched, no follow-up sent', async () => {
-      // Recipient RSVPd via email link pre-FW-90a (written to array only).
-      // Subcollection is empty. Dispatcher must still match via array.
+    it('(FW-90b) migrated legacy RSVP (source=email-legacy in subcollection) → matched, no follow-up sent', async () => {
+      // After the migration script runs, pre-FW-90 email-link RSVPs appear in the
+      // subcollection with source=email-legacy. Dispatcher must match them.
       const r = makeRecipient('legacy@example.com', 'Legacy User');
       r.uid = 'uid-legacy';
 
-      _events.push(makeEventDoc('ev-array-rsvp', {
+      _events.push(makeEventDoc('ev-migrated-rsvp', {
         date: TOMORROW,
         status: 'scheduled',
-        title: 'Array Game',
+        title: 'Migrated Game',
         recipients: [r],
         dayBeforeSent: true,
         rsvpFollowupSent: false,
+        // rsvps[] array still present in Firestore (not dropped), but dispatcher ignores it.
         rsvps: [{ playerId: 'uid-legacy', response: 'yes' }],
       }));
 
-      // Subcollection is empty — RSVP lives only in legacy array.
-      // _rsvpSubcollection not set → returns empty array.
+      // Subcollection has the migrated RSVP (source=email-legacy).
+      _rsvpSubcollection.set('ev-migrated-rsvp', [{ uid: 'uid-legacy', response: 'yes', source: 'email-legacy' }]);
 
       await getHandler()();
 
+      // Matched via subcollection — no follow-up sent.
       expect(sendMailMock).not.toHaveBeenCalled();
     });
 
@@ -612,29 +620,34 @@ describe('sendScheduledNotifications', () => {
       expect(sendMailMock).not.toHaveBeenCalled();
     });
 
-    it('(FW-90a) subcollection read failure → falls back to array, does not crash', async () => {
-      // Simulates a transient Firestore error reading the subcollection.
-      // Dispatcher should log the error and fall back to the legacy array.
-      const r = makeRecipient('fallback@example.com', 'Fallback User');
-      r.uid = 'uid-fallback';
+    it('(FW-90b) subcollection read failure → fail-closed: stamps flag, skips event, no follow-up sent', async () => {
+      // FW-90b: dispatcher no longer falls back to the legacy array on read failure.
+      // Instead it fails-closed — stamps rsvpFollowupSent:true and skips the event.
+      // This avoids spamming users who may have already responded.
+      const r = makeRecipient('failclosed@example.com', 'Fail Closed User');
+      r.uid = 'uid-failclosed';
 
-      _events.push(makeEventDoc('ev-subcol-fail', {
+      const evDoc = makeEventDoc('ev-subcol-fail', {
         date: TOMORROW,
         status: 'scheduled',
-        title: 'Fallback Game',
+        title: 'Fail-Closed Game',
         recipients: [r],
         dayBeforeSent: true,
         rsvpFollowupSent: false,
-        rsvps: [{ playerId: 'uid-fallback', response: 'yes' }], // array has the RSVP
-      }));
+      });
+      _events.push(evDoc);
 
-      // Subcollection throws — dispatcher must catch and fall back.
+      // Subcollection throws — dispatcher must fail-closed.
       _rsvpSubcollection.set('ev-subcol-fail', 'THROW');
 
       await getHandler()();
 
-      // Fell back to array; array has the RSVP → no follow-up sent.
+      // No follow-up email sent.
       expect(sendMailMock).not.toHaveBeenCalled();
+      // Flag stamped so we don't re-attempt on the next run.
+      expect(evDoc.ref.update).toHaveBeenCalledWith(
+        expect.objectContaining({ rsvpFollowupSent: true }),
+      );
     });
   });
 
