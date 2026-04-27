@@ -19,6 +19,7 @@ import { isCoachOfTeamDoc, isManagerOfLeagueDoc } from './rbacHelpers';
 import { isAllowedTeamColor } from './teamColors';
 import { ENV } from './env';
 import { computeEventRecipients } from './recipientHelpers';
+import { rebuildRecipientsForTeam } from './recipientTriggerHelpers';
 
 const APP_URL = process.env.APP_URL ?? 'https://first-whistle-e76f4.web.app';
 const FUNCTIONS_BASE = process.env.FUNCTIONS_BASE ?? 'https://us-central1-first-whistle-e76f4.cloudfunctions.net';
@@ -6008,113 +6009,57 @@ export const onTeamMembershipChanged = onDocumentWritten(
     if (!shouldRebuild) return;
 
     const teamId = event.params.teamId;
-    const db = admin.firestore();
-    const todayStr = new Date().toISOString().slice(0, 10);
+    console.log(`[onTeamMembershipChanged] team=${teamId} — rebuilding recipients`);
+    await rebuildRecipientsForTeam(teamId, admin.firestore());
+    console.log(`[onTeamMembershipChanged] team=${teamId} — done`);
+  }
+);
 
-    // Query upcoming scheduled events for this team — bounded by date and status.
-    const eventsSnap = await db
-      .collection('events')
-      .where('teamIds', 'array-contains', teamId)
-      .where('status', '==', 'scheduled')
-      .where('date', '>=', todayStr)
-      .get();
+// ─── Trigger: rebuild recipients on player roster changes ─────────────────────
+//
+// Fires whenever a players/{playerId} document is written. Identifies the
+// affected team(s) from before/after teamId fields and calls rebuildRecipientsForTeam
+// for each. Handles create, delete, edit, and team-move (before.teamId ≠ after.teamId).
+//
+// Cost note: bulk roster ops fire N triggers, each rebuilding the same team.
+// Redundant rebuilds are accepted per FW-88 design — debouncing is deferred to FW-89.
+//
+// FW-88 / FW-82 Phase B
 
-    if (eventsSnap.empty) {
-      console.log(`[onTeamMembershipChanged] team=${teamId} — no upcoming events`);
+export const onPlayerWritten = onDocumentWritten(
+  'players/{playerId}',
+  async (event) => {
+    const before = event.data?.before?.data();
+    const after = event.data?.after?.data();
+
+    // Collect all affected teams:
+    //   delete → before.teamId present, after undefined
+    //   create → after.teamId present, before undefined
+    //   move   → before.teamId !== after.teamId (rebuild both)
+    //   edit   → before.teamId === after.teamId (rebuild once, Set deduplicates)
+    const teamIds = new Set<string>();
+    if (typeof before?.teamId === 'string' && before.teamId.length > 0) {
+      teamIds.add(before.teamId);
+    }
+    if (typeof after?.teamId === 'string' && after.teamId.length > 0) {
+      teamIds.add(after.teamId);
+    }
+
+    if (teamIds.size === 0) {
+      // Player has no teamId — nothing to rebuild.
       return;
     }
 
-    console.log(
-      `[onTeamMembershipChanged] team=${teamId} — rebuilding recipients on ${eventsSnap.size} event(s)`,
-    );
+    const playerId = event.params.playerId;
+    const db = admin.firestore();
 
-    // Collect all distinct teamIds across the matched events (the team may
-    // share events with other teams for game matchups).
-    const allTeamIds = new Set<string>([teamId]);
-    for (const evDoc of eventsSnap.docs) {
-      const teamIds: string[] = evDoc.data().teamIds ?? [];
-      for (const id of teamIds) allTeamIds.add(id);
-    }
-
-    // Batch-read teams
-    const teamDataById = new Map<string, FirebaseFirestore.DocumentData>();
-    const teamIdList = Array.from(allTeamIds);
-    for (let i = 0; i < teamIdList.length; i += FIRESTORE_IN_QUERY_LIMIT) {
-      const chunk = teamIdList.slice(i, i + FIRESTORE_IN_QUERY_LIMIT);
-      const snap = await db
-        .collection('teams')
-        .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
-        .get();
-      for (const doc of snap.docs) teamDataById.set(doc.id, doc.data());
-    }
-
-    // Collect coach UIDs
-    const allCoachIds = new Set<string>();
-    for (const teamData of teamDataById.values()) {
-      for (const uid of (teamData.coachIds as string[] | undefined) ?? []) {
-        if (typeof uid === 'string' && uid.length > 0) allCoachIds.add(uid);
-      }
-    }
-
-    // Batch-read coach profiles
-    const coachProfiles = new Map<string, FirebaseFirestore.DocumentData>();
-    const coachIdList = Array.from(allCoachIds);
-    for (let i = 0; i < coachIdList.length; i += FIRESTORE_IN_QUERY_LIMIT) {
-      const chunk = coachIdList.slice(i, i + FIRESTORE_IN_QUERY_LIMIT);
-      const snap = await db
-        .collection('users')
-        .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
-        .get();
-      for (const doc of snap.docs) coachProfiles.set(doc.id, doc.data());
-    }
-
-    // Batch-read players per team
-    const playersByTeam = new Map<string, FirebaseFirestore.DocumentData[]>();
-    for (const id of allTeamIds) playersByTeam.set(id, []);
-    for (let i = 0; i < teamIdList.length; i += FIRESTORE_IN_QUERY_LIMIT) {
-      const chunk = teamIdList.slice(i, i + FIRESTORE_IN_QUERY_LIMIT);
-      const snap = await db
-        .collection('players')
-        .where('teamId', 'in', chunk)
-        .get();
-      for (const doc of snap.docs) {
-        const tid = doc.data().teamId as string | undefined;
-        if (!tid) continue;
-        const bucket = playersByTeam.get(tid) ?? [];
-        bucket.push(doc.data());
-        playersByTeam.set(tid, bucket);
-      }
-    }
-
-    // Write recipients for each event in batches.
-    let batchObj = db.batch();
-    let batchCount = 0;
-    const BATCH_LIMIT = 500;
-
-    for (const evDoc of eventsSnap.docs) {
-      const eventTeamIds: string[] = (evDoc.data().teamIds ?? []).filter(
-        (id: unknown): id is string => typeof id === 'string' && id.length > 0,
+    for (const teamId of teamIds) {
+      console.log(
+        `[onPlayerWritten] player=${playerId} — rebuilding recipients for team=${teamId}`,
       );
-      const recipients = computeEventRecipients(
-        eventTeamIds,
-        playersByTeam as Map<string, Record<string, unknown>[]>,
-        coachProfiles as Map<string, Record<string, unknown>>,
-        teamDataById as Map<string, Record<string, unknown>>,
-      );
-      batchObj.update(evDoc.ref, { recipients });
-      batchCount++;
-
-      if (batchCount >= BATCH_LIMIT) {
-        await batchObj.commit();
-        batchObj = db.batch();
-        batchCount = 0;
-      }
+      await rebuildRecipientsForTeam(teamId, db);
     }
 
-    if (batchCount > 0) await batchObj.commit();
-
-    console.log(
-      `[onTeamMembershipChanged] team=${teamId} — done, updated ${eventsSnap.size} event(s)`,
-    );
+    console.log(`[onPlayerWritten] player=${playerId} — done`);
   }
 );
