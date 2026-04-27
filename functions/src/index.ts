@@ -1723,10 +1723,7 @@ export const rsvpEvent = onRequest(
     }
 
     const eventData = eventSnap.data()!;
-    const existing: any[] = eventData.rsvps ?? [];
-    const filtered = existing.filter((r: any) => r.playerId !== playerId);
     const respondedAt = new Date().toISOString();
-    filtered.push({ playerId, name: name ?? 'Guest', response, respondedAt });
 
     // Derive subcollection docKey from the playerId param (which is recipientKey:
     // uid, uid_playerId, or raw email for no-auth recipients).
@@ -1752,12 +1749,9 @@ export const rsvpEvent = onRequest(
     }
 
     const db = admin.firestore();
-    // Write to both stores during transition (PR 1 of FW-90).
-    // Legacy array update + subcollection write run in parallel.
-    await Promise.all([
-      eventRef.update({ rsvps: filtered, updatedAt: respondedAt }),
-      db.doc(`events/${eventId}/rsvps/${subcollectionDocKey}`).set(rsvpSubDoc),
-    ]);
+    // FW-90b: write ONLY to subcollection (legacy rsvps[] array no longer updated).
+    // Migration script backfilled all historical array entries to the subcollection.
+    await db.doc(`events/${eventId}/rsvps/${subcollectionDocKey}`).set(rsvpSubDoc);
 
     const eventTitle = esc(eventData.title ?? 'Event');
     const eventDate = esc(eventData.date ?? '');
@@ -2363,20 +2357,13 @@ export const sendScheduledNotifications = onSchedule(
 
       // ── RSVP follow-up (tomorrow's events, unresponded recipients) ────────
       if (eventDate === tomorrowStr && !ev.rsvpFollowupSent) {
-        // Build respondedSet by unioning ALL identifying keys from both stores:
-        //   1. Legacy events.rsvps[] array (in-app + pre-FW-90 email RSVPs).
-        //   2. Subcollection events/{id}/rsvps/* (in-app via submitRsvp + post-FW-90 email RSVPs).
-        // A recipient is considered "responded" if ANY of their identifying keys
-        // (uid, email, playerId) appears in this set.
+        // FW-90b: respondedSet is built exclusively from the subcollection.
+        // Migration script (migrate-rsvps-to-subcollection.mjs) must be run before
+        // this build is deployed to ensure historical email-link RSVPs are present.
+        // A recipient is considered "responded" if any of their identifying keys
+        // (uid, email, playerId) appears in the subcollection.
         const respondedSet = new Set<string>();
 
-        // Source 1: legacy array — each entry's playerId is the recipientKey
-        // (uid, uid_playerId composite, or raw email for no-auth recipients).
-        for (const r of (ev.rsvps as Array<{ playerId: string }>) ?? []) {
-          if (r.playerId) respondedSet.add(r.playerId);
-        }
-
-        // Source 2: subcollection — read all docs and add every identifying key.
         try {
           const rsvpSubSnap = await db.collection(`events/${eventId}/rsvps`).get();
           for (const rsvpDoc of rsvpSubSnap.docs) {
@@ -2387,9 +2374,13 @@ export const sendScheduledNotifications = onSchedule(
           }
         } catch (err) {
           console.error(
-            `[sendScheduledNotifications] event=${eventId} rsvp subcollection read failed — falling back to array only`,
+            `[sendScheduledNotifications] event=${eventId} rsvp subcollection read failed — skipping follow-up (fail-closed)`,
             err,
           );
+          // Fail-closed: if we cannot determine who responded, skip the follow-up
+          // for this event to avoid spamming users who already responded.
+          await evDoc.ref.update({ rsvpFollowupSent: true });
+          continue;
         }
 
         const unresponded = recipients.filter((r) => {
