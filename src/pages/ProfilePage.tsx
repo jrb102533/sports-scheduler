@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { User, Shield, Star, Link, ChevronDown } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -55,6 +55,28 @@ export function ProfilePage() {
   // this, not profile.displayName, because profile is refreshed via an async
   // onSnapshot listener and can lag (or race) a same-session save. See #475.
   const [savedDisplayName, setSavedDisplayName] = useState(profile?.displayName ?? '');
+
+  // useState initializers run once. When the profile arrives via onSnapshot
+  // after the first render (auth still loading at mount time), the firstName /
+  // lastName inputs would otherwise stay locked at '' — triggering the empty-
+  // field validation banner the moment the user clicks into a field. Sync
+  // from displayName whenever it arrives, but only if the user hasn't started
+  // editing (touched) so we don't clobber an in-progress edit.
+  useEffect(() => {
+    if (firstNameTouched || lastNameTouched) return;
+    const parts = (profile?.displayName ?? '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return;
+    const next = {
+      first: parts.slice(0, -1).join(' ') || parts[0] || '',
+      last: parts.length > 1 ? parts[parts.length - 1] : '',
+    };
+    if (next.first !== firstName) setFirstName(next.first);
+    if (next.last !== lastName) setLastName(next.last);
+    if (profile?.displayName && profile.displayName !== savedDisplayName) {
+      setSavedDisplayName(profile.displayName);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.displayName]);
 
   const memberships = getMemberships(profile ?? null);
   const activeIndex = profile?.activeContext ?? 0;
