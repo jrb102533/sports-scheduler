@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { LogoOptionA } from '@/components/brand/LogoOptionA';
 import { LogoOptionB } from '@/components/brand/LogoOptionB';
 import { LogoOptionC } from '@/components/brand/LogoOptionC';
+import { ClipboardWordmark } from '@/components/brand/ClipboardWordmark';
 
 type LogoVariant = 'light' | 'dark';
 
@@ -14,6 +15,7 @@ const LOGOS: LogoComponent[] = [
   { component: LogoOptionA, label: 'Option A' },
   { component: LogoOptionB, label: 'Option B' },
   { component: LogoOptionC, label: 'Option C' },
+  { component: ClipboardWordmark, label: 'Option D — Clipboard Wordmark' },
 ];
 
 const NAVY = '#1B3A6B';

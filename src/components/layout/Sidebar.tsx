@@ -8,6 +8,7 @@ import { useEventStore } from '@/store/useEventStore';
 import { useDmStore } from '@/store/useDmStore';
 import { countUnreadThreads } from '@/lib/messagingUnread';
 import { FLAGS } from '@/lib/flags';
+import { ClipboardWordmark } from '@/components/brand/ClipboardWordmark';
 import { todayISO, formatTime } from '@/lib/dateUtils';
 import { format, parseISO, isToday, isTomorrow } from 'date-fns';
 
@@ -93,7 +94,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
     <>
       <div className="px-3 pt-4 pb-3 border-b border-white/10">
         <div className="bg-white rounded-xl px-3 py-2" style={{ overflow: 'hidden' }}>
-          <img src="/logo.png" alt="First Whistle" className="w-full h-auto object-contain" style={{ borderRadius: '10px' }} />
+          <ClipboardWordmark size={56} variant="dark" />
         </div>
         {kidsMode && <span className="text-xs font-medium mt-1 block text-center" style={{ color: '#f97316' }}>Kids Mode</span>}
       </div>
