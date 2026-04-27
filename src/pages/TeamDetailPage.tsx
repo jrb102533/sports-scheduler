@@ -15,6 +15,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DeleteTeamModal } from '@/components/teams/DeleteTeamModal';
 import { AssignCoCoachModal } from '@/components/teams/AssignCoCoachModal';
 import { TeamChatPanel } from '@/components/teams/TeamChatPanel';
+import { ComposeMessageModal } from '@/components/messaging/ComposeMessageModal';
 import { isTeamUnread } from '@/lib/messagingUnread';
 import { useTeamStore } from '@/store/useTeamStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
@@ -77,6 +78,7 @@ export function TeamDetailPage() {
   const [selectedEvent, setSelectedEvent] = useState<ScheduledEvent | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmHardDelete, setConfirmHardDelete] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
   const [rosterCopied, setRosterCopied] = useState(false);
   const [assignCoCoachOpen, setAssignCoCoachOpen] = useState(false);
   const [rosterSaving, setRosterSaving] = useState(false);
@@ -337,6 +339,11 @@ export function TeamDetailPage() {
             )}
           </p>
         </div>
+        <RoleGuard roles={['admin', 'league_manager', 'coach']}>
+          <Button variant="secondary" size="sm" onClick={() => setComposeOpen(true)}>
+            <Mail size={14} /> Email Team
+          </Button>
+        </RoleGuard>
         {userCanEdit && <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}><Edit size={14} /> Edit</Button>}
         {isOwner && (
           <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>
@@ -758,6 +765,12 @@ export function TeamDetailPage() {
         title="Approve Join Request"
         message={`Allow ${pendingApprove?.displayName ?? 'this player'} to join this team?`}
         confirmLabel="Approve"
+      />
+      {/* Email Team modal */}
+      <ComposeMessageModal
+        open={composeOpen}
+        onClose={() => setComposeOpen(false)}
+        defaultTeamId={teamId}
       />
       {/* Reject join request */}
       <ConfirmDialog
