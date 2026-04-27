@@ -121,6 +121,28 @@ describe('ProfilePage — rendering', () => {
     expect(getFirstNameInput()).toHaveValue('Jane');
     expect(getLastNameInput()).toHaveValue('Smith');
   });
+
+  // Regression: profile arrives async via onSnapshot, so on first render the
+  // form may mount with profile=null. The useEffect must backfill the inputs
+  // once profile.displayName populates, instead of leaving them locked at ''.
+  it('populates inputs when the profile arrives after first render', async () => {
+    currentProfile = null;
+    const { rerender } = renderPage();
+    expect(screen.queryByRole('textbox', { name: /first name/i })).not.toBeInTheDocument();
+
+    currentProfile = makeProfile({ displayName: 'Late Loader' });
+    rerender(<ProfilePage />);
+
+    await waitFor(() => {
+      expect(getFirstNameInput()).toHaveValue('Late');
+      expect(getLastNameInput()).toHaveValue('Loader');
+    });
+  });
+
+  it('does not show "First name is required" on initial load when profile is populated', () => {
+    renderPage();
+    expect(screen.queryByText(/first name is required/i)).not.toBeInTheDocument();
+  });
 });
 
 describe('ProfilePage — error visibility on blur', () => {
