@@ -16,6 +16,16 @@
  *     - trims whitespace from message text before writing
  *     - propagates addDoc errors to the caller
  *
+ *   loadOlder() — FW-107:
+ *     - prepends older messages in ascending order before existing messages
+ *     - advances oldestCursor to the last doc of the fetched page
+ *     - second call uses the updated cursor (startAfter receives new cursor)
+ *     - does not double-fetch when loadingOlder is already true
+ *     - sets reachedStart when page is smaller than PAGE_SIZE
+ *     - is a no-op when reachedStart is already true
+ *     - is a no-op when there is no oldestCursor
+ *     - is a no-op when teamId is null
+ *
  * No emulator is needed — Firestore is mocked at the module boundary.
  */
 
@@ -27,14 +37,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 type SnapCb = (snap: unknown) => void;
 type ErrCb = (err: Error) => void;
 
-const { _mockAddDoc, _mockOnSnapshot, _snapCallbacks } = vi.hoisted(() => {
+const { _mockAddDoc, _mockGetDocs, _mockOnSnapshot, _mockStartAfter, _snapCallbacks } = vi.hoisted(() => {
   const snapCallbacks: Array<{ cb: SnapCb; errCb?: ErrCb }> = [];
   const mockOnSnapshot = vi.fn((_q: unknown, cb: SnapCb, errCb?: ErrCb) => {
     snapCallbacks.push({ cb, errCb });
     return () => {};
   });
   const mockAddDoc = vi.fn().mockResolvedValue({ id: 'msg-auto-id' });
-  return { _mockAddDoc: mockAddDoc, _mockOnSnapshot: mockOnSnapshot, _snapCallbacks: snapCallbacks };
+  const mockGetDocs = vi.fn().mockResolvedValue({ docs: [] });
+  const mockStartAfter = vi.fn(cursor => cursor); // returns its argument for inspection
+  return {
+    _mockAddDoc: mockAddDoc,
+    _mockGetDocs: mockGetDocs,
+    _mockOnSnapshot: mockOnSnapshot,
+    _mockStartAfter: mockStartAfter,
+    _snapCallbacks: snapCallbacks,
+  };
 });
 
 vi.mock('@/lib/firebase', () => ({ db: {} }));
@@ -46,8 +64,10 @@ vi.mock('firebase/firestore', () => ({
   query: vi.fn((ref: unknown) => ref),
   orderBy: vi.fn(),
   limit: vi.fn(),
+  startAfter: _mockStartAfter,
   onSnapshot: _mockOnSnapshot,
   addDoc: _mockAddDoc,
+  getDocs: _mockGetDocs,
   serverTimestamp: vi.fn(() => ({ _type: 'serverTimestamp' })),
   Timestamp: class Timestamp {
     constructor(public seconds: number, public nanoseconds: number) {}
@@ -59,7 +79,9 @@ vi.mock('firebase/firestore', () => ({
 
 // Convenience aliases
 const mockAddDoc = _mockAddDoc;
+const mockGetDocs = _mockGetDocs;
 const mockOnSnapshot = _mockOnSnapshot;
+const mockStartAfter = _mockStartAfter;
 
 // ── Import store ──────────────────────────────────────────────────────────────
 
@@ -83,10 +105,18 @@ function getLastSnapCallback() {
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  useTeamChatStore.setState({ messages: [], loading: false, teamId: null });
+  useTeamChatStore.setState({
+    messages: [],
+    loading: false,
+    loadingOlder: false,
+    teamId: null,
+    oldestCursor: null,
+    reachedStart: false,
+  });
   _snapCallbacks.length = 0;
   vi.clearAllMocks();
   mockAddDoc.mockResolvedValue({ id: 'msg-auto-id' });
+  mockGetDocs.mockResolvedValue({ docs: [] });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -219,5 +249,211 @@ describe('useTeamChatStore — sendMessage', () => {
     await expect(
       useTeamChatStore.getState().sendMessage('team-abc', 'u1', 'Alice', 'Hello')
     ).rejects.toThrow('Firestore write denied');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// loadOlder() — FW-107: cursor pagination
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Helper: create a mock Firestore QueryDocumentSnapshot-like object.
+ * The store stores these as `oldestCursor` and passes them to startAfter().
+ */
+function makeCursor(id: string) {
+  return { id, data: () => ({ text: 'cursor-doc' }) };
+}
+
+function makeGetDocsSnap(docs: Array<{ id: string; data: Record<string, unknown> }>) {
+  return {
+    docs: docs.map(d => ({
+      id: d.id,
+      data: () => d.data,
+    })),
+  };
+}
+
+describe('useTeamChatStore — loadOlder (FW-107)', () => {
+
+  it('prepends older messages in ascending order before the existing messages', async () => {
+    const existingCursor = makeCursor('msg-new');
+
+    // Seed the store with one existing message and a valid cursor
+    useTeamChatStore.setState({
+      teamId: 'team-abc',
+      oldestCursor: existingCursor as never,
+      reachedStart: false,
+      loadingOlder: false,
+      messages: [
+        { id: 'msg-new', teamId: 'team-abc', senderId: 'u1', senderName: 'Alice', text: 'Latest', createdAt: '2026-01-01T01:00:00.000Z' },
+      ],
+    });
+
+    // getDocs returns two older messages in desc order (most-recent first)
+    mockGetDocs.mockResolvedValueOnce(
+      makeGetDocsSnap([
+        { id: 'msg-mid', data: { teamId: 'team-abc', senderId: 'u1', senderName: 'Alice', text: 'Middle', createdAt: '2026-01-01T00:30:00.000Z' } },
+        { id: 'msg-old', data: { teamId: 'team-abc', senderId: 'u1', senderName: 'Alice', text: 'Oldest', createdAt: '2026-01-01T00:00:00.000Z' } },
+      ]),
+    );
+
+    await useTeamChatStore.getState().loadOlder();
+
+    const { messages } = useTeamChatStore.getState();
+    // Older messages are prepended in ascending order; existing message is last.
+    expect(messages).toHaveLength(3);
+    expect(messages[0].id).toBe('msg-old');
+    expect(messages[1].id).toBe('msg-mid');
+    expect(messages[2].id).toBe('msg-new');
+  });
+
+  it('advances oldestCursor to the last document of the fetched page', async () => {
+    const initialCursor = makeCursor('msg-current-oldest');
+    useTeamChatStore.setState({
+      teamId: 'team-abc',
+      oldestCursor: initialCursor as never,
+      reachedStart: false,
+      loadingOlder: false,
+      messages: [],
+    });
+
+    const olderDoc1 = { id: 'msg-b', data: { teamId: 'team-abc', senderId: 'u1', senderName: 'A', text: 'B', createdAt: '2026-01-01T00:02:00.000Z' } };
+    const olderDoc2 = { id: 'msg-a', data: { teamId: 'team-abc', senderId: 'u1', senderName: 'A', text: 'A', createdAt: '2026-01-01T00:01:00.000Z' } };
+    mockGetDocs.mockResolvedValueOnce(makeGetDocsSnap([olderDoc1, olderDoc2]));
+
+    await useTeamChatStore.getState().loadOlder();
+
+    const { oldestCursor } = useTeamChatStore.getState();
+    // The cursor should now point to the last doc returned by the query (msg-a)
+    expect((oldestCursor as { id: string } | null)?.id).toBe('msg-a');
+  });
+
+  it('subsequent call passes the updated cursor to startAfter', async () => {
+    const cursor1 = makeCursor('cursor-1');
+    useTeamChatStore.setState({
+      teamId: 'team-abc',
+      oldestCursor: cursor1 as never,
+      reachedStart: false,
+      loadingOlder: false,
+      messages: [],
+    });
+
+    const cursor2 = makeCursor('cursor-2');
+    // First load: return a full page of 25 docs (use a single doc for simplicity)
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [{ id: cursor2.id, data: () => ({ teamId: 'team-abc', senderId: 'u1', senderName: 'A', text: 'x', createdAt: '2026-01-01T00:00:00.000Z' }) }],
+    });
+
+    await useTeamChatStore.getState().loadOlder();
+
+    // Force reachedStart off so the second call is not blocked
+    useTeamChatStore.setState({ reachedStart: false });
+
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+    await useTeamChatStore.getState().loadOlder();
+
+    // The second call's startAfter should have received cursor2 (the new cursor)
+    expect(mockStartAfter).toHaveBeenCalledTimes(2);
+    const secondCallArg = mockStartAfter.mock.calls[1][0] as { id: string };
+    expect(secondCallArg.id).toBe(cursor2.id);
+  });
+
+  it('does not issue a second fetch when loadingOlder is already true', async () => {
+    useTeamChatStore.setState({
+      teamId: 'team-abc',
+      oldestCursor: makeCursor('c1') as never,
+      reachedStart: false,
+      loadingOlder: true, // already in flight
+      messages: [],
+    });
+
+    await useTeamChatStore.getState().loadOlder();
+
+    expect(mockGetDocs).not.toHaveBeenCalled();
+  });
+
+  it('sets reachedStart to true when page returned is smaller than PAGE_SIZE (25)', async () => {
+    useTeamChatStore.setState({
+      teamId: 'team-abc',
+      oldestCursor: makeCursor('c1') as never,
+      reachedStart: false,
+      loadingOlder: false,
+      messages: [],
+    });
+
+    // Fewer than 25 docs → we've reached the start of history
+    mockGetDocs.mockResolvedValueOnce(
+      makeGetDocsSnap([
+        { id: 'msg-only', data: { teamId: 'team-abc', senderId: 'u1', senderName: 'A', text: 'Only', createdAt: '2026-01-01T00:00:00.000Z' } },
+      ]),
+    );
+
+    await useTeamChatStore.getState().loadOlder();
+
+    expect(useTeamChatStore.getState().reachedStart).toBe(true);
+  });
+
+  it('is a no-op when reachedStart is already true (terminal state)', async () => {
+    useTeamChatStore.setState({
+      teamId: 'team-abc',
+      oldestCursor: makeCursor('c1') as never,
+      reachedStart: true, // already at the beginning
+      loadingOlder: false,
+      messages: [],
+    });
+
+    await useTeamChatStore.getState().loadOlder();
+
+    expect(mockGetDocs).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when oldestCursor is null', async () => {
+    useTeamChatStore.setState({
+      teamId: 'team-abc',
+      oldestCursor: null,
+      reachedStart: false,
+      loadingOlder: false,
+      messages: [],
+    });
+
+    await useTeamChatStore.getState().loadOlder();
+
+    expect(mockGetDocs).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when teamId is null', async () => {
+    useTeamChatStore.setState({
+      teamId: null,
+      oldestCursor: makeCursor('c1') as never,
+      reachedStart: false,
+      loadingOlder: false,
+      messages: [],
+    });
+
+    await useTeamChatStore.getState().loadOlder();
+
+    expect(mockGetDocs).not.toHaveBeenCalled();
+  });
+
+  it('resets loadingOlder to false and logs on getDocs error', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    useTeamChatStore.setState({
+      teamId: 'team-abc',
+      oldestCursor: makeCursor('c1') as never,
+      reachedStart: false,
+      loadingOlder: false,
+      messages: [],
+    });
+
+    mockGetDocs.mockRejectedValueOnce(new Error('Firestore unavailable'));
+
+    await useTeamChatStore.getState().loadOlder();
+
+    expect(useTeamChatStore.getState().loadingOlder).toBe(false);
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[useTeamChatStore]'),
+      expect.any(Error),
+    );
+    consoleSpy.mockRestore();
   });
 });
