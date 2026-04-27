@@ -82,6 +82,14 @@ const updateMocks: Array<{ id: string; data: DocData }> = [];
  */
 const _snackSlots = new Map<string, { claimedBy?: string | null } | 'THROW'>();
 
+/**
+ * Per-event RSVP subcollection docs (FW-90a).
+ * Key: eventId. Value: array of RSVP subcollection docs or 'THROW' to simulate a read error.
+ * Each doc may carry uid, email, and/or playerId for deduplication.
+ */
+interface RsvpSubDoc { uid?: string; email?: string; playerId?: string; response?: string }
+const _rsvpSubcollection = new Map<string, RsvpSubDoc[] | 'THROW'>();
+
 function makeEventDoc(id: string, data: DocData) {
   const updateFn = vi.fn((d: DocData) => {
     updateMocks.push({ id, data: d });
@@ -91,7 +99,25 @@ function makeEventDoc(id: string, data: DocData) {
 }
 
 const mockFirestore = {
-  collection(_name: string) {
+  collection(name: string) {
+    // Route subcollection reads: events/{eventId}/rsvps
+    const subcollMatch = name.match(/^events\/([^/]+)\/rsvps$/);
+    if (subcollMatch) {
+      const eventId = subcollMatch[1];
+      return {
+        async get() {
+          const entry = _rsvpSubcollection.get(eventId);
+          if (entry === 'THROW') throw new Error('mocked rsvp subcollection read failure');
+          const docs = (entry ?? []).map((d, i) => ({
+            id: `rsvp-doc-${i}`,
+            data: () => d,
+          }));
+          return { empty: docs.length === 0, size: docs.length, docs };
+        },
+      };
+    }
+
+    // Default: events top-level query with where() chaining.
     let _conditions: Array<{ field: string; op: string; values: unknown[] }> = [];
     const obj = {
       where(field: string, op: string, values: unknown) {
@@ -182,6 +208,7 @@ beforeEach(() => {
   _events.length = 0;
   updateMocks.length = 0;
   _snackSlots.clear();
+  _rsvpSubcollection.clear();
   sendMailMock.mockClear();
   // Ensure DISPATCHER_SHADOW_MODE is off by default in tests.
   delete process.env.DISPATCHER_SHADOW_MODE;
@@ -482,6 +509,131 @@ describe('sendScheduledNotifications', () => {
 
       await getHandler()();
 
+      expect(sendMailMock).not.toHaveBeenCalled();
+    });
+
+    // ── FW-90a: subcollection + dual-source deduplication ────────────────────
+
+    it('(FW-90a) subcollection-only RSVP → recipient matched, no follow-up sent', async () => {
+      // Recipient RSVPd in-app (submitRsvp writes to subcollection only pre-FW-90a).
+      // Legacy array is empty. Dispatcher must read subcollection and suppress follow-up.
+      const r = makeRecipient('subcol@example.com', 'Subcol User');
+      r.uid = 'uid-subcol';
+
+      _events.push(makeEventDoc('ev-subcol-rsvp', {
+        date: TOMORROW,
+        status: 'scheduled',
+        title: 'Subcol Game',
+        recipients: [r],
+        dayBeforeSent: true,
+        rsvpFollowupSent: false,
+        rsvps: [], // legacy array is empty
+      }));
+
+      // Subcollection has the RSVP (written by submitRsvp).
+      _rsvpSubcollection.set('ev-subcol-rsvp', [{ uid: 'uid-subcol', response: 'yes' }]);
+
+      await getHandler()();
+
+      // No follow-up should be sent — recipient already responded via subcollection.
+      expect(sendMailMock).not.toHaveBeenCalled();
+    });
+
+    it('(FW-90a) array-only RSVP (legacy) → recipient matched, no follow-up sent', async () => {
+      // Recipient RSVPd via email link pre-FW-90a (written to array only).
+      // Subcollection is empty. Dispatcher must still match via array.
+      const r = makeRecipient('legacy@example.com', 'Legacy User');
+      r.uid = 'uid-legacy';
+
+      _events.push(makeEventDoc('ev-array-rsvp', {
+        date: TOMORROW,
+        status: 'scheduled',
+        title: 'Array Game',
+        recipients: [r],
+        dayBeforeSent: true,
+        rsvpFollowupSent: false,
+        rsvps: [{ playerId: 'uid-legacy', response: 'yes' }],
+      }));
+
+      // Subcollection is empty — RSVP lives only in legacy array.
+      // _rsvpSubcollection not set → returns empty array.
+
+      await getHandler()();
+
+      expect(sendMailMock).not.toHaveBeenCalled();
+    });
+
+    it('(FW-90a) same person RSVPd via both paths → not double-counted, no follow-up', async () => {
+      // Recipient appears in both the legacy array and the subcollection.
+      // Should count as responded exactly once — not get a follow-up.
+      const r = makeRecipient('both@example.com', 'Both User');
+      r.uid = 'uid-both';
+
+      _events.push(makeEventDoc('ev-both-rsvp', {
+        date: TOMORROW,
+        status: 'scheduled',
+        title: 'Both Game',
+        recipients: [r],
+        dayBeforeSent: true,
+        rsvpFollowupSent: false,
+        rsvps: [{ playerId: 'uid-both', response: 'yes' }], // legacy array
+      }));
+
+      _rsvpSubcollection.set('ev-both-rsvp', [{ uid: 'uid-both', response: 'yes' }]); // subcollection
+
+      await getHandler()();
+
+      // One entry in the unresponded list? No — same person, must be excluded.
+      expect(sendMailMock).not.toHaveBeenCalled();
+    });
+
+    it('(FW-90a) email-only recipient (no uid) RSVPs via subcollection → matched on email key', async () => {
+      // Recipient has no uid (no Firebase Auth account). They RSVPd via a one-tap
+      // email link, which post-FW-90a writes a subcollection doc with email field.
+      const emailAddr = 'noauth@example.com';
+      const r = { uid: undefined as string | undefined, email: emailAddr, name: 'No Auth', type: 'player' as const };
+
+      _events.push(makeEventDoc('ev-email-only', {
+        date: TOMORROW,
+        status: 'scheduled',
+        title: 'Email-Only Game',
+        recipients: [r],
+        dayBeforeSent: true,
+        rsvpFollowupSent: false,
+        rsvps: [], // array empty (pre-FW-90a legacy email writes stored email here; this tests subcollection path)
+      }));
+
+      // Subcollection doc written by rsvpEvent handler (post-FW-90a): email field set, no uid.
+      _rsvpSubcollection.set('ev-email-only', [{ email: emailAddr, response: 'yes' }]);
+
+      await getHandler()();
+
+      // Email-only recipient RSVPd → matched on email → no follow-up.
+      expect(sendMailMock).not.toHaveBeenCalled();
+    });
+
+    it('(FW-90a) subcollection read failure → falls back to array, does not crash', async () => {
+      // Simulates a transient Firestore error reading the subcollection.
+      // Dispatcher should log the error and fall back to the legacy array.
+      const r = makeRecipient('fallback@example.com', 'Fallback User');
+      r.uid = 'uid-fallback';
+
+      _events.push(makeEventDoc('ev-subcol-fail', {
+        date: TOMORROW,
+        status: 'scheduled',
+        title: 'Fallback Game',
+        recipients: [r],
+        dayBeforeSent: true,
+        rsvpFollowupSent: false,
+        rsvps: [{ playerId: 'uid-fallback', response: 'yes' }], // array has the RSVP
+      }));
+
+      // Subcollection throws — dispatcher must catch and fall back.
+      _rsvpSubcollection.set('ev-subcol-fail', 'THROW');
+
+      await getHandler()();
+
+      // Fell back to array; array has the RSVP → no follow-up sent.
       expect(sendMailMock).not.toHaveBeenCalled();
     });
   });
