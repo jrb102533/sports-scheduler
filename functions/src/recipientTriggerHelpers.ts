@@ -13,6 +13,7 @@
  */
 
 import * as admin from 'firebase-admin';
+import { FieldPath } from 'firebase-admin/firestore';
 import { computeEventRecipients } from './recipientHelpers';
 
 /** Max values per Firestore `in` query clause (Firestore limit is 30). */
@@ -68,7 +69,7 @@ export async function rebuildRecipientsForTeam(
     const chunk = teamIdList.slice(i, i + IN_QUERY_LIMIT);
     const snap = await db
       .collection('teams')
-      .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
+      .where(FieldPath.documentId(), 'in', chunk)
       .get();
     for (const doc of snap.docs) teamDataById.set(doc.id, doc.data());
   }
@@ -88,7 +89,7 @@ export async function rebuildRecipientsForTeam(
     const chunk = coachIdList.slice(i, i + IN_QUERY_LIMIT);
     const snap = await db
       .collection('users')
-      .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
+      .where(FieldPath.documentId(), 'in', chunk)
       .get();
     for (const doc of snap.docs) coachProfiles.set(doc.id, doc.data());
   }
