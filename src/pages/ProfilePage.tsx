@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { User, Shield, Star, Link } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { User, Shield, Star, Link, ChevronDown } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -9,7 +9,7 @@ import { useTeamStore } from '@/store/useTeamStore';
 import { useLeagueStore } from '@/store/useLeagueStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { ROLE_DEFINITIONS } from '@/components/auth/RoleCardPicker';
-import type { RoleMembership } from '@/types';
+import type { RoleMembership, Team, League, Player } from '@/types';
 
 const roleColors: Record<string, string> = {
   admin: 'bg-purple-100 text-purple-700',
@@ -24,10 +24,18 @@ function membershipContextLabel(m: RoleMembership, teamName?: string, leagueName
   if (m.role === 'league_manager' && leagueName) return leagueName;
   if (m.role === 'parent' && childName) return childName;
   if (teamName) return teamName;
-  if (m.teamId) return m.teamId;
-  if (m.leagueId) return m.leagueId;
   return null;
 }
+
+const ROLE_ORDER: Record<string, number> = {
+  admin: 0,
+  league_manager: 1,
+  coach: 2,
+  parent: 3,
+  player: 4,
+};
+
+const COLLAPSED_LIMIT = 5;
 
 export function ProfilePage() {
   const profile = useAuthStore(s => s.profile);
@@ -153,62 +161,14 @@ export function ProfilePage() {
       </Card>
 
       {memberships.length > 0 && (
-        <Card className="p-4 sm:p-6 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Shield size={16} /> My Roles</h3>
-          </div>
-          <ul className="space-y-2">
-              {memberships.map((m, i) => {
-                const memberTeam = m.teamId ? teams.find(t => t.id === m.teamId) : undefined;
-                const memberLeague = m.leagueId ? leagues.find(l => l.id === m.leagueId) : undefined;
-                const memberChild = m.playerId ? players.find(p => p.id === m.playerId) : undefined;
-                const contextLabel = membershipContextLabel(m, memberTeam?.name, memberLeague?.name, memberChild ? `${memberChild.firstName} ${memberChild.lastName}` : undefined);
-                const isActive = i === activeIndex;
-                const roleDef = ROLE_DEFINITIONS.find(d => d.role === m.role);
-                const RoleIcon = roleDef?.icon ?? Shield;
-                const roleTitle = roleDef?.title ?? m.role.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
-                return (
-                  <li
-                    key={i}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 border transition-colors ${isActive ? 'border-orange-300 bg-orange-50' : 'border-gray-100 bg-gray-50'}`}
-                  >
-                    <span
-                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
-                        isActive
-                          ? 'bg-[#f97316] text-white'
-                          : (roleColors[m.role] ?? 'bg-gray-100 text-gray-700')
-                      }`}
-                    >
-                      <RoleIcon size={11} />
-                      {roleTitle}
-                    </span>
-
-                    {contextLabel && (
-                      <span className="text-sm text-gray-600 truncate flex-1">{contextLabel}</span>
-                    )}
-
-                    <div className="ml-auto flex items-center gap-2 flex-shrink-0">
-                      {isActive && (
-                        <span className="text-xs font-medium text-orange-600">Active</span>
-                      )}
-                      {m.isPrimary && (
-                        <Star size={13} className="text-yellow-500 fill-yellow-400" aria-label="Primary" />
-                      )}
-                      {!m.isPrimary && (
-                        <button
-                          onClick={() => handleSetPrimary(i)}
-                          className="text-xs text-gray-400 hover:text-yellow-500 transition-colors"
-                          title="Set as primary"
-                        >
-                          <Star size={13} />
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-        </Card>
+        <MembershipsCard
+          memberships={memberships}
+          activeIndex={activeIndex}
+          teams={teams}
+          leagues={leagues}
+          players={players}
+          onSetPrimary={handleSetPrimary}
+        />
       )}
 
       {isPlayerOrParent && (
@@ -240,5 +200,158 @@ export function ProfilePage() {
         <Button variant="danger" onClick={logout}>Sign Out</Button>
       </Card>
     </div>
+  );
+}
+
+interface DecoratedMembership {
+  m: RoleMembership;
+  originalIndex: number;
+  contextName: string | null;
+  isOrphan: boolean;
+}
+
+interface MembershipsCardProps {
+  memberships: RoleMembership[];
+  activeIndex: number;
+  teams: Team[];
+  leagues: League[];
+  players: Player[];
+  onSetPrimary: (originalIndex: number) => void;
+}
+
+function MembershipsCard({ memberships, activeIndex, teams, leagues, players, onSetPrimary }: MembershipsCardProps) {
+  const [expandedRoles, setExpandedRoles] = useState<Set<string>>(new Set());
+
+  const { groups, orphanCount } = useMemo(() => {
+    const decorated: DecoratedMembership[] = memberships.map((m, originalIndex) => {
+      const memberTeam = m.teamId ? teams.find(t => t.id === m.teamId) : undefined;
+      const memberLeague = m.leagueId ? leagues.find(l => l.id === m.leagueId) : undefined;
+      const memberChild = m.playerId ? players.find(p => p.id === m.playerId) : undefined;
+      const childName = memberChild ? `${memberChild.firstName} ${memberChild.lastName}` : undefined;
+      const contextName = membershipContextLabel(m, memberTeam?.name, memberLeague?.name, childName);
+
+      // Orphan = the membership references an entity (team/league/player) that
+      // we can't resolve in the user's loaded data. Admin memberships have no
+      // contextual ID and are never orphaned.
+      const isOrphan =
+        m.role !== 'admin' &&
+        ((!!m.teamId && !memberTeam) ||
+         (!!m.leagueId && !memberLeague) ||
+         (!!m.playerId && !memberChild));
+
+      return { m, originalIndex, contextName, isOrphan };
+    });
+
+    const visible = decorated.filter(d => !d.isOrphan);
+    const orphanCount = decorated.length - visible.length;
+
+    const byRole = new Map<string, DecoratedMembership[]>();
+    for (const d of visible) {
+      const list = byRole.get(d.m.role) ?? [];
+      list.push(d);
+      byRole.set(d.m.role, list);
+    }
+    for (const list of byRole.values()) {
+      list.sort((a, b) => {
+        if (a.m.isPrimary && !b.m.isPrimary) return -1;
+        if (!a.m.isPrimary && b.m.isPrimary) return 1;
+        return (a.contextName ?? '').localeCompare(b.contextName ?? '');
+      });
+    }
+
+    const groups = [...byRole.entries()].sort(
+      ([a], [b]) => (ROLE_ORDER[a] ?? 99) - (ROLE_ORDER[b] ?? 99),
+    );
+
+    return { groups, orphanCount };
+  }, [memberships, teams, leagues, players]);
+
+  function toggleExpanded(role: string) {
+    setExpandedRoles(prev => {
+      const next = new Set(prev);
+      if (next.has(role)) next.delete(role);
+      else next.add(role);
+      return next;
+    });
+  }
+
+  return (
+    <Card className="p-4 sm:p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Shield size={16} /> My Roles</h3>
+        {orphanCount > 0 && (
+          <span className="text-xs text-gray-400" title="Memberships referencing teams/leagues you no longer have access to">
+            {orphanCount} hidden
+          </span>
+        )}
+      </div>
+
+      {groups.map(([role, items]) => {
+        const roleDef = ROLE_DEFINITIONS.find(d => d.role === role);
+        const RoleIcon = roleDef?.icon ?? Shield;
+        const roleTitle = roleDef?.title ?? role.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const isExpanded = expandedRoles.has(role);
+        const visible = isExpanded ? items : items.slice(0, COLLAPSED_LIMIT);
+        const hiddenCount = items.length - visible.length;
+
+        return (
+          <div key={role} className="space-y-2">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <RoleIcon size={12} />
+              <span>{roleTitle}</span>
+              <span className="text-gray-400 normal-case font-normal">· {items.length}</span>
+            </div>
+            <ul className="space-y-1.5">
+              {visible.map(({ m, originalIndex, contextName }) => {
+                const isActive = originalIndex === activeIndex;
+                return (
+                  <li
+                    key={originalIndex}
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2 border transition-colors ${isActive ? 'border-orange-300 bg-orange-50' : 'border-gray-100 bg-gray-50'}`}
+                  >
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        isActive
+                          ? 'bg-[#f97316] text-white'
+                          : (roleColors[m.role] ?? 'bg-gray-100 text-gray-700')
+                      }`}
+                    >
+                      <RoleIcon size={10} />
+                      {roleTitle}
+                    </span>
+                    {contextName && (
+                      <span className="text-sm text-gray-700 truncate flex-1">{contextName}</span>
+                    )}
+                    <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+                      {isActive && <span className="text-xs font-medium text-orange-600">Active</span>}
+                      {m.isPrimary ? (
+                        <Star size={13} className="text-yellow-500 fill-yellow-400" aria-label="Primary" />
+                      ) : (
+                        <button
+                          onClick={() => onSetPrimary(originalIndex)}
+                          className="text-xs text-gray-400 hover:text-yellow-500 transition-colors"
+                          title="Set as primary"
+                        >
+                          <Star size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            {(hiddenCount > 0 || (isExpanded && items.length > COLLAPSED_LIMIT)) && (
+              <button
+                onClick={() => toggleExpanded(role)}
+                className="text-xs text-blue-600 font-medium hover:underline inline-flex items-center gap-1"
+              >
+                {isExpanded ? 'Show less' : `Show ${hiddenCount} more`}
+                <ChevronDown size={12} className={isExpanded ? 'rotate-180 transition-transform' : 'transition-transform'} />
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </Card>
   );
 }

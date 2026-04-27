@@ -673,16 +673,17 @@ export const createTeamAndBecomeCoach = onCall<CreateTeamAndBecomeCoachData, Pro
           ? profile.memberships
           : [];
 
-        // Admins are platform operators, not coaches of every team they create
-        // on behalf of users. Appending a `coach` membership to admins on every
-        // call accumulates unboundedly (E2E test runs can grow this to hundreds
-        // of stale entries) and breaks `hasRole(profile, 'admin')` detection in
-        // the UI (which only consults memberships when memberships is non-empty).
-        // Skip the membership append entirely for admin callers — the team doc's
-        // coachId/coachIds still grants them write access via Firestore rules.
-        const isAdminCaller = profile.role === 'admin';
+        // Admins and league managers are operators, not coaches of every team
+        // they create on behalf of leagues/users. Appending a `coach` membership
+        // on every call accumulates unboundedly (an LM running 10 leagues
+        // generates one stale coach membership per team they spin up) and
+        // pollutes the ProfilePage roles list with raw team IDs for teams the
+        // user never actually coached. The team doc's coachId/coachIds still
+        // grants write access via Firestore rules — the membership is purely
+        // a UI signal, and operators don't need it.
+        const isOperatorCaller = profile.role === 'admin' || profile.role === 'league_manager';
 
-        if (isAdminCaller) {
+        if (isOperatorCaller) {
           newMembershipIndex = -1; // Sentinel: no new membership added.
           tx.set(teamRef, teamDoc);
           // No profile patch — admin's profile is intentionally untouched.
