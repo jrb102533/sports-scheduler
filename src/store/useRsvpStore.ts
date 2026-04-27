@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import {
-  collection, onSnapshot,
+  collection, onSnapshot, getDocs,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@/lib/firebase';
@@ -17,6 +17,8 @@ interface RsvpStore {
   rsvps: Record<string, RsvpEntry[]>;
   submitRsvp: (eventId: string, uid: string, name: string, response: 'yes' | 'no' | 'maybe', playerId?: string) => Promise<void>;
   subscribeRsvps: (eventId: string) => () => void;
+  /** One-shot fetch for an event's rsvps subcollection. No-ops if already loaded. */
+  loadForEvent: (eventId: string) => Promise<void>;
 }
 
 export const useRsvpStore = create<RsvpStore>((set) => ({
@@ -46,5 +48,19 @@ export const useRsvpStore = create<RsvpStore>((set) => ({
       }
     );
     return unsub;
+  },
+
+  loadForEvent: async (eventId) => {
+    // No-op if already populated by subscribeRsvps or a previous loadForEvent call
+    const existing = useRsvpStore.getState().rsvps[eventId];
+    if (existing !== undefined) return;
+
+    try {
+      const snap = await getDocs(collection(db, 'events', eventId, 'rsvps'));
+      const entries = snap.docs.map(d => d.data() as RsvpEntry);
+      set(state => ({ rsvps: { ...state.rsvps, [eventId]: entries } }));
+    } catch {
+      // On error, leave state unchanged — component degrades gracefully
+    }
   },
 }));
