@@ -1469,6 +1469,12 @@ export const onNotificationCreated = onDocumentCreated(
 
 // ─── Team chat email notifications ───────────────────────────────────────────
 
+// At most one chat-notification email per recipient per team per this many ms.
+// 1h = active conversations get a single ping at the head, then go quiet so
+// recipients open the app to read rather than getting a per-message inbox flood.
+// Pure function-scope constant, exported so unit tests can reference it.
+export const TEAM_CHAT_EMAIL_THROTTLE_MS = 60 * 60 * 1000;
+
 export const onTeamMessageCreated = onDocumentCreated(
   {
     document: 'teams/{teamId}/messages/{messageId}',
@@ -1481,6 +1487,16 @@ export const onTeamMessageCreated = onDocumentCreated(
     const { teamId } = event.params;
     const senderName = (msg.senderName as string) || 'A team member';
     const text = (msg.text as string) || '';
+    const now = new Date().toISOString();
+
+    // Always denorm `lastMessageAt` onto the team doc (fire-and-forget). This
+    // is the comparison signal for client-side unread dots — the team
+    // subscription is already live for every member, so this update reaches
+    // them via the existing onSnapshot with no extra reads. Failure is
+    // logged but does not block email sends.
+    void admin.firestore().doc(`teams/${teamId}`)
+      .update({ lastMessageAt: now })
+      .catch(err => console.warn(`[onTeamMessageCreated] team.lastMessageAt update failed for ${teamId}:`, err));
 
     // Load the team for its name
     const teamDoc = await admin.firestore().doc(`teams/${teamId}`).get();
@@ -1500,13 +1516,36 @@ export const onTeamMessageCreated = onDocumentCreated(
 
     if (recipients.length === 0) return;
 
+    // Throttle: per-recipient state at users/{uid}/messagingState/{teamId}
+    // tracks the last time a chat email was sent for this team. Skip
+    // recipients whose last email was within TEAM_CHAT_EMAIL_THROTTLE_MS.
+    // Batched read keeps this to one network round-trip (still billed as N
+    // reads, but cheap vs the email cost it avoids — Brevo paid tier kicks
+    // in past 9k/day, far more expensive than these throttle reads).
+    const stateRefs = recipients.map(u =>
+      admin.firestore().doc(`users/${u.uid as string}/messagingState/${teamId}`)
+    );
+    const stateDocs = await admin.firestore().getAll(...stateRefs);
+    const cutoff = Date.now() - TEAM_CHAT_EMAIL_THROTTLE_MS;
+    const eligible = recipients.filter((_u, i) => {
+      const lastEmailedRaw = stateDocs[i].exists ? stateDocs[i].data()?.lastChatEmailedAt : null;
+      if (!lastEmailedRaw) return true;
+      const lastEmailed = new Date(lastEmailedRaw as string).getTime();
+      return Number.isNaN(lastEmailed) || lastEmailed < cutoff;
+    });
+
+    if (eligible.length === 0) {
+      console.log(`onTeamMessageCreated: all ${recipients.length} recipients throttled for team ${teamId}`);
+      return;
+    }
+
     const transporter = createTransporter();
     const subject = `[${teamName}] New message from ${senderName}`;
 
     await Promise.allSettled(
-      recipients.map(u => {
+      eligible.map(async u => {
         const unsubscribeUrl = `${FUNCTIONS_BASE}/unsubscribeEmail?uid=${u.uid as string}&token=${signUnsubscribeToken(u.uid as string)}`;
-        return transporter.sendMail({
+        await transporter.sendMail({
           from: emailFrom.value(),
           to: `${u.displayName as string} <${u.email as string}>`,
           subject,
@@ -1519,8 +1558,18 @@ export const onTeamMessageCreated = onDocumentCreated(
             unsubscribeUrl,
           }),
         });
+        // Update throttle state only after a successful send. If send fails,
+        // the recipient stays eligible to retry on the next message — they
+        // shouldn't be silenced for a delivery failure they didn't cause.
+        await admin.firestore()
+          .doc(`users/${u.uid as string}/messagingState/${teamId}`)
+          .set({ lastChatEmailedAt: now }, { merge: true });
       })
     );
+
+    if (eligible.length < recipients.length) {
+      console.log(`onTeamMessageCreated: sent ${eligible.length}/${recipients.length} emails for team ${teamId} (rest throttled)`);
+    }
   }
 );
 

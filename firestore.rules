@@ -128,6 +128,14 @@ service cloud.firestore {
       match /consents/{type} {
         allow read, write: if request.auth.uid == uid;
       }
+      // Server-only: throttle state for chat-notification emails. Written by
+      // onTeamMessageCreated CF (admin SDK bypasses these rules). Clients
+      // never need to read or write this — it carries no information the user
+      // cares about, just a per-team "last emailed at" timestamp used to
+      // enforce the email throttle.
+      match /messagingState/{teamId} {
+        allow read, write: if false;
+      }
     }
 
     // FW-65: Stripe product catalogue. Mirrored from Stripe by the
