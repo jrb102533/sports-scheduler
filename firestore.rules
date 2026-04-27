@@ -604,13 +604,26 @@ service cloud.firestore {
       allow read: if request.auth != null
         && resource.data.participants.hasAny([request.auth.uid]);
 
-      // Create: caller must be one of exactly two participants in the incoming data.
+      // SEC-71: Coach-led DM rule. To create a thread, caller must:
+      //   - be one of exactly two participants
+      //   - supply a `teamId` that grounds the conversation
+      //   - that team must list at least one of the two participants in
+      //     coachIds (i.e. the coach is on at least one side of the DM)
+      // This blocks parent-to-parent DMs at the rules layer while still
+      // allowing coach↔parent, coach↔player, and coach↔coach threads.
       allow create: if request.auth != null
         && request.resource.data.participants.hasAny([request.auth.uid])
-        && request.resource.data.participants.size() == 2;
+        && request.resource.data.participants.size() == 2
+        && request.resource.data.teamId is string
+        && request.resource.data.teamId.size() > 0
+        && exists(/databases/$(database)/documents/teams/$(request.resource.data.teamId))
+        && get(/databases/$(database)/documents/teams/$(request.resource.data.teamId))
+             .data.get('coachIds', []).hasAny(request.resource.data.participants);
 
-      // SEC-63: Update locks participants to the existing list to prevent injection.
-      // Only lastMessage/lastMessageAt/updatedAt/participantNames may change.
+      // SEC-63 + SEC-71: Update locks participants AND teamId — both are
+      // grounded at create time. `affectedKeys` excludes teamId so any
+      // attempt to change it is rejected (sendDm's setDoc-merge re-writes
+      // the same teamId, which doesn't appear in affectedKeys → allowed).
       allow update: if request.auth != null
         && resource.data.participants.hasAny([request.auth.uid])
         && request.resource.data.participants == resource.data.participants

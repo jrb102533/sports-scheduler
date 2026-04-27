@@ -95,13 +95,16 @@ beforeEach(() => {
 
 describe('useTeamChatStore — subscribe', () => {
 
-  it('populates messages from Firestore snapshot', () => {
+  it('populates messages from Firestore snapshot, displaying in ascending order', () => {
+    // Query is orderBy('createdAt', 'desc') limit 25 — Firestore returns the
+    // latest message first. The store reverses to ascending for display so
+    // the oldest visible message is at index 0.
     useTeamChatStore.getState().subscribe('team-abc');
 
     const { cb } = getLastSnapCallback();
     cb(makeSnap([
-      { id: 'msg-1', data: { teamId: 'team-abc', senderId: 'u1', senderName: 'Alice', text: 'Hello', createdAt: '2026-01-01T00:00:00.000Z' } },
       { id: 'msg-2', data: { teamId: 'team-abc', senderId: 'u2', senderName: 'Bob', text: 'Hi', createdAt: '2026-01-01T00:01:00.000Z' } },
+      { id: 'msg-1', data: { teamId: 'team-abc', senderId: 'u1', senderName: 'Alice', text: 'Hello', createdAt: '2026-01-01T00:00:00.000Z' } },
     ]));
 
     const { messages } = useTeamChatStore.getState();
