@@ -95,6 +95,12 @@ export interface ScheduledEvent {
   divisionId?: string;
   /** ISO date string (YYYY-MM-DD) by which RSVPs are requested */
   rsvpDeadline?: string;
+  /**
+   * Denormalized RSVP response counts — maintained by the onRsvpWritten trigger.
+   * Optional: legacy/un-backfilled events will not have this field; components
+   * must default to 0 on read. See FW-98 / ADR-012.
+   */
+  rsvpCounts?: { yes: number; no: number; maybe: number };
   /** Set to 'open' when coaches submit mismatching scores. Cleared on resolution. */
   disputeStatus?: 'open';
   /**

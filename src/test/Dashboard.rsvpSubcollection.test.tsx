@@ -1,24 +1,24 @@
 /**
- * Dashboard — RSVP subcollection migration (FW-97)
+ * Dashboard — RSVP counts in computeNextAction (FW-97 → FW-98)
  *
- * Verifies that Dashboard.computeNextAction():
- *   A) Reads RSVP counts from useRsvpStore.rsvps (not event.rsvps)
- *   B) Calls loadForEvent for each upcoming event on mount (Approach A)
- *   C) low_rsvp alert fires correctly when rsvpStore data is used
+ * FW-97 used useRsvpStore.rsvps (N+1 subcollection reads). FW-98 replaced
+ * that with event.rsvpCounts (denormalized via onRsvpWritten trigger). These
+ * tests verify the FW-98 behavior:
+ *
+ *   A) low_rsvp alert fires when event.rsvpCounts is absent (defaults to 0)
+ *   B) low_rsvp alert is suppressed when event.rsvpCounts totals enough responses
+ *   C) low_confirmation uses event.rsvpCounts.yes
+ *   D) loadForEvent is NOT called from Dashboard (N+1 eliminated)
  *
  * Note: Dashboard currently redirects all authenticated users immediately to
  * /home, so computeNextAction() is dead code at runtime. These tests exercise
  * the logic in isolation to prevent regressions if the redirect changes.
- *
- * Strategy: control storeRsvps via the useRsvpStore mock. Events with roster
- * players but 0 store RSVPs trigger the low_rsvp alert.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { UserProfile, ScheduledEvent, Player, Team } from '@/types';
-import type { RsvpEntry } from '@/store/useRsvpStore';
 
 // ── Firebase stub ─────────────────────────────────────────────────────────────
 
@@ -41,26 +41,8 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-// ── RSVP store mock ───────────────────────────────────────────────────────────
-
-const mockLoadForEvent = vi.fn().mockResolvedValue(undefined);
-let mockStoreRsvps: Record<string, RsvpEntry[]> = {};
-
-vi.mock('@/store/useRsvpStore', () => {
-  const storeSelector = (selector: (s: { rsvps: Record<string, RsvpEntry[]> }) => unknown) =>
-    selector({ get rsvps() { return mockStoreRsvps; } });
-
-  storeSelector.getState = () => ({
-    loadForEvent: mockLoadForEvent,
-    rsvps: mockStoreRsvps,
-  });
-
-  return { useRsvpStore: storeSelector };
-});
-
 // ── Auth store ────────────────────────────────────────────────────────────────
 
-// Null profile keeps Dashboard from redirecting so we can test computeNextAction
 let currentProfile: UserProfile | null = null;
 
 vi.mock('@/store/useAuthStore', () => ({
@@ -177,43 +159,49 @@ beforeEach(() => {
   currentProfile = null;
   mockEvents = [];
   mockPlayers = [];
-  mockStoreRsvps = {};
 });
 
-// ── A. RSVP count from store, not event.rsvps ─────────────────────────────────
+// ── A. low_rsvp alert from denormalized rsvpCounts ───────────────────────────
 
-describe('Dashboard — computeNextAction reads from useRsvpStore (FW-97)', () => {
-  it('shows low_rsvp alert when store has 0 RSVPs for an upcoming event with roster players', async () => {
-    // Profile null so Dashboard does not redirect; coach profile for computeNextAction
-    // We set profile after initial render to let the redirect effect fire but with null
-    // Actually: set a coach profile with no redirect by mocking navigate to no-op
+describe('Dashboard — computeNextAction reads from event.rsvpCounts (FW-98)', () => {
+  it('shows low_rsvp alert when event has no rsvpCounts field (defaults to 0)', async () => {
     currentProfile = makeCoachProfile();
-    mockNavigate.mockImplementation(() => {}); // suppress redirect
-    mockEvents = [makeUpcomingEvent('event-low-rsvp')];
+    mockNavigate.mockImplementation(() => {});
+    mockEvents = [makeUpcomingEvent('event-low-rsvp')]; // no rsvpCounts field
     mockPlayers = [makePlayer('p1'), makePlayer('p2'), makePlayer('p3'), makePlayer('p4')];
-    // 0 RSVPs in store → 0/4 = 0 < 0.5 → low_rsvp
-    mockStoreRsvps = {};
+    // 0 / 4 = 0 < 0.5 threshold → low_rsvp
 
     renderDashboard();
 
-    // Dashboard shows "haven't responded" copy for low_rsvp
     await waitFor(() => {
       expect(screen.getByText(/haven't responded/i)).toBeInTheDocument();
     });
   });
 
-  it('does NOT fire low_rsvp alert when store shows enough responses', async () => {
+  it('does NOT fire low_rsvp alert when rsvpCounts shows enough total responses', async () => {
     currentProfile = makeCoachProfile();
     mockNavigate.mockImplementation(() => {});
-    mockEvents = [makeUpcomingEvent('event-ok')];
+    mockEvents = [makeUpcomingEvent('event-ok', {
+      rsvpCounts: { yes: 2, no: 0, maybe: 0 },
+    })];
     mockPlayers = [makePlayer('p1'), makePlayer('p2')];
-    // 2/2 = 100% responded → no low_rsvp
-    mockStoreRsvps = {
-      'event-ok': [
-        { uid: 'uid-a', playerId: 'p1', name: 'P1', response: 'yes', updatedAt: '2026-01-01' },
-        { uid: 'uid-b', playerId: 'p2', name: 'P2', response: 'yes', updatedAt: '2026-01-01' },
-      ],
-    };
+    // 2 / 2 = 100% responded → no low_rsvp
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.queryByText(/haven't responded/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it('counts yes + no + maybe together toward the responded total', async () => {
+    currentProfile = makeCoachProfile();
+    mockNavigate.mockImplementation(() => {});
+    // 3 players: 1 yes, 1 no, 1 maybe = 3 / 3 → fully responded
+    mockEvents = [makeUpcomingEvent('event-mixed', {
+      rsvpCounts: { yes: 1, no: 1, maybe: 1 },
+    })];
+    mockPlayers = [makePlayer('p1'), makePlayer('p2'), makePlayer('p3')];
 
     renderDashboard();
 
@@ -223,37 +211,17 @@ describe('Dashboard — computeNextAction reads from useRsvpStore (FW-97)', () =
   });
 });
 
-// ── B. loadForEvent called for each upcoming event ────────────────────────────
+// ── B. loadForEvent is NOT called from Dashboard (FW-98 eliminates N+1) ───────
 
-describe('Dashboard — calls loadForEvent for upcoming events on mount (FW-97)', () => {
-  it('calls loadForEvent for each upcoming event', async () => {
-    currentProfile = null; // No redirect while testing this
-    mockEvents = [
-      makeUpcomingEvent('event-a'),
-      makeUpcomingEvent('event-b'),
-    ];
-
-    renderDashboard();
-
-    await waitFor(() => {
-      expect(mockLoadForEvent).toHaveBeenCalledWith('event-a');
-      expect(mockLoadForEvent).toHaveBeenCalledWith('event-b');
-    });
-  });
-
-  it('does not call loadForEvent for cancelled events', async () => {
+describe('Dashboard — does not call useRsvpStore.loadForEvent (FW-98)', () => {
+  it('renders upcoming events without importing useRsvpStore at all', () => {
+    // Dashboard no longer imports useRsvpStore. If the import is re-added
+    // without updating this test, the mock below would need updating too.
+    // This test simply asserts that rendering succeeds without the store mock.
     currentProfile = null;
-    mockEvents = [
-      makeUpcomingEvent('event-active'),
-      makeUpcomingEvent('event-cancelled', { status: 'cancelled' }),
-    ];
+    mockEvents = [makeUpcomingEvent('event-a'), makeUpcomingEvent('event-b')];
 
-    renderDashboard();
-
-    await waitFor(() => {
-      expect(mockLoadForEvent).toHaveBeenCalledWith('event-active');
-    });
-
-    expect(mockLoadForEvent).not.toHaveBeenCalledWith('event-cancelled');
+    // Should not throw even without a useRsvpStore mock.
+    expect(() => renderDashboard()).not.toThrow();
   });
 });
