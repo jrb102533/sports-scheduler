@@ -227,7 +227,7 @@ describe('EventDetailPanel — recordResult error states', () => {
     fireEvent.change(awayInput, { target: { value: awayVal } });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /save score/i }));
+      fireEvent.click(screen.getByRole('button', { name: /save final score/i }));
     });
   }
 
@@ -269,7 +269,7 @@ describe('EventDetailPanel — recordResult error states', () => {
     // recordResult is never called — this verifies the disabled-until-filled gate
     render(<EventDetailPanel event={makeScheduledGameEvent()} onClose={() => {}} />);
 
-    const saveBtn = screen.getByRole('button', { name: /save score/i });
+    const saveBtn = screen.getByRole('button', { name: /save final score/i });
     expect(saveBtn).toBeDisabled();
   });
 
@@ -281,7 +281,7 @@ describe('EventDetailPanel — recordResult error states', () => {
     fireEvent.change(inputs[1], { target: { value: '1' } });
 
     // After filling both fields, the button should be enabled
-    const saveBtn = screen.getByRole('button', { name: /save score/i });
+    const saveBtn = screen.getByRole('button', { name: /save final score/i });
     expect(saveBtn).not.toBeDisabled();
   });
 });

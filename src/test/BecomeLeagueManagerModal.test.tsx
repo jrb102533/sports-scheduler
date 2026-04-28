@@ -198,7 +198,9 @@ describe('BecomeLeagueManagerModal — step 2: form', () => {
     await userEvent.type(screen.getByRole('textbox', { name: /league name/i }), 'Premier League');
     await userEvent.click(screen.getByRole('button', { name: /create league/i }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/permission denied/i);
+    // PaywallAwareError intercepts permission-denied errors for non-Pro users and
+    // replaces the raw CF message with an upgrade CTA. Assert on the paywall copy.
+    expect(await screen.findByRole('alert')).toHaveTextContent(/league manager pro is required/i);
   });
 
   it('does not navigate when CF rejects', async () => {
