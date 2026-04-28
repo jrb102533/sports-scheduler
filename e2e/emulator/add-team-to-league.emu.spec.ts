@@ -28,8 +28,12 @@ test('@emu @lm LM can open the Teams tab on a league and add a team', async ({ l
   await page.waitForLoadState('domcontentloaded');
   await page.waitForURL(/\/leagues\/.+/, { timeout: 10_000 });
 
-  // Switch to the Teams tab.
-  await page.getByRole('tab', { name: /teams/i }).click();
+  // Switch to the Teams tab. Wait explicitly for the tab to render —
+  // LeagueDetailPage shows a "Loading league…" placeholder until the league
+  // store hydrates, and the click would otherwise race the subscription.
+  const teamsTab = page.getByRole('tab', { name: /teams/i });
+  await expect(teamsTab).toBeVisible({ timeout: 30_000 });
+  await teamsTab.click();
   await page.waitForLoadState('domcontentloaded');
 
   // "Add Team" button — required for this flow.

@@ -56,6 +56,7 @@ export function TeamDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const teams = useTeamStore(s => s.teams);
+  const teamsLoading = useTeamStore(s => s.loading);
   const softDeleteTeam = useTeamStore(s => s.softDeleteTeam);
   const hardDeleteTeam = useTeamStore(s => s.hardDeleteTeam);
   const players = usePlayerStore(s => s.players);
@@ -145,7 +146,17 @@ export function TeamDetailPage() {
     }
   }, [location.state, allEvents]);
 
-  if (!team) return <div className="p-4 sm:p-6 text-gray-500">Team not found.</div>;
+  if (!team) {
+    // Avoid the "Team not found." flash before the team store hydrates —
+    // both bad UX (briefly visible on real navigations) and a flaky-test
+    // hazard for emulator E2E (Playwright reaches the assertion before the
+    // subscription has populated). Show a loading state until the store
+    // confirms it's done loading.
+    if (teamsLoading) {
+      return <div className="p-4 sm:p-6 text-gray-500" role="status">Loading team…</div>;
+    }
+    return <div className="p-4 sm:p-6 text-gray-500">Team not found.</div>;
+  }
 
   const teamId = team.id;
   const teamPlayers = players.filter(p => p.teamId === teamId);
