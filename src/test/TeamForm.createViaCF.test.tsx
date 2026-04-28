@@ -20,6 +20,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import type { Team } from '@/types';
 
 // ─── Firebase stub ─────────────────────────────────────────────────────────────
@@ -120,7 +121,7 @@ beforeEach(() => {
 describe('TeamForm — new team calls CF (no logo)', () => {
   it('calls createTeamAndBecomeCoach CF when creating a new team', async () => {
     const onClose = vi.fn();
-    render(<TeamForm open onClose={onClose} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} /></MemoryRouter>);
 
     await userEvent.clear(getNameInput());
     await userEvent.type(getNameInput(), 'Thunder Hawks');
@@ -135,7 +136,7 @@ describe('TeamForm — new team calls CF (no logo)', () => {
 
   it('does NOT pass coachId in the CF payload for a new team', async () => {
     const onClose = vi.fn();
-    render(<TeamForm open onClose={onClose} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} /></MemoryRouter>);
 
     await userEvent.clear(getNameInput());
     await userEvent.type(getNameInput(), 'Thunder Hawks');
@@ -152,7 +153,7 @@ describe('TeamForm — new team calls CF (no logo)', () => {
 
   it('passes name, sportType, color, and attendanceWarningsEnabled to CF', async () => {
     const onClose = vi.fn();
-    render(<TeamForm open onClose={onClose} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} /></MemoryRouter>);
 
     await userEvent.clear(getNameInput());
     await userEvent.type(getNameInput(), 'Thunder Hawks');
@@ -172,7 +173,7 @@ describe('TeamForm — new team calls CF (no logo)', () => {
 
   it('calls onClose() after successful CF call', async () => {
     const onClose = vi.fn();
-    render(<TeamForm open onClose={onClose} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} /></MemoryRouter>);
 
     await userEvent.clear(getNameInput());
     await userEvent.type(getNameInput(), 'Thunder Hawks');
@@ -192,7 +193,7 @@ describe('TeamForm — new team calls CF (no logo)', () => {
 describe('TeamForm — new team calls CF (with logo)', () => {
   it('calls CF with logoUrl when a logo is uploaded for a new team', async () => {
     const onClose = vi.fn();
-    render(<TeamForm open onClose={onClose} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} /></MemoryRouter>);
 
     await userEvent.clear(getNameInput());
     await userEvent.type(getNameInput(), 'Thunder Hawks');
@@ -216,7 +217,7 @@ describe('TeamForm — new team calls CF (with logo)', () => {
 
   it('does NOT pass coachId in the CF payload when a logo is provided', async () => {
     const onClose = vi.fn();
-    render(<TeamForm open onClose={onClose} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} /></MemoryRouter>);
 
     await userEvent.clear(getNameInput());
     await userEvent.type(getNameInput(), 'Thunder Hawks');
@@ -243,7 +244,7 @@ describe('TeamForm — new team calls CF (with logo)', () => {
 describe('TeamForm — edit team uses updateTeam, not CF', () => {
   it('calls updateTeam (not CF) when editing an existing team', async () => {
     const onClose = vi.fn();
-    render(<TeamForm open onClose={onClose} editTeam={makeTeam()} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} editTeam={makeTeam()} /></MemoryRouter>);
 
     // Modify the name to ensure save is triggered
     const nameInput = getNameInput();
@@ -260,7 +261,7 @@ describe('TeamForm — edit team uses updateTeam, not CF', () => {
 
   it('calls onClose() after successfully editing a team', async () => {
     const onClose = vi.fn();
-    render(<TeamForm open onClose={onClose} editTeam={makeTeam()} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} editTeam={makeTeam()} /></MemoryRouter>);
 
     const nameInput = getNameInput();
     await userEvent.clear(nameInput);
@@ -279,7 +280,7 @@ describe('TeamForm — edit team uses updateTeam, not CF', () => {
 describe('TeamForm — validation prevents CF call', () => {
   it('does not call CF when team name is empty', async () => {
     const onClose = vi.fn();
-    render(<TeamForm open onClose={onClose} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} /></MemoryRouter>);
 
     // Name field is auto-populated; clear it
     await userEvent.clear(getNameInput());
