@@ -9,7 +9,8 @@
  *
  * Composition: extends `read-count.fixture` so every @emu spec automatically
  * gets the per-test 100-read Firestore budget. No spec needs to opt in.
- * Override per-test with `test.use({ readBudget: 250 })`.
+ * Override the budget at file or describe scope with `test.use({ readBudget: 250 })`,
+ * or set `E2E_READ_BUDGET=N` for the whole run.
  *
  * Usage:
  *   import { test, expect } from '../fixtures/auth.emu.fixture.js';
