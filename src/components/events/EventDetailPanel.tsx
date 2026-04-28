@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react';
 import { httpsCallable, getFunctions } from 'firebase/functions';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { X, MapPin, Clock, Edit, Trash2, CheckCircle, RefreshCw, Send, Copy, Loader2, ShieldAlert } from 'lucide-react';
+import { X, MapPin, Edit, Trash2, CheckCircle, RefreshCw, Send, Copy, Loader2, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Badge } from '@/components/ui/Badge';
 import { EventStatusBadge } from './EventStatusBadge';
 import { EventForm } from './EventForm';
 import { SnackVolunteerForm } from './SnackVolunteerForm';
@@ -22,7 +21,7 @@ import { useTeamStore } from '@/store/useTeamStore';
 import { useAuthStore, getMemberships } from '@/store/useAuthStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
 import { formatDate, formatTime } from '@/lib/dateUtils';
-import { EVENT_TYPE_LABELS, EVENT_TYPE_BADGE_CLASSES } from '@/constants';
+import { EVENT_TYPE_LABELS } from '@/constants';
 import type { ScheduledEvent } from '@/types';
 
 interface EventDetailPanelProps {
@@ -211,74 +210,96 @@ export function EventDetailPanel({ event, onClose, leagueId }: EventDetailPanelP
       <div className="fixed inset-0 z-40 flex justify-end">
         <div className="absolute inset-0 bg-black/30" onClick={onClose} />
         <div className="relative w-full sm:w-96 bg-white h-full shadow-xl flex flex-col overflow-y-auto">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-            <div className="flex items-center gap-2 min-w-0">
-              <h2 className="font-semibold text-gray-900 truncate">{event.title}</h2>
-              {isRecurringEvent && (
-                <Badge className="bg-purple-100 text-purple-700 shrink-0">
-                  <RefreshCw size={10} className="mr-1" />
-                  Recurring
-                </Badge>
-              )}
-            </div>
-            <button onClick={onClose} aria-label="Close" className="p-1 rounded hover:bg-gray-100 text-gray-500 shrink-0 ml-2">
-              <X size={16} />
-            </button>
-          </div>
-
-          <div className="flex-1 px-5 py-4 space-y-4">
-            <div className="flex items-center gap-2">
-              <span className={`text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${EVENT_TYPE_BADGE_CLASSES[event.type] ?? 'bg-gray-100 text-gray-600'}`}>
-                {EVENT_TYPE_LABELS[event.type]}
-              </span>
-              <EventStatusBadge status={event.status} />
-            </div>
-
-            {(homeTeam || awayTeam || event.opponentName) && (
-              <div className="bg-gray-50 rounded-xl p-4 text-center">
-                <div className="flex items-center justify-center gap-4 text-sm font-semibold text-gray-700">
-                  <div style={{ color: homeTeam?.color }}>{homeTeam?.name ?? '\u2014'}</div>
-                  <span className="text-gray-400 text-xs">vs</span>
-                  {awayTeam ? (
-                    <div style={{ color: awayTeam.color }}>{awayTeam.name}</div>
-                  ) : (
-                    <div className="text-gray-700">{event.opponentName ?? '\u2014'}</div>
-                  )}
-                </div>
-                {event.result && (
-                  <div className="text-2xl font-bold text-gray-900 mt-2">
-                    {event.result.placement
-                      ? event.result.placement
-                      : `${event.result.homeScore} \u2013 ${event.result.awayScore}`}
-                  </div>
+          {/* Hero header — navy, matchup-forward */}
+          <div className="bg-[#1B3A6B] px-5 pt-4 pb-5 text-white">
+            <div className="flex items-center justify-between mb-4">
+              <button
+                onClick={onClose}
+                aria-label="Close"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-medium transition-colors"
+              >
+                <X size={14} /> Close
+              </button>
+              <div className="flex items-center gap-1.5">
+                <span className="px-2 py-1 rounded-full bg-[#F97316] text-white text-[10px] font-bold uppercase tracking-wide">
+                  {EVENT_TYPE_LABELS[event.type]}
+                </span>
+                <EventStatusBadge status={event.status} />
+                {isRecurringEvent && (
+                  <span className="px-2 py-1 rounded-full bg-white/15 text-white text-[10px] font-semibold uppercase tracking-wide inline-flex items-center gap-1">
+                    <RefreshCw size={10} /> Recurring
+                  </span>
                 )}
+              </div>
+            </div>
+
+            {(homeTeam || awayTeam || event.opponentName) ? (
+              <div className="flex items-center gap-3">
+                <div className="flex-1 text-center min-w-0">
+                  <div
+                    className="w-12 h-12 mx-auto mb-2 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg ring-2 ring-white/10"
+                    style={{ backgroundColor: homeTeam?.color ?? '#475569' }}
+                  >
+                    {(homeTeam?.name ?? 'H').charAt(0).toUpperCase()}
+                  </div>
+                  <p className="text-sm font-bold text-white truncate">{homeTeam?.name ?? '—'}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-200/80 mt-0.5">Home</p>
+                </div>
+                <div className="text-center px-1 flex-shrink-0">
+                  {event.result ? (
+                    <p className="text-2xl font-bold text-white tabular-nums">
+                      {event.result.placement ?? `${event.result.homeScore}–${event.result.awayScore}`}
+                    </p>
+                  ) : (
+                    <p className="text-xs font-bold tracking-[0.2em] text-white/50">VS</p>
+                  )}
+                  <p className="text-[10px] text-blue-200/80 mt-1 font-mono uppercase tracking-wide">
+                    {formatDate(event.date).replace(/,.*$/, '')} · {formatTime(event.startTime)}
+                  </p>
+                </div>
+                <div className="flex-1 text-center min-w-0">
+                  <div
+                    className="w-12 h-12 mx-auto mb-2 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg ring-2 ring-white/10"
+                    style={{ backgroundColor: awayTeam?.color ?? '#475569' }}
+                  >
+                    {((awayTeam?.name ?? event.opponentName ?? 'A')).charAt(0).toUpperCase()}
+                  </div>
+                  <p className="text-sm font-bold text-white truncate">
+                    {awayTeam?.name ?? event.opponentName ?? '—'}
+                  </p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-200/80 mt-0.5">Away</p>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="text-base font-bold text-white">{event.title}</p>
+                <p className="text-xs text-blue-200/80 mt-1">
+                  {formatDate(event.date)} at {formatTime(event.startTime)}
+                </p>
               </div>
             )}
 
-            <div className="space-y-2 text-sm text-gray-600">
-              <div className="flex items-center gap-2">
-                <Clock size={14} className="text-gray-400" />
-                {formatDate(event.date)} at {formatTime(event.startTime)}
-                {event.endTime && ` \u2013 ${formatTime(event.endTime)}`}
+            {(event.location || event.fieldName) && (
+              <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/10 text-xs">
+                <span className="inline-flex items-center gap-1.5 text-blue-100">
+                  <MapPin size={12} className="text-blue-300" />
+                  {[event.location, event.fieldName].filter(Boolean).join(' · ')}
+                </span>
+                {mapsUrl && (
+                  <a
+                    href={mapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#F97316] font-semibold hover:underline"
+                  >
+                    Directions →
+                  </a>
+                )}
               </div>
-              {(event.location || event.fieldName) && (
-                <div className="flex items-center gap-2">
-                  <MapPin size={14} className="text-gray-400" />
-                  <span>{[event.location, event.fieldName].filter(Boolean).join(' · ')}</span>
-                  {mapsUrl && (
-                    <a
-                      href={mapsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-blue-600 hover:underline flex-shrink-0"
-                    >
-                      Get directions
-                    </a>
-                  )}
-                </div>
-              )}
-            </div>
+            )}
+          </div>
 
+          <div className="flex-1 px-5 py-4 space-y-4">
             {eventVenue?.notes && (
               <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-gray-600">
                 <p className="text-xs font-semibold text-blue-700 mb-1">Venue Notes</p>
