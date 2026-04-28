@@ -8,7 +8,6 @@ import { useEventStore } from '@/store/useEventStore';
 import { useDmStore } from '@/store/useDmStore';
 import { countUnreadThreads } from '@/lib/messagingUnread';
 import { FLAGS } from '@/lib/flags';
-import { ClipboardMark } from '@/components/brand/ClipboardWordmark';
 import { todayISO, formatTime } from '@/lib/dateUtils';
 import { format, parseISO, isToday, isTomorrow } from 'date-fns';
 
@@ -92,19 +91,41 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
 
   return (
     <>
-      <div className="px-5 pt-5 pb-4 border-b border-white/10">
-        <div className="flex items-center gap-2.5">
-          <ClipboardMark size={32} variant="light" />
-          <span className="text-[17px] font-bold tracking-tight leading-none">
-            <span style={{ color: '#FFFFFF' }}>First</span>
-            <span style={{ color: '#F97316' }}>Whistle</span>
-          </span>
-        </div>
-        {kidsMode && (
-          <span
-            className="text-[11px] font-semibold mt-2 inline-block uppercase tracking-wide"
-            style={{ color: '#F97316' }}
+      <div className="px-3 pt-4 pb-3 border-b border-white/10">
+        {nextEvent ? (
+          <button
+            onClick={() => { navigate(`/calendar`); onNavClick?.(); }}
+            className="w-full text-left rounded-xl border transition-colors hover:bg-white/[0.04]"
+            style={{ borderColor: 'rgba(249,115,22,0.35)', backgroundColor: 'rgba(249,115,22,0.10)' }}
           >
+            <div className="px-3.5 py-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <CalendarClock size={11} style={{ color: '#F97316' }} className="flex-shrink-0" />
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: '#F97316' }}>
+                  Next Up
+                </span>
+              </div>
+              <p className="text-white text-sm font-semibold leading-snug truncate">
+                {nextEvent.title}
+              </p>
+              <p className="text-blue-200/80 text-xs mt-1">
+                {formatEventDay(nextEvent.date)} · {formatTime(nextEvent.startTime)}
+              </p>
+            </div>
+          </button>
+        ) : (
+          <div className="px-3.5 py-3 rounded-xl bg-white/[0.03] border border-white/10">
+            <div className="flex items-center gap-1.5 mb-1">
+              <CalendarClock size={11} className="text-blue-300 flex-shrink-0" />
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-300">
+                Next Up
+              </span>
+            </div>
+            <p className="text-blue-200/70 text-xs">Nothing scheduled</p>
+          </div>
+        )}
+        {kidsMode && (
+          <span className="text-[10px] font-bold uppercase tracking-[0.14em] mt-2 inline-block" style={{ color: '#F97316' }}>
             Kids Mode
           </span>
         )}
@@ -140,20 +161,6 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
           </NavLink>
         ))}
       </nav>
-
-      {nextEvent && (
-        <div className="mx-3 mb-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10">
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <CalendarClock size={12} className="text-blue-300 flex-shrink-0" />
-            <span className="text-[11px] font-semibold text-blue-300 uppercase tracking-wide">Next Up</span>
-          </div>
-          <p className="text-white text-sm font-medium truncate leading-snug">{nextEvent.title}</p>
-          <p className="text-blue-300/80 text-xs mt-0.5">
-            {formatEventDay(nextEvent.date)} · {formatTime(nextEvent.startTime)}
-          </p>
-        </div>
-      )}
-
 
       {user && (
         <div className="border-t border-white/10 px-3 py-3">
