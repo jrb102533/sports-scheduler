@@ -8,7 +8,7 @@ import { useEventStore } from '@/store/useEventStore';
 import { useDmStore } from '@/store/useDmStore';
 import { countUnreadThreads } from '@/lib/messagingUnread';
 import { FLAGS } from '@/lib/flags';
-import { ClipboardWordmark } from '@/components/brand/ClipboardWordmark';
+import { ClipboardMark } from '@/components/brand/ClipboardWordmark';
 import { todayISO, formatTime } from '@/lib/dateUtils';
 import { format, parseISO, isToday, isTomorrow } from 'date-fns';
 
@@ -93,11 +93,11 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   return (
     <>
       <div className="px-3 pt-4 pb-3 border-b border-white/10">
-        <div className="bg-white rounded-xl p-3 flex items-center gap-2">
-          <ClipboardWordmark size={40} variant="dark" />
-          <span className="text-base font-semibold leading-tight">
-            <span style={{ color: '#1B3A6B' }}>First</span>{' '}
-            <span style={{ color: '#F97316' }}>Whistle</span>
+        <div className="flex items-center gap-2.5 px-3 py-3">
+          <ClipboardMark size={36} />
+          <span className="text-base font-bold tracking-tight leading-none">
+            <span style={{ color: '#1B3A6B' }}>First</span>
+            <span style={{ color: '#F97316' }}> Whistle</span>
           </span>
         </div>
         {kidsMode && <span className="text-xs font-medium mt-1 block text-center" style={{ color: '#f97316' }}>Kids Mode</span>}

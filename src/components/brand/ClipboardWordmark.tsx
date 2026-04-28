@@ -52,3 +52,50 @@ export function ClipboardWordmark({
     </svg>
   );
 }
+
+interface ClipboardMarkProps {
+  size?: number;
+  variant?: 'dark' | 'light';
+  className?: string;
+}
+
+/**
+ * Compact First Whistle clipboard mark — icon only, no wordmark beside it.
+ * Optimized for 24–56px use (sidebar, avatar, favicon).
+ * The FW fills more of the paper; clip detail simplified for legibility.
+ */
+export function ClipboardMark({
+  size = 40,
+  variant = 'dark',
+  className,
+}: ClipboardMarkProps) {
+  const isLight = variant === 'light';
+  const board   = isLight ? '#FFFFFF' : '#1B3A6B';
+  const paper   = isLight ? '#1B3A6B' : '#FFFFFF';
+  const clip    = isLight ? '#CBD5E1' : '#0F2A52';
+  const pea     = '#F97316';
+  const letterF = isLight ? '#FFFFFF' : '#1B3A6B';
+  const letterW = '#F97316';
+
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 64 64"
+      className={className} role="img" aria-label="First Whistle"
+      style={{ display: 'block' }}
+    >
+      <rect x="6"  y="14" width="52" height="46" rx="6" fill={board} />
+      <rect x="11" y="20" width="42" height="36" rx="3" fill={paper} />
+      <rect x="22" y="8"  width="20" height="10" rx="2" fill={clip} />
+      <rect x="26" y="5"  width="12" height="5"  rx="2.5" fill={pea} />
+      <text
+        x="32" y="48"
+        textAnchor="middle"
+        fontFamily="Inter, system-ui, sans-serif"
+        fontWeight="900" fontSize="30" letterSpacing="-2.5"
+      >
+        <tspan fill={letterF}>F</tspan>
+        <tspan fill={letterW}>W</tspan>
+      </text>
+    </svg>
+  );
+}
