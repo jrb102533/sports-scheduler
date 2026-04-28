@@ -53,8 +53,9 @@ test('@emu @lm LM can open the Teams tab on a league and add a team', async ({ l
     await teamBCheckbox.click();
   }
 
-  // Save closes the modal and persists the assignment.
-  const saveBtn = modal.getByRole('button', { name: /^save$/i });
+  // Save closes the modal and persists the assignment. The button label is
+  // "Save Changes" on existing leagues, "Save" on new ones — match either.
+  const saveBtn = modal.getByRole('button', { name: /^save( changes)?$/i });
   await saveBtn.click();
   await expect(modal).not.toBeVisible({ timeout: 10_000 });
 
