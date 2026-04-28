@@ -70,4 +70,14 @@ export default defineConfig([
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
+  // Playwright fixtures use `use` as a teardown callback name — this is the
+  // Playwright fixture API, not React's `use` hook. The react-hooks rules have
+  // no meaning in e2e/ and falsely flag legitimate fixture code.
+  {
+    files: ['e2e/**/*.{ts,tsx}'],
+    rules: {
+      'react-hooks/rules-of-hooks': 'off',
+      'react-hooks/exhaustive-deps': 'off',
+    },
+  },
 ])
