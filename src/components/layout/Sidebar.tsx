@@ -92,15 +92,22 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
 
   return (
     <>
-      <div className="px-3 pt-4 pb-3 border-b border-white/10">
-        <div className="flex items-center gap-2.5 px-3 py-3">
-          <ClipboardMark size={36} />
-          <span className="text-base font-bold tracking-tight leading-none">
+      <div className="px-5 pt-5 pb-4 border-b border-white/10">
+        <div className="flex items-center gap-2.5">
+          <ClipboardMark size={32} variant="light" />
+          <span className="text-[17px] font-bold tracking-tight leading-none">
             <span style={{ color: '#FFFFFF' }}>First</span>
-            <span style={{ color: '#F97316' }}> Whistle</span>
+            <span style={{ color: '#F97316' }}>Whistle</span>
           </span>
         </div>
-        {kidsMode && <span className="text-xs font-medium mt-1 block text-center" style={{ color: '#f97316' }}>Kids Mode</span>}
+        {kidsMode && (
+          <span
+            className="text-[11px] font-semibold mt-2 inline-block uppercase tracking-wide"
+            style={{ color: '#F97316' }}
+          >
+            Kids Mode
+          </span>
+        )}
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-0.5">
