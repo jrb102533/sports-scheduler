@@ -168,6 +168,10 @@ async function seedFixtures(): Promise<void> {
   await db.doc(`leagues/${EMU_IDS.leagueId}`).set({
     name: 'Emu League',
     managerIds: ['emu-lm'],
+    // Stores filter `where('isDeleted', '==', false)` — Firestore excludes docs
+    // where the field is missing entirely, so the seed must set it explicitly
+    // or these docs are invisible to the app even though Firestore rules allow.
+    isDeleted: false,
     isE2eData: true,
     createdAt: now,
     updatedAt: now,
@@ -194,6 +198,10 @@ async function seedFixtures(): Promise<void> {
     color: '#3B82F6',
     createdBy: 'emu-coach',
     ownerName: 'Emu Coach',
+    // Admin team query is `where('isDeleted', '!=', true)` — Firestore `!=`
+    // excludes docs where the field is missing, so admins navigating directly
+    // to /teams/:id see "Team not found" without this field.
+    isDeleted: false,
     isE2eData: true,
     createdAt: now,
     updatedAt: now,
@@ -207,6 +215,7 @@ async function seedFixtures(): Promise<void> {
     color: '#EF4444',
     createdBy: 'emu-admin',
     ownerName: 'Emu Seed',
+    isDeleted: false,
     isE2eData: true,
     createdAt: now,
     updatedAt: now,
