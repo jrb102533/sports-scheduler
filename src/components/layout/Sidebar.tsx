@@ -93,8 +93,12 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   return (
     <>
       <div className="px-3 pt-4 pb-3 border-b border-white/10">
-        <div className="bg-white rounded-xl px-3 py-2" style={{ overflow: 'hidden' }}>
-          <ClipboardWordmark size={56} variant="dark" />
+        <div className="bg-white rounded-xl p-3 flex items-center gap-2">
+          <ClipboardWordmark size={40} variant="dark" />
+          <span className="text-base font-semibold leading-tight">
+            <span style={{ color: '#1B3A6B' }}>First</span>{' '}
+            <span style={{ color: '#F97316' }}>Whistle</span>
+          </span>
         </div>
         {kidsMode && <span className="text-xs font-medium mt-1 block text-center" style={{ color: '#f97316' }}>Kids Mode</span>}
       </div>
