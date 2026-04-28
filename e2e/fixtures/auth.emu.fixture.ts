@@ -7,6 +7,10 @@
  * enough that per-test sign-in adds negligible overhead, and avoiding persistence
  * keeps the setup simple (no global-setup dependency, no stale-token risk).
  *
+ * Composition: extends `read-count.fixture` so every @emu spec automatically
+ * gets the per-test 100-read Firestore budget. No spec needs to opt in.
+ * Override per-test with `test.use({ readBudget: 250 })`.
+ *
  * Usage:
  *   import { test, expect } from '../fixtures/auth.emu.fixture.js';
  *
@@ -15,7 +19,8 @@
  *     // adminPage is a Page already authenticated as admin@emu.test
  *   });
  */
-import { test as base, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test as base } from './read-count.fixture.js';
 import { EMU_USERS, EMU_PASSWORD, type EmuUser } from '../seed-emulator.js';
 
 // ---------------------------------------------------------------------------
