@@ -19,6 +19,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import type { Team } from '@/types';
 
 // ─── Firebase stub ─────────────────────────────────────────────────────────────
@@ -117,12 +118,12 @@ beforeEach(() => {
 
 describe('TeamForm — isPrivate checkbox visibility', () => {
   it('shows the "Make this team discoverable" checkbox when creating a new team', () => {
-    render(<TeamForm open onClose={vi.fn()} />);
+    render(<MemoryRouter><TeamForm open onClose={vi.fn()} /></MemoryRouter>);
     expect(getPrivacyCheckbox()).toBeInTheDocument();
   });
 
   it('shows the "Make this team discoverable" checkbox when editing an existing team', () => {
-    render(<TeamForm open onClose={vi.fn()} editTeam={makeTeam()} />);
+    render(<MemoryRouter><TeamForm open onClose={vi.fn()} editTeam={makeTeam()} /></MemoryRouter>);
     expect(getPrivacyCheckbox()).toBeInTheDocument();
   });
 });
@@ -134,25 +135,25 @@ describe('TeamForm — isPrivate checkbox visibility', () => {
 
 describe('TeamForm — isPrivate checkbox initial state', () => {
   it('renders unchecked (private) by default on a new team form', () => {
-    render(<TeamForm open onClose={vi.fn()} />);
+    render(<MemoryRouter><TeamForm open onClose={vi.fn()} /></MemoryRouter>);
     const cb = getPrivacyCheckbox() as HTMLInputElement;
     expect(cb.checked).toBe(false); // default: private
   });
 
   it('renders checked (discoverable) when editTeam.isPrivate is false', () => {
-    render(<TeamForm open onClose={vi.fn()} editTeam={makeTeam({ isPrivate: false })} />);
+    render(<MemoryRouter><TeamForm open onClose={vi.fn()} editTeam={makeTeam({ isPrivate: false })} /></MemoryRouter>);
     const cb = getPrivacyCheckbox() as HTMLInputElement;
     expect(cb.checked).toBe(true); // isPrivate=false → discoverable → checked
   });
 
   it('renders unchecked (private) when editTeam.isPrivate is true', () => {
-    render(<TeamForm open onClose={vi.fn()} editTeam={makeTeam({ isPrivate: true })} />);
+    render(<MemoryRouter><TeamForm open onClose={vi.fn()} editTeam={makeTeam({ isPrivate: true })} /></MemoryRouter>);
     const cb = getPrivacyCheckbox() as HTMLInputElement;
     expect(cb.checked).toBe(false); // isPrivate=true → not discoverable → unchecked
   });
 
   it('renders unchecked (private) when editTeam.isPrivate is undefined (defaults private)', () => {
-    render(<TeamForm open onClose={vi.fn()} editTeam={makeTeam({ isPrivate: undefined })} />);
+    render(<MemoryRouter><TeamForm open onClose={vi.fn()} editTeam={makeTeam({ isPrivate: undefined })} /></MemoryRouter>);
     const cb = getPrivacyCheckbox() as HTMLInputElement;
     expect(cb.checked).toBe(false); // undefined → isPrivate=true → unchecked
   });
@@ -166,7 +167,7 @@ describe('TeamForm — isPrivate is written to updateTeam payload', () => {
   it('calls updateTeam with isPrivate: false when the discoverable checkbox is checked', async () => {
     const onClose = vi.fn();
     // Start with a private team (checkbox unchecked)
-    render(<TeamForm open onClose={onClose} editTeam={makeTeam({ isPrivate: true })} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} editTeam={makeTeam({ isPrivate: true })} /></MemoryRouter>);
 
     const cb = getPrivacyCheckbox()!;
     fireEvent.click(cb); // check → make discoverable → isPrivate=false
@@ -182,7 +183,7 @@ describe('TeamForm — isPrivate is written to updateTeam payload', () => {
   it('calls updateTeam with isPrivate: true when the discoverable checkbox is unchecked', async () => {
     const onClose = vi.fn();
     // Start with a discoverable team (checkbox checked)
-    render(<TeamForm open onClose={onClose} editTeam={makeTeam({ isPrivate: false })} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} editTeam={makeTeam({ isPrivate: false })} /></MemoryRouter>);
 
     const cb = getPrivacyCheckbox()!;
     fireEvent.click(cb); // uncheck → make private → isPrivate=true
@@ -197,7 +198,7 @@ describe('TeamForm — isPrivate is written to updateTeam payload', () => {
 
   it('calls updateTeam with isPrivate: false when checkbox was never touched on a non-private team', async () => {
     const onClose = vi.fn();
-    render(<TeamForm open onClose={onClose} editTeam={makeTeam({ isPrivate: false })} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} editTeam={makeTeam({ isPrivate: false })} /></MemoryRouter>);
 
     // Do not interact with the checkbox
     const nameInput = screen.getByRole('textbox', { name: /team name/i });

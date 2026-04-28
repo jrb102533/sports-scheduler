@@ -65,7 +65,7 @@ vi.mock('@/store/useAuthStore', () => ({
 // ─── Import after mocks ───────────────────────────────────────────────────────
 
 import { getDocs } from 'firebase/firestore';
-import { UsersPage, _resetUsersCache } from '../../pages/UsersPage';
+import { UsersPage, _resetUsersCache } from '../pages/UsersPage';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

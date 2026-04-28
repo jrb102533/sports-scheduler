@@ -23,6 +23,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import type { Team } from '@/types';
 
 // ─── Firebase stub ─────────────────────────────────────────────────────────────
@@ -123,46 +124,50 @@ beforeEach(() => {
 
 describe('TeamForm — advanced section default state', () => {
   it('is collapsed by default when creating a new team', () => {
-    render(<TeamForm open onClose={vi.fn()} />);
+    render(<MemoryRouter><TeamForm open onClose={vi.fn()} /></MemoryRouter>);
     expect(isAdvancedOpen()).toBe(false);
   });
 
   it('is collapsed when editing a team with no advanced field values', () => {
     render(
-      <TeamForm
-        open
-        onClose={vi.fn()}
-        editTeam={makeTeam({
-          homeVenue: undefined,
-          homeVenueId: undefined,
-          coachName: undefined,
-          coachEmail: undefined,
-          logoUrl: undefined,
-          attendanceWarningsEnabled: true,
-          attendanceWarningThreshold: undefined,
-        })}
-      />
+      <MemoryRouter>
+        <TeamForm
+          open
+          onClose={vi.fn()}
+          editTeam={makeTeam({
+            homeVenue: undefined,
+            homeVenueId: undefined,
+            coachName: undefined,
+            coachEmail: undefined,
+            logoUrl: undefined,
+            attendanceWarningsEnabled: true,
+            attendanceWarningThreshold: undefined,
+          })}
+        />
+      </MemoryRouter>
     );
     expect(isAdvancedOpen()).toBe(false);
   });
 
   it('auto-expands when editing a team that has a homeVenue', () => {
-    render(<TeamForm open onClose={vi.fn()} editTeam={makeTeam({ homeVenue: 'City Park' })} />);
+    render(<MemoryRouter><TeamForm open onClose={vi.fn()} editTeam={makeTeam({ homeVenue: 'City Park' })} /></MemoryRouter>);
     expect(isAdvancedOpen()).toBe(true);
   });
 
   it('auto-expands when editing a team that has a coachName', () => {
-    render(<TeamForm open onClose={vi.fn()} editTeam={makeTeam({ coachName: 'Jane Smith' })} />);
+    render(<MemoryRouter><TeamForm open onClose={vi.fn()} editTeam={makeTeam({ coachName: 'Jane Smith' })} /></MemoryRouter>);
     expect(isAdvancedOpen()).toBe(true);
   });
 
   it('auto-expands when editing a team that has a logoUrl', () => {
     render(
-      <TeamForm
-        open
-        onClose={vi.fn()}
-        editTeam={makeTeam({ logoUrl: 'https://example.com/logo.png' })}
-      />
+      <MemoryRouter>
+        <TeamForm
+          open
+          onClose={vi.fn()}
+          editTeam={makeTeam({ logoUrl: 'https://example.com/logo.png' })}
+        />
+      </MemoryRouter>
     );
     expect(isAdvancedOpen()).toBe(true);
   });
@@ -171,22 +176,26 @@ describe('TeamForm — advanced section default state', () => {
     // attendanceWarningsEnabled=false is a non-default value that signals the user
     // previously made an advanced change.
     render(
-      <TeamForm
-        open
-        onClose={vi.fn()}
-        editTeam={makeTeam({ attendanceWarningsEnabled: false })}
-      />
+      <MemoryRouter>
+        <TeamForm
+          open
+          onClose={vi.fn()}
+          editTeam={makeTeam({ attendanceWarningsEnabled: false })}
+        />
+      </MemoryRouter>
     );
     expect(isAdvancedOpen()).toBe(true);
   });
 
   it('auto-expands when editing a team with a custom attendanceWarningThreshold', () => {
     render(
-      <TeamForm
-        open
-        onClose={vi.fn()}
-        editTeam={makeTeam({ attendanceWarningThreshold: 6 })}
-      />
+      <MemoryRouter>
+        <TeamForm
+          open
+          onClose={vi.fn()}
+          editTeam={makeTeam({ attendanceWarningThreshold: 6 })}
+        />
+      </MemoryRouter>
     );
     expect(isAdvancedOpen()).toBe(true);
   });
@@ -194,7 +203,7 @@ describe('TeamForm — advanced section default state', () => {
 
 describe('TeamForm — advanced section toggle interaction', () => {
   it('expands the section and reveals coach fields when "More details" is clicked', () => {
-    render(<TeamForm open onClose={vi.fn()} />);
+    render(<MemoryRouter><TeamForm open onClose={vi.fn()} /></MemoryRouter>);
 
     expect(screen.queryByRole('textbox', { name: /coach name/i })).not.toBeInTheDocument();
 
@@ -205,7 +214,7 @@ describe('TeamForm — advanced section toggle interaction', () => {
   });
 
   it('collapses the section again when "More details" is clicked a second time', () => {
-    render(<TeamForm open onClose={vi.fn()} />);
+    render(<MemoryRouter><TeamForm open onClose={vi.fn()} /></MemoryRouter>);
 
     fireEvent.click(getAdvancedToggle()); // expand
     expect(isAdvancedOpen()).toBe(true);
@@ -224,7 +233,7 @@ describe('TeamForm — onCreated callback', () => {
     const onClose = vi.fn();
     mockCallable.mockResolvedValue({ data: { teamId: 'returned-team-id' } });
 
-    render(<TeamForm open onClose={onClose} onCreated={onCreated} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} onCreated={onCreated} /></MemoryRouter>);
 
     await userEvent.type(screen.getByRole('textbox', { name: /team name/i }), 'Thunder Hawks');
     fireEvent.click(screen.getByRole('button', { name: /create team/i }));
@@ -237,7 +246,7 @@ describe('TeamForm — onCreated callback', () => {
     const onCreated = vi.fn();
     const onClose = vi.fn();
 
-    render(<TeamForm open onClose={onClose} onCreated={onCreated} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} onCreated={onCreated} /></MemoryRouter>);
 
     await userEvent.type(screen.getByRole('textbox', { name: /team name/i }), 'Thunder Hawks');
     fireEvent.click(screen.getByRole('button', { name: /create team/i }));
@@ -251,7 +260,7 @@ describe('TeamForm — onCreated callback', () => {
     const onCreated = vi.fn();
     mockCallable.mockRejectedValueOnce(new Error('Network error'));
 
-    render(<TeamForm open onClose={vi.fn()} onCreated={onCreated} />);
+    render(<MemoryRouter><TeamForm open onClose={vi.fn()} onCreated={onCreated} /></MemoryRouter>);
 
     await userEvent.type(screen.getByRole('textbox', { name: /team name/i }), 'Thunder Hawks');
     fireEvent.click(screen.getByRole('button', { name: /create team/i }));
@@ -262,7 +271,7 @@ describe('TeamForm — onCreated callback', () => {
 
   it('does NOT call onCreated when validation fails (team name empty)', async () => {
     const onCreated = vi.fn();
-    render(<TeamForm open onClose={vi.fn()} onCreated={onCreated} />);
+    render(<MemoryRouter><TeamForm open onClose={vi.fn()} onCreated={onCreated} /></MemoryRouter>);
 
     // Name input is pre-filled from profile — clear it
     await userEvent.clear(screen.getByRole('textbox', { name: /team name/i }));
@@ -275,7 +284,7 @@ describe('TeamForm — onCreated callback', () => {
   it('works correctly when onCreated prop is omitted (no crash)', async () => {
     // onCreated is optional — the form should work fine without it
     const onClose = vi.fn();
-    render(<TeamForm open onClose={onClose} />);
+    render(<MemoryRouter><TeamForm open onClose={onClose} /></MemoryRouter>);
 
     await userEvent.type(screen.getByRole('textbox', { name: /team name/i }), 'Thunder Hawks');
     fireEvent.click(screen.getByRole('button', { name: /create team/i }));
