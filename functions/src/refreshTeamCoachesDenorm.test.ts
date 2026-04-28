@@ -139,6 +139,7 @@ vi.mock('firebase-admin', () => {
 
 vi.mock('firebase-admin/firestore', () => ({
   FieldPath: { documentId: () => ({ __id: true }) },
+  FieldValue: { delete: () => FieldValueDelete, arrayUnion: vi.fn(), arrayRemove: vi.fn(), serverTimestamp: vi.fn(), increment: vi.fn() },
 }));
 
 // ─── Import trigger after mocks ───────────────────────────────────────────────

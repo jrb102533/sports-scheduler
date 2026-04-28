@@ -3,6 +3,7 @@ import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from 'firebas
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
+import { FieldPath, FieldValue } from 'firebase-admin/firestore';
 import * as nodemailer from 'nodemailer';
 import * as crypto from 'crypto';
 import { buildEmail, rsvpButtonsHtml } from './emailTemplate';
@@ -5990,7 +5991,7 @@ export const onEventWrittenRecipients = onDocumentWritten(
       const chunk = teamIds.slice(i, i + FIRESTORE_IN_QUERY_LIMIT);
       const snap = await db
         .collection('teams')
-        .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
+        .where(FieldPath.documentId(), 'in', chunk)
         .get();
       for (const doc of snap.docs) teamDataById.set(doc.id, doc.data());
     }
@@ -6010,7 +6011,7 @@ export const onEventWrittenRecipients = onDocumentWritten(
       const chunk = coachIdList.slice(i, i + FIRESTORE_IN_QUERY_LIMIT);
       const snap = await db
         .collection('users')
-        .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
+        .where(FieldPath.documentId(), 'in', chunk)
         .get();
       for (const doc of snap.docs) coachProfiles.set(doc.id, doc.data());
     }
@@ -6108,10 +6109,10 @@ async function refreshTeamCoachesDenorm(
   db: admin.firestore.Firestore,
 ): Promise<void> {
   if (coachIds.length === 0) {
-    // No coaches → clear the map. Use FieldValue.delete to remove the field
+    // No coaches → clear the map. Use FieldValue.delete() to remove the field
     // entirely so reads don't see an empty {} shape.
     await db.doc(`teams/${teamId}`).update({
-      coaches: admin.firestore.FieldValue.delete(),
+      coaches: FieldValue.delete(),
     }).catch(() => { /* doc may have been deleted */ });
     return;
   }
