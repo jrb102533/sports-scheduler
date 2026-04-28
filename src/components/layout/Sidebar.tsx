@@ -96,7 +96,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
         <div className="flex items-center gap-2.5 px-3 py-3">
           <ClipboardMark size={36} />
           <span className="text-base font-bold tracking-tight leading-none">
-            <span style={{ color: '#1B3A6B' }}>First</span>
+            <span style={{ color: '#FFFFFF' }}>First</span>
             <span style={{ color: '#F97316' }}> Whistle</span>
           </span>
         </div>
