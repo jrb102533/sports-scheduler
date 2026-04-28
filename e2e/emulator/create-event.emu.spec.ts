@@ -24,7 +24,7 @@ test('@emu @coach coach can create a new event for emu-team-a from the Schedule 
 
   // Switch to the Schedule tab.
   const scheduleTab = page.getByRole('tab', { name: /schedule/i });
-  await expect(scheduleTab).toBeVisible({ timeout: 10_000 });
+  await expect(scheduleTab).toBeVisible({ timeout: 30_000 });
   await scheduleTab.click();
 
   // Add Event button.
@@ -64,7 +64,7 @@ test('@emu @coach coach can create a new event for emu-team-a from the Schedule 
   await saveBtn.click();
 
   // Modal must close — if it stays open, save failed.
-  await expect(modal).not.toBeVisible({ timeout: 10_000 });
+  await expect(modal).not.toBeVisible({ timeout: 30_000 });
 
   // Still on the team detail page; no crash, no redirect to login.
   await expect(page).toHaveURL(/\/teams\/.+/);

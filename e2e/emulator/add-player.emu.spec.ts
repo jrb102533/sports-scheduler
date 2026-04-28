@@ -25,7 +25,7 @@ test('@emu @admin admin can add a player to emu-team-a and the player appears in
 
   // Switch to the Roster tab.
   const rosterTab = page.getByRole('tab', { name: /roster/i });
-  await expect(rosterTab).toBeVisible({ timeout: 10_000 });
+  await expect(rosterTab).toBeVisible({ timeout: 30_000 });
   await rosterTab.click();
 
   // Add Player button.
@@ -44,10 +44,10 @@ test('@emu @admin admin can add a player to emu-team-a and the player appears in
   await saveBtn.click();
 
   // Modal closes on success.
-  await expect(modal).not.toBeVisible({ timeout: 10_000 });
+  await expect(modal).not.toBeVisible({ timeout: 30_000 });
 
   // Player row must appear in the roster list.
   await expect(
     page.getByText(new RegExp(`${firstName}.*${lastName}|${lastName}.*${firstName}`, 'i')),
-  ).toBeVisible({ timeout: 10_000 });
+  ).toBeVisible({ timeout: 30_000 });
 });

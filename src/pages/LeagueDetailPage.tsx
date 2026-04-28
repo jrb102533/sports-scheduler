@@ -36,6 +36,7 @@ export function LeagueDetailPage() {
   const navigate = useNavigate();
 
   const leagues = useLeagueStore(s => s.leagues);
+  const leaguesLoading = useLeagueStore(s => s.loading);
   const updateLeague = useLeagueStore(s => s.updateLeague);
   const deleteLeague = useLeagueStore(s => s.deleteLeague);
   const teams = useTeamStore(s => s.teams);
@@ -110,7 +111,12 @@ export function LeagueDetailPage() {
 
   const leagueVenueCount = useLeagueVenueStore(s => s.venues.length);
 
-  if (!league) return <div className="p-4 sm:p-6 text-gray-500">League not found.</div>;
+  if (!league) {
+    if (leaguesLoading) {
+      return <div className="p-4 sm:p-6 text-gray-500" role="status">Loading league…</div>;
+    }
+    return <div className="p-4 sm:p-6 text-gray-500">League not found.</div>;
+  }
 
   const canSoftDelete = isLeagueManager && (managedLeagueIds.has(league.id) || league.managedBy === profile?.uid);
 

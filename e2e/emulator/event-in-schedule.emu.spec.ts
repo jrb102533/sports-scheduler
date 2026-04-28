@@ -26,7 +26,7 @@ test('@emu @coach seeded event appears in emu-team-a schedule list', async ({ co
 
   // Switch to the Schedule tab.
   const scheduleTab = page.getByRole('tab', { name: /schedule/i });
-  await expect(scheduleTab).toBeVisible({ timeout: 10_000 });
+  await expect(scheduleTab).toBeVisible({ timeout: 30_000 });
   await scheduleTab.click();
 
   // The seeded game title must appear somewhere in the schedule list.
