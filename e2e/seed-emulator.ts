@@ -21,6 +21,7 @@
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { LEGAL_VERSIONS } from '../src/legal/versions';
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT ?? 'first-whistle-e76f4';
 
@@ -55,7 +56,11 @@ export const EMU_IDS = {
   inviteSecret: 'emu-invite-secret-001',
 } as const;
 
-const LEGAL_VERSION = '1.0';
+// Versions sourced from src/legal/versions.ts so seeded consent docs stay
+// in sync with the app's LEGAL_VERSIONS — otherwise a version bump there
+// (without updating the seed) flags every emulator account as
+// consentOutdated and the ConsentUpdateModal blocks all clicks. See
+// project_e2e_consent_modal_blocker.md for the historical incident.
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -143,12 +148,13 @@ async function seedProfile(user: EmuUser): Promise<void> {
 
   await db.doc(`users/${user.uid}`).set(profile, { merge: true });
 
-  // Consent docs — current version, so ConsentUpdateModal never appears.
+  // Consent docs — current version per src/legal/versions.ts, so
+  // ConsentUpdateModal never appears.
   const agreedAt = new Date().toISOString();
   await Promise.all([
-    db.doc(`users/${user.uid}/consents/termsOfService`).set({ version: LEGAL_VERSION, agreedAt }),
-    db.doc(`users/${user.uid}/consents/privacyPolicy`).set({ version: LEGAL_VERSION, agreedAt }),
-    db.doc(`users/${user.uid}/consents/liabilityLimitations`).set({ version: LEGAL_VERSION, agreedAt }),
+    db.doc(`users/${user.uid}/consents/termsOfService`).set({ version: LEGAL_VERSIONS.termsOfService, agreedAt }),
+    db.doc(`users/${user.uid}/consents/privacyPolicy`).set({ version: LEGAL_VERSIONS.privacyPolicy, agreedAt }),
+    db.doc(`users/${user.uid}/consents/liabilityLimitations`).set({ version: LEGAL_VERSIONS.liabilityLimitations, agreedAt }),
   ]);
 }
 
