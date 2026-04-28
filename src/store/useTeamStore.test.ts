@@ -10,6 +10,9 @@
  *   - subscribe() returns immediately (no listener) when non-admin has no teams
  *   - subscribe() populates teams from snapshot
  *   - subscribe() opens a deleted-teams listener only for admin users
+ *   - subscribe() re-opens listener when profile.role arrives after null (race fix)
+ *   - subscribe() re-opens listener when profile.memberships change (coach gains a team)
+ *   - subscribe() never issues where(documentId(), 'in', []) (empty in-query guard)
  *   - updateTeam() writes to the correct Firestore path
  *   - addTeamToLeague() uses arrayUnion and sets _managedLeagueId
  *   - removeTeamFromLeague() uses arrayRemove and sets _managedLeagueId
@@ -65,8 +68,25 @@ vi.mock('@/lib/firebase', () => ({ db: {}, functions: {} }));
 
 const mockGetAuthState = vi.fn(() => ({ profile: null }));
 
+// Listeners registered via useAuthStore.subscribe(listener)
+type AuthListener = (state: { profile: ReturnType<typeof mockGetAuthState>['profile'] }) => void;
+let _authListeners: AuthListener[] = [];
+const mockAuthSubscribe = vi.fn((listener: AuthListener) => {
+  _authListeners.push(listener);
+  return () => { _authListeners = _authListeners.filter(l => l !== listener); };
+});
+
+/** Simulate auth state change (profile arrives / changes). */
+function simulateAuthChange(profile: { role?: string; memberships?: { role: string; teamId?: string }[] } | null) {
+  mockGetAuthState.mockReturnValue({ profile });
+  _authListeners.forEach(l => l({ profile } as Parameters<AuthListener>[0]));
+}
+
 vi.mock('@/store/useAuthStore', () => ({
-  useAuthStore: { getState: (...args: unknown[]) => mockGetAuthState(...args) },
+  useAuthStore: {
+    getState: (...args: unknown[]) => mockGetAuthState(...args),
+    subscribe: (...args: unknown[]) => mockAuthSubscribe(...(args as [AuthListener])),
+  },
 }));
 
 // ── Import store after mocks ──────────────────────────────────────────────────
@@ -99,12 +119,18 @@ function makeSnapshotDocs(teams: Team[]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  _authListeners = [];
   mockSetDoc.mockResolvedValue(undefined);
   mockUpdateDoc.mockResolvedValue(undefined);
   mockDeleteDoc.mockResolvedValue(undefined);
   mockHttpsCallableFn.mockResolvedValue({ data: { success: true } });
   mockOnSnapshot.mockReturnValue(() => {});
   mockGetAuthState.mockReturnValue({ profile: null });
+  // Re-wire subscribe mock after clearAllMocks
+  mockAuthSubscribe.mockImplementation((listener: AuthListener) => {
+    _authListeners.push(listener);
+    return () => { _authListeners = _authListeners.filter(l => l !== listener); };
+  });
   useTeamStore.setState({ teams: [], deletedTeams: [], loading: true });
 });
 
@@ -292,6 +318,120 @@ describe('useTeamStore — subscribe (non-admin scoping)', () => {
     const inCall = mockWhere.mock.calls.find(c => c[1] === 'in');
     expect(inCall).toBeDefined();
     expect((inCall![2] as string[]).length).toBe(30);
+  });
+});
+
+// ── subscribe() — reactive re-subscription (race-condition fix) ───────────────
+//
+// Steps 1–3 of the TDD plan from issue #686.
+//
+// The root cause: subscribe() reads profile?.role at call-time. Auth has a race
+// window where user is set but profile (loaded via a separate onSnapshot) is
+// still null. MainLayout calls subscribe() as soon as user is set, so:
+//   - profile?.role === 'admin' → false (profile is null)
+//   - non-admin branch fires with empty userTeamIds []
+//   - where(documentId(), 'in', []) → malformed query that hangs forever
+//
+// Fix: subscribe() internally watches useAuthStore and re-opens the correct
+// listener when profile.role / profile.memberships arrive after the initial call.
+
+describe('useTeamStore — subscribe (reactive re-subscription on profile arrival)', () => {
+  it('RED→GREEN: re-opens admin listener when profile.role changes null → admin', () => {
+    // Start with profile null (race window: user set but profile not loaded yet).
+    mockGetAuthState.mockReturnValue({ profile: null });
+    mockOnSnapshot.mockReturnValue(() => {});
+
+    // subscribe() called immediately on user sign-in (profile still null).
+    const unsub = useTeamStore.getState().subscribe([]);
+
+    // No Firestore listener should have fired yet — nothing to subscribe to.
+    // (Profile null + empty teamIds → no-op initially is acceptable, but the
+    // key assertion is that a listener DOES open once profile arrives.)
+    const snapshotCallsBefore = mockOnSnapshot.mock.calls.length;
+
+    // Profile arrives (simulates onSnapshot for users/<uid> firing).
+    simulateAuthChange({ role: 'admin', memberships: [] });
+
+    // Now the admin Firestore listener must have been opened.
+    expect(mockOnSnapshot.mock.calls.length).toBeGreaterThan(snapshotCallsBefore);
+    expect(mockWhere).toHaveBeenCalledWith('isDeleted', '!=', true);
+
+    unsub();
+  });
+
+  it('RED→GREEN: re-opens non-admin listener when profile.memberships change (coach gains a team)', () => {
+    // Start with coach profile that has no teams yet.
+    mockGetAuthState.mockReturnValue({ profile: { role: 'coach', memberships: [] } });
+    mockOnSnapshot.mockReturnValue(() => {});
+
+    const unsub = useTeamStore.getState().subscribe([]);
+
+    const snapshotCallsBefore = mockOnSnapshot.mock.calls.length;
+
+    // Coach gains a team membership (admin adds them to a team).
+    simulateAuthChange({ role: 'coach', memberships: [{ role: 'coach', teamId: 'new-team-1' }] });
+
+    // A new listener scoped to new-team-1 must have opened.
+    expect(mockOnSnapshot.mock.calls.length).toBeGreaterThan(snapshotCallsBefore);
+    expect(mockDocumentId).toHaveBeenCalled();
+
+    unsub();
+  });
+
+  it('RED→GREEN: tears down old listener before opening new one on re-subscription', () => {
+    const oldUnsub = vi.fn();
+    mockGetAuthState.mockReturnValue({ profile: { role: 'coach', memberships: [{ role: 'coach', teamId: 't1' }] } });
+    mockOnSnapshot.mockReturnValue(oldUnsub);
+
+    const masterUnsub = useTeamStore.getState().subscribe(['t1']);
+
+    // Old listener is open. Now role changes to admin.
+    simulateAuthChange({ role: 'admin', memberships: [] });
+
+    // Old listener must have been torn down before new admin listener opened.
+    expect(oldUnsub).toHaveBeenCalled();
+
+    masterUnsub();
+  });
+
+  it('RED→GREEN: cleans up auth watcher when master unsub is called', () => {
+    mockGetAuthState.mockReturnValue({ profile: { role: 'admin' } });
+    mockOnSnapshot.mockReturnValue(() => {});
+
+    const unsub = useTeamStore.getState().subscribe([]);
+    expect(mockAuthSubscribe).toHaveBeenCalled();
+
+    unsub();
+
+    // After unsub, auth listener should be removed (no-op on further changes).
+    const snapshotCallsBefore = mockOnSnapshot.mock.calls.length;
+    simulateAuthChange({ role: 'admin', memberships: [] });
+    expect(mockOnSnapshot.mock.calls.length).toBe(snapshotCallsBefore);
+  });
+});
+
+describe('useTeamStore — subscribe (empty in-query guard)', () => {
+  it('RED→GREEN: never issues where(documentId(), in, []) when non-admin and no teamIds', () => {
+    mockGetAuthState.mockReturnValue({ profile: { role: 'coach', memberships: [] } });
+    mockOnSnapshot.mockReturnValue(() => {});
+
+    useTeamStore.getState().subscribe([]);
+
+    // Guard must prevent the malformed empty in-query from ever reaching Firestore.
+    const inCalls = mockWhere.mock.calls.filter(c => c[1] === 'in' && Array.isArray(c[2]) && (c[2] as unknown[]).length === 0);
+    expect(inCalls).toHaveLength(0);
+
+    // And loading should be false (not hanging forever).
+    expect(useTeamStore.getState().loading).toBe(false);
+  });
+
+  it('sets teams: [] and loading: false immediately when non-admin has no teamIds on subscribe', () => {
+    mockGetAuthState.mockReturnValue({ profile: { role: 'parent', memberships: [] } });
+
+    useTeamStore.getState().subscribe([]);
+
+    expect(useTeamStore.getState().teams).toEqual([]);
+    expect(useTeamStore.getState().loading).toBe(false);
   });
 });
 

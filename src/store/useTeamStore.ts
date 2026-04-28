@@ -6,7 +6,7 @@ import {
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@/lib/firebase';
 import { useAuthStore } from '@/store/useAuthStore';
-import type { Team } from '@/types';
+import type { UserProfile, Team } from '@/types';
 
 interface TeamStore {
   teams: Team[];         // active (non-deleted) teams
@@ -23,68 +23,156 @@ interface TeamStore {
   deleteTeam: (id: string) => Promise<void>;
 }
 
+// ── Pure helper: decides which listener variant to open ───────────────────────
+//
+// Returns a stable descriptor string — same inputs, same string. Used to detect
+// whether the auth state change is actually relevant (avoids listener churn on
+// unrelated token refreshes or field updates).
+
+export function buildTeamListenerDescriptor(
+  role: string | undefined,
+  teamIds: string[],
+): string {
+  const isAdmin = role === 'admin' || role === 'league_manager';
+  if (isAdmin) return 'admin';
+  if (teamIds.length === 0) return 'none';
+  return `member:${teamIds.slice(0, 30).sort().join(',')}`;
+}
+
+// ── Internal listener opener ──────────────────────────────────────────────────
+
+function openTeamListeners(
+  set: (partial: Partial<{ teams: Team[]; deletedTeams: Team[]; loading: boolean }>) => void,
+  role: string | undefined,
+  userTeamIds: string[],
+): (() => void) {
+  const isAdmin = role === 'admin' || role === 'league_manager';
+
+  // Guard: non-admin users with no memberships have nothing to subscribe to.
+  // Return immediately with loading:false and empty teams — never issue the
+  // malformed where(documentId(), 'in', []) query that hangs forever.
+  if (!isAdmin && userTeamIds.length === 0) {
+    set({ teams: [], loading: false });
+    return () => {};
+  }
+
+  let unsub: () => void;
+  if (isAdmin) {
+    // Admin: unscoped query — admins need to see all teams.
+    // Filter deleted teams server-side so Firestore never sends deleted docs
+    // over the wire. Firestore requires orderBy to match the inequality field first.
+    const q = query(
+      collection(db, 'teams'),
+      where('isDeleted', '!=', true),
+      orderBy('isDeleted'),
+      orderBy('createdAt'),
+    );
+    unsub = onSnapshot(q, (snap) => {
+      set({
+        teams: snap.docs.map(d => ({ ...d.data(), id: d.id }) as Team),
+        loading: false,
+      });
+    }, () => set({ loading: false }));
+  } else {
+    // Non-admin: scope to the user's own team IDs via documentId() `in` filter.
+    const q = query(
+      collection(db, 'teams'),
+      where(documentId(), 'in', userTeamIds.slice(0, 30)),
+    );
+    unsub = onSnapshot(q, (snap) => {
+      set({
+        teams: snap.docs.map(d => ({ ...d.data(), id: d.id }) as Team),
+        loading: false,
+      });
+    }, () => set({ loading: false }));
+  }
+
+  // Open a second listener for deleted teams, scoped to admin users only.
+  let unsubDeleted: (() => void) | undefined;
+  if (isAdmin) {
+    const qDeleted = query(
+      collection(db, 'teams'),
+      where('isDeleted', '==', true),
+      orderBy('deletedAt', 'desc'),
+    );
+    unsubDeleted = onSnapshot(qDeleted, (snap) => {
+      set({ deletedTeams: snap.docs.map(d => ({ ...d.data(), id: d.id }) as Team) });
+    }, (err) => console.error('[useTeamStore] deleted teams listener error:', err));
+  }
+
+  return () => { unsub(); if (unsubDeleted) unsubDeleted(); };
+}
+
+// ── Helper: extract role and sorted teamIds from a profile ────────────────────
+
+function profileToDescriptor(profile: UserProfile | null, fallbackTeamIds: string[]): {
+  role: string | undefined;
+  teamIds: string[];
+} {
+  if (!profile) {
+    return { role: undefined, teamIds: fallbackTeamIds };
+  }
+  const role = profile.role;
+  const isAdmin = role === 'admin' || role === 'league_manager';
+  if (isAdmin) return { role, teamIds: [] };
+  // Derive team IDs from memberships (profile is the authoritative source post-load).
+  const ids = new Set<string>();
+  for (const m of profile.memberships ?? []) {
+    if (m.teamId) ids.add(m.teamId);
+  }
+  // Fallback to caller-supplied teamIds in case memberships field is absent.
+  if (ids.size === 0) {
+    for (const id of fallbackTeamIds) ids.add(id);
+  }
+  return { role, teamIds: [...ids] };
+}
+
 export const useTeamStore = create<TeamStore>((set) => ({
   teams: [],
   deletedTeams: [],
   loading: true,
 
+  // subscribe() is intentionally reactive: it opens the correct Firestore
+  // listener immediately, but also watches useAuthStore for profile changes.
+  // This handles the auth race window where user is set but profile (loaded via
+  // a separate onSnapshot) is still null when subscribe() is first called.
+  //
+  // Without reactivity:
+  //   - profile null → isAdmin false → empty userTeamIds → malformed
+  //     where(documentId(), 'in', []) query → loading hangs forever
+  //
+  // With reactivity:
+  //   - profile null → no-op / empty guard → loading: false, teams: []
+  //   - profile arrives → auth watcher fires → correct listener opens
+  //
+  // The consumer (MainLayout) continues to call subscribe(userTeamIds) once
+  // and gets back a single teardown. The reactive re-subscription is internal.
   subscribe: (userTeamIds: string[]) => {
-    const profile = useAuthStore.getState().profile;
-    const isAdmin = profile?.role === 'admin' || profile?.role === 'league_manager';
+    const getProfile = () => useAuthStore.getState().profile;
 
-    // Non-admin users with no team memberships have nothing to subscribe to.
-    if (!isAdmin && userTeamIds.length === 0) {
-      set({ loading: false });
-      return () => {};
-    }
+    // Open initial listeners based on current profile state.
+    const initial = profileToDescriptor(getProfile(), userTeamIds);
+    let currentDescriptor = buildTeamListenerDescriptor(initial.role, initial.teamIds);
+    let teardownListeners = openTeamListeners(set, initial.role, initial.teamIds);
 
-    // Admin: keep the existing unscoped query (admins need to see all teams).
-    // Non-admin: scope to the user's own team IDs via documentId() `in` filter,
-    // which avoids the isDeleted inequality index requirement. Deleted teams are
-    // not accessible to non-admins so we don't need the deleted-teams listener.
-    let unsub: () => void;
-    if (isAdmin) {
-      // Filter deleted teams server-side so Firestore never sends deleted docs
-      // over the wire. Firestore requires orderBy to match the inequality field first.
-      const q = query(
-        collection(db, 'teams'),
-        where('isDeleted', '!=', true),
-        orderBy('isDeleted'),
-        orderBy('createdAt'),
-      );
-      unsub = onSnapshot(q, (snap) => {
-        set({
-          teams: snap.docs.map(d => ({ ...d.data(), id: d.id }) as Team),
-          loading: false,
-        });
-      }, () => set({ loading: false }));
-    } else {
-      const q = query(
-        collection(db, 'teams'),
-        where(documentId(), 'in', userTeamIds.slice(0, 30)),
-      );
-      unsub = onSnapshot(q, (snap) => {
-        set({
-          teams: snap.docs.map(d => ({ ...d.data(), id: d.id }) as Team),
-          loading: false,
-        });
-      }, () => set({ loading: false }));
-    }
+    // Watch for profile changes (role arrival, memberships update).
+    // A signature string prevents listener churn on unrelated auth-store
+    // changes (token refresh, consent field, etc.).
+    const authUnsub = useAuthStore.subscribe((state) => {
+      const next = profileToDescriptor(state.profile, userTeamIds);
+      const nextDescriptor = buildTeamListenerDescriptor(next.role, next.teamIds);
+      if (nextDescriptor === currentDescriptor) return;
 
-    // Open a second listener for deleted teams, scoped to admin users only.
-    let unsubDeleted: (() => void) | undefined;
-    if (isAdmin) {
-      const qDeleted = query(
-        collection(db, 'teams'),
-        where('isDeleted', '==', true),
-        orderBy('deletedAt', 'desc'),
-      );
-      unsubDeleted = onSnapshot(qDeleted, (snap) => {
-        set({ deletedTeams: snap.docs.map(d => ({ ...d.data(), id: d.id }) as Team) });
-      }, (err) => console.error('[useTeamStore] deleted teams listener error:', err));
-    }
+      // Descriptor changed → tear down old listeners and open new ones.
+      teardownListeners();
+      currentDescriptor = nextDescriptor;
+      teardownListeners = openTeamListeners(set, next.role, next.teamIds);
+    });
 
-    return () => { unsub(); if (unsubDeleted) unsubDeleted(); };
+    return () => {
+      teardownListeners();
+      authUnsub();
+    };
   },
 
   updateTeam: async (team) => {
