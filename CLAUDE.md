@@ -121,9 +121,9 @@ onSnapshot(query(collection(db, 'events'), where('teamId', 'in', userTeamIds)), 
 - Avoids re-reading data already in a Zustand store?
 - For CFs: read count bounded independently of dataset growth?
 
-### Cost Discipline Architecture (ADR-012 + FW-82)
+### Cost Discipline Architecture (ADR-012 + FW-82, revised 2026-04-26)
 
-Three hard rules, enforced at the code/CI layer not by tribal knowledge:
+Five hard rules, enforced at the code/CI layer not by tribal knowledge:
 
 **1. Notification-dispatch CFs MUST guard with `ENV.shouldRunScheduledJobs()`.** Maintenance CFs (`autoCloseCollections`, `purgeSoftDeletedData`, `cleanupEmailQuota`) do NOT carry this guard — they run on staging and prod alike because staging has real data that needs expiry and purge (FW-82 Phase E). The guard applies only to CFs that send notifications to users (no real staging users to notify).
 
@@ -146,11 +146,11 @@ Shadow mode for new dispatchers: gate with `DISPATCHER_SHADOW_MODE=true` env var
 
 **2. `deploy.yml` is path-scoped — `firebase deploy --only` deploys ONLY what changed.** Docs-only / legal-only / test-only PRs deploy nothing. Path → target mapping lives in `.github/workflows/deploy.yml` `paths-filter` step. When adding a new top-level directory or deployable artifact, update the path filters in the same PR.
 
-**3. NO auto-firing E2E against live staging Firestore.** `e2e-smoke.yml` has no `on:` trigger; the smoke-reminder job in `release.yml` is removed. E2E redesign tracked as FW-80 (move to emulator). Do not propose re-enabling.
+**3. Emulator is the system of record for testing. Staging is humans-only.** No automated tests fire against staging — `e2e-smoke.yml` is decommissioned, the smoke-reminder job in `release.yml` is removed. All comprehensive testing runs against the Firebase Emulator at $0 (`e2e-emulator.yml`). Real-infra validation (OAuth, Stripe, email, FCM, hosting headers) is a manual checklist in `docs/GO_LIVE_CHECKLIST.md`, run per release. Production is for users; one daily synthetic probe (login → dashboard → logout) is the only automated prod test. Locked 2026-04-26 — do not propose re-enabling automated staging tests. See `memory/project_test_strategy.md`.
 
-**2. `deploy.yml` is path-scoped — `firebase deploy --only` deploys ONLY what changed.** Docs-only / legal-only / test-only PRs deploy nothing. Path → target mapping lives in `.github/workflows/deploy.yml` `paths-filter` step. When adding a new top-level directory or deployable artifact, update the path filters in the same PR.
+**4. ESLint rule `first-whistle/no-unscoped-collection-read` is `error`.** Unscoped `getDocs(collection(...))` and `onSnapshot(collection(...))` calls fail CI. Wrap in `query(collection(...), where|limit)` or use a subcollection path. The rule lives in `eslint-rules/no-unscoped-collection-read.js`.
 
-**3. NO auto-firing E2E against live staging Firestore.** `e2e-smoke.yml` has no `on:` trigger; the smoke-reminder job in `release.yml` is removed. E2E redesign tracked as FW-80 (move to emulator). Do not propose re-enabling.
+**5. Per-test Firestore read budget: 100 reads/spec.** The Playwright @emu read-count fixture asserts each spec uses fewer than `E2E_READ_BUDGET` (default 100) HTTP requests to the Firestore emulator. Regressions like new global subscriptions, N+1 patterns, or unscoped admin queries fail the spec at PR time. Per-run aggregate is uploaded as the `firestore-reads` CI artifact and posted as a PR comment.
 
 ## TypeScript Import Discipline
 
@@ -223,11 +223,9 @@ Authorized domains are managed in one place only: **Firebase Console → Authent
 To deploy to production:
 1. Merge the PR to `main`
 2. **Deploy to staging first** — `npm run build:staging && firebase deploy --project staging`
-3. Wait for the "E2E Smoke — Staging" workflow to complete and pass (triggers automatically after staging deploy)
+3. Walk the per-release real-infra checklist in `docs/GO_LIVE_CHECKLIST.md` against staging (Auth, Stripe sandbox, email, hosting headers, indexes Enabled). This is the gate — automated staging smoke is decommissioned per ADR-012 rule 3.
 4. Go to GitHub → Actions → "Release" workflow → Run workflow
 5. Wait for the approval notification and approve it
-
-The release pipeline verifies a passing smoke run exists for the exact SHA being deployed. If you skip staging or commit directly to main without a staging deploy, the release will fail at "Verify Staging Smoke Passed" with `ERROR: No E2E Smoke — Staging run found for SHA <sha>`. Always deploy staging before triggering release.
 
 Staging deploys (`firebase deploy --project staging`) from the CLI are fine and required before every production release.
 
@@ -264,15 +262,19 @@ If production is down or actively leaking data:
 - **Regression rule:** When a bug is confirmed, a failing test reproducing it must be committed *before* the fix. The fix is not mergeable until that test passes
 - **Vacuous assertions are bugs.** `|| true`, `expect(true).toBe(true)`, empty test bodies — treat these as build failures, not placeholders
 
-### Test pyramid for this stack
+### Test pyramid for this stack (revised 2026-04-26)
 
-| Layer | Tool | What belongs here |
-|-------|------|-------------------|
-| Unit | Vitest + RTL | Pure functions, store logic, Cloud Function helpers, Firestore rule unit tests |
-| Integration | Vitest + emulators | Store ↔ Firestore, Cloud Function ↔ Auth flows |
-| E2E | Playwright (staging) | Full user journeys, role access control, cross-role visibility, real Firestore rules |
+| Layer | Tool | Where it runs | What belongs here |
+|-------|------|---------------|-------------------|
+| Unit | Vitest + RTL | CI on every PR | Pure functions, store logic, CF helpers, validators |
+| Integration | Vitest + emulators | CI on every PR | Every Firestore rule (allow + deny per role), every callable CF — highest-leverage layer |
+| E2E (emulator) | Playwright `@emu` | CI on every PR | Golden-path UI flows for every role: signup, invite accept, schedule publish, results, role-based access |
+| Real-infra UAT | Manual | Per release | OAuth, Stripe sandbox, email delivery, FCM, hosting headers — `docs/GO_LIVE_CHECKLIST.md` |
+| Prod synthetic | Cloud Scheduler | Daily | Single probe: login → dashboard → logout (~10 reads/day) |
 
-**Never mock Firestore or Auth in E2E tests.** Always use the real staging environment so security rules are exercised. We got burned when mocked tests passed but prod rules blocked the real flow.
+**Never mock Firestore or Auth in E2E tests.** Always use the Firebase Emulator so security rules are exercised. We got burned when mocked tests passed but prod rules blocked the real flow. The emulator loads `firestore.rules` directly — same file that ships to prod.
+
+**No automated tests against staging.** Staging is humans-only (PM demos, manual UAT). Per ADR-012 rule 3.
 
 ### Role-based coverage
 
@@ -311,7 +313,7 @@ If production is down or actively leaking data:
 ### Definition of done
 
 - Tests pass for **every affected role**, not just the happy path
-- CI E2E is green on staging before a PR is marked ready for review
+- CI E2E (`@emu` against the Firebase Emulator) is green before a PR is marked ready for review — automated staging E2E is decommissioned per ADR-012 rule 3
 - Any test changed from `expect(...)` to `skip` requires a linked ticket in the reason string
 - When a feature changes, update its E2E tests in the **same PR** — never defer to a follow-up
 

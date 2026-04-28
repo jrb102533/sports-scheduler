@@ -202,6 +202,9 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
           );
         }
         if (!adminSensitiveUnsub) {
+          // TODO(FW-80 Phase 2): scope this admin collectionGroup to current
+          // league/team — top-priority cost issue per project_test_strategy.md.
+          // eslint-disable-next-line first-whistle/no-unscoped-collection-read
           adminSensitiveUnsub = onSnapshot(
             collectionGroup(db, 'sensitiveData'),
             (snap) => {

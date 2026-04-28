@@ -34,3 +34,6 @@ emulator-data/
 # Playwright auth state — contains Firebase ID tokens; never commit
 e2e/.auth/
 .claude/agent-memory/
+
+# Per-run read-count artifacts (uploaded as CI artifact, not source)
+e2e/.read-counts/

@@ -79,3 +79,42 @@ Email verification was removed (Option A) to reduce signup friction for invited 
 
 - [ ] **Terms of Service and Privacy Policy** — Confirm versions are current and consent flow is working.
 - [ ] **COPPA compliance** — Review parental consent flow for minor players.
+
+---
+
+## Per-Release Real-Infra Verification (manual)
+
+Per the emulator-first test strategy locked 2026-04-26 (`memory/project_test_strategy.md`), the emulator covers all golden-path UI flows and security rules at $0. The following are the only things that genuinely require real infrastructure and **must be re-verified manually for every production release** — they are not covered by any automated test.
+
+### Auth providers
+- [ ] **Email/password** login on production URL (uses real Firebase Auth, not emulator)
+- [ ] **Apple Sign-In** end-to-end (only if/when enabled)
+- [ ] **Google Sign-In** end-to-end (only if/when enabled)
+- [ ] Authorized domains list in Firebase Console → Authentication → Settings still includes the production domain and any new staging/preview domains
+
+### Stripe (when payment changes ship)
+- [ ] Stripe **sandbox** webhook delivery to production CF: trigger a test event from Stripe CLI, confirm webhook function logs receipt and writes the expected Firestore record
+- [ ] Subscription create + cancel + grace-period transitions exercised once in sandbox before a billing-related release
+- [ ] Coupon redemptions cap + expiry are configured per `feedback_stripe_coupon_discipline.md`
+
+### Email delivery (Brevo/SendGrid)
+- [ ] Send a real invite email through production: arrives within 60s, not in spam, sender = `noreply@firstwhistlesports.com`
+- [ ] Brevo daily quota counter (`emailQuota` collection) is below the 240/day soft warning threshold
+- [ ] Bounce / spam rate in Brevo dashboard reviewed for prior 7 days
+
+### Push / FCM (when push notifications ship)
+- [ ] Real device token receives a test notification end-to-end
+- [ ] FCM credentials in Firebase Console match the app bundle ID
+
+### Hosting / CDN / SSL
+- [ ] `https://firstwhistlesports.com` returns a valid SSL cert (no warning, no `cert.expired`)
+- [ ] Response headers include the expected CSP and `X-Frame-Options` values
+- [ ] Static asset URLs return 200 (no 403 from Firebase Hosting cache)
+
+### Firestore composite indexes
+- [ ] After deploy, Firebase Console → Firestore → Indexes shows all listed indexes in **Enabled** state (not Building)
+- [ ] If any index shows Building > 30 minutes on a small dataset, escalate
+
+### Rationale
+
+Automated CI testing runs entirely against the Firebase Emulator (Layer 1–3 of the test strategy). Staging is humans-only — no automated tests fire against staging. Production gets a single daily synthetic probe (login → dashboard → logout) for liveness; that probe does not validate any of the above. Real-infra validation is therefore explicitly scoped to this checklist and run by the PM (or designated reviewer) before each production release.

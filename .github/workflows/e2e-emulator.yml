@@ -36,6 +36,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -62,6 +63,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Lint (incl. no-unscoped-collection-read)
+        run: npx eslint src functions/src
+
+      - name: Check Firestore composite indexes (advisory)
+        run: node scripts/check-firestore-indexes.mjs
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -116,3 +123,57 @@ jobs:
           name: playwright-report-emulator
           path: playwright-report/
           retention-days: 7
+
+      - name: Upload Firestore read-count artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firestore-reads
+          path: e2e/.read-counts/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Comment Firestore read totals on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const dir = 'e2e/.read-counts';
+            if (!fs.existsSync(dir)) {
+              core.info('No read-count artifacts produced; skipping comment.');
+              return;
+            }
+            const records = [];
+            for (const f of fs.readdirSync(dir)) {
+              const lines = fs.readFileSync(path.join(dir, f), 'utf8').trim().split('\n').filter(Boolean);
+              for (const line of lines) {
+                try { records.push(JSON.parse(line)); } catch { /* ignore */ }
+              }
+            }
+            if (records.length === 0) return;
+            const total = records.reduce((s, r) => s + (r.reads ?? 0), 0);
+            const overBudget = records.filter(r => (r.reads ?? 0) > (r.budget ?? 100));
+            const top = [...records].sort((a, b) => (b.reads ?? 0) - (a.reads ?? 0)).slice(0, 5);
+            const rows = top.map(r => `| \`${r.title}\` | ${r.reads} / ${r.budget} |`).join('\n');
+            const body = [
+              '### Firestore read counts (emulator)',
+              `Total reads across ${records.length} tests: **${total}**`,
+              overBudget.length
+                ? `:warning: ${overBudget.length} test(s) over budget — see job logs.`
+                : 'All tests within per-test budget.',
+              '',
+              '| Top 5 by reads | reads / budget |',
+              '|---|---|',
+              rows || '| _(no data)_ | _(n/a)_ |',
+              '',
+              '_Source: `e2e/.read-counts/` artifact. Counts HTTP fetches to the emulator — a regression-detection signal, not a billing meter._',
+            ].join('\n');
+            const pr = context.payload.pull_request.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr,
+              body,
+            });
