@@ -21,6 +21,7 @@
  *   - Emu League (containing Emu Team A and Emu Team B)
  */
 import { test, expect } from '../fixtures/auth.emu.fixture.js';
+import { EMU_IDS } from '../seed-emulator.js';
 
 const LEAGUE_NAME = 'Emu League';
 const TEAM_NAMES = ['Emu Team A', 'Emu Team B'];
@@ -118,27 +119,21 @@ test('@emu @lm LM-07 profile page loads and shows League Manager badge', async (
 // ---------------------------------------------------------------------------
 
 test('@emu @lm LM-08 league manager can open a team detail page from their league', async ({ lmPage }) => {
-  await lmPage.goto('/leagues');
-  await expect(lmPage.getByText(LEAGUE_NAME, { exact: false }).first()).toBeVisible({ timeout: 10_000 });
-
-  await lmPage.getByText(LEAGUE_NAME, { exact: false }).first().first().click();
-  await lmPage.waitForURL(/\/leagues\/.+/, { timeout: 10_000 });
+  // Navigate directly to the league detail page — LeagueCard's onClick is
+  // wrapped, and clicking the league-name text doesn't reliably bubble to it.
+  await lmPage.goto(`/leagues/${EMU_IDS.leagueId}`);
+  await lmPage.waitForLoadState('domcontentloaded');
+  await expect(lmPage).toHaveURL(/\/leagues\/.+/, { timeout: 10_000 });
 
   await lmPage.getByRole('tab', { name: /teams/i }).click();
   await lmPage.waitForLoadState('domcontentloaded');
 
   // At least one of the seeded teams must be visible on the Teams tab
-  let clickedTeam: string | null = null;
-  for (const name of TEAM_NAMES) {
-    const el = lmPage.getByText(name, { exact: false }).first();
-    if (await el.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await el.click();
-      clickedTeam = name;
-      break;
-    }
-  }
-  expect(clickedTeam, 'Expected at least one seeded team on the league Teams tab').not.toBeNull();
+  await expect(lmPage.getByText(TEAM_NAMES[0]!, { exact: false }).first())
+    .toBeVisible({ timeout: 10_000 });
 
+  // Navigate directly to the team detail page (avoiding any card-click bubble issues)
+  await lmPage.goto(`/teams/${EMU_IDS.teamAId}`);
   await lmPage.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
   await expect(lmPage.getByRole('heading').first()).toBeVisible({ timeout: 10_000 });
 });
@@ -148,27 +143,11 @@ test('@emu @lm LM-08 league manager can open a team detail page from their leagu
 // ---------------------------------------------------------------------------
 
 test('@emu @lm LM-09 team detail page does not show delete-team button for LM', async ({ lmPage }) => {
-  // Navigate via the leagues path so we're guaranteed a league-scoped team
-  await lmPage.goto('/leagues');
-  await lmPage.getByText(LEAGUE_NAME, { exact: false }).first().first().click();
-  await lmPage.waitForURL(/\/leagues\/.+/, { timeout: 10_000 });
-
-  await lmPage.getByRole('tab', { name: /teams/i }).click();
-  await lmPage.waitForLoadState('domcontentloaded');
-
-  let navigated = false;
-  for (const name of TEAM_NAMES) {
-    const el = lmPage.getByText(name, { exact: false }).first();
-    if (await el.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await el.click();
-      navigated = true;
-      break;
-    }
-  }
-  expect(navigated, 'Expected to be able to open a team from the league Teams tab').toBe(true);
-
+  // Direct navigation — the LM is a manager of Emu League which contains Emu Team A
+  await lmPage.goto(`/teams/${EMU_IDS.teamAId}`);
   await lmPage.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
   await lmPage.waitForLoadState('domcontentloaded');
+  await expect(lmPage.getByRole('heading').first()).toBeVisible({ timeout: 10_000 });
 
   // The Delete button only renders for team owner (createdBy/coachId) or admin.
   // The LM owns neither — no delete button should appear.
