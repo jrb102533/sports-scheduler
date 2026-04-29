@@ -24,16 +24,16 @@ test('@emu @settings admin can navigate to /settings', async ({ adminPage }) => 
 test('@emu @settings page renders main sections without crash', async ({ adminPage }) => {
   await adminPage.goto('/settings');
   await adminPage.waitForLoadState('domcontentloaded');
-  await expect(adminPage.getByText('Notifications', { exact: true }))
+  await expect(adminPage.getByText('Email Notifications', { exact: true }))
     .toBeVisible({ timeout: 10_000 });
 });
 
 test('@emu @settings Notifications section shows Weekly digest toggle', async ({ adminPage }) => {
   await adminPage.goto('/settings');
   await adminPage.waitForLoadState('domcontentloaded');
-  await expect(adminPage.getByText('Notifications', { exact: true }))
+  await expect(adminPage.getByText('Email Notifications', { exact: true }))
     .toBeVisible({ timeout: 10_000 });
-  await expect(adminPage.getByText('Weekly digest', { exact: true }))
+  await expect(adminPage.getByText('Weekly team digest', { exact: true }))
     .toBeVisible({ timeout: 5_000 });
 });
 
@@ -118,6 +118,6 @@ test('@emu @settings parent can access /settings without redirect', async ({ par
   await parentPage.goto('/settings');
   await parentPage.waitForLoadState('domcontentloaded');
   await expect(parentPage).not.toHaveURL(/\/login/);
-  await expect(parentPage.getByText('Notifications', { exact: true }))
+  await expect(parentPage.getByText('Email Notifications', { exact: true }))
     .toBeVisible({ timeout: 10_000 });
 });
