@@ -5,6 +5,34 @@ These tests directly map to the go-live smoke test checklist in `docs/GO_LIVE_CH
 
 ---
 
+## Running locally
+
+**Default: use the emulator.**
+
+```bash
+npm run dev:emulator
+```
+
+This loads `.env.emulator` and routes all Firebase SDK calls to your local Firebase Emulator Suite (`VITE_USE_EMULATOR=true`). It costs $0 and keeps staging reads at zero.
+
+**`npm run dev` (plain Vite) is intentionally blocked from localhost.** `src/lib/firebase.ts` contains a hard guard that throws at startup if you try to connect a remote Firebase project from `localhost` without an explicit opt-in. You'll see:
+
+```
+[firebase] Refusing to connect to remote Firebase from localhost.
+Run `npm run dev:emulator` (recommended) or set VITE_ALLOW_LOCAL_STAGING=true
+in .env.local if you genuinely need to hit staging from localhost.
+```
+
+**Reproducing a staging-specific bug locally (rare).** Add this to `.env.local`:
+
+```bash
+VITE_ALLOW_LOCAL_STAGING=true
+```
+
+Then run `npm run dev` as usual. Be sure to remove or unset this flag when you're done — and close the browser tab promptly. Each open tab holds Firestore listeners that run up read counts.
+
+---
+
 ## Quick Start
 
 ```bash
@@ -351,3 +379,42 @@ Re-seed by deleting the `isE2eData` event in Firestore console and re-running gl
 The invite creation test calls `sendInvite` Cloud Function. On the local emulator this is
 fast; against a cold production function it may need the 15s action timeout. If you see
 consistent timeouts, increase `actionTimeout` in `playwright.config.ts`.
+
+---
+
+## Triage: unexpected staging read spikes
+
+If staging Firestore shows reads on a day with no human activity, work through these checks in order:
+
+**1. Kill stale local processes first.**
+
+```bash
+# Kill playwright-mcp sessions and vite dev servers that hold open listeners
+npm run kill-stale-browsers
+
+# Manual checks
+pgrep -f playwright-mcp       # should be empty after kill
+lsof -ti :5173 :5174          # vite dev servers; should be empty after kill
+```
+
+**2. Check if a dev server is running against staging.**
+
+If `npm run dev` was started without `VITE_USE_EMULATOR=true`, the Firebase SDK connected to staging. The `src/lib/firebase.ts` guard prevents this going forward — but if you see reads, verify no bypassed instance is still running.
+
+**3. Check Cloud Scheduler jobs.**
+
+All 9 staging scheduler jobs should be paused. Verify in the Cloud Console or re-pause:
+
+```bash
+gcloud scheduler jobs list --project first-whistle-e76f4
+```
+
+Any job in `ENABLED` state will fire on its cron and produce reads.
+
+**4. Check CI.**
+
+`e2e-smoke.yml` is decommissioned. No automated workflow should target staging. Verify recent workflow runs in GitHub Actions are not hitting `E2E_STAGING_URL`.
+
+**5. Check for stale playwright-mcp listeners across sessions.**
+
+Each Claude Code session that uses the playwright-mcp browser tool may leave headless Chromium processes alive if the session ended without explicit cleanup. Run `npm run kill-stale-browsers` at the start of any new session if reads appear unexpectedly.

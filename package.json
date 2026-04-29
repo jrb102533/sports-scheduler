@@ -30,7 +30,8 @@
     "test:e2e:prod": "E2E_BASE_URL=https://firstwhistlesports.com playwright test --project=production",
     "test:e2e:staging": "playwright test --project=staging",
     "test:e2e:emulator": "playwright test --project=emulator",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "kill-stale-browsers": "bash scripts/kill-stale-browsers.sh"
   },
   "dependencies": {
     "@testing-library/dom": "^10.4.1",
