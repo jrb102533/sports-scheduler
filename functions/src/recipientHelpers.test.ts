@@ -12,6 +12,7 @@ import {
   type RawTeamData,
   type RawPlayerData,
   type RawUserData,
+  type RawParentUserData,
 } from './recipientHelpers';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -205,5 +206,140 @@ describe('computeEventRecipients', () => {
 
     expect(result[0].uid).toBeUndefined();
     expect(result[0].email).toBe('nouid@example.com');
+  });
+});
+
+// ─── Path B: registered parent users ─────────────────────────────────────────
+
+function makeParentUser(overrides: Partial<RawParentUserData> = {}): RawParentUserData {
+  return {
+    uid: 'uid-parent-user',
+    displayName: 'Jane Parent',
+    email: 'jane@example.com',
+    memberships: [{ role: 'parent', teamId: TEAM_ID }],
+    ...overrides,
+  };
+}
+
+describe('computeEventRecipients — path B registered parent users', () => {
+  it('includes a registered parent user whose membership matches a teamId', () => {
+    const teams = new Map<string, RawTeamData>([[TEAM_ID, { name: 'Lions' }]]);
+    const parentUsers: RawParentUserData[] = [makeParentUser()];
+
+    const result = computeEventRecipients([TEAM_ID], new Map(), new Map(), teams, parentUsers);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      uid: 'uid-parent-user',
+      email: 'jane@example.com',
+      name: 'Jane Parent',
+      type: 'parent',
+    });
+  });
+
+  it('excludes a registered parent user whose memberships do not match any event teamId', () => {
+    const teams = new Map<string, RawTeamData>([[TEAM_ID, { name: 'Lions' }]]);
+    const parentUsers: RawParentUserData[] = [
+      makeParentUser({ memberships: [{ role: 'parent', teamId: 'team-other' }] }),
+    ];
+
+    const result = computeEventRecipients([TEAM_ID], new Map(), new Map(), teams, parentUsers);
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('path A + path B with no overlap — both parents included', () => {
+    // Path A: embedded parentContact on a player
+    const player = makePlayer({
+      email: undefined,
+      parentContact: { parentName: 'Path A Parent', parentEmail: 'path-a@example.com', uid: 'uid-a' },
+    });
+    const teams = new Map<string, RawTeamData>([[TEAM_ID, { name: 'Lions' }]]);
+    const playerMap = new Map<string, RawPlayerData[]>([[TEAM_ID, [player]]]);
+
+    // Path B: registered parent user with different email
+    const parentUsers: RawParentUserData[] = [
+      makeParentUser({ uid: 'uid-b', email: 'path-b@example.com', displayName: 'Path B Parent' }),
+    ];
+
+    const result = computeEventRecipients([TEAM_ID], playerMap, new Map(), teams, parentUsers);
+
+    expect(result).toHaveLength(2);
+    const emails = result.map((r) => r.email);
+    expect(emails).toContain('path-a@example.com');
+    expect(emails).toContain('path-b@example.com');
+  });
+
+  it('path A + path B with overlapping email — first-seen wins (path A precedes path B)', () => {
+    // Same email appears in a player's parentContact (path A) AND as a registered user (path B)
+    const sharedEmail = 'shared@example.com';
+    const player = makePlayer({
+      email: undefined,
+      parentContact: { parentName: 'Path A Parent', parentEmail: sharedEmail, uid: 'uid-a' },
+    });
+    const teams = new Map<string, RawTeamData>([[TEAM_ID, { name: 'Lions' }]]);
+    const playerMap = new Map<string, RawPlayerData[]>([[TEAM_ID, [player]]]);
+
+    const parentUsers: RawParentUserData[] = [
+      makeParentUser({ uid: 'uid-b', email: sharedEmail, displayName: 'Path B Parent' }),
+    ];
+
+    const result = computeEventRecipients([TEAM_ID], playerMap, new Map(), teams, parentUsers);
+
+    // Only one entry — path A wins (processed before path B)
+    expect(result).toHaveLength(1);
+    expect(result[0].uid).toBe('uid-a');
+    expect(result[0].type).toBe('parent');
+  });
+
+  it('coach who is also a registered parent user — not double-counted', () => {
+    // A user is both a coach on the team AND a registered parent
+    const sharedEmail = 'coach-parent@example.com';
+    const teams = new Map<string, RawTeamData>([[TEAM_ID, makeTeam()]]);
+    const coaches = new Map<string, RawUserData>([
+      [COACH_UID, { email: sharedEmail, displayName: 'Coach-Parent' }],
+    ]);
+    const parentUsers: RawParentUserData[] = [
+      makeParentUser({ uid: COACH_UID, email: sharedEmail }),
+    ];
+
+    const result = computeEventRecipients([TEAM_ID], new Map(), coaches, teams, parentUsers);
+
+    // Coach entry processed first — path B deduped out
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('coach');
+    expect(result[0].email).toBe(sharedEmail);
+  });
+
+  it('parent user without email is silently skipped', () => {
+    const teams = new Map<string, RawTeamData>([[TEAM_ID, { name: 'Lions' }]]);
+    const parentUsers: RawParentUserData[] = [
+      makeParentUser({ email: undefined }),
+    ];
+
+    const result = computeEventRecipients([TEAM_ID], new Map(), new Map(), teams, parentUsers);
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('falls back to email as name when displayName absent for path B parent', () => {
+    const teams = new Map<string, RawTeamData>([[TEAM_ID, { name: 'Lions' }]]);
+    const parentUsers: RawParentUserData[] = [
+      makeParentUser({ displayName: undefined, email: 'noname@example.com' }),
+    ];
+
+    const result = computeEventRecipients([TEAM_ID], new Map(), new Map(), teams, parentUsers);
+
+    expect(result[0].name).toBe('noname@example.com');
+  });
+
+  it('backward-compat: omitting parentUsers param returns same result as empty array', () => {
+    const teams = new Map<string, RawTeamData>([[TEAM_ID, makeTeam()]]);
+    const coaches = new Map<string, RawUserData>([[COACH_UID, makeCoachProfile()]]);
+
+    const withParam = computeEventRecipients([TEAM_ID], new Map(), coaches, teams, []);
+    const withoutParam = computeEventRecipients([TEAM_ID], new Map(), coaches, teams);
+
+    expect(withParam).toEqual(withoutParam);
   });
 });

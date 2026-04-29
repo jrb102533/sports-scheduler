@@ -14,7 +14,7 @@
 
 import * as admin from 'firebase-admin';
 import { FieldPath } from 'firebase-admin/firestore';
-import { computeEventRecipients } from './recipientHelpers';
+import { computeEventRecipients, type RawParentUserData } from './recipientHelpers';
 
 /** Max values per Firestore `in` query clause (Firestore limit is 30). */
 const IN_QUERY_LIMIT = 30;
@@ -112,6 +112,30 @@ export async function rebuildRecipientsForTeam(
     }
   }
 
+  // Fetch registered parent users (path B identity).
+  //
+  // Single .where('role','==','parent') query — O(1) reads regardless of team
+  // or event count. In-memory filtering inside computeEventRecipients then
+  // narrows to memberships matching the event's teamIds. No composite index
+  // required; 'role' is a top-level indexed field.
+  // Limit 500: parent-role accounts are a small slice; this bound is generous.
+  const parentUsersSnap = await db
+    .collection('users')
+    .where('role', '==', 'parent')
+    .limit(500)
+    .get();
+  const parentUsers: RawParentUserData[] = parentUsersSnap.docs.map((doc) => {
+    const d = doc.data();
+    return {
+      uid: doc.id,
+      displayName: typeof d.displayName === 'string' ? d.displayName : undefined,
+      email: typeof d.email === 'string' ? d.email : undefined,
+      memberships: Array.isArray(d.memberships)
+        ? (d.memberships as Array<{ role?: string; teamId?: string; playerId?: string }>)
+        : [],
+    };
+  });
+
   // Batch-write recipients onto each event (Firestore batch limit = 500).
   let batchObj = db.batch();
   let batchCount = 0;
@@ -125,6 +149,7 @@ export async function rebuildRecipientsForTeam(
       playersByTeam as Map<string, Record<string, unknown>[]>,
       coachProfiles as Map<string, Record<string, unknown>>,
       teamDataById as Map<string, Record<string, unknown>>,
+      parentUsers,
     );
     batchObj.update(evDoc.ref, { recipients });
     batchCount++;

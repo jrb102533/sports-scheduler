@@ -24,7 +24,7 @@
  */
 
 import { initializeApp, getApps } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldPath } from 'firebase-admin/firestore';
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
@@ -43,7 +43,18 @@ const BATCH_WRITE_LIMIT = 500;
 // We inline the logic here rather than import from the TS source to avoid a
 // compile step in a one-shot admin script. Keep in sync with recipientHelpers.ts.
 
-function computeEventRecipients(teamIds, playersByTeam, coachProfiles, teamDataById) {
+/**
+ * Compute recipients for a single event, mirroring recipientHelpers.ts logic.
+ * Keep in sync with the TypeScript source when modifying.
+ *
+ * @param {string[]} teamIds
+ * @param {Map<string, object[]>} playersByTeam
+ * @param {Map<string, object>} coachProfiles
+ * @param {Map<string, object>} teamDataById
+ * @param {Array<{uid:string,email?:string,displayName?:string,memberships?:Array<{role?:string,teamId?:string}>}>} parentUsers
+ *   Pre-fetched registered parent users (path B). Filtered in-memory to matching teamIds.
+ */
+function computeEventRecipients(teamIds, playersByTeam, coachProfiles, teamDataById, parentUsers = []) {
   const seen = new Set();
   const recipients = [];
 
@@ -53,6 +64,8 @@ function computeEventRecipients(teamIds, playersByTeam, coachProfiles, teamDataB
     seen.add(key);
     recipients.push(r);
   }
+
+  const teamIdSet = new Set(teamIds);
 
   for (const teamId of teamIds) {
     const teamData = teamDataById.get(teamId);
@@ -78,6 +91,7 @@ function computeEventRecipients(teamIds, playersByTeam, coachProfiles, teamDataB
       if (player.email) {
         addRecipient({ uid: player.uid, email: player.email, name: playerName, type: 'player' });
       }
+      // Path A: embedded parent contact fields
       if (player.parentContact?.parentEmail) {
         addRecipient({
           uid: player.parentContact.uid,
@@ -97,6 +111,24 @@ function computeEventRecipients(teamIds, playersByTeam, coachProfiles, teamDataB
     }
   }
 
+  // Path B: registered parent users — filter in-memory to those whose
+  // memberships[] reference one of this event's teamIds.
+  // Read cost: O(0) — parentUsers was fetched once before the event loop.
+  for (const parentUser of parentUsers) {
+    if (!parentUser.email) continue;
+    const memberships = parentUser.memberships ?? [];
+    const matchesTeam = memberships.some(
+      (m) => m.role === 'parent' && m.teamId !== undefined && teamIdSet.has(m.teamId),
+    );
+    if (!matchesTeam) continue;
+    addRecipient({
+      uid: parentUser.uid,
+      email: parentUser.email,
+      name: parentUser.displayName ?? parentUser.email,
+      type: 'parent',
+    });
+  }
+
   return recipients;
 }
 
@@ -108,7 +140,7 @@ async function batchFetchByIds(collectionName, ids) {
   for (let i = 0; i < idList.length; i += FIRESTORE_IN_LIMIT) {
     const chunk = idList.slice(i, i + FIRESTORE_IN_LIMIT);
     const snap = await db.collection(collectionName)
-      .where(getFirestore().FieldPath.documentId(), 'in', chunk)
+      .where(FieldPath.documentId(), 'in', chunk)
       .get();
     for (const doc of snap.docs) {
       result.set(doc.id, doc.data());
@@ -186,6 +218,23 @@ async function main() {
   console.log(`[backfill] fetching players for ${allTeamIds.size} team(s)…`);
   const playersByTeam = await fetchPlayersByTeams(allTeamIds);
 
+  // ── 5b. Fetch registered parent users (path B identity) ────────────────────
+  // Single .where('role','==','parent') query — O(1) reads regardless of event
+  // or team count. In-memory filtering inside computeEventRecipients then
+  // narrows to the memberships matching each event's teamIds.
+  console.log(`[backfill] fetching registered parent users…`);
+  const parentUsersSnap = await db.collection('users').where('role', '==', 'parent').limit(500).get();
+  const parentUsers = parentUsersSnap.docs.map((doc) => {
+    const d = doc.data();
+    return {
+      uid: doc.id,
+      displayName: d.displayName ?? undefined,
+      email: d.email ?? undefined,
+      memberships: Array.isArray(d.memberships) ? d.memberships : [],
+    };
+  });
+  console.log(`[backfill] found ${parentUsers.length} registered parent user(s)`);
+
   // ── 6. Compute recipients + write in batches ───────────────────────────────
   let totalEvents = 0;
   let totalRecipients = 0;
@@ -202,7 +251,7 @@ async function main() {
       continue;
     }
 
-    const recipients = computeEventRecipients(teamIds, playersByTeam, coachProfiles, teamDataById);
+    const recipients = computeEventRecipients(teamIds, playersByTeam, coachProfiles, teamDataById, parentUsers);
 
     if (DRY_RUN) {
       console.log(`[backfill][dry-run] event ${evDoc.id}: ${recipients.length} recipient(s)`, recipients.map(r => r.email));

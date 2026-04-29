@@ -85,6 +85,7 @@ function makeQuery(collectionName: string, store: Map<string, DocData>) {
       });
       return obj;
     },
+    limit(_n: number) { return obj; }, // no-op: mock returns all matching docs
     async get() {
       const docs: Array<{
         id: string;

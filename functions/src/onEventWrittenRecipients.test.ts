@@ -78,7 +78,9 @@ function makeQuery(collectionName: string) {
       if (isDocId) _documentIdCallCount++;
 
       const valueList = Array.isArray(values) ? (values as string[]) : [values as string];
-      return {
+
+      const queryResult = {
+        limit(_n: number) { return queryResult; }, // no-op: mock returns all matching docs
         async get() {
           const store =
             collectionName === 'teams' ? _teams :
@@ -113,6 +115,7 @@ function makeQuery(collectionName: string) {
           return { docs, empty: docs.length === 0, size: docs.length };
         },
       };
+      return queryResult;
     },
   };
 }
@@ -285,5 +288,45 @@ describe('onEventWrittenRecipients — GH-684 FieldPath.documentId() guard', () 
 
     expect(_refUpdates).toHaveLength(1);
     expect(_refUpdates[0].path).toBe('events/ev1');
+  });
+
+  it('path B — registered parent user with matching membership is included in recipients', async () => {
+    // Seed team with no coaches or path-A parent contacts
+    _teams.set('t1', { name: 'Lions', coachIds: [] });
+    // Seed a registered parent user in the users collection (path B identity)
+    _users.set('uid-parent', {
+      role: 'parent',
+      displayName: 'Registered Parent',
+      email: 'registered-parent@example.com',
+      memberships: [{ role: 'parent', teamId: 't1' }],
+    });
+
+    await expect(
+      trigger(makeEventWrittenEvent('ev1', undefined, { teamIds: ['t1'] })),
+    ).resolves.not.toThrow();
+
+    expect(_refUpdates).toHaveLength(1);
+    const written = _refUpdates[0].data as { recipients: Array<{ email: string; type: string }> };
+    const parentEntry = written.recipients.find(r => r.email === 'registered-parent@example.com');
+    expect(parentEntry).toBeDefined();
+    expect(parentEntry?.type).toBe('parent');
+  });
+
+  it('path B — parent user membership for a different team is excluded', async () => {
+    _teams.set('t1', { name: 'Lions', coachIds: [] });
+    _users.set('uid-parent', {
+      role: 'parent',
+      displayName: 'Other Team Parent',
+      email: 'other-team@example.com',
+      memberships: [{ role: 'parent', teamId: 'team-other' }],
+    });
+
+    await expect(
+      trigger(makeEventWrittenEvent('ev1', undefined, { teamIds: ['t1'] })),
+    ).resolves.not.toThrow();
+
+    expect(_refUpdates).toHaveLength(1);
+    const written = _refUpdates[0].data as { recipients: Array<{ email: string }> };
+    expect(written.recipients.find(r => r.email === 'other-team@example.com')).toBeUndefined();
   });
 });

@@ -6034,11 +6034,33 @@ export const onEventWrittenRecipients = onDocumentWritten(
       }
     }
 
+    // Fetch registered parent users (path B identity).
+    // Single equality query on the top-level 'role' field — no composite index.
+    // In-memory filtering inside computeEventRecipients narrows to teamIds.
+    // Limit 500: parent-role accounts are a small slice of the users collection.
+    const parentUsersSnap = await db
+      .collection('users')
+      .where('role', '==', 'parent')
+      .limit(500)
+      .get();
+    const parentUsers = parentUsersSnap.docs.map((doc) => {
+      const d = doc.data();
+      return {
+        uid: doc.id,
+        displayName: typeof d.displayName === 'string' ? d.displayName : undefined,
+        email: typeof d.email === 'string' ? d.email : undefined,
+        memberships: Array.isArray(d.memberships)
+          ? (d.memberships as Array<{ role?: string; teamId?: string; playerId?: string }>)
+          : [],
+      };
+    });
+
     const recipients = computeEventRecipients(
       teamIds,
       playersByTeam as Map<string, Record<string, unknown>[]>,
       coachProfiles as Map<string, Record<string, unknown>>,
       teamDataById as Map<string, Record<string, unknown>>,
+      parentUsers,
     );
 
     await event.data!.after.ref.update({ recipients });
