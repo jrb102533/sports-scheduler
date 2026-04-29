@@ -279,6 +279,19 @@ vi.mock('firebase-admin', () => {
   };
 });
 
+vi.mock('firebase-admin/firestore', () => ({
+  FieldValue: {
+    increment: (n: number) => ({ __increment: n }),
+    arrayUnion: (...values: unknown[]) => ({ __arrayUnion: values }),
+    arrayRemove: (...values: unknown[]) => ({ __arrayRemove: values }),
+    delete: () => ({ __delete: true }),
+    serverTimestamp: () => ({ __serverTimestamp: true }),
+  },
+  FieldPath: {
+    documentId: () => '__name__',
+  },
+}));
+
 // Import AFTER mocks are registered.
 import { createUserByAdmin } from './index';
 import * as adminMod from 'firebase-admin';

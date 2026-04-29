@@ -229,7 +229,7 @@ async function checkRateLimit(uid: string, action: string, maxCalls: number, win
         `Rate limit exceeded. You may send at most ${maxCalls} ${action} requests per minute.`,
       );
     }
-    tx.update(ref, { count: admin.firestore.FieldValue.increment(1) });
+    tx.update(ref, { count: FieldValue.increment(1) });
   });
 }
 
@@ -270,7 +270,7 @@ async function checkEmailQuota(count = 1): Promise<void> {
       const next = current + count;
       tx.set(
         quotaRef,
-        { count: next, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+        { count: next, updatedAt: FieldValue.serverTimestamp() },
         { merge: true },
       );
       return next;
@@ -286,7 +286,7 @@ async function checkEmailQuota(count = 1): Promise<void> {
   if (newCount >= EMAIL_BLOCK_THRESHOLD) {
     // Roll back the increment we just applied so the counter stays accurate.
     try {
-      await quotaRef.update({ count: admin.firestore.FieldValue.increment(-count) });
+      await quotaRef.update({ count: FieldValue.increment(-count) });
     } catch (rollbackErr: unknown) {
       console.error('[emailQuota] Rollback failed after block:', (rollbackErr as Error)?.message);
     }
@@ -384,12 +384,12 @@ export const createUserByAdmin = onCall<CreateUserByAdminData>(
     try {
       if (role === 'coach' && teamId) {
         await admin.firestore().doc(`teams/${teamId}`).update({
-          coachIds: admin.firestore.FieldValue.arrayUnion(uid),
+          coachIds: FieldValue.arrayUnion(uid),
         });
       }
       if (role === 'league_manager' && leagueId) {
         await admin.firestore().doc(`leagues/${leagueId}`).update({
-          managerIds: admin.firestore.FieldValue.arrayUnion(uid),
+          managerIds: FieldValue.arrayUnion(uid),
         });
       }
       if (role === 'admin') {
@@ -404,7 +404,7 @@ export const createUserByAdmin = onCall<CreateUserByAdminData>(
     if (process.env.SIGNUP_ALLOWLIST_ENABLED === 'true') {
       const normalizedEmail = email.trim().toLowerCase();
       await admin.firestore().doc('system/signupConfig').set(
-        { allowedEmails: admin.firestore.FieldValue.arrayUnion(normalizedEmail) },
+        { allowedEmails: FieldValue.arrayUnion(normalizedEmail) },
         { merge: true }
       );
     }
@@ -781,7 +781,7 @@ export const approveJoinRequest = onCall<ApproveJoinRequestData, Promise<{ succe
           teamId,
           isPrimary: existingMemberships.length === 0,
         };
-        profilePatch.memberships = admin.firestore.FieldValue.arrayUnion(newMembership);
+        profilePatch.memberships = FieldValue.arrayUnion(newMembership);
       }
 
       // Only promote role scalar if user is a plain 'player' or 'parent' and role matches
@@ -1067,7 +1067,7 @@ export const sendInvite = onCall<SendInviteData>(
 
     // Add to signup allowlist so the invitee can register even when signups are restricted
     await admin.firestore().doc('system/signupConfig').set(
-      { allowedEmails: admin.firestore.FieldValue.arrayUnion(normalizedEmail) },
+      { allowedEmails: FieldValue.arrayUnion(normalizedEmail) },
       { merge: true }
     );
 
@@ -1206,7 +1206,7 @@ export const verifyInvitedUser = onCall<VerifyInvitedUserData, Promise<VerifyInv
             ...(playerId ? { playerId } : {}),
           };
           txn.update(userRef, {
-            memberships: admin.firestore.FieldValue.arrayUnion(newMembership),
+            memberships: FieldValue.arrayUnion(newMembership),
             // Write top-level playerId scalar so ProfilePage "Team Connection" resolves correctly
             ...(playerId ? { playerId } : {}),
           });
@@ -1320,7 +1320,7 @@ export const checkInviteAutoVerify = onCall<Record<string, never>, Promise<Check
       await inviteDoc.ref.update({
         status: 'used',
         claimedByUid: uid,
-        claimedAt: admin.firestore.FieldValue.serverTimestamp(),
+        claimedAt: FieldValue.serverTimestamp(),
       });
     } catch (err) {
       console.error(`checkInviteAutoVerify: failed to consume invite for uid=${uid} email=${email}`, err);
@@ -2043,7 +2043,7 @@ export async function fetchTeamsAndPlayersForEvents(
     const chunk = teamIdList.slice(i, i + FIRESTORE_IN_QUERY_LIMIT);
     const teamSnap = await firestore
       .collection('teams')
-      .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
+      .where(FieldPath.documentId(), 'in', chunk)
       .get();
     for (const doc of teamSnap.docs) {
       teamsById.set(doc.id, doc.data());
@@ -3045,10 +3045,10 @@ export const migrateSensitivePlayerData = onCall(
       batch.set(sensitiveRef, { playerId: playerDoc.id, teamId: data.teamId ?? '', ...sensitiveFields }, { merge: true });
 
       // Strip sensitive fields from main doc
-      const stripped: Record<string, admin.firestore.FieldValue> = {};
+      const stripped: Record<string, FieldValue> = {};
       for (const key of SENSITIVE_KEYS) {
         if (data[key] !== undefined) {
-          stripped[key] = admin.firestore.FieldValue.delete();
+          stripped[key] = FieldValue.delete();
         }
       }
       batch.update(playerDoc.ref, stripped);
@@ -4528,7 +4528,7 @@ export const resolveDispute = onCall<ResolveDisputeData, Promise<ResolveDisputeO
         result: { homeScore, awayScore, confirmedAt: now },
         status: 'completed',
         updatedAt: now,
-        disputeStatus: admin.firestore.FieldValue.delete(),
+        disputeStatus: FieldValue.delete(),
       });
       tx.delete(disputeRef);
     });
@@ -4617,7 +4617,7 @@ export const overrideStandingRank = onCall<OverrideStandingRankData, Promise<Ove
 
     if (override === null || override === undefined) {
       // Clear the override field
-      await standingRef.update({ manualRankOverride: admin.firestore.FieldValue.delete() });
+      await standingRef.update({ manualRankOverride: FieldValue.delete() });
       console.log(`overrideStandingRank: cleared override for teamId=${teamId} seasonId=${seasonId} leagueId=${leagueId} by uid=${uid}`);
     } else {
       await standingRef.update({
@@ -4971,15 +4971,15 @@ export const acceptLeagueInvite = onCall<AcceptLeagueInviteData, Promise<{ succe
         }
         // Add leagueId to real team atomically with the invite stamp.
         tx.update(realTeamRef, {
-          leagueIds: admin.firestore.FieldValue.arrayUnion(leagueId),
+          leagueIds: FieldValue.arrayUnion(leagueId),
           updatedAt: now,
         });
       } else {
         // Promote the placeholder team.
         tx.update(db.doc(`teams/${placeholderTeamId}`), {
           coachId: uid,
-          isPending: admin.firestore.FieldValue.delete(),
-          pendingEmail: admin.firestore.FieldValue.delete(),
+          isPending: FieldValue.delete(),
+          pendingEmail: FieldValue.delete(),
           updatedAt: now,
         });
       }
@@ -5017,7 +5017,7 @@ export const acceptLeagueInvite = onCall<AcceptLeagueInviteData, Promise<{ succe
         const batchAdd = db.batch();
         eventsSnap.docs.forEach((d) => {
           batchAdd.update(d.ref, {
-            teamIds: admin.firestore.FieldValue.arrayUnion(realTeamId),
+            teamIds: FieldValue.arrayUnion(realTeamId),
           });
         });
         await batchAdd.commit();
@@ -5025,7 +5025,7 @@ export const acceptLeagueInvite = onCall<AcceptLeagueInviteData, Promise<{ succe
         const batchRemove = db.batch();
         eventsSnap.docs.forEach((d) => {
           batchRemove.update(d.ref, {
-            teamIds: admin.firestore.FieldValue.arrayRemove(placeholderTeamId),
+            teamIds: FieldValue.arrayRemove(placeholderTeamId),
           });
         });
         await batchRemove.commit();
@@ -5223,18 +5223,18 @@ export const assignScopedRole = onCall<AssignScopedRoleData, Promise<AssignScope
           ...(teamId ? { teamId } : { leagueId }),
         };
         tx.update(targetUserRef, {
-          memberships: admin.firestore.FieldValue.arrayUnion(newMembership),
+          memberships: FieldValue.arrayUnion(newMembership),
         });
       }
 
       // Add uid to denormalized access list on team or league
       if (teamId) {
         tx.update(entityRef, {
-          coachIds: admin.firestore.FieldValue.arrayUnion(targetUid),
+          coachIds: FieldValue.arrayUnion(targetUid),
         });
       } else {
         tx.update(entityRef, {
-          managerIds: admin.firestore.FieldValue.arrayUnion(targetUid),
+          managerIds: FieldValue.arrayUnion(targetUid),
         });
       }
     });
@@ -5406,7 +5406,7 @@ export const deleteLeague = onCall<DeleteLeagueInput, Promise<{ success: boolean
 
         for (const teamDoc of teamsSnap.docs) {
           teamBatch.update(teamDoc.ref, {
-            leagueIds: admin.firestore.FieldValue.arrayRemove(leagueId),
+            leagueIds: FieldValue.arrayRemove(leagueId),
           });
           teamOps++;
           if (teamOps >= BATCH_SIZE) {

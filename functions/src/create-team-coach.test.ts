@@ -234,6 +234,19 @@ vi.mock('firebase-admin', () => {
   };
 });
 
+vi.mock('firebase-admin/firestore', () => ({
+  FieldValue: {
+    increment: (n: number) => ({ __increment: n }),
+    arrayUnion: (...values: unknown[]) => ({ __arrayUnion: values }),
+    arrayRemove: (...values: unknown[]) => ({ __arrayRemove: values }),
+    delete: () => ({ __delete: true }),
+    serverTimestamp: () => ({ __serverTimestamp: true }),
+  },
+  FieldPath: {
+    documentId: () => '__name__',
+  },
+}));
+
 // Import AFTER mocks are registered.
 import { createTeamAndBecomeCoach } from './index';
 
@@ -636,5 +649,44 @@ describe('createTeamAndBecomeCoach — coachId and createdBy', () => {
     const team = _store.get(`teams/${result.teamId}`);
     expect(team?.coachId).toBe('player1');
     expect(team?.createdBy).toBe('player1');
+  });
+});
+
+// ─── Rate-limit second-call regression (firebase-admin v13 FieldValue.increment) ──
+//
+// Regression guard for: admin.firestore.FieldValue.increment being undefined under
+// firebase-admin v13 modular imports, crashing on the second call within a rate-limit
+// window (the first call uses tx.set with a literal; only the second call hits
+// FieldValue.increment).  This test was added with the fix — it must stay red on any
+// revert of the firebase-admin/firestore mock or index.ts migration.
+
+describe('createTeamAndBecomeCoach — rate-limit second-call (FieldValue.increment regression)', () => {
+
+  it('(10) second call within the rate-limit window succeeds and increments the counter', async () => {
+    // Seed a rate-limit doc that already has count=1 and a fresh windowStart.
+    // This simulates the state after the first call has already opened a window.
+    const windowStart = Date.now();
+    seedDoc('rateLimits/player1_createTeam', { count: 1, windowStart });
+
+    // Second call — this is the branch that calls FieldValue.increment(1).
+    // Under the bug (admin.firestore.FieldValue undefined), this would throw:
+    //   TypeError: Cannot read properties of undefined (reading 'increment')
+    await expect(fn(makeRequest('player1', { name: 'Second Team' }))).resolves.toMatchObject({
+      teamId: expect.any(String),
+    });
+
+    // The rate-limit counter should now be 2.
+    const rateDoc = _store.get('rateLimits/player1_createTeam');
+    expect(rateDoc?.count).toBe(2);
+  });
+
+  it('(11) call at the limit (count=20) is rejected with resource-exhausted', async () => {
+    const windowStart = Date.now();
+    // count=20 means the limit (maxCalls=20) is already reached.
+    seedDoc('rateLimits/player1_createTeam', { count: 20, windowStart });
+
+    await expect(fn(makeRequest('player1', { name: 'Over Limit Team' }))).rejects.toMatchObject({
+      code: 'resource-exhausted',
+    });
   });
 });
