@@ -20,6 +20,7 @@
  *   - emu-player (player linked to emu-team-a)
  */
 import { test, expect } from '../fixtures/auth.emu.fixture.js';
+import { EMU_IDS } from '../seed-emulator.js';
 
 // ---------------------------------------------------------------------------
 // Parent cannot access /users
@@ -37,15 +38,13 @@ test('@emu @rbac parent is blocked from /users', async ({ parentPage }) => {
 // ---------------------------------------------------------------------------
 
 test('@emu @rbac parent on team detail page sees no edit/delete/add-player controls', async ({ parentPage }) => {
-  await parentPage.goto('/teams');
+  // Navigate directly to the seeded team's detail page rather than relying on
+  // the /teams listing — parent visibility into the team list is governed by
+  // a different code path and tested elsewhere. This test isolates the
+  // "no edit controls for parent on a team they DO have access to" assertion.
+  await parentPage.goto(`/teams/${EMU_IDS.teamAId}`);
   await parentPage.waitForLoadState('domcontentloaded');
-
-  // Parent is linked to emu-team-a, so a team link must be visible.
-  const teamLinks = parentPage.locator('a[href*="/teams/"]');
-  await expect(teamLinks.first()).toBeVisible({ timeout: 10_000 });
-
-  await teamLinks.first().click();
-  await parentPage.waitForURL(/\/teams\/.+/);
+  await expect(parentPage).toHaveURL(/\/teams\/.+/, { timeout: 10_000 });
 
   // None of the admin/coach controls should render for a parent.
   const editTeamBtn = parentPage.getByRole('button', { name: /edit team|edit/i }).first();
