@@ -34,11 +34,10 @@ export interface EmuUser {
   email: string;
   displayName: string;
   role: 'admin' | 'coach' | 'league_manager' | 'parent' | 'player';
-  isAdminClaim?: boolean;
 }
 
 export const EMU_USERS: EmuUser[] = [
-  { uid: 'emu-admin', email: 'admin@emu.test', displayName: 'Emu Admin', role: 'admin', isAdminClaim: true },
+  { uid: 'emu-admin', email: 'admin@emu.test', displayName: 'Emu Admin', role: 'admin' },
   { uid: 'emu-coach', email: 'coach@emu.test', displayName: 'Emu Coach', role: 'coach' },
   { uid: 'emu-lm',    email: 'lm@emu.test',    displayName: 'Emu League Manager', role: 'league_manager' },
   { uid: 'emu-parent', email: 'parent@emu.test', displayName: 'Emu Parent', role: 'parent' },
@@ -107,9 +106,9 @@ async function seedUser(user: EmuUser): Promise<void> {
     });
   }
 
-  if (user.isAdminClaim) {
-    await auth.setCustomUserClaims(user.uid, { admin: true });
-  }
+  // Set role claim to match what syncUserClaims trigger does in production.
+  // Firestore rules check request.auth.token.role — not a boolean admin flag.
+  await auth.setCustomUserClaims(user.uid, { role: user.role });
 }
 
 // ── Seed: UserProfile + consents ────────────────────────────────────────────
