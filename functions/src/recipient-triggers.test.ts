@@ -77,6 +77,7 @@ function makeQuery(collectionName: string, store: Map<string, DocData>) {
       _clauses.push({ field: fieldKey, op, values: Array.isArray(values) ? values : [values] });
       return obj;
     },
+    limit(_n: number) { return obj; }, // no-op: mock returns all matching docs
     async get() {
       const docs: Array<{ id: string; data(): DocData; ref: ReturnType<typeof makeDocRef> }> = [];
 
@@ -401,5 +402,38 @@ describe('onTeamMembershipChanged', () => {
     // No batch writes — no events found.
     expect(mockBatch._ops).toHaveLength(0);
     expect(mockBatch.commit).not.toHaveBeenCalled();
+  });
+
+  it('path B — registered parent user with matching membership appears in rebuilt recipients', async () => {
+    const trigger = onTeamMembershipChanged as unknown as (e: unknown) => Promise<void>;
+
+    _teams.set('team-b', { name: 'Bears', coachIds: [] });
+
+    // Registered parent user (path B) — role top-level field + memberships[]
+    _users.set('uid-parent', {
+      role: 'parent',
+      displayName: 'Path B Parent',
+      email: 'pathb@example.com',
+      memberships: [{ role: 'parent', teamId: 'team-b' }],
+    });
+
+    const evRef = makeRef('events/ev-b');
+    _eventsByTeam.set('team-b', [
+      { id: 'ev-b', data: { teamIds: ['team-b'], status: 'scheduled', date: '2099-03-01' }, ref: evRef },
+    ]);
+
+    const ev = makeTeamWrittenEvent(
+      'team-b',
+      null, // create
+      { name: 'Bears', coachIds: [] },
+    );
+
+    await trigger(ev);
+
+    expect(mockBatch._ops).toHaveLength(1);
+    const written = mockBatch._ops[0].data as { recipients: Array<{ email: string; type: string }> };
+    const parentEntry = written.recipients.find(r => r.email === 'pathb@example.com');
+    expect(parentEntry).toBeDefined();
+    expect(parentEntry?.type).toBe('parent');
   });
 });
