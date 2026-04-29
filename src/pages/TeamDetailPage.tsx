@@ -224,6 +224,13 @@ export function TeamDetailPage() {
 
   async function handleHardDelete() {
     try {
+      // hardDeleteTeam callable requires the team to be soft-deleted first
+      // (functions/src/index.ts: failed-precondition unless team.isDeleted).
+      // Admin only sees this button (isOwner is hardcoded false for admins),
+      // so soft-delete here on their behalf before permanent removal.
+      if (!team?.isDeleted) {
+        await softDeleteTeam(teamId);
+      }
       await deletePlayersForTeam(teamId);
       await hardDeleteTeam(teamId);
       navigate('/teams');
