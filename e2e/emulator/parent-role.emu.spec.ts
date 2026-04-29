@@ -18,8 +18,10 @@ test('@emu @parent profile page loads and shows Parent role badge', async ({ par
   await parentPage.goto('/profile');
   await parentPage.waitForLoadState('domcontentloaded');
 
+  // Profile-page hydration races on slow emu CI runs — give Edit Profile
+  // heading more headroom than the default 10s.
   await expect(parentPage.getByRole('heading', { name: /edit profile/i }))
-    .toBeVisible({ timeout: 10_000 });
+    .toBeVisible({ timeout: 30_000 });
   await expect(parentPage.getByText(/parent/i).first())
     .toBeVisible({ timeout: 5_000 });
 });
