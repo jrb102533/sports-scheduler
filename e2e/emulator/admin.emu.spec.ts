@@ -94,7 +94,7 @@ test('@emu @admin admin can create a new team and it appears in the teams list',
 // Soft-delete team
 // ---------------------------------------------------------------------------
 
-test('@emu @admin admin can delete a team (soft delete) from team detail page', async ({ adminPage }) => {
+test('@emu @admin admin can delete a team from team detail page', async ({ adminPage }) => {
   const page = adminPage;
   const teamName = `Emu Delete Team ${Date.now()}`;
 
@@ -117,13 +117,15 @@ test('@emu @admin admin can delete a team (soft delete) from team detail page', 
   const deleteBtn = page.getByRole('button', { name: /delete team|delete/i }).first();
   await deleteBtn.click();
 
-  // DeleteTeamModal requires typing the team name to enable the confirm button
-  // (src/components/teams/DeleteTeamModal.tsx line 56: disabled={!isMatch || submitting}).
+  // DeleteTeamModal requires typing the team name to enable the confirm button.
+  // For admin users, isOwner is always false (TeamDetailPage line 169), so the
+  // hard-delete path runs with permanent=true — the button label is "Permanently
+  // Delete", not "Delete Team".
   const deleteDialog = page.getByRole('dialog');
   await expect(deleteDialog).toBeVisible({ timeout: 5_000 });
   await deleteDialog.getByPlaceholder(teamName).fill(teamName);
 
-  const confirmBtn = deleteDialog.getByRole('button', { name: /delete team/i });
+  const confirmBtn = deleteDialog.getByRole('button', { name: /^(permanently delete|delete team)$/i });
   await expect(confirmBtn).toBeEnabled({ timeout: 5_000 });
   await confirmBtn.click();
 
