@@ -289,6 +289,19 @@ vi.mock('firebase-admin', () => {
   };
 });
 
+vi.mock('firebase-admin/firestore', () => ({
+  FieldValue: {
+    increment: (n: number) => ({ __increment: n }),
+    arrayUnion: (...values: unknown[]) => ({ __arrayUnion: values }),
+    arrayRemove: (...values: unknown[]) => ({ __arrayRemove: values }),
+    delete: () => ({ __delete: true }),
+    serverTimestamp: () => ({ __serverTimestamp: true }),
+  },
+  FieldPath: {
+    documentId: () => '__name__',
+  },
+}));
+
 import { verifyInvitedUser, sendInvite } from './index';
 
 const TEST_SECRET = 'test-invite-secret-abc';
