@@ -1,0 +1,198 @@
+/**
+ * @emu @lm League Manager role flows (migrated from e2e/lm-role.spec.ts)
+ *
+ * Covers:
+ *   LM-01: LM lands on / (not /parent) after login
+ *   LM-02: HomePage loads without crashing
+ *   LM-03: /leagues page is accessible
+ *   LM-04: LM sees their managed league listed
+ *   LM-05: /users is blocked
+ *   LM-06: "Manage Users" not in sidebar
+ *   LM-07: Profile page shows League Manager badge
+ *   LM-08: LM can navigate into a team detail page for a team in their league
+ *   LM-09: Team detail page does NOT show delete-team button for LM
+ *
+ * LM-10 (session timeout) is intentionally excluded — the page.clock pattern
+ * needs a fresh login flow which doesn't compose with the pre-authed lmPage
+ * fixture. Worth covering separately if/when we add a session-timeout emu spec.
+ *
+ * Seeded data used:
+ *   - emu-lm (manager of Emu League, subscriptionTier=league_manager_pro)
+ *   - Emu League (containing Emu Team A and Emu Team B)
+ */
+import { test, expect } from '../fixtures/auth.emu.fixture.js';
+
+const LEAGUE_NAME = 'Emu League';
+const TEAM_NAMES = ['Emu Team A', 'Emu Team B'];
+
+// ---------------------------------------------------------------------------
+// LM-01 — routing: LM lands on / (not /parent) after login
+// ---------------------------------------------------------------------------
+
+test('@emu @lm LM-01 league manager navigating to / stays on /home (not /parent)', async ({ lmPage }) => {
+  await lmPage.goto('/');
+  await expect(lmPage).not.toHaveURL(/\/parent/, { timeout: 5_000 });
+  await expect(lmPage).toHaveURL(/\/(home)?$/, { timeout: 10_000 });
+});
+
+// ---------------------------------------------------------------------------
+// LM-02 — home page loads without crashing
+// ---------------------------------------------------------------------------
+
+test('@emu @lm LM-02 league manager home page loads without an error overlay', async ({ lmPage }) => {
+  await lmPage.goto('/home');
+  await lmPage.waitForLoadState('domcontentloaded');
+
+  // Either My Teams heading or no-teams empty state must appear
+  const myTeamsVisible = await lmPage.getByRole('heading', { name: /my teams/i })
+    .isVisible({ timeout: 10_000 }).catch(() => false);
+  const noTeamsVisible = await lmPage.getByText(/no teams|you have no teams/i)
+    .isVisible({ timeout: 3_000 }).catch(() => false);
+
+  expect(
+    myTeamsVisible || noTeamsVisible,
+    'Expected My Teams heading or no-teams empty state — neither was visible',
+  ).toBe(true);
+
+  // No unhandled error overlay
+  const errorVisible = await lmPage.getByText(/something went wrong/i)
+    .isVisible({ timeout: 2_000 }).catch(() => false);
+  expect(errorVisible, 'Error overlay should not appear on LM home page').toBe(false);
+});
+
+// ---------------------------------------------------------------------------
+// LM-03 — /leagues page is accessible
+// ---------------------------------------------------------------------------
+
+test('@emu @lm LM-03 league manager can access /leagues page', async ({ lmPage }) => {
+  await lmPage.goto('/leagues');
+  await expect(lmPage).toHaveURL(/\/leagues/, { timeout: 10_000 });
+
+  // Either a leagues list (New League button visible) or empty state
+  const newLeagueVisible = await lmPage.getByRole('button', { name: /new league/i })
+    .isVisible({ timeout: 5_000 }).catch(() => false);
+  const emptyVisible = await lmPage.getByText(/no leagues yet/i)
+    .isVisible({ timeout: 3_000 }).catch(() => false);
+
+  expect(
+    newLeagueVisible || emptyVisible,
+    'Expected leagues list (New League button) or empty state',
+  ).toBe(true);
+});
+
+// ---------------------------------------------------------------------------
+// LM-04 — LM sees their managed league listed
+// ---------------------------------------------------------------------------
+
+test('@emu @lm LM-04 LM sees their managed league listed on /leagues', async ({ lmPage }) => {
+  await lmPage.goto('/leagues');
+  await expect(lmPage.getByText(LEAGUE_NAME, { exact: false }))
+    .toBeVisible({ timeout: 10_000 });
+});
+
+// ---------------------------------------------------------------------------
+// LM-05 — /users is blocked
+// ---------------------------------------------------------------------------
+
+test('@emu @lm LM-05 league manager visiting /users is redirected away', async ({ lmPage }) => {
+  await lmPage.goto('/users');
+  await expect(lmPage).not.toHaveURL(/\/users/, { timeout: 10_000 });
+  await expect(lmPage).toHaveURL(/\/(home)?$/, { timeout: 5_000 });
+});
+
+// ---------------------------------------------------------------------------
+// LM-06 — "Manage Users" is not in sidebar
+// ---------------------------------------------------------------------------
+
+test('@emu @lm LM-06 league manager does not see Manage Users in sidebar', async ({ lmPage }) => {
+  await lmPage.goto('/home');
+  await lmPage.waitForLoadState('domcontentloaded');
+
+  const manageUsersVisible = await lmPage.getByRole('link', { name: /manage users/i })
+    .or(lmPage.getByRole('button', { name: /manage users/i }))
+    .first()
+    .isVisible({ timeout: 3_000 })
+    .catch(() => false);
+
+  expect(manageUsersVisible, 'Manage Users nav link should not be visible to LM').toBe(false);
+});
+
+// ---------------------------------------------------------------------------
+// LM-07 — Profile page shows League Manager badge
+// ---------------------------------------------------------------------------
+
+test('@emu @lm LM-07 profile page loads and shows League Manager badge', async ({ lmPage }) => {
+  await lmPage.goto('/profile');
+  await lmPage.waitForLoadState('domcontentloaded');
+
+  await expect(lmPage.getByRole('heading', { name: /edit profile/i }))
+    .toBeVisible({ timeout: 10_000 });
+  await expect(lmPage.getByText(/league manager/i).first())
+    .toBeVisible({ timeout: 5_000 });
+});
+
+// ---------------------------------------------------------------------------
+// LM-08 — LM can navigate to a team detail page for a team in their league
+// ---------------------------------------------------------------------------
+
+test('@emu @lm LM-08 league manager can open a team detail page from their league', async ({ lmPage }) => {
+  await lmPage.goto('/leagues');
+  await expect(lmPage.getByText(LEAGUE_NAME, { exact: false })).toBeVisible({ timeout: 10_000 });
+
+  await lmPage.getByText(LEAGUE_NAME, { exact: false }).first().click();
+  await lmPage.waitForURL(/\/leagues\/.+/, { timeout: 10_000 });
+
+  await lmPage.getByRole('tab', { name: /teams/i }).click();
+  await lmPage.waitForLoadState('domcontentloaded');
+
+  // At least one of the seeded teams must be visible on the Teams tab
+  let clickedTeam: string | null = null;
+  for (const name of TEAM_NAMES) {
+    const el = lmPage.getByText(name, { exact: false }).first();
+    if (await el.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await el.click();
+      clickedTeam = name;
+      break;
+    }
+  }
+  expect(clickedTeam, 'Expected at least one seeded team on the league Teams tab').not.toBeNull();
+
+  await lmPage.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
+  await expect(lmPage.getByRole('heading').first()).toBeVisible({ timeout: 10_000 });
+});
+
+// ---------------------------------------------------------------------------
+// LM-09 — Team detail page does NOT show delete-team button for LM
+// ---------------------------------------------------------------------------
+
+test('@emu @lm LM-09 team detail page does not show delete-team button for LM', async ({ lmPage }) => {
+  // Navigate via the leagues path so we're guaranteed a league-scoped team
+  await lmPage.goto('/leagues');
+  await lmPage.getByText(LEAGUE_NAME, { exact: false }).first().click();
+  await lmPage.waitForURL(/\/leagues\/.+/, { timeout: 10_000 });
+
+  await lmPage.getByRole('tab', { name: /teams/i }).click();
+  await lmPage.waitForLoadState('domcontentloaded');
+
+  let navigated = false;
+  for (const name of TEAM_NAMES) {
+    const el = lmPage.getByText(name, { exact: false }).first();
+    if (await el.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await el.click();
+      navigated = true;
+      break;
+    }
+  }
+  expect(navigated, 'Expected to be able to open a team from the league Teams tab').toBe(true);
+
+  await lmPage.waitForURL(/\/teams\/.+/, { timeout: 10_000 });
+  await lmPage.waitForLoadState('domcontentloaded');
+
+  // The Delete button only renders for team owner (createdBy/coachId) or admin.
+  // The LM owns neither — no delete button should appear.
+  const deleteVisible = await lmPage.getByRole('button', { name: /delete/i })
+    .first()
+    .isVisible({ timeout: 3_000 })
+    .catch(() => false);
+  expect(deleteVisible, 'Delete Team button should not be visible to LM on a team they do not own').toBe(false);
+});
