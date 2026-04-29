@@ -152,6 +152,8 @@ Shadow mode for new dispatchers: gate with `DISPATCHER_SHADOW_MODE=true` env var
 
 **5. Per-test Firestore read budget: 100 reads/spec.** The Playwright @emu read-count fixture asserts each spec uses fewer than `E2E_READ_BUDGET` (default 100) HTTP requests to the Firestore emulator. Regressions like new global subscriptions, N+1 patterns, or unscoped admin queries fail the spec at PR time. Per-run aggregate is uploaded as the `firestore-reads` CI artifact and posted as a PR comment.
 
+**playwright-mcp policy (ADR-012, locked 2026-04-28).** When using the playwright-mcp browser tool, navigate only to `http://localhost:*` (emulator). Do **not** navigate to staging, production, or any remote `*.web.app` / `*.firstwhistlesports.com` URL — each page load against a remote project opens Firestore listeners that persist until the browser is explicitly closed. For UI verification against staging, hand off to the PM. After any playwright-mcp session, run `npm run kill-stale-browsers` to terminate headless processes. The `src/lib/firebase.ts` hard guard enforces this at the SDK level — a dev server started against staging from localhost will throw at init time unless `VITE_ALLOW_LOCAL_STAGING=true` is set in `.env.local`.
+
 ## TypeScript Import Discipline
 
 ### Type-only imports are mandatory for types (`verbatimModuleSyntax`)
