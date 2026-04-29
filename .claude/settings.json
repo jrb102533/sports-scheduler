@@ -4,5 +4,29 @@
       "Bash"
     ],
     "defaultMode": "default"
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/kill-stale-browsers.sh 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'pids=$(pgrep -f playwright-mcp 2>/dev/null; lsof -ti :5173 -i :5174 2>/dev/null); if [ -n \"$pids\" ]; then echo \"WARNING: stale playwright-mcp/dev-server PIDs detected — run: npm run kill-stale-browsers\"; fi'"
+          }
+        ]
+      }
+    ]
   }
 }
