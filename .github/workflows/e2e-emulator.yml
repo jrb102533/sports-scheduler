@@ -4,7 +4,9 @@ name: E2E Emulator
 # instead of staging. Zero Firestore cost, no network latency, real rules.
 #
 # Phase 1 (issue #466): runs on every PR + push to main as a proof of concept.
-# Phase 2 will add path-based filtering so only affected domains run.
+# Phase 2 (issue #466): path-based filtering — only specs whose domain bucket
+#   changed on this PR are executed. Bucket → spec mapping lives in
+#   .github/path-filters.yml. If "shared" or "rules" changed, all @emu specs run.
 
 on:
   pull_request:
@@ -30,6 +32,7 @@ on:
       - 'package-lock.json'
       - '.env.emulator'
       - '.github/workflows/e2e-emulator.yml'
+      - '.github/path-filters.yml'
   push:
     branches: [main]
   workflow_dispatch:
@@ -49,6 +52,69 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # ── Phase 2: compute which domain buckets changed ────────────────────────
+      # dorny/paths-filter outputs one boolean per bucket key (e.g. "auth=true").
+      # "shared" triggers all — layouts, router, seed, fixtures, config changes.
+      # "rules" also triggers all because a rules change can affect any bucket.
+      - name: Detect changed path buckets
+        id: buckets
+        # Only meaningful on pull_request; on push to main or workflow_dispatch
+        # we always run all specs (GREP stays empty = match everything).
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: .github/path-filters.yml
+
+      # Build the --grep expression from the changed buckets.
+      # If "shared" or "rules" changed, GREP is left empty → all @emu specs run.
+      # Otherwise, GREP becomes "@(auth|teams|events|…)" matching only changed tags.
+      - name: Build Playwright grep expression
+        id: grep
+        if: github.event_name == 'pull_request'
+        env:
+          BUCKET_AUTH: ${{ steps.buckets.outputs.auth }}
+          BUCKET_TEAMS: ${{ steps.buckets.outputs.teams }}
+          BUCKET_EVENTS: ${{ steps.buckets.outputs.events }}
+          BUCKET_SCHEDULE: ${{ steps.buckets.outputs.schedule }}
+          BUCKET_MESSAGING: ${{ steps.buckets.outputs.messaging }}
+          BUCKET_LEAGUES: ${{ steps.buckets.outputs.leagues }}
+          BUCKET_VENUES: ${{ steps.buckets.outputs.venues }}
+          BUCKET_RULES: ${{ steps.buckets.outputs.rules }}
+          BUCKET_SHARED: ${{ steps.buckets.outputs.shared }}
+        run: |
+          # Shared or rules always runs everything — no grep filter.
+          if [ "$BUCKET_SHARED" = "true" ] || [ "$BUCKET_RULES" = "true" ]; then
+            echo "expression=" >> "$GITHUB_OUTPUT"
+            echo "reason=shared/rules changed — running all @emu specs" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          tags=()
+          [ "$BUCKET_AUTH"      = "true" ] && tags+=("auth")
+          [ "$BUCKET_TEAMS"     = "true" ] && tags+=("teams")
+          [ "$BUCKET_EVENTS"    = "true" ] && tags+=("events")
+          [ "$BUCKET_SCHEDULE"  = "true" ] && tags+=("schedule")
+          [ "$BUCKET_MESSAGING" = "true" ] && tags+=("messaging")
+          [ "$BUCKET_LEAGUES"   = "true" ] && tags+=("leagues")
+          [ "$BUCKET_VENUES"    = "true" ] && tags+=("venues")
+
+          if [ ${#tags[@]} -eq 0 ]; then
+            # No E2E-relevant paths changed (e.g. docs-only PR that still
+            # passes the outer paths: filter). The playwright step will run
+            # with a grep that matches nothing, so it exits 0 with 0 tests.
+            echo "expression=@__no_bucket_matched__" >> "$GITHUB_OUTPUT"
+            echo "reason=no domain buckets changed — Playwright will run 0 specs" >> "$GITHUB_OUTPUT"
+          else
+            joined=$(IFS='|'; echo "${tags[*]}")
+            echo "expression=@(${joined})" >> "$GITHUB_OUTPUT"
+            echo "reason=running buckets: ${joined}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log grep decision
+        run: |
+          echo "Bucket grep: ${{ steps.grep.outputs.expression }}"
+          echo "Reason:      ${{ steps.grep.outputs.reason }}"
 
       - uses: actions/setup-node@v4
         with:
@@ -100,10 +166,23 @@ jobs:
           E2E_TIER: emulator
           E2E_BASE_URL: http://localhost:5173
           E2E_EMULATOR_URL: http://localhost:5173
+          # Phase 2: pass the computed grep to Playwright. Empty string on push
+          # to main or workflow_dispatch (all specs run). On PRs, contains the
+          # ORed bucket tags built above.
+          E2E_GREP: ${{ steps.grep.outputs.expression }}
         # Phase 3b: emulators boot → seed runs → Vite preview starts → Playwright runs
         # against the emulator suite (auth/firestore/storage/functions). Functions bundle
         # must be built before emulators:exec so the Functions emulator can load lib/index.js.
+        #
+        # Phase 2 grep logic:
+        #   - E2E_GREP empty  → no --grep flag → all @emu specs run (push to main / workflow_dispatch)
+        #   - E2E_GREP set    → --grep "<expression>" → only matching bucket specs run
+        #   The shell conditional below builds the flag only when E2E_GREP is non-empty.
         run: |
+          GREP_FLAG=""
+          if [ -n "$E2E_GREP" ]; then
+            GREP_FLAG="--grep \"$E2E_GREP\""
+          fi
           firebase emulators:exec \
             --project=first-whistle-e76f4 \
             --only=auth,firestore,storage,functions \
@@ -111,7 +190,7 @@ jobs:
              VITE_PID=\$!; \
              npx wait-on http://127.0.0.1:5173 -t 60000; \
              npx tsx e2e/seed-emulator.ts || { kill \$VITE_PID 2>/dev/null || true; exit 1; }; \
-             npx playwright test --project=emulator; \
+             npx playwright test --project=emulator $GREP_FLAG; \
              EXIT=\$?; \
              kill \$VITE_PID 2>/dev/null || true; \
              exit \$EXIT"

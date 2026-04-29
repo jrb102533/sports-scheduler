@@ -1,0 +1,121 @@
+# Path filters for emulator E2E CI routing (Phase 2, issue #466)
+#
+# Used by dorny/paths-filter@v3 in e2e-emulator.yml to compute which domain
+# buckets changed on a given PR.  The resulting tag set drives the Playwright
+# --grep expression so only specs whose @<bucket> tag matches are executed.
+#
+# Bucket definition rules:
+#   - A bucket corresponds to one @<bucket> tag used in test() titles.
+#   - A path may appear in multiple buckets (e.g. firestore.rules triggers all).
+#   - "shared" triggers ALL @emu specs — it covers cross-cutting infra that can
+#     break any domain: layouts, router, store, UI primitives, config, deps.
+#
+# Adding a new bucket:
+#   1. Add the bucket name + paths here.
+#   2. Add a @<bucket> tag to the corresponding spec files.
+#   3. The workflow picks it up automatically — no workflow edits needed.
+
+auth:
+  - 'src/pages/LoginPage.tsx'
+  - 'src/pages/SignupPage.tsx'
+  - 'src/pages/AuthActionPage.tsx'
+  - 'src/store/useAuthStore.ts'
+  - 'src/components/ForcePasswordChangeModal.tsx'
+  - 'src/components/ConsentUpdateModal.tsx'
+  - 'src/legal/**'
+  - 'firestore.rules'
+  - 'e2e/emulator/login.emu.spec.ts'
+  - 'e2e/emulator/auth.emu.spec.ts'
+  - 'e2e/emulator/auth-logout.emu.spec.ts'
+  - 'e2e/emulator/invite-signup-allowlist.emu.spec.ts'
+  - 'e2e/emulator/invite-flow.emu.spec.ts'
+
+teams:
+  - 'src/pages/TeamDetailPage.tsx'
+  - 'src/pages/TeamsPage.tsx'
+  - 'src/components/RosterTable.tsx'
+  - 'src/components/InvitePlayerSheet.tsx'
+  - 'src/components/PlayerForm.tsx'
+  - 'src/store/useTeamStore.ts'
+  - 'src/store/usePlayerStore.ts'
+  - 'firestore.rules'
+  - 'e2e/emulator/add-player.emu.spec.ts'
+  - 'e2e/emulator/add-team-to-league.emu.spec.ts'
+  - 'e2e/emulator/coach.emu.spec.ts'
+  - 'e2e/emulator/coach-role.emu.spec.ts'
+
+events:
+  - 'src/pages/CalendarPage.tsx'
+  - 'src/components/EventDetailPanel.tsx'
+  - 'src/components/EventCard.tsx'
+  - 'src/components/EventForm.tsx'
+  - 'src/components/AttendanceTracker.tsx'
+  - 'src/components/RsvpButton.tsx'
+  - 'src/components/SnackSlotButton.tsx'
+  - 'src/store/useEventStore.ts'
+  - 'firestore.rules'
+  - 'e2e/emulator/create-event.emu.spec.ts'
+  - 'e2e/emulator/event-in-schedule.emu.spec.ts'
+  - 'e2e/emulator/event-visibility.emu.spec.ts'
+  - 'e2e/emulator/cancelled-event.emu.spec.ts'
+  - 'e2e/emulator/attendance.emu.spec.ts'
+
+schedule:
+  - 'src/components/ScheduleWizardModal.tsx'
+  - 'src/components/SeasonDashboard.tsx'
+  - 'src/store/useSeasonStore.ts'
+  - 'src/store/useScheduleStore.ts'
+  - 'functions/src/scheduleAlgorithm.ts'
+  - 'functions/src/index.ts'
+  - 'firestore.rules'
+  - 'e2e/emulator/game-results.emu.spec.ts'
+
+messaging:
+  - 'src/pages/MessagingPage.tsx'
+  - 'src/pages/DmPanel.tsx'
+  - 'src/components/TeamChatPanel.tsx'
+  - 'src/store/useMessageStore.ts'
+  - 'src/store/useNotificationStore.ts'
+  - 'firestore.rules'
+  - 'e2e/emulator/messaging.emu.spec.ts'
+  - 'e2e/emulator/notification-state.emu.spec.ts'
+
+leagues:
+  - 'src/pages/LeaguesPage.tsx'
+  - 'src/pages/LeagueDetailPage.tsx'
+  - 'src/pages/SeasonDashboard.tsx'
+  - 'src/store/useLeagueStore.ts'
+  - 'firestore.rules'
+  - 'e2e/emulator/createLeague.emu.spec.ts'
+  - 'e2e/emulator/add-team-to-league.emu.spec.ts'
+  - 'e2e/emulator/cross-role-visibility.emu.spec.ts'
+
+venues:
+  - 'src/pages/VenuesPage.tsx'
+  - 'src/components/VenueForm.tsx'
+  - 'src/store/useVenueStore.ts'
+  - 'firestore.rules'
+
+rules:
+  - 'firestore.rules'
+  - 'firestore.indexes.json'
+
+shared:
+  - 'src/layouts/**'
+  - 'src/router/**'
+  - 'src/components/Sidebar.tsx'
+  - 'src/components/TopBar.tsx'
+  - 'src/lib/**'
+  - 'src/types/**'
+  - 'src/hooks/**'
+  - 'package.json'
+  - 'package-lock.json'
+  - 'vite.config.ts'
+  - 'tailwind.config.*'
+  - 'index.html'
+  - 'firebase.json'
+  - '.env.emulator'
+  - 'e2e/seed-emulator.ts'
+  - 'e2e/fixtures/**'
+  - 'playwright.config.ts'
+  - '.github/workflows/e2e-emulator.yml'
