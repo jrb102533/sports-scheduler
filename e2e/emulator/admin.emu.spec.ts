@@ -117,9 +117,14 @@ test('@emu @admin admin can delete a team (soft delete) from team detail page', 
   const deleteBtn = page.getByRole('button', { name: /delete team|delete/i }).first();
   await deleteBtn.click();
 
-  // Confirm dialog — last visible "delete / confirm" button is the destructive action.
-  const confirmBtn = page.getByRole('button', { name: /delete|confirm/i }).last();
-  await expect(confirmBtn).toBeVisible({ timeout: 5_000 });
+  // DeleteTeamModal requires typing the team name to enable the confirm button
+  // (src/components/teams/DeleteTeamModal.tsx line 56: disabled={!isMatch || submitting}).
+  const deleteDialog = page.getByRole('dialog');
+  await expect(deleteDialog).toBeVisible({ timeout: 5_000 });
+  await deleteDialog.getByPlaceholder(teamName).fill(teamName);
+
+  const confirmBtn = deleteDialog.getByRole('button', { name: /delete team/i });
+  await expect(confirmBtn).toBeEnabled({ timeout: 5_000 });
   await confirmBtn.click();
 
   // Should navigate back to /teams after soft delete.
