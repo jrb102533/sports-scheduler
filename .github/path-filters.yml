@@ -30,6 +30,15 @@ auth:
   - 'e2e/emulator/invite-signup-allowlist.emu.spec.ts'
   - 'e2e/emulator/invite-flow.emu.spec.ts'
 
+admin:
+  - 'src/pages/UsersPage.tsx'
+  - 'src/components/AdminPage.tsx'
+  - 'src/components/AdminUserCard.tsx'
+  - 'functions/src/index.ts'
+  - 'firestore.rules'
+  - 'e2e/emulator/admin.emu.spec.ts'
+  - 'e2e/emulator/users-page.emu.spec.ts'
+
 teams:
   - 'src/pages/TeamDetailPage.tsx'
   - 'src/pages/TeamsPage.tsx'

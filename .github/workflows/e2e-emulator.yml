@@ -73,6 +73,7 @@ jobs:
         id: grep
         if: github.event_name == 'pull_request'
         env:
+          BUCKET_ADMIN: ${{ steps.buckets.outputs.admin }}
           BUCKET_AUTH: ${{ steps.buckets.outputs.auth }}
           BUCKET_TEAMS: ${{ steps.buckets.outputs.teams }}
           BUCKET_EVENTS: ${{ steps.buckets.outputs.events }}
@@ -82,6 +83,7 @@ jobs:
           BUCKET_VENUES: ${{ steps.buckets.outputs.venues }}
           BUCKET_RULES: ${{ steps.buckets.outputs.rules }}
           BUCKET_SHARED: ${{ steps.buckets.outputs.shared }}
+
         run: |
           # Shared or rules always runs everything — no grep filter.
           if [ "$BUCKET_SHARED" = "true" ] || [ "$BUCKET_RULES" = "true" ]; then
@@ -91,6 +93,7 @@ jobs:
           fi
 
           tags=()
+          [ "$BUCKET_ADMIN"     = "true" ] && tags+=("admin")
           [ "$BUCKET_AUTH"      = "true" ] && tags+=("auth")
           [ "$BUCKET_TEAMS"     = "true" ] && tags+=("teams")
           [ "$BUCKET_EVENTS"    = "true" ] && tags+=("events")
