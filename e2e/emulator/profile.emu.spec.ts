@@ -1,15 +1,65 @@
 /**
- * @emu @profile — Admin profile update (Phase 3a)
+ * @emu @profile Profile page UAT (migrated from e2e/profile.spec.ts)
  *
- * Ported from e2e/profile.spec.ts line 96:
- *   "admin can update first and last name and see the saved confirmation"
- *
- * Issue #475 fix: ProfilePage now tracks savedDisplayName locally so the dirty
- * check no longer races the async profile.displayName refresh. The restore
- * save below works in-place without a page reload.
+ * Covers:
+ *   PROF-01: Admin can navigate to /profile
+ *   PROF-02: Profile page renders user's email
+ *   PROF-03: Admin role badge visible
+ *   PROF-04: First Name / Last Name inputs present
+ *   PROF-05: Email field is read-only (disabled)
+ *   PROF-06: Save Changes button present
+ *   PROF-07: Admin can save updated first/last name (existing emu test)
+ *   PROF-08: Validation error when First Name cleared
+ *   PROF-09: My Roles section visible
+ *   PROF-10: Sign Out button visible
  */
 import { test, expect } from '../fixtures/auth.emu.fixture.js';
 
+const ADMIN_EMAIL = 'admin@emu.test';
+
+test('@emu @profile admin can navigate to /profile', async ({ adminPage }) => {
+  await adminPage.goto('/profile');
+  await expect(adminPage).not.toHaveURL(/\/login/);
+  await expect(adminPage.locator('main')).toBeVisible({ timeout: 10_000 });
+});
+
+test('@emu @profile profile page shows the admin email', async ({ adminPage }) => {
+  await adminPage.goto('/profile');
+  await adminPage.waitForLoadState('domcontentloaded');
+  await expect(adminPage.getByText(ADMIN_EMAIL, { exact: false }))
+    .toBeVisible({ timeout: 10_000 });
+});
+
+test('@emu @profile profile page shows admin role badge', async ({ adminPage }) => {
+  await adminPage.goto('/profile');
+  await adminPage.waitForLoadState('domcontentloaded');
+  await expect(adminPage.getByText('Admin', { exact: false }).first())
+    .toBeVisible({ timeout: 10_000 });
+});
+
+test('@emu @profile first/last name inputs are present', async ({ adminPage }) => {
+  await adminPage.goto('/profile');
+  await adminPage.waitForLoadState('domcontentloaded');
+  await expect(adminPage.getByLabel('First Name')).toBeVisible({ timeout: 10_000 });
+  await expect(adminPage.getByLabel('Last Name')).toBeVisible({ timeout: 10_000 });
+});
+
+test('@emu @profile email field is disabled (read-only)', async ({ adminPage }) => {
+  await adminPage.goto('/profile');
+  await adminPage.waitForLoadState('domcontentloaded');
+  const emailInput = adminPage.getByLabel('Email', { exact: true });
+  await expect(emailInput).toBeVisible({ timeout: 10_000 });
+  await expect(emailInput).toBeDisabled();
+});
+
+test('@emu @profile Save Changes button is present', async ({ adminPage }) => {
+  await adminPage.goto('/profile');
+  await adminPage.waitForLoadState('domcontentloaded');
+  await expect(adminPage.getByRole('button', { name: /save changes/i }))
+    .toBeVisible({ timeout: 10_000 });
+});
+
+// Existing test — preserved
 test('@emu @profile admin can update first and last name and see the saved confirmation', async ({ adminPage }) => {
   const page = adminPage;
 
@@ -19,13 +69,11 @@ test('@emu @profile admin can update first and last name and see the saved confi
   const firstNameInput = page.getByLabel('First Name');
   const lastNameInput = page.getByLabel('Last Name');
 
-  // Wait for the form to be populated from Firestore before reading values.
   await expect(firstNameInput).toBeVisible({ timeout: 10_000 });
 
   const originalFirst = await firstNameInput.inputValue();
   const originalLast = await lastNameInput.inputValue();
 
-  // Update to a unique throwaway name.
   const stamp = Date.now();
   await firstNameInput.clear();
   await firstNameInput.fill(`Emu${stamp}`);
@@ -35,16 +83,43 @@ test('@emu @profile admin can update first and last name and see the saved confi
   const saveBtn = page.getByRole('button', { name: /save changes/i });
   await saveBtn.click();
 
-  // Button label transitions to "Saved!" on success.
   await expect(page.getByRole('button', { name: /saved!/i })).toBeVisible({ timeout: 15_000 });
 
-  // Restore the original values so the seeded user stays deterministic for
-  // subsequent test runs.
   await firstNameInput.clear();
   await firstNameInput.fill(originalFirst || 'Emu Admin');
   await lastNameInput.clear();
   await lastNameInput.fill(originalLast || 'Admin');
   await page.getByRole('button', { name: /save changes/i }).click();
-  // Wait for the restore save to complete before the test tears down.
   await expect(page.getByRole('button', { name: /saved!/i })).toBeVisible({ timeout: 15_000 });
+});
+
+test('@emu @profile clearing first name shows validation error', async ({ adminPage }) => {
+  await adminPage.goto('/profile');
+  await adminPage.waitForLoadState('domcontentloaded');
+
+  const firstNameInput = adminPage.getByLabel('First Name');
+  await firstNameInput.clear();
+  await firstNameInput.blur();
+
+  await expect(adminPage.getByText(/first name is required/i))
+    .toBeVisible({ timeout: 5_000 });
+  await expect(adminPage.getByRole('button', { name: /save changes/i }))
+    .toBeDisabled();
+
+  // Restore so other tests don't see an empty first name in DOM
+  await firstNameInput.fill('Emu Admin');
+});
+
+test('@emu @profile My Roles section visible for admin', async ({ adminPage }) => {
+  await adminPage.goto('/profile');
+  await adminPage.waitForLoadState('domcontentloaded');
+  await expect(adminPage.getByText('My Roles', { exact: false }))
+    .toBeVisible({ timeout: 10_000 });
+});
+
+test('@emu @profile Sign Out button is present in Account section', async ({ adminPage }) => {
+  await adminPage.goto('/profile');
+  await adminPage.waitForLoadState('domcontentloaded');
+  await expect(adminPage.getByRole('button', { name: /sign out/i }))
+    .toBeVisible({ timeout: 10_000 });
 });
