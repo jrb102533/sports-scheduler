@@ -62,7 +62,7 @@ test('@emu @auth disables Create Account button until terms are agreed to', asyn
 
   await page.getByLabel('First Name').fill('Test');
   await page.getByLabel('Last Name').fill('User');
-  await page.getByLabel('Email').fill('newuser-emu@example.com');
+  await page.getByLabel('Email').last().fill('newuser-emu@example.com');
   await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByLabel('Confirm Password').fill('password123');
 
@@ -80,7 +80,7 @@ test('@emu @auth shows validation error when passwords do not match', async ({ p
 
   await page.getByLabel('First Name').fill('Test');
   await page.getByLabel('Last Name').fill('User');
-  await page.getByLabel('Email').fill('newuser-emu@example.com');
+  await page.getByLabel('Email').last().fill('newuser-emu@example.com');
   await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByLabel('Confirm Password').fill('different456');
   await page.getByRole('checkbox').first().check();
@@ -99,7 +99,7 @@ test('@emu @auth shows validation error when password is fewer than 6 characters
 
   await page.getByLabel('First Name').fill('Test');
   await page.getByLabel('Last Name').fill('User');
-  await page.getByLabel('Email').fill('newuser-emu@example.com');
+  await page.getByLabel('Email').last().fill('newuser-emu@example.com');
   await page.getByLabel('Password', { exact: true }).fill('12345');
   await page.getByLabel('Confirm Password').fill('12345');
   await page.getByRole('checkbox').first().check();
@@ -118,7 +118,7 @@ test('@emu @auth shows validation error when first name is missing', async ({ pa
 
   // Leave first name blank
   await page.getByLabel('Last Name').fill('User');
-  await page.getByLabel('Email').fill('newuser-emu@example.com');
+  await page.getByLabel('Email').last().fill('newuser-emu@example.com');
   await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByLabel('Confirm Password').fill('password123');
   await page.getByRole('checkbox').first().check();
