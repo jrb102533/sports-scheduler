@@ -94,12 +94,7 @@ test('@emu @admin admin can create a new team and it appears in the teams list',
 // Soft-delete team
 // ---------------------------------------------------------------------------
 
-test.skip('@emu @admin admin can delete a team from team detail page', async ({ adminPage }) => {
-  // SKIP: hardDeleteTeam callable completes in the emulator (3-280ms in CI logs)
-  // but the client `navigate('/teams')` after `await hardDeleteTeam(teamId)` does
-  // not fire — page stays on /teams/:id. Two real bugs were already fixed via this
-  // test (firebase-admin v13 increment crash; isOwner-admin "Permanently Delete"
-  // label); this third one needs its own investigation. Tracking: FW-TBD.
+test('@emu @admin admin can delete a team from team detail page', async ({ adminPage }) => {
   const page = adminPage;
   const teamName = `Emu Delete Team ${Date.now()}`;
 
