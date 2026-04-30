@@ -81,6 +81,7 @@ schedule:
   - 'functions/src/index.ts'
   - 'firestore.rules'
   - 'e2e/emulator/game-results.emu.spec.ts'
+  - 'e2e/emulator/schedule-wizard-surface.emu.spec.ts'
 
 messaging:
   - 'src/pages/MessagingPage.tsx'
