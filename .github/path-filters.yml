@@ -69,6 +69,7 @@ events:
   - 'e2e/emulator/event-visibility.emu.spec.ts'
   - 'e2e/emulator/cancelled-event.emu.spec.ts'
   - 'e2e/emulator/attendance.emu.spec.ts'
+  - 'e2e/emulator/player-role.emu.spec.ts'
 
 schedule:
   - 'src/components/ScheduleWizardModal.tsx'
