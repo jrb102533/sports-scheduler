@@ -290,6 +290,38 @@ e2e/
 
 ---
 
+## Test ID Convention
+
+Every @emu spec test title carries a stable test ID so failures map back to a
+single line of intent. New tests use `<BUCKET>-<SUBJECT>-<NN>`:
+
+```
+@emu @<bucket-tag> <BUCKET>-<SUBJECT>-<NN>: short description
+```
+
+- **BUCKET** matches the path-filter bucket (`ADMIN`, `AUTH`, `TEAMS`,
+  `EVENTS`, `SCHED`, `MESSAGING`, `LEAGUES`, `VENUES`). For role-routing /
+  permission specs (`coach can navigate to /home`), use a role prefix
+  instead: `COACH`, `LM`, `PARENT`, `PLAYER`.
+- **SUBJECT** is a short feature noun (`USR`, `VIS`, `CANCEL`, `RESULT`,
+  `RSVP`, …). Optional when the bucket alone is unambiguous.
+- **NN** is a zero-padded sequence number that's unique *within the
+  BUCKET-SUBJECT series across the whole suite*. Don't restart numbering
+  per-file — extend the existing series. `users-page.emu.spec.ts` covers
+  `ADMIN-USR-01..08`, so the lifecycle spec next to it picks up at `09`.
+
+When migrating a staging spec, prefer renaming legacy IDs to the new
+convention rather than carrying them across (e.g. `USR-FULL-NN` →
+`ADMIN-USR-NN+8`). Don't invent a new prefix when an existing series fits.
+
+Examples:
+- `ADMIN-USR-01` — admin /users page renders
+- `LEAGUES-VIS-02` — parent sees events section (cross-role visibility)
+- `EVENT-VIS-03` — seeded event visible on parent home
+- `COACH-ROLE-04` — coach sees Roster tab
+
+---
+
 ## Running Specific Suites
 
 ```bash
