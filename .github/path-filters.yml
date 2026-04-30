@@ -53,6 +53,7 @@ teams:
   - 'e2e/emulator/add-team-to-league.emu.spec.ts'
   - 'e2e/emulator/coach.emu.spec.ts'
   - 'e2e/emulator/coach-role.emu.spec.ts'
+  - 'e2e/emulator/admin-roster-crud.emu.spec.ts'
 
 events:
   - 'src/pages/CalendarPage.tsx'
