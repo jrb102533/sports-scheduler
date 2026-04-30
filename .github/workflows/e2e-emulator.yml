@@ -165,6 +165,10 @@ jobs:
         run: npm run build:emulator
 
       - name: Run Playwright against emulator
+        # Skip the run entirely when no domain bucket matched (e.g. PR only
+        # touched non-emu staging specs). The sentinel grep would otherwise
+        # cause Playwright to exit 1 on "no tests matched".
+        if: steps.grep.outputs.expression != '@__no_bucket_matched__'
         env:
           E2E_TIER: emulator
           E2E_BASE_URL: http://localhost:5173
