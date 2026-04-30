@@ -27,7 +27,12 @@ import { EMU_IDS } from '../seed-emulator.js';
 async function gotoSeasonDashboard(page: import('@playwright/test').Page) {
   await page.goto(`/leagues/${EMU_IDS.leagueId}/seasons/${EMU_IDS.seasonId}`);
   await page.waitForLoadState('domcontentloaded');
+  // data-hydrated only covers team + event stores; SeasonDashboard fetches its
+  // own season state lazily via useSeasonStore.fetchSeasons. Wait for the season
+  // name heading to confirm season load completed before asserting on the page.
   await page.waitForSelector('body[data-hydrated="true"]', { timeout: 30_000 });
+  await expect(page.getByRole('heading', { name: /emu season/i }))
+    .toBeVisible({ timeout: 30_000 });
 }
 
 async function openWizard(page: import('@playwright/test').Page) {
