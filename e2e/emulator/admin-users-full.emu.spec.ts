@@ -3,19 +3,19 @@
  *
  * Extends users-page.emu.spec.ts (which covers the static surface) with
  * end-to-end lifecycle scenarios that exercise the admin Cloud Functions:
- *   USR-FULL-01: createUserByAdmin — new user appears in the list with role badge
- *   USR-FULL-05: deleteUserByAdmin — admin can delete a user and they disappear
+ *   ADMIN-USR-09: createUserByAdmin — new user appears in the list with role badge
+ *   ADMIN-USR-10: deleteUserByAdmin — admin can delete a user and they disappear
  *
  * Tests NOT migrated:
- *   USR-FULL-02 (role dropdown change) — staging UI used a row-level <select>;
+ *   ADMIN-USR-11 (role dropdown change) — staging UI used a row-level <select>;
  *     the current SlideOver-based memberships UI doesn't expose an inline role
  *     dropdown, so the test no longer translates 1:1.
- *   USR-FULL-03 (resetUserPassword + success toast) — that CF calls SMTP via
+ *   ADMIN-USR-12 (resetUserPassword + success toast) — that CF calls SMTP via
  *     transporter.sendMail. The emulator CI sets SMTP_HOST=emulator.local
  *     (DNS-unresolvable), so the CF throws and the toast never appears. Worth
  *     covering as an integration-tier test once we wire a stub transporter,
  *     or as a manual checklist item.
- *   USR-FULL-04 (no self-delete button) — already covered by ADMIN-USR-08
+ *   ADMIN-USR-13 (no self-delete button) — already covered by ADMIN-USR-08
  *     in users-page.emu.spec.ts.
  */
 import { test, expect } from '../fixtures/auth.emu.fixture.js';
@@ -73,10 +73,10 @@ async function createCoachViaModal(
 }
 
 // ---------------------------------------------------------------------------
-// USR-FULL-01: createUserByAdmin — new user appears in list
+// ADMIN-USR-09: createUserByAdmin — new user appears in list
 // ---------------------------------------------------------------------------
 
-test('@emu @admin USR-FULL-01: newly created user appears in the list', async ({
+test('@emu @admin ADMIN-USR-09: newly created user appears in the list', async ({
   adminPage: page,
 }) => {
   await gotoUsers(page);
@@ -93,10 +93,10 @@ test('@emu @admin USR-FULL-01: newly created user appears in the list', async ({
 });
 
 // ---------------------------------------------------------------------------
-// USR-FULL-05: deleteUserByAdmin — admin can delete a user
+// ADMIN-USR-10: deleteUserByAdmin — admin can delete a user
 // ---------------------------------------------------------------------------
 
-test('@emu @admin USR-FULL-05: admin can delete a created user', async ({
+test('@emu @admin ADMIN-USR-10: admin can delete a created user', async ({
   adminPage: page,
 }) => {
   await gotoUsers(page);

@@ -13,20 +13,20 @@
  *   - emu-player: memberships[0].teamId = teamAId
  *   - emu-admin: admin claim — can access all teams
  *   - emu-event: game on teamAId + teamBId, status='scheduled'
- *   - teamBId: coachIds=[] (emu-coach is NOT on team B — used for CROSS-05)
+ *   - teamBId: coachIds=[] (emu-coach is NOT on team B — used for LEAGUES-VIS-05)
  *
  * Tests NOT migrated:
- *   - CROSS-03 (player sees events on /parent): player is seeded but the
- *     player role's home page may differ from /parent — covered by CROSS-02.
+ *   - LEAGUES-VIS-03 (player sees events on /parent): player is seeded but the
+ *     player role's home page may differ from /parent — covered by LEAGUES-VIS-02.
  */
 import { test, expect } from '../fixtures/auth.emu.fixture.js';
 import { EMU_IDS } from '../seed-emulator.js';
 
 // ---------------------------------------------------------------------------
-// CROSS-01: Coach sees the Schedule tab on their own team
+// LEAGUES-VIS-01: Coach sees the Schedule tab on their own team
 // ---------------------------------------------------------------------------
 
-test('@emu @leagues CROSS-01: coach sees Schedule tab on seeded Emu Team A detail page', async ({
+test('@emu @leagues LEAGUES-VIS-01: coach sees Schedule tab on seeded Emu Team A detail page', async ({
   coachPage: page,
 }) => {
   await page.goto(`/teams/${EMU_IDS.teamAId}`);
@@ -53,7 +53,7 @@ test('@emu @leagues CROSS-01: coach sees Schedule tab on seeded Emu Team A detai
   if (!hasEventText && !hasEmptyState) {
     test.skip(
       true,
-      'CROSS-01: schedule tab loaded but no event content or empty state matched — data contract mismatch',
+      'LEAGUES-VIS-01: schedule tab loaded but no event content or empty state matched — data contract mismatch',
     );
     return;
   }
@@ -65,10 +65,10 @@ test('@emu @leagues CROSS-01: coach sees Schedule tab on seeded Emu Team A detai
 });
 
 // ---------------------------------------------------------------------------
-// CROSS-02: Parent sees events section on home page (or empty state)
+// LEAGUES-VIS-02: Parent sees events section on home page (or empty state)
 // ---------------------------------------------------------------------------
 
-test('@emu @leagues CROSS-02: parent sees events section on home page', async ({
+test('@emu @leagues LEAGUES-VIS-02: parent sees events section on home page', async ({
   parentPage: page,
 }) => {
   await page.goto('/');
@@ -93,10 +93,10 @@ test('@emu @leagues CROSS-02: parent sees events section on home page', async ({
 });
 
 // ---------------------------------------------------------------------------
-// CROSS-04: Admin reaches Team A Schedule tab without crash
+// LEAGUES-VIS-04: Admin reaches Team A Schedule tab without crash
 // ---------------------------------------------------------------------------
 
-test('@emu @leagues CROSS-04: admin navigates to Emu Team A Schedule tab without crash', async ({
+test('@emu @leagues LEAGUES-VIS-04: admin navigates to Emu Team A Schedule tab without crash', async ({
   adminPage: page,
 }) => {
   await page.goto(`/teams/${EMU_IDS.teamAId}`);
@@ -131,7 +131,7 @@ test('@emu @leagues CROSS-04: admin navigates to Emu Team A Schedule tab without
   if (!hasEvents && !hasEmptyState) {
     test.skip(
       true,
-      'CROSS-04: Team A schedule loaded but no content or empty state matched — data contract mismatch',
+      'LEAGUES-VIS-04: Team A schedule loaded but no content or empty state matched — data contract mismatch',
     );
     return;
   }
@@ -140,10 +140,10 @@ test('@emu @leagues CROSS-04: admin navigates to Emu Team A Schedule tab without
 });
 
 // ---------------------------------------------------------------------------
-// CROSS-05: Coach sees no edit controls on a team they do NOT coach
+// LEAGUES-VIS-05: Coach sees no edit controls on a team they do NOT coach
 // ---------------------------------------------------------------------------
 
-test('@emu @leagues CROSS-05: coach sees no edit controls on Emu Team B (unrelated team)', async ({
+test('@emu @leagues LEAGUES-VIS-05: coach sees no edit controls on Emu Team B (unrelated team)', async ({
   coachPage: page,
 }) => {
   // emu-coach is the coachId of teamA only. teamB has coachIds=[].
