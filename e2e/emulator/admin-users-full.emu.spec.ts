@@ -116,10 +116,15 @@ test('@emu @admin USR-FULL-05: admin can delete a created user', async ({
   const detailPanel = page.getByLabel('Edit User');
   await detailPanel.getByRole('button', { name: /delete user/i }).click();
 
-  // ConfirmDialog → Confirm
-  await page.getByRole('button', { name: /^delete$|^confirm$|^yes$/i }).last().click();
+  // ConfirmDialog → Confirm. ConfirmDialog uses default confirmLabel='Delete'.
+  await page.getByRole('button', { name: /^delete$/i }).last().click();
 
-  // The user card must disappear from the list
-  await expect(userList(page).getByText(displayName, { exact: false }))
-    .not.toBeVisible({ timeout: 15_000 });
+  // After deletion the SlideOver closes (selectedUser cleared) and the card
+  // is removed from React state. Wait for the SlideOver to disappear first to
+  // avoid strict-mode flake from the panel still rendering the user's name,
+  // then assert the card is gone from the list. toHaveCount(0) tolerates the
+  // brief window where the panel and the card may both still be in the DOM.
+  await expect(page.getByLabel('Edit User')).not.toBeVisible({ timeout: 15_000 });
+  await expect(userList(page).getByRole('button', { name: new RegExp(displayName, 'i') }))
+    .toHaveCount(0, { timeout: 5_000 });
 });
