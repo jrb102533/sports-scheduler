@@ -14,14 +14,18 @@
  */
 import { test, expect } from '../fixtures/auth.emu.fixture.js';
 
-test('@emu @parent profile page loads and shows Parent role badge', async ({ parentPage }) => {
+test('@emu @parent PARENT-ROLE-02: profile page loads and shows Parent role badge', async ({ parentPage }) => {
   await parentPage.goto('/profile');
   await parentPage.waitForLoadState('domcontentloaded');
 
-  // Profile-page hydration races on slow emu CI runs — give Edit Profile
-  // heading more headroom than the default 10s.
+  // Wait for MainLayout's data-hydrated signal — guarantees both the auth
+  // profile and the team/event stores are populated before we assert on
+  // role-derived UI. Without this, the role badge can race the profile
+  // snapshot and the test flakes at the 5s assertion below (#720).
+  await parentPage.waitForSelector('body[data-hydrated="true"]', { timeout: 30_000 });
+
   await expect(parentPage.getByRole('heading', { name: /edit profile/i }))
-    .toBeVisible({ timeout: 30_000 });
+    .toBeVisible({ timeout: 10_000 });
   await expect(parentPage.getByText(/parent/i).first())
-    .toBeVisible({ timeout: 5_000 });
+    .toBeVisible({ timeout: 10_000 });
 });
