@@ -112,14 +112,21 @@ export function MainLayout() {
   // Write data-hydrated="true" to <body> once the initial Firestore snapshots
   // for the two highest-traffic stores have arrived. E2E tests wait on this
   // attribute instead of using fixed timeouts.
+  //
+  // Gate on profile too — without it, a non-admin user's first subscribe call
+  // runs with userTeamIds=[] (memberships not yet derived) and the team/event
+  // stores immediately set loading=false on a no-op subscribe. data-hydrated
+  // would fire with no data in the stores, then re-subscription kicks in
+  // after profile loads. Tests waiting on data-hydrated would race the
+  // re-subscription and see an empty page.
   const teamsLoading = useTeamStore(s => s.loading);
   const eventsLoading = useEventStore(s => s.loading);
   useEffect(() => {
-    if (!user) return;
+    if (!user || !profile) return;
     if (!teamsLoading && !eventsLoading) {
       document.body.setAttribute('data-hydrated', 'true');
     }
-  }, [user, teamsLoading, eventsLoading]);
+  }, [user, profile, teamsLoading, eventsLoading]);
 
   const location = useLocation();
   const isHome = location.pathname === '/' || location.pathname === '/home';
