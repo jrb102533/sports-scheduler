@@ -115,9 +115,12 @@ test('@emu @admin ADMIN-USR-04: clicking a user card opens the detail panel', as
   await expect(coachCard).toBeVisible({ timeout: 10_000 });
   await coachCard.click();
 
-  // Detail panel must show the user's email and a display name input
-  await expect(page.getByText('coach@emu.test', { exact: false })).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByRole('textbox', { name: /display name/i })).toBeVisible();
+  // Detail panel must show the user's email and a display name input.
+  // Scope to the SlideOver (aria-label "Edit User") — the user's email also
+  // appears on the card in the list, so an unscoped match is non-deterministic.
+  const detailPanel = page.getByLabel('Edit User');
+  await expect(detailPanel.getByText('coach@emu.test', { exact: false })).toBeVisible({ timeout: 5_000 });
+  await expect(detailPanel.getByRole('textbox', { name: /display name/i })).toBeVisible();
 });
 
 // ---------------------------------------------------------------------------
@@ -160,9 +163,11 @@ test('@emu @admin ADMIN-USR-06: "Add User" button opens the create user modal', 
 
   await page.getByRole('button', { name: /add user/i }).click();
 
-  // Modal must open with the form fields
+  // Modal must open with the form fields. AddUserModal splits the name into
+  // First Name + Last Name (there's no "display name" field on this form).
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByLabel(/display name/i)).toBeVisible();
+  await expect(page.getByLabel(/first name/i)).toBeVisible();
+  await expect(page.getByLabel(/last name/i)).toBeVisible();
   await expect(page.getByLabel(/email/i)).toBeVisible();
 
   // Close modal
