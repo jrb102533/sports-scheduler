@@ -61,11 +61,9 @@ async function createCoachViaModal(
   // Selecting role=coach reveals the Team select
   await dialog.getByLabel(/team/i).selectOption(EMU_IDS.teamAId);
 
-  // Form submit — the modal flips to a "User Created" success view
-  await dialog.getByRole('button', { name: /^add user$|^create$/i })
-    .or(dialog.getByRole('button', { name: /save/i }))
-    .first()
-    .click();
+  // Form submit — button is "Create User" (becomes "Creating…" while in flight).
+  // The modal flips to a "User Created" success view on success.
+  await dialog.getByRole('button', { name: /^create user$/i }).click();
 
   // Success view shows the temp password + a Done button
   await expect(dialog.getByText(/user created|temporary password/i).first())
