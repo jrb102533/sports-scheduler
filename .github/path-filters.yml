@@ -38,6 +38,7 @@ admin:
   - 'firestore.rules'
   - 'e2e/emulator/admin.emu.spec.ts'
   - 'e2e/emulator/users-page.emu.spec.ts'
+  - 'e2e/emulator/admin-users-full.emu.spec.ts'
 
 teams:
   - 'src/pages/TeamDetailPage.tsx'
