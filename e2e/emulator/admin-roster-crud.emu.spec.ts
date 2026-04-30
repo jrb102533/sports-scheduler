@@ -51,7 +51,7 @@ async function addPlayer(
 // ADMIN-PLR-01
 // ---------------------------------------------------------------------------
 
-test('@emu @admin ADMIN-PLR-01: admin can edit a player name on the roster', async ({
+test('@emu @admin @teams ADMIN-PLR-01: admin can edit a player name on the roster', async ({
   adminPage: page,
 }) => {
   const stamp = Date.now();
@@ -87,7 +87,7 @@ test('@emu @admin ADMIN-PLR-01: admin can edit a player name on the roster', asy
 // ADMIN-PLR-02
 // ---------------------------------------------------------------------------
 
-test('@emu @admin ADMIN-PLR-02: admin can delete a player from the roster', async ({
+test('@emu @admin @teams ADMIN-PLR-02: admin can delete a player from the roster', async ({
   adminPage: page,
 }) => {
   const stamp = Date.now();
