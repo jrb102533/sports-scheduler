@@ -38,13 +38,17 @@ async function gotoSeasonDashboard(page: import('@playwright/test').Page) {
 async function openWizard(page: import('@playwright/test').Page) {
   await gotoSeasonDashboard(page);
 
-  // The Generate Schedule button is gated by `canGenerate` (requires venues
-  // + feasibility) and `leagueTeams.length >= 2`. The seed has emu-venue and
-  // teams A + B, so both gates pass.
-  const generateBtn = page.getByRole('button', { name: /^generate schedule$/i });
-  await expect(generateBtn).toBeVisible({ timeout: 10_000 });
-  await expect(generateBtn).toBeEnabled({ timeout: 5_000 });
-  await generateBtn.click();
+  // SeasonDashboard renders one of three Card-4 states based on schedule
+  // state — Generate Schedule (no events), Draft Schedule Ready, or Schedule
+  // Published. The wizard-open button text differs across them: "Generate
+  // Schedule" vs. "Regenerate". The seed includes an emu-event with
+  // status='scheduled' under emu-season, which evaluates to hasFullyPublished
+  // = true → the "Regenerate" button is shown. Match both so the spec keeps
+  // working if the seed state changes.
+  const wizardOpenBtn = page.getByRole('button', { name: /^generate schedule$|^regenerate$/i });
+  await expect(wizardOpenBtn).toBeVisible({ timeout: 10_000 });
+  await expect(wizardOpenBtn).toBeEnabled({ timeout: 5_000 });
+  await wizardOpenBtn.click();
 
   const modal = page.getByRole('dialog');
   await expect(modal).toBeVisible({ timeout: 5_000 });
