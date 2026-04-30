@@ -101,6 +101,7 @@ leagues:
   - 'e2e/emulator/createLeague.emu.spec.ts'
   - 'e2e/emulator/add-team-to-league.emu.spec.ts'
   - 'e2e/emulator/cross-role-visibility.emu.spec.ts'
+  - 'e2e/emulator/leagues-detail.emu.spec.ts'
 
 venues:
   - 'src/pages/VenuesPage.tsx'
