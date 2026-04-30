@@ -102,11 +102,12 @@ test('@emu @admin @teams ADMIN-PLR-02: admin can delete a player from the roster
   await expect(removeBtn).toBeVisible({ timeout: 5_000 });
   await removeBtn.click();
 
-  // ConfirmDialog default confirmLabel is 'Delete'
-  const confirmBtn = page.getByRole('button', { name: /^delete$/i }).last();
-  if (await confirmBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await confirmBtn.click();
-  }
+  // ConfirmDialog opens — scope the Delete click to the dialog so we don't
+  // race other Delete buttons on the page (deleted-team cards, etc.)
+  const confirmDialog = page.getByRole('dialog');
+  await expect(confirmDialog).toBeVisible({ timeout: 5_000 });
+  await confirmDialog.getByRole('button', { name: /^delete$/i }).click();
+  await expect(confirmDialog).not.toBeVisible({ timeout: 10_000 });
 
   // Player should disappear from the roster — assert via the row aria-label,
   // which is more deterministic than a text match across the document.
