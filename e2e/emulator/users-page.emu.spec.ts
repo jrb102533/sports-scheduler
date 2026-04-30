@@ -29,6 +29,13 @@ async function gotoUsers(page: import('@playwright/test').Page) {
   await expect(page.getByText(/\d+ users?/)).toBeVisible({ timeout: 15_000 });
 }
 
+// User cards live in <main>. The sidebar and topbar also render the current
+// user's display name, so unscoped getByText matchers trigger strict-mode
+// violations. All page-level assertions go through this scope.
+function userList(page: import('@playwright/test').Page) {
+  return page.getByRole('main');
+}
+
 // ---------------------------------------------------------------------------
 // ADMIN-USR-01: Page renders with seeded users
 // ---------------------------------------------------------------------------
@@ -40,8 +47,8 @@ test('@emu @admin ADMIN-USR-01: /users page renders with seeded users', async ({
 
   await expect(page).not.toHaveURL(/\/login/);
 
-  // At least the seeded admin user card must appear
-  await expect(page.getByText('Emu Admin', { exact: false })).toBeVisible({ timeout: 10_000 });
+  // At least the seeded admin user card must appear in the main content area
+  await expect(userList(page).getByText('Emu Admin', { exact: false }).first()).toBeVisible({ timeout: 10_000 });
 
   // "Add User" button must be present (admin capability)
   await expect(page.getByRole('button', { name: /add user/i })).toBeVisible();
@@ -61,15 +68,13 @@ test('@emu @admin ADMIN-USR-02: search by name filters user cards', async ({
 
   await searchInput.fill('Emu Coach');
 
-  // Coach card must appear
-  await expect(page.getByText('Emu Coach', { exact: false })).toBeVisible({ timeout: 5_000 });
-
-  // Admin card must be hidden
-  await expect(page.getByText('Emu Admin', { exact: false })).not.toBeVisible();
+  // Coach card must appear in main; admin card must not
+  await expect(userList(page).getByText('Emu Coach', { exact: false }).first()).toBeVisible({ timeout: 5_000 });
+  await expect(userList(page).getByText('Emu Admin', { exact: false })).not.toBeVisible();
 
   // Clear search — admin reappears
   await searchInput.fill('');
-  await expect(page.getByText('Emu Admin', { exact: false })).toBeVisible({ timeout: 5_000 });
+  await expect(userList(page).getByText('Emu Admin', { exact: false }).first()).toBeVisible({ timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -86,14 +91,14 @@ test('@emu @admin ADMIN-USR-03: role filter chip narrows the user list', async (
   await expect(coachChip).toBeVisible();
   await coachChip.click();
 
-  // Coach card visible, admin card hidden
-  await expect(page.getByText('Emu Coach', { exact: false })).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByText('Emu Admin', { exact: false })).not.toBeVisible();
+  // Coach card visible, admin card hidden (scoped to main content)
+  await expect(userList(page).getByText('Emu Coach', { exact: false }).first()).toBeVisible({ timeout: 5_000 });
+  await expect(userList(page).getByText('Emu Admin', { exact: false })).not.toBeVisible();
 
   // Reset to "All"
   const allChip = page.getByRole('button', { name: /^all$/i });
   await allChip.click();
-  await expect(page.getByText('Emu Admin', { exact: false })).toBeVisible({ timeout: 5_000 });
+  await expect(userList(page).getByText('Emu Admin', { exact: false }).first()).toBeVisible({ timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -106,7 +111,7 @@ test('@emu @admin ADMIN-USR-04: clicking a user card opens the detail panel', as
   await gotoUsers(page);
 
   // Click the Emu Coach card
-  const coachCard = page.getByRole('button', { name: /emu coach/i }).first();
+  const coachCard = userList(page).getByRole('button', { name: /emu coach/i }).first();
   await expect(coachCard).toBeVisible({ timeout: 10_000 });
   await coachCard.click();
 
@@ -124,7 +129,7 @@ test('@emu @admin ADMIN-USR-05: admin can edit display name in the detail panel'
 }) => {
   await gotoUsers(page);
 
-  const coachCard = page.getByRole('button', { name: /emu coach/i }).first();
+  const coachCard = userList(page).getByRole('button', { name: /emu coach/i }).first();
   await coachCard.click();
 
   const nameInput = page.getByRole('textbox', { name: /display name/i });
@@ -179,7 +184,7 @@ test('@emu @admin ADMIN-USR-07: non-admin user detail panel shows Delete User bu
 }) => {
   await gotoUsers(page);
 
-  const coachCard = page.getByRole('button', { name: /emu coach/i }).first();
+  const coachCard = userList(page).getByRole('button', { name: /emu coach/i }).first();
   await coachCard.click();
 
   // Danger zone Delete button must be visible for non-self users
@@ -195,8 +200,9 @@ test('@emu @admin ADMIN-USR-08: admin own detail panel does not show Delete User
 }) => {
   await gotoUsers(page);
 
-  // The admin's own card is labelled "Emu Admin" and shows "(you)"
-  const adminCard = page.getByRole('button', { name: /emu admin/i }).first();
+  // The admin's own card is labelled "Emu Admin" and shows "(you)" — scope to
+  // main so the sidebar/topbar user buttons are not matched
+  const adminCard = userList(page).getByRole('button', { name: /emu admin/i }).first();
   await adminCard.click();
 
   // Delete button must not exist for self
